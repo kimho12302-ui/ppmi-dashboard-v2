@@ -1,101 +1,171 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useMemo } from "react";
+import {
+  BarChart, Bar, Line, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ComposedChart,
+} from "recharts";
+import { useFetch, useDateRange } from "@/hooks/use-dashboard-data";
+import { KpiCard } from "@/components/ui/kpi-card";
+import { ChartWrapper } from "@/components/charts/chart-wrapper";
+import { CustomTooltip } from "@/components/charts/custom-tooltip";
+import { DateRangeSelector } from "@/components/ui/date-range-selector";
+import { Loading } from "@/components/ui/loading";
+import { BRAND_COLORS, BRAND_LABELS } from "@/lib/types";
+import { formatCurrency, formatNumber } from "@/lib/utils";
+import type { DailySales, DailyAdSpend, ProductSales } from "@/lib/types";
+
+interface DashboardData {
+  sales: DailySales[];
+  ads: DailyAdSpend[];
+  products: ProductSales[];
+}
+
+export default function OverviewPage() {
+  const { from, to, days, setDays } = useDateRange(30);
+  const { data, loading } = useFetch<DashboardData>(
+    `/api/dashboard?from=${from}&to=${to}`
+  );
+
+  const kpis = useMemo(() => {
+    if (!data) return null;
+    const totalRevenue = data.sales.reduce((s, r) => s + (r.revenue || 0), 0);
+    const totalAdSpend = data.ads.reduce((s, r) => s + (r.spend || 0), 0);
+    const totalOrders = data.sales.reduce((s, r) => s + (r.orders || 0), 0);
+    const totalConvValue = data.ads.reduce((s, r) => s + (r.conversion_value || 0), 0);
+    const roas = totalAdSpend > 0 ? totalConvValue / totalAdSpend : 0;
+    return { totalRevenue, totalAdSpend, totalOrders, roas };
+  }, [data]);
+
+  const revenueTrend = useMemo(() => {
+    if (!data) return [];
+    const byDate = new Map<string, Record<string, number>>();
+    const adByDate = new Map<string, number>();
+    data.sales.forEach((r) => {
+      const entry = byDate.get(r.date) || {};
+      entry[r.brand] = (entry[r.brand] || 0) + r.revenue;
+      byDate.set(r.date, entry);
+    });
+    data.ads.forEach((r) => {
+      adByDate.set(r.date, (adByDate.get(r.date) || 0) + r.spend);
+    });
+    return Array.from(byDate.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, brands]) => ({
+        date: date.slice(5),
+        ...brands,
+        광고비: adByDate.get(date) || 0,
+      }));
+  }, [data]);
+
+  const brandRevenue = useMemo(() => {
+    if (!data) return [];
+    const byBrand = new Map<string, number>();
+    data.sales.forEach((r) => {
+      byBrand.set(r.brand, (byBrand.get(r.brand) || 0) + r.revenue);
+    });
+    return Array.from(byBrand.entries())
+      .map(([brand, revenue]) => ({
+        name: BRAND_LABELS[brand] || brand,
+        value: revenue,
+        brand,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [data]);
+
+  const top5Products = useMemo(() => {
+    if (!data) return [];
+    const byProduct = new Map<string, { revenue: number; brand: string }>();
+    data.products.forEach((p) => {
+      const existing = byProduct.get(p.product);
+      if (existing) {
+        existing.revenue += p.revenue;
+      } else {
+        byProduct.set(p.product, { revenue: p.revenue, brand: p.brand });
+      }
+    });
+    return Array.from(byProduct.entries())
+      .map(([name, info]) => ({ name: name.length > 15 ? name.slice(0, 15) + "…" : name, revenue: info.revenue, brand: info.brand }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+  }, [data]);
+
+  if (loading) return <Loading />;
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Overview</h1>
+          <p className="text-sm text-muted-foreground">PPMI 대시보드 전체 현황</p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        <DateRangeSelector days={days} onChange={setDays} />
+      </div>
+
+      {/* KPI Cards */}
+      {kpis && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard title="총 매출" value={formatCurrency(kpis.totalRevenue)} />
+          <KpiCard title="광고비" value={formatCurrency(kpis.totalAdSpend)} />
+          <KpiCard title="ROAS" value={kpis.roas.toFixed(2) + "x"} />
+          <KpiCard title="주문 수" value={formatNumber(kpis.totalOrders)} />
+        </div>
+      )}
+
+      {/* Revenue Trend + Ad Spend */}
+      <ChartWrapper title="매출 트렌드 (브랜드별) + 광고비" height={350}>
+        <ComposedChart data={revenueTrend}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+          <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} />
+          <YAxis tick={{ fontSize: 11, fill: "var(--chart-tick)" }} tickFormatter={(v) => (v / 10000).toFixed(0) + "만"} />
+          <Tooltip content={<CustomTooltip />} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          {Object.entries(BRAND_COLORS).map(([brand, color]) => (
+            <Bar key={brand} dataKey={brand} stackId="revenue" fill={color} name={BRAND_LABELS[brand] || brand} radius={[0, 0, 0, 0]} />
+          ))}
+          <Line type="monotone" dataKey="광고비" stroke="#ef4444" strokeWidth={2} dot={false} name="광고비" />
+        </ComposedChart>
+      </ChartWrapper>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Brand Revenue Pie */}
+        <ChartWrapper title="브랜드별 매출 비중" height={300}>
+          <PieChart>
+            <Pie
+              data={brandRevenue}
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={100}
+              dataKey="value"
+              nameKey="name"
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              label={((props: any) => `${props.name || ""} ${((props.percent || 0) * 100).toFixed(0)}%`) as any}
+              labelLine={false}
+            >
+              {brandRevenue.map((entry, i) => (
+                <Cell key={i} fill={BRAND_COLORS[entry.brand] || "#888"} />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip />} />
+          </PieChart>
+        </ChartWrapper>
+
+        {/* Top 5 Products */}
+        <ChartWrapper title="TOP 5 제품" height={300}>
+          <BarChart data={top5Products} layout="vertical">
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+            <XAxis type="number" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} tickFormatter={(v) => (v / 10000).toFixed(0) + "만"} />
+            <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "var(--chart-tick)" }} width={120} />
+            <Tooltip content={<CustomTooltip />} />
+            <Bar dataKey="revenue" name="매출" radius={[0, 4, 4, 0]}>
+              {top5Products.map((entry, i) => (
+                <Cell key={i} fill={BRAND_COLORS[entry.brand] || "#888"} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ChartWrapper>
+      </div>
     </div>
   );
 }
