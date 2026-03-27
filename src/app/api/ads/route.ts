@@ -28,3 +28,39 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });
   }
 }
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { date, brand, channel, spend, impressions, clicks, conversions, conversion_value } = body;
+
+    if (!date || !brand || !channel) {
+      return NextResponse.json({ error: "date, brand, channel 필수" }, { status: 400 });
+    }
+
+    // UPSERT: date+brand+channel이 같으면 덮어쓰기
+    const { data, error } = await supabase
+      .from("daily_ad_spend")
+      .upsert({
+        date,
+        brand,
+        channel,
+        spend: Number(spend) || 0,
+        impressions: Number(impressions) || 0,
+        clicks: Number(clicks) || 0,
+        conversions: Number(conversions) || 0,
+        conversion_value: Number(conversion_value) || 0,
+        roas: spend > 0 ? (conversion_value || 0) / spend : 0,
+        ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+        cpc: clicks > 0 ? spend / clicks : 0,
+      }, { onConflict: "date,brand,channel" })
+      .select();
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true, data });
+  } catch (error) {
+    console.error("Ads POST error:", error);
+    return NextResponse.json({ error: "저장 실패" }, { status: 500 });
+  }
+}
