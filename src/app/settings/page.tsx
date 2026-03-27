@@ -19,7 +19,13 @@ export default function SettingsPage() {
   const [form, setForm] = useState({ product: "", brand: "", cost_price: "", shipping_cost: "", category: "" });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingSales, setUploadingSales] = useState(false);
   const [message, setMessage] = useState("");
+  const [salesMessage, setSalesMessage] = useState("");
+  const [salesDate, setSalesDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split("T")[0];
+  });
 
   const handleSave = useCallback(async () => {
     if (!form.product || !form.brand) return;
@@ -79,6 +85,32 @@ export default function SettingsPage() {
       e.target.value = "";
     }
   }, [refetch]);
+
+  const handleSalesUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!salesDate) {
+      setSalesMessage("❌ 날짜를 선택하세요");
+      return;
+    }
+    setUploadingSales(true);
+    setSalesMessage("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("type", "sales");
+      formData.append("fileDate", salesDate);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "업로드 실패");
+      setSalesMessage(`✅ ${json.date} 매출 ${json.count}건 업로드 완료`);
+    } catch (err) {
+      setSalesMessage(`❌ ${err instanceof Error ? err.message : "업로드 실패"}`);
+    } finally {
+      setUploadingSales(false);
+      e.target.value = "";
+    }
+  }, [salesDate]);
 
   const handleMissingClick = (product: string, brand: string) => {
     setForm((prev) => ({ ...prev, product, brand }));
@@ -198,10 +230,10 @@ export default function SettingsPage() {
         </div>
       </Card>
 
-      {/* CSV Upload */}
+      {/* CSV Upload (원가) */}
       <Card>
         <div className="px-6 py-4 border-b">
-          <h3 className="text-sm font-semibold text-muted-foreground">CSV/XLSX 업로드</h3>
+          <h3 className="text-sm font-semibold text-muted-foreground">제품 원가 CSV/XLSX 업로드</h3>
         </div>
         <div className="px-6 py-4">
           <p className="text-xs text-muted-foreground mb-3">
@@ -214,6 +246,40 @@ export default function SettingsPage() {
             {uploading ? "업로드 중..." : "파일 선택"}
             <input type="file" accept=".csv,.xlsx,.xls" onChange={handleUpload} className="hidden" disabled={uploading} />
           </label>
+        </div>
+      </Card>
+
+      {/* 매출 파일 업로드 */}
+      <Card>
+        <div className="px-6 py-4 border-b">
+          <h3 className="text-sm font-semibold text-muted-foreground">매출 파일 업로드</h3>
+        </div>
+        <div className="px-6 py-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            판매정리 엑셀 업로드 (거래처명, 브랜드명, 제품, 수량, 구매자 수, 매출)
+          </p>
+          <div className="flex items-center gap-3">
+            <div>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">날짜</label>
+              <input
+                type="date"
+                value={salesDate}
+                onChange={(e) => setSalesDate(e.target.value)}
+                className="px-3 py-2 rounded-lg border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">파일</label>
+              <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border bg-card text-sm font-medium cursor-pointer hover:bg-muted transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                {uploadingSales ? "업로드 중..." : "매출 파일 선택"}
+                <input type="file" accept=".xlsx,.xls" onChange={handleSalesUpload} className="hidden" disabled={uploadingSales} />
+              </label>
+            </div>
+          </div>
+          {salesMessage && <p className="text-sm">{salesMessage}</p>}
         </div>
       </Card>
 
