@@ -98,9 +98,8 @@ export default function SettingsPage() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("type", "sales");
-      formData.append("fileDate", salesDate);
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      formData.append("date", salesDate);
+      const res = await fetch("/api/upload-sales", { method: "POST", body: formData });
       const json = await res.json();
       if (!res.ok) {
         // 미등록 품목코드가 있는 경우
@@ -114,7 +113,7 @@ export default function SettingsPage() {
         }
         throw new Error(json.error || "업로드 실패");
       }
-      setSalesMessage(`✅ ${json.date} 매출 ${json.count}건 업로드 완료`);
+      setSalesMessage(`✅ ${json.parsed || json.count}건 업로드 완료 (DB: ${json.productSales || 0}건, 시트: ${json.sheetAppended || 0}건)`);
     } catch (err) {
       setSalesMessage(`❌ ${err instanceof Error ? err.message : "업로드 실패"}`);
     } finally {
