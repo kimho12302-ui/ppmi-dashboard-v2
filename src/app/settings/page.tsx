@@ -108,9 +108,9 @@ export default function SettingsPage() {
           const unmatchedList = json.unmatchedProducts
             .map((p: any) => `${p.code} (${p.name}) - ${p.count}건`)
             .join("\n");
-          throw new Error(
-            `${json.error}\n\n미등록 품목코드 (${json.totalUnmatched}개):\n${unmatchedList}\n\n상품 목록 탭에 먼저 등록해주세요.`
-          );
+          const message = `${json.error}\n\n미등록 품목코드 (${json.totalUnmatched}개):\n${unmatchedList}\n\n상품 목록 탭에 먼저 등록해주세요.`;
+          alert(message);
+          throw new Error(json.error);
         }
         throw new Error(json.error || "업로드 실패");
       }
