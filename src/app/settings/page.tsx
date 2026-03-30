@@ -102,7 +102,18 @@ export default function SettingsPage() {
       formData.append("fileDate", salesDate);
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "업로드 실패");
+      if (!res.ok) {
+        // 미등록 품목코드가 있는 경우
+        if (json.unmatchedProducts && json.unmatchedProducts.length > 0) {
+          const unmatchedList = json.unmatchedProducts
+            .map((p: any) => `${p.code} (${p.name}) - ${p.count}건`)
+            .join("\n");
+          throw new Error(
+            `${json.error}\n\n미등록 품목코드 (${json.totalUnmatched}개):\n${unmatchedList}\n\n상품 목록 탭에 먼저 등록해주세요.`
+          );
+        }
+        throw new Error(json.error || "업로드 실패");
+      }
       setSalesMessage(`✅ ${json.date} 매출 ${json.count}건 업로드 완료`);
     } catch (err) {
       setSalesMessage(`❌ ${err instanceof Error ? err.message : "업로드 실패"}`);
