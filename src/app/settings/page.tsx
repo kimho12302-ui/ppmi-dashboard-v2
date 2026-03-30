@@ -101,6 +101,7 @@ export default function SettingsPage() {
       formData.append("date", salesDate);
       const res = await fetch("/api/upload-sales", { method: "POST", body: formData });
       const json = await res.json();
+      console.log("API Response:", { status: res.status, ok: res.ok, data: json });
       if (!res.ok) {
         // 미등록 품목코드가 있는 경우
         if (json.unmatchedProducts && json.unmatchedProducts.length > 0) {
