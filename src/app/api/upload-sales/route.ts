@@ -315,7 +315,46 @@ export async function POST(request: NextRequest) {
         const SALES_SHEET_ID = 405001148;
         const rowCount = salesSheetRows.length;
 
-        // 1) Row 3부??�????�입
+        // 0) Delete existing rows for the same date (prevent duplicates on re-upload)
+        const existingRes = await sheets.spreadsheets.values.get({
+          spreadsheetId: STATS_SHEET_ID,
+          range: "Sales!B:B",
+        });
+        const existingVals = existingRes.data.values || [];
+        // Build target date text: e.g. "4월 1일"
+        const uploadDate = new Date(rows[0].date + "T00:00:00");
+        const targetDateText = `${uploadDate.getMonth() + 1}월 ${uploadDate.getDate()}일`;
+        
+        // Find matching rows (bottom to top for safe deletion)
+        const deleteRequests: any[] = [];
+        for (let ri = existingVals.length - 1; ri >= 2; ri--) {
+          const cellVal = String(existingVals[ri]?.[0] || "");
+          if (cellVal.includes(targetDateText)) {
+            deleteRequests.push({
+              deleteDimension: {
+                range: {
+                  sheetId: SALES_SHEET_ID,
+                  dimension: "ROWS",
+                  startIndex: ri,
+                  endIndex: ri + 1,
+                },
+              },
+            });
+          }
+        }
+        
+        if (deleteRequests.length > 0) {
+          // Batch delete in chunks of 100 to avoid API limits
+          for (let di = 0; di < deleteRequests.length; di += 100) {
+            const chunk = deleteRequests.slice(di, di + 100);
+            await sheets.spreadsheets.batchUpdate({
+              spreadsheetId: STATS_SHEET_ID,
+              requestBody: { requests: chunk },
+            });
+          }
+        }
+
+        // 1) Row 3부터 새 행 삽입
         await sheets.spreadsheets.batchUpdate({
           spreadsheetId: STATS_SHEET_ID,
           requestBody: {
@@ -437,6 +476,7 @@ export async function POST(request: NextRequest) {
         });
 
         dbResults.sheetAppended = salesSheetRows.length;
+        dbResults.sheetDeletedDuplicates = deleteRequests.length;
       } catch (e) {
         dbResults.sheetError = String(e);
       }
