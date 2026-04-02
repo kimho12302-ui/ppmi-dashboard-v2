@@ -227,17 +227,20 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Aggregate for product_sales (by date + channel + product)
+    // Aggregate for product_sales (by date + channel + product + lineup)
     const prodAgg = new Map<string, any>();
     for (const r of rows) {
-      const key = `${r.date}|${r.channel}|${r.product}`;
+      const key = `${r.date}|${r.channel}|${r.product}|${r.lineup}`;
       const ex = prodAgg.get(key);
       if (ex) {
         ex.revenue += r.revenue;
         ex.quantity += r.quantity;
+        ex.buyers += 1;
       } else {
         prodAgg.set(key, {
-          date: r.date, channel: r.channel, product: r.product,`n          brand: r.brand, category: r.category, lineup: r.lineup,`n          revenue: r.revenue, quantity: r.quantity, buyers: 0,
+          date: r.date, channel: r.channel, product: r.product,
+          brand: r.brand, category: r.category, lineup: r.lineup,
+          revenue: r.revenue, quantity: r.quantity, buyers: 1,
         });
       }
     }
