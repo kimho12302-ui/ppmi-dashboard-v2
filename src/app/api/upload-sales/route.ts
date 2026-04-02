@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, prefer-const */
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { createClient } from "@supabase/supabase-js";
@@ -21,11 +22,11 @@ function getAuth() {
 
 // Channel mapping from 거래처명
 const CHANNEL_MAP: Record<string, string> = {
-  "PPMI_?�사�?카페24)": "cafe24",
-  "PPMI_?�마?�스?�어": "smartstore",
-  "YS_?�마?�스?�어": "smartstore",
+  "PPMI_자사몰(카페24)": "cafe24",
+  "PPMI_스마트스토어": "smartstore",
+  "YS_스마트스토어": "smartstore",
   "PPMI_쿠팡": "coupang",
-  "PPMI_쿠팡 로켓그로??: "coupang",
+  "PPMI_쿠팡 로켓그로스": "coupang",
 };
 
 // Brand detection: YSIET* = balancelab, rest from product list
@@ -35,9 +36,13 @@ function detectBrand(productCode: string, productListMap: Map<string, any>): str
   if (!info) return "unknown";
   const brandName = (info.brand || "").trim();
   const BRAND_MAP: Record<string, string> = {
-    "?�티": "nutty", "?�이?�펫": "ironpet", "?��???: "saip",
-    "?�터?�이": "saip", "고네?�티�?: "saip", "?�라카니??: "saip",
-    "공동구매": "balancelab",
+    "\uB108\uD2F0": "nutty",
+    "\uC544\uC774\uC5B8\uD3AB": "ironpet",
+    "\uC0AC\uC785": "saip",
+    "\uB2E5\uD130\uB808\uC774": "saip",
+    "\uACE0\uB124\uC774\uD2F0\uBE0C": "saip",
+    "\uD30C\uB77C\uCE74\uB2C8": "saip",
+    "\uACF5\uB3D9\uAD6C\uB9E4": "balancelab",
   };
   return BRAND_MAP[brandName] || "saip";
 }
@@ -48,20 +53,16 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file") as File;
     if (!file) return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
 
-    // User-provided date (from batch upload or form)
     const userDate = formData.get("date") as string | null;
 
-    // Read Excel
     const buffer = await file.arrayBuffer();
     const wb = XLSX.read(buffer, { type: "array", cellDates: true });
 
-    // Find ?�매?�리 sheet
-    // Extract date from filename: ?�매?�력_260319 ??2026-03-19
     let fileDate = userDate || "";
     if (!fileDate) {
       const fnMatch = file.name.match(/(\d{6})/);
       if (fnMatch) {
-        const digits = fnMatch[1]; // e.g. "260319"
+        const digits = fnMatch[1];
         const yy = parseInt(digits.slice(0, 2), 10);
         const mm = digits.slice(2, 4);
         const dd = digits.slice(4, 6);
@@ -70,50 +71,40 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const sheetName = wb.SheetNames.find(n => n.includes("?�매?�리"));
+    const sheetName = wb.SheetNames.find(n => n.includes("\uD310\uB9E4\uC815\uB9AC"));
     if (!sheetName) {
-      return NextResponse.json({ error: "?�매?�리 ??�� 찾을 ???�습?�다" }, { status: 400 });
+      return NextResponse.json({ error: "\uD310\uB9E4\uC815\uB9AC \uC2DC\uD2B8\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4" }, { status: 400 });
     }
     const ws = wb.Sheets[sheetName];
 
-    // Read range X2:AP (cols 24-42, 0-indexed: 23-41)
-    // Row 2 = headers (index 1), Row 3+ = data
     const allData = XLSX.utils.sheet_to_json(ws, { header: 1, range: 1 }) as any[][];
-    
-    // Headers at row index 0 (which is row 2 in sheet)
     const headers = allData[0] || [];
-    
-    // Column indices (X=23, Y=24, ..., AG=32, ..., AP=41 in 0-based)
-    // But sheet_to_json with range:1 starts from row 2, and columns from A
-    // We need to map by header names
+
     const colMap: Record<string, number> = {};
     headers.forEach((h: any, i: number) => {
       if (h) colMap[String(h).trim()] = i;
     });
 
-    const dateCol = colMap["?�자"] ?? -1;
-    const paymentDateCol = colMap["결제??] ?? -1; // F?? 결제??(?�짜 ?�터링용)
-    const clientCol = colMap["거래처명"] ?? -1;
-    const warehouseCol = colMap["출하창고"] ?? -1;
-    const productCodeCol = colMap["?�목코드"] ?? -1;
-    const productNameCol = colMap["?�목�?] ?? -1;
-    const qtyCol = colMap["?�량"] ?? -1;
-    const unitPriceCol = colMap["?��?"] ?? -1;
-    const supplyCol = colMap["공급가??] ?? -1;
-    const taxCol = colMap["부가??] ?? -1;
+    const dateCol = colMap["\uB0A0\uC790"] ?? -1;
+    const clientCol = colMap["\uAC70\uB798\uCC98\uBA85"] ?? -1;
+    const productCodeCol = colMap["\uD488\uBAA9\uCF54\uB4DC"] ?? -1;
+    const productNameCol = colMap["\uD488\uBAA9\uBA85"] ?? -1;
+    const qtyCol = colMap["\uC218\uB7C9"] ?? -1;
+    const unitPriceCol = colMap["\uB2E8\uAC00"] ?? -1;
+    const supplyCol = colMap["\uACF5\uAE09\uAC00\uC561"] ?? -1;
+    const taxCol = colMap["\uBD80\uAC00\uC138"] ?? -1;
 
     if (dateCol < 0 || productCodeCol < 0) {
-      return NextResponse.json({ 
-        error: `?�수 컬럼 ?�락: ?�자(${dateCol}), ?�목코드(${productCodeCol}). ?�더: ${headers.slice(0, 20).join(", ")}`,
+      return NextResponse.json({
+        error: `\uD544\uC218 \uCEEC\uB7FC \uB204\uB77D: \uB0A0\uC790(${dateCol}), \uD488\uBAA9\uCF54\uB4DC(${productCodeCol}). \uD5E4\uB354: ${headers.slice(0, 20).join(", ")}`,
       }, { status: 400 });
     }
 
-    // Fetch product list from stats sheet
     const auth = getAuth();
     const sheets = google.sheets({ version: "v4", auth });
     const plRes = await sheets.spreadsheets.values.get({
       spreadsheetId: STATS_SHEET_ID,
-      range: "?�품 목록!A3:E200",
+      range: "\uC0C1\uD488 \uBAA9\uB85D!A3:E200",
     });
     const plRows = plRes.data.values || [];
     const productListMap = new Map<string, any>();
@@ -128,7 +119,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Parse data rows
     interface SalesRow {
       date: string;
       channel: string;
@@ -152,7 +142,6 @@ export async function POST(request: NextRequest) {
       const row = allData[i];
       if (!row || !row[dateCol]) continue;
 
-      // Parse date
       let dateVal = row[dateCol];
       let dateStr = "";
       if (dateVal instanceof Date) {
@@ -162,11 +151,9 @@ export async function POST(request: NextRequest) {
       }
       if (!dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) { skipped++; continue; }
 
-      // Date filtering: use ?�자(X??dateStr) instead of 결제??      // 결제?��? 쿠팡(00:00:00) ??비정??값이 ?�어 ?�터 부?�합
-      // ?�자 기�??�로 fileDate?� 비교
       if (fileDate && dateStr !== fileDate) {
         dateFiltered++;
-        continue; // Skip rows where ?�자 doesn't match filename date
+        continue;
       }
 
       const productCode = String(row[productCodeCol] || "").trim();
@@ -182,13 +169,15 @@ export async function POST(request: NextRequest) {
       const brand = detectBrand(productCode, productListMap);
       const plInfo = productListMap.get(productCode) || {};
 
-      // 밸런?�랩 공동구매: channel = 공구_?�?�명 (?�품목록 D??
-      if (brand === "balancelab" && plInfo.brand === "공동구매") {
-        const seller = plInfo.lineup || "기�?";
-        channel = `공구_${seller}`;
+      // 밸런스랩 공동구매: channel = 공구_셀러명
+      if (brand === "balancelab" && plInfo.brand === "\uACF5\uB3D9\uAD6C\uB9E4") {
+        // 거래처명에 스마트스토어 포함 시 공구 로직 스킵
+        if (!client.includes("\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4")) {
+          const seller = plInfo.lineup || "\uAE30\uD0C0";
+          channel = `\uACF5\uAD6C_${seller}`;
+        }
       }
 
-      // Track unmatched product codes
       if (!productListMap.has(productCode)) {
         const prodName = productNameCol >= 0 ? String(row[productNameCol] || "").trim() : productCode;
         const existing = unmatchedCodes.get(productCode);
@@ -196,7 +185,6 @@ export async function POST(request: NextRequest) {
         else { unmatchedCodes.set(productCode, { name: prodName, count: 1 }); }
       }
 
-      // Revenue = 공급가??AM?? + 부가??AN??
       const revenue = supply + tax;
 
       rows.push({
@@ -214,20 +202,19 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Block upload if unmatched product codes exist
     if (unmatchedCodes.size > 0) {
       const unmatchedList = Array.from(unmatchedCodes.entries()).map(([code, info]) => ({
         code, name: info.name, count: info.count,
       }));
       return NextResponse.json({
-        error: "미등�??�목코드가 ?�습?�다. ?�품 목록 ??�� 먼�? ?�록?�주?�요.",
+        error: "\uBBF8\uB4F1\uB85D \uD488\uBAA9\uCF54\uB4DC\uAC00 \uC788\uC2B5\uB2C8\uB2E4. \uC0C1\uD488 \uBAA9\uB85D \uD0ED\uC5D0 \uBA3C\uC800 \uB4F1\uB85D\uD574\uC8FC\uC138\uC694.",
         unmatchedProducts: unmatchedList,
         totalUnmatched: unmatchedList.length,
         totalRows: rows.length,
       }, { status: 400 });
     }
 
-    // Aggregate for product_sales (by date + channel + product + lineup)
+    // Aggregate for product_sales
     const prodAgg = new Map<string, any>();
     for (const r of rows) {
       const key = `${r.date}|${r.channel}|${r.product}|${r.lineup}`;
@@ -246,7 +233,7 @@ export async function POST(request: NextRequest) {
     }
     const productSalesRows = Array.from(prodAgg.values());
 
-    // Aggregate for daily_sales (by date + brand + channel)
+    // Aggregate for daily_sales
     const dailyAgg = new Map<string, any>();
     for (const r of rows) {
       const key = `${r.date}|${r.brand}|${r.channel}`;
@@ -265,14 +252,12 @@ export async function POST(request: NextRequest) {
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     let dbResults: Record<string, any> = {};
 
-    // product_sales
     for (let i = 0; i < productSalesRows.length; i += 500) {
       const chunk = productSalesRows.slice(i, i + 500);
       const { error } = await supabase.from("product_sales").upsert(chunk, { onConflict: "date,brand,product,channel" });
       if (error) dbResults.productSalesError = error.message;
     }
 
-    // daily_sales
     for (let i = 0; i < dailySalesRows.length; i += 500) {
       const chunk = dailySalesRows.slice(i, i + 500);
       const { error } = await supabase.from("daily_sales").upsert(chunk, { onConflict: "date,brand,channel" });
@@ -280,26 +265,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Write to Stats sheet Sales tab
-    const DAY_NAMES = ["??, "??, "??, "??, "�?, "�?, "??];
+    const DAY_NAMES = ["\uC77C", "\uC6D4", "\uD654", "\uC218", "\uBAA9", "\uAE08", "\uD1A0"];
     const salesSheetRows = rows.map(r => {
       const d = new Date(r.date + "T00:00:00");
       const month = d.getMonth() + 1;
       const day = d.getDate();
       const dayName = DAY_NAMES[d.getDay()];
-      // A?? 26?????�식, B?? 3??21??(?? ?�식
-      const yearMonth = `${String(d.getFullYear()).slice(2)}??{month}??;
-      const dateText = `${month}??${day}??(${dayName})`;
+      const yearMonth = `${String(d.getFullYear()).slice(2)}\uB144${month}\uC6D4`;
+      const dateText = `${month}\uC6D4 ${day}\uC77C (${dayName})`;
 
       const plInfo = productListMap.get(r.productCode) || {};
       const brandKor: Record<string, string> = {
-        "nutty": "?�티", "ironpet": "?�이?�펫", "saip": plInfo.brand || "?�입", "balancelab": "밸런?�랩",
+        "nutty": "\uB108\uD2F0",
+        "ironpet": "\uC544\uC774\uC5B8\uD3AB",
+        "saip": plInfo.brand || "\uC0AC\uC785",
+        "balancelab": "\uBC38\uB7F0\uC2A4\uB7A9",
       };
       const channelKor: Record<string, string> = {
-        "cafe24": "카페24", "smartstore": "?�마?�스?�어", "coupang": "쿠팡", "pp": "?�피", "ably": "?�이블리", "petfriends": "?�프?�즈",
+        "cafe24": "\uCE74\uD398\u0032\u0034",
+        "smartstore": "\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4",
+        "coupang": "\uCFE0\uD321",
+        "pp": "\uD53C\uD53C",
+        "ably": "\uC5D0\uC774\uBE14\uB9AC",
+        "petfriends": "\uD3AB\uD504\uB80C\uC988",
       };
-      // 밸런?�랩: ?�품목록 C??brand)??"?�체?�매"/"공동구매" ??E?�에 그�?�??�용
       let brandLabel = brandKor[r.brand] || plInfo.brand || r.brand;
-      if (r.brand === "balancelab" && (plInfo.brand === "?�체?�매" || plInfo.brand === "공동구매")) {
+      if (r.brand === "balancelab" && (plInfo.brand === "\uC790\uCCB4\uD310\uB9E4" || plInfo.brand === "\uACF5\uB3D9\uAD6C\uB9E4")) {
         brandLabel = plInfo.brand;
       }
       return [
@@ -315,17 +306,15 @@ export async function POST(request: NextRequest) {
         const SALES_SHEET_ID = 405001148;
         const rowCount = salesSheetRows.length;
 
-        // 0) Delete existing rows for the same date (prevent duplicates on re-upload)
+        // Delete existing rows for the same date
         const existingRes = await sheets.spreadsheets.values.get({
           spreadsheetId: STATS_SHEET_ID,
           range: "Sales!B:B",
         });
         const existingVals = existingRes.data.values || [];
-        // Build target date text: e.g. "4월 1일"
         const uploadDate = new Date(rows[0].date + "T00:00:00");
-        const targetDateText = `${uploadDate.getMonth() + 1}월 ${uploadDate.getDate()}일`;
-        
-        // Find matching rows (bottom to top for safe deletion)
+        const targetDateText = `${uploadDate.getMonth() + 1}\uC6D4 ${uploadDate.getDate()}\uC77C`;
+
         const deleteRequests: any[] = [];
         for (let ri = existingVals.length - 1; ri >= 2; ri--) {
           const cellVal = String(existingVals[ri]?.[0] || "");
@@ -342,9 +331,8 @@ export async function POST(request: NextRequest) {
             });
           }
         }
-        
+
         if (deleteRequests.length > 0) {
-          // Batch delete in chunks of 100 to avoid API limits
           for (let di = 0; di < deleteRequests.length; di += 100) {
             const chunk = deleteRequests.slice(di, di + 100);
             await sheets.spreadsheets.batchUpdate({
@@ -354,7 +342,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // 1) Row 3부터 새 행 삽입
+        // Insert new rows at row 3
         await sheets.spreadsheets.batchUpdate({
           spreadsheetId: STATS_SHEET_ID,
           requestBody: {
@@ -363,7 +351,7 @@ export async function POST(request: NextRequest) {
                 range: {
                   sheetId: SALES_SHEET_ID,
                   dimension: "ROWS",
-                  startIndex: 2, // 0-indexed: row 3
+                  startIndex: 2,
                   endIndex: 2 + rowCount,
                 },
                 inheritFromBefore: false,
@@ -372,7 +360,7 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // 2) ?�이???�기
+        // Write data
         await sheets.spreadsheets.values.update({
           spreadsheetId: STATS_SHEET_ID,
           range: `Sales!A3:K${2 + rowCount}`,
@@ -380,55 +368,61 @@ export async function POST(request: NextRequest) {
           requestBody: { values: salesSheetRows },
         });
 
-        // 3) ?�식 + ?�롭?�운 ?�용
+        // Format
         const formatRequests: any[] = [];
 
-        // ?�롭?�운: C???�매�? = ONE_OF_LIST
+        // Dropdown: C column (판매처)
         formatRequests.push({
           setDataValidation: {
             range: { sheetId: SALES_SHEET_ID, startRowIndex: 2, endRowIndex: 2 + rowCount, startColumnIndex: 2, endColumnIndex: 3 },
             rule: {
               condition: { type: "ONE_OF_LIST", values: [
-                { userEnteredValue: "?�마?�스?�어" }, { userEnteredValue: "카페24" },
-                { userEnteredValue: "쿠팡" }, { userEnteredValue: "?�피" },
-                { userEnteredValue: "?�이블리" }, { userEnteredValue: "?�프?�즈" },
+                { userEnteredValue: "\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4" },
+                { userEnteredValue: "\uCE74\uD398\u0032\u0034" },
+                { userEnteredValue: "\uCFE0\uD321" },
+                { userEnteredValue: "\uD53C\uD53C" },
+                { userEnteredValue: "\uC5D0\uC774\uBE14\uB9AC" },
+                { userEnteredValue: "\uD3AB\uD504\uB80C\uC988" },
               ]},
               strict: true, showCustomUi: true,
             },
           },
         });
 
-        // ?�롭?�운: D??카테고리) = ?�품 목록 B??        formatRequests.push({
+        // Dropdown: D column (카테고리)
+        formatRequests.push({
           setDataValidation: {
             range: { sheetId: SALES_SHEET_ID, startRowIndex: 2, endRowIndex: 2 + rowCount, startColumnIndex: 3, endColumnIndex: 4 },
             rule: {
-              condition: { type: "ONE_OF_RANGE", values: [{ userEnteredValue: "='?�품 목록'!$B$4:$B" }] },
+              condition: { type: "ONE_OF_RANGE", values: [{ userEnteredValue: "='\uC0C1\uD488 \uBAA9\uB85D'!$B$4:$B" }] },
               strict: true, showCustomUi: true,
             },
           },
         });
 
-        // ?�롭?�운: E??브랜?�명) = ?�품 목록 C??        formatRequests.push({
+        // Dropdown: E column (브랜드명)
+        formatRequests.push({
           setDataValidation: {
             range: { sheetId: SALES_SHEET_ID, startRowIndex: 2, endRowIndex: 2 + rowCount, startColumnIndex: 4, endColumnIndex: 5 },
             rule: {
-              condition: { type: "ONE_OF_RANGE", values: [{ userEnteredValue: "='?�품 목록'!$C$4:$C" }] },
+              condition: { type: "ONE_OF_RANGE", values: [{ userEnteredValue: "='\uC0C1\uD488 \uBAA9\uB85D'!$C$4:$C" }] },
               strict: true, showCustomUi: true,
             },
           },
         });
 
-        // ?�롭?�운: F???�인?? = ?�품 목록 D??        formatRequests.push({
+        // Dropdown: F column (라인업)
+        formatRequests.push({
           setDataValidation: {
             range: { sheetId: SALES_SHEET_ID, startRowIndex: 2, endRowIndex: 2 + rowCount, startColumnIndex: 5, endColumnIndex: 6 },
             rule: {
-              condition: { type: "ONE_OF_RANGE", values: [{ userEnteredValue: "='?�품 목록'!$D$4:$D" }] },
+              condition: { type: "ONE_OF_RANGE", values: [{ userEnteredValue: "='\uC0C1\uD488 \uBAA9\uB85D'!$D$4:$D" }] },
               strict: true, showCustomUi: true,
             },
           },
         });
 
-        // ?�식: ?�체 ????Arial, 가?�데 ?�렬
+        // Format: center align, Arial
         formatRequests.push({
           repeatCell: {
             range: { sheetId: SALES_SHEET_ID, startRowIndex: 2, endRowIndex: 2 + rowCount, startColumnIndex: 0, endColumnIndex: 11 },
@@ -443,25 +437,7 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        // A???�짜 ?�맷: yy"??m"??
-        formatRequests.push({
-          repeatCell: {
-            range: { sheetId: SALES_SHEET_ID, startRowIndex: 2, endRowIndex: 2 + rowCount, startColumnIndex: 0, endColumnIndex: 1 },
-            cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: "yy\"??"m\"??"" } } },
-            fields: "userEnteredFormat.numberFormat",
-          },
-        });
-
-        // B???�짜 ?�맷: mmmm" "d"??("ddd")"
-        formatRequests.push({
-          repeatCell: {
-            range: { sheetId: SALES_SHEET_ID, startRowIndex: 2, endRowIndex: 2 + rowCount, startColumnIndex: 1, endColumnIndex: 2 },
-            cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: "m\"??\"d\"??(\"ddd\")\"" } } },
-            fields: "userEnteredFormat.numberFormat",
-          },
-        });
-
-        // J,K???�자 ?�맷: #,##0
+        // Number format for J,K columns
         formatRequests.push({
           repeatCell: {
             range: { sheetId: SALES_SHEET_ID, startRowIndex: 2, endRowIndex: 2 + rowCount, startColumnIndex: 9, endColumnIndex: 11 },
@@ -482,7 +458,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Summary by brand
     const brandSummary: Record<string, { count: number; revenue: number }> = {};
     for (const r of rows) {
       if (!brandSummary[r.brand]) brandSummary[r.brand] = { count: 0, revenue: 0 };
@@ -508,4 +483,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
-

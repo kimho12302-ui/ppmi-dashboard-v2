@@ -106,7 +106,7 @@ export default function SettingsPage() {
         // 미등록 품목코드가 있는 경우
         if (json.unmatchedProducts && json.unmatchedProducts.length > 0) {
           const unmatchedList = json.unmatchedProducts
-            .map((p: any) => `${p.code} (${p.name}) - ${p.count}건`)
+            .map((p: { code: string; name: string; count: number }) => `${p.code} (${p.name}) - ${p.count}건`)
             .join("\n");
           const message = `${json.error}\n\n미등록 품목코드 (${json.totalUnmatched}개):\n${unmatchedList}\n\n상품 목록 탭에 먼저 등록해주세요.`;
           alert(message);
