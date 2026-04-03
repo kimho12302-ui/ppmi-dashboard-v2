@@ -35,16 +35,25 @@ export async function GET(req: NextRequest) {
     }
 
     // default: return everything
-    const [costsRes, listRes, miscRes, shipRes] = await Promise.all([
+    const [costsRes, listRes, miscRes, shipRes, salesRes] = await Promise.all([
       supabase.from("product_costs").select("*").order("brand"),
       supabase.from("product_list").select("*"),
       supabase.from("misc_costs").select("*").order("date", { ascending: false }).limit(50),
       supabase.from("shipping_costs").select("*").order("month", { ascending: false }),
+      supabase.from("product_sales").select("product, brand").order("product"),
     ]);
 
+    const costs = costsRes.data || [];
+    const allProducts = Array.from(new Map((salesRes.data || []).map((p: { product: string; brand: string }) => [p.product + p.brand, p])).values());
+    const costSet = new Set(costs.map((c: { product: string; brand: string }) => c.product + c.brand));
+    const missingProducts = allProducts.filter((p: { product: string; brand: string }) => !costSet.has(p.product + p.brand));
+
     return NextResponse.json({
-      productCosts: costsRes.data || [],
+      costs,
+      productCosts: costs,
       productList: listRes.data || [],
+      allProducts,
+      missingProducts,
       manualCosts: [],
       miscCosts: miscRes.data || [],
       shippingCosts: shipRes.data || [],
