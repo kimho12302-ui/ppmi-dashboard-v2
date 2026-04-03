@@ -1,6 +1,59 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { getDateRangeFromPreset, type DatePreset } from "@/lib/utils";
+
+/* ── URL 기반 필터 상태 ── */
+
+export function useFilterParams() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const brand = searchParams.get("brand") || "all";
+  const preset = (searchParams.get("preset") || "30d") as DatePreset;
+  const from = searchParams.get("from") || "";
+  const to = searchParams.get("to") || "";
+
+  const dateRange = useMemo(() => {
+    if (from && to) return { from, to };
+    return getDateRangeFromPreset(preset);
+  }, [from, to, preset]);
+
+  const setParam = useCallback(
+    (key: string, value: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (value && value !== "all" && value !== "30d") {
+        params.set(key, value);
+      } else {
+        params.delete(key);
+      }
+      // 프리셋 변경 시 커스텀 날짜 제거
+      if (key === "preset") {
+        params.delete("from");
+        params.delete("to");
+      }
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [searchParams, router, pathname]
+  );
+
+  const setBrand = useCallback((b: string) => setParam("brand", b), [setParam]);
+  const setPreset = useCallback((p: DatePreset) => setParam("preset", p), [setParam]);
+
+  return {
+    brand,
+    preset,
+    from: dateRange.from,
+    to: dateRange.to,
+    setBrand,
+    setPreset,
+  };
+}
+
+/* ── 기존 호환: useDateRange ── */
 
 export function useDateRange(initialDays: number = 30) {
   const [days, setDays] = useState(initialDays);
@@ -17,6 +70,8 @@ export function useDateRange(initialDays: number = 30) {
 
   return { from, to, days, setDays };
 }
+
+/* ── 범용 fetch 훅 ── */
 
 export function useFetch<T>(url: string) {
   const [data, setData] = useState<T | null>(null);

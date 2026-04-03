@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    /* Layout */
     --background: #f8fafc;
     --foreground: #0f172a;
     --card: #ffffff;
@@ -15,17 +16,51 @@
     --accent-foreground: #0f172a;
     --primary: #6366f1;
     --primary-foreground: #ffffff;
+    --destructive: #dc2626;
+    --destructive-foreground: #ffffff;
+
+    /* Chart */
     --chart-grid: #e2e8f0;
     --chart-tick: #64748b;
     --chart-tooltip-bg: #ffffff;
     --chart-tooltip-border: #e2e8f0;
     --chart-tooltip-text: #0f172a;
+
+    /* Sidebar */
     --sidebar-bg: #ffffff;
     --sidebar-border: #e2e8f0;
     --sidebar-hover: #f1f5f9;
     --sidebar-active: #ede9fe;
     --sidebar-active-text: #6366f1;
+
+    /* Misc */
     --kpi-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --ring: #6366f1;
+
+    /* Brand colors */
+    --brand-nutty: #dc2626;
+    --brand-ironpet: #ea580c;
+    --brand-balancelab: #2563eb;
+    --brand-qulab: #16a34a;
+    --brand-saip-feed: #92400e;
+    --brand-saip-supplement: #7c3aed;
+
+    /* Ad channel colors */
+    --channel-meta: #1d4ed8;
+    --channel-naver-search: #15803d;
+    --channel-naver-shopping: #0e7490;
+    --channel-google-pmax: #c2410c;
+    --channel-google-search: #b45309;
+    --channel-gfa: #6d28d9;
+    --channel-coupang-ads: #b91c1c;
+
+    /* Sales channel colors */
+    --channel-cafe24: #2563eb;
+    --channel-smartstore: #16a34a;
+    --channel-coupang: #dc2626;
+    --channel-ably: #be185d;
+    --channel-petfriends: #7c3aed;
+    --channel-gonggu: #8b5cf6;
   }
 
   .dark {
@@ -40,17 +75,23 @@
     --accent-foreground: #fafafa;
     --primary: #818cf8;
     --primary-foreground: #09090b;
+    --destructive: #ef4444;
+    --destructive-foreground: #fafafa;
+
     --chart-grid: #27272a;
     --chart-tick: #a1a1aa;
     --chart-tooltip-bg: #18181b;
     --chart-tooltip-border: #27272a;
     --chart-tooltip-text: #fafafa;
+
     --sidebar-bg: #18181b;
     --sidebar-border: #27272a;
     --sidebar-hover: #27272a;
     --sidebar-active: #312e81;
     --sidebar-active-text: #a5b4fc;
+
     --kpi-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3);
+    --ring: #818cf8;
   }
 }
 
