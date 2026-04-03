@@ -57,11 +57,19 @@ export async function GET() {
     const sourceDefs: { id: string; label: string; type: "auto" | "manual"; fetcher: () => Promise<string | null> }[] = [
       // Auto - API
       { id: "meta_ads", label: "Meta \uAD11\uACE0\uBE44", type: "auto", fetcher: () => getLatestByChannel("meta") },
-      { id: "google_pmax", label: "Google P-Max \uAD11\uACE0\uBE44", type: "auto", fetcher: () => getLatestByChannel("google_pmax") },
-      { id: "ga4_pmax", label: "GA4 P-Max", type: "auto", fetcher: () => getLatestByChannelLike("ga4_%") },
+      { id: "google_ads", label: "Google Ads", type: "auto", fetcher: () => getLatestByChannel("google_pmax") },
+      { id: "ga4", label: "GA4", type: "auto", fetcher: async () => {
+        const [adDate, funnelDate] = await Promise.all([
+          getLatestByChannelLike("ga4_%"),
+          getLatestFunnel("nutty"),
+        ]);
+        // 둘 중 더 오래된 날짜 반환 (둘 다 수집되어야 완료)
+        if (!adDate) return funnelDate;
+        if (!funnelDate) return adDate;
+        return adDate < funnelDate ? adDate : funnelDate;
+      }},
       { id: "naver_sa", label: "\uB124\uC774\uBC84 \uAC80\uC0C9\uAD11\uACE0", type: "auto", fetcher: () => getLatestByChannel("naver_search") },
       { id: "naver_shopping", label: "\uB124\uC774\uBC84 \uC1FC\uD551\uAD11\uACE0", type: "auto", fetcher: () => getLatestByChannel("naver_shopping") },
-      { id: "ga4_funnel", label: "GA4 \uD37C\uB110", type: "auto", fetcher: () => getLatestFunnel("nutty") },
       // Manual
       { id: "coupang_ads", label: "\uCFE0\uD321 \uAD11\uACE0\uBE44", type: "manual", fetcher: () => getLatestByChannel("coupang_ads") },
       { id: "gfa", label: "GFA \uAD11\uACE0\uBE44", type: "manual", fetcher: () => getLatestByChannel("gfa") },
