@@ -15,6 +15,14 @@ interface SettingsData {
   missingProducts: { product: string; brand: string }[];
 }
 
+interface DataSourceStatusRaw {
+  id: string;
+  label: string;
+  type: "auto" | "manual";
+  latestDate: string | null;
+  ok: boolean;
+}
+
 interface DataSourceStatus {
   source: string;
   label: string;
@@ -221,10 +229,20 @@ export default function SettingsPage() {
 function DailyInputTab() {
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [showRecent, setShowRecent] = useState(false);
-  const { data: statusData } = useFetch<{ sources: DataSourceStatus[] }>("/api/data-status");
+  const { data: statusRaw } = useFetch<{ sources: DataSourceStatusRaw[] }>("/api/data-status");
 
-  const manualSources = statusData?.sources?.filter((s) => s.type === "manual") || [];
-  const autoSources = statusData?.sources?.filter((s) => s.type === "auto") || [];
+  const statusData = {
+    sources: (statusRaw?.sources || []).map((s) => ({
+      source: s.id,
+      label: s.label,
+      type: s.type,
+      latestDate: s.latestDate,
+      status: (s.ok ? "ok" : s.latestDate ? "stale" : "missing") as "ok" | "missing" | "stale",
+    })),
+  };
+
+  const manualSources = statusData.sources.filter((s) => s.type === "manual");
+  const autoSources = statusData.sources.filter((s) => s.type === "auto");
   const filledCount = manualSources.filter((s) => s.status === "ok").length;
   const totalManual = manualSources.length || 6;
 
@@ -1188,12 +1206,19 @@ function CostsTab() {
 // Tab 4: ℹ️ 데이터 소스
 // ═══════════════════════════════════════════════════════════════════
 function SourcesTab() {
-  const { data, loading } = useFetch<{ sources: DataSourceStatus[] }>("/api/data-status");
+  const { data: raw, loading } = useFetch<{ sources: DataSourceStatusRaw[] }>("/api/data-status");
 
   if (loading) return <Loading />;
 
-  const autoSources = data?.sources?.filter((s) => s.type === "auto") || [];
-  const manualSources = data?.sources?.filter((s) => s.type === "manual") || [];
+  const sources: DataSourceStatus[] = (raw?.sources || []).map((s) => ({
+    source: s.id,
+    label: s.label,
+    type: s.type,
+    latestDate: s.latestDate,
+    status: (s.ok ? "ok" : s.latestDate ? "stale" : "missing") as "ok" | "missing" | "stale",
+  }));
+  const autoSources = sources.filter((s) => s.type === "auto");
+  const manualSources = sources.filter((s) => s.type === "manual");
 
   return (
     <div className="space-y-4">
