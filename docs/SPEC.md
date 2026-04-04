@@ -32,6 +32,8 @@ status: active
 | v1.2 | 2026-04-04 | `b6abe90` | P4-1: 설정 리빌드 5탭 + brand_config/channel_config CRUD + monthly_targets |
 | v1.3 | 2026-04-04 | `79c54c8` | P4-3: 목표 대비 달성률 (Overview KPI 프로그레스바) |
 | v1.4 | 2026-04-04 | `b8299b7` | P4-4: 동적 config (settings API에서 brand/channel config DB 로드) |
+| v1.5 | 2026-04-04 | `ea1a45b` | 매출 페이지 공구별 탭 (밸런스랩 자체/공구 분류, 셀러별 테이블) |
+| v1.6 | 2026-04-04 | `1b70894` | Overview 밸런스랩 공구 매출 섹션 추가 |
 
 ---
 
