@@ -5,8 +5,10 @@ import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
-import { formatNumber, cn } from "@/lib/utils";
+import { formatNumber, formatCurrency, cn } from "@/lib/utils";
 import type { DailyFunnel } from "@/lib/types";
+
+interface MetaAdRow { date: string; brand: string; impressions: number; clicks: number; conversions: number; conversion_value: number; reach: number; spend: number; }
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
@@ -30,7 +32,7 @@ export default function FunnelPage() {
 
 function FunnelInner() {
   const { from, to } = useFilterParams();
-  const { data, loading } = useFetch<{ funnel: DailyFunnel[] }>(`/api/funnel?from=${from}&to=${to}`);
+  const { data, loading } = useFetch<{ funnel: DailyFunnel[]; metaAds: MetaAdRow[] }>(`/api/funnel?from=${from}&to=${to}`);
   const [selectedSource, setSelectedSource] = useState<string>("all");
 
   const funnel = useMemo(() => (data?.funnel || []).filter((r) => r.brand !== "all"), [data]);
@@ -87,6 +89,21 @@ function FunnelInner() {
       totalConvRate: v.sessions > 0 ? (v.purchases / v.sessions * 100) : 0,
     })).sort((a, b) => b.sessions - a.sessions);
   }, [bySource]);
+
+  /* 6.5 Meta 광고 퍼널 */
+  const metaFunnel = useMemo(() => {
+    const rows = data?.metaAds || [];
+    const t = { impressions: 0, reach: 0, clicks: 0, conversions: 0, convValue: 0, spend: 0 };
+    for (const r of rows) {
+      t.impressions += r.impressions || 0;
+      t.reach += r.reach || 0;
+      t.clicks += r.clicks || 0;
+      t.conversions += r.conversions || 0;
+      t.convValue += r.conversion_value || 0;
+      t.spend += r.spend || 0;
+    }
+    return t;
+  }, [data]);
 
   if (loading) {
     return (
@@ -252,6 +269,47 @@ function FunnelInner() {
           </table>
         </CardContent>
       </Card>
+      {/* 6.5 Meta 광고 퍼널 */}
+      {metaFunnel.impressions > 0 && (
+        <Card className="border-l-4 border-l-blue-500">
+          <CardContent className="p-4">
+            <h3 className="font-semibold mb-4">📢 Meta 광고 퍼널</h3>
+            <div className="flex items-center justify-between gap-1">
+              {[
+                { label: "노출", value: metaFunnel.impressions, color: "#94a3b8" },
+                { label: "도달", value: metaFunnel.reach, color: "#64748b" },
+                { label: "클릭", value: metaFunnel.clicks, color: "#3b82f6" },
+                { label: "전환", value: metaFunnel.conversions, color: "#10b981" },
+              ].map((step, i, arr) => {
+                const pct = metaFunnel.impressions > 0 ? (step.value / metaFunnel.impressions * 100) : 0;
+                const dropRate = i > 0 && arr[i - 1].value > 0
+                  ? ((arr[i - 1].value - step.value) / arr[i - 1].value * 100) : 0;
+                return (
+                  <div key={step.label} className="flex items-center flex-1">
+                    <div className="flex-1 text-center">
+                      <div className="text-xs text-muted-foreground mb-1">{step.label}</div>
+                      <div className="text-lg font-bold" style={{ color: step.color }}>{formatNumber(step.value)}</div>
+                      <div className="text-[10px] text-muted-foreground">{pct.toFixed(2)}%</div>
+                    </div>
+                    {i < arr.length - 1 && (
+                      <div className="text-center px-1 text-muted-foreground">
+                        <div className="text-lg">→</div>
+                        {dropRate > 0 && <div className="text-[10px]">-{dropRate.toFixed(0)}%</div>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex justify-between mt-3 text-xs text-muted-foreground border-t pt-2">
+              <span>광고비: {formatCurrency(metaFunnel.spend)}</span>
+              <span>전환매출: {formatCurrency(metaFunnel.convValue)}</span>
+              <span>ROAS: {metaFunnel.spend > 0 ? `${(metaFunnel.convValue / metaFunnel.spend).toFixed(2)}x` : "—"}</span>
+              <span>CPA: {metaFunnel.conversions > 0 ? formatCurrency(Math.round(metaFunnel.spend / metaFunnel.conversions)) : "—"}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </PageShell>
   );
 }

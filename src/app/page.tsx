@@ -12,7 +12,8 @@ import {
 } from "@/lib/types";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
+  AreaChart, Area, LineChart, Line, ReferenceLine,
+  XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend,
 } from "recharts";
 import Link from "next/link";
@@ -250,6 +251,26 @@ function OverviewInner() {
     return results;
   }, [brandBreakdown, sales, ads]);
 
+  /* ── 7.2 누적 매출 그래프 ── */
+  const cumulativeData = useMemo(() => {
+    const dailyMap: Record<string, { revenue: number; adSpend: number }> = {};
+    for (const r of sales) {
+      if (!dailyMap[r.date]) dailyMap[r.date] = { revenue: 0, adSpend: 0 };
+      dailyMap[r.date].revenue += r.revenue || 0;
+    }
+    for (const r of ads.filter((a) => !a.channel.startsWith("ga4_"))) {
+      if (!dailyMap[r.date]) dailyMap[r.date] = { revenue: 0, adSpend: 0 };
+      dailyMap[r.date].adSpend += r.spend || 0;
+    }
+    const sorted = Object.entries(dailyMap).sort(([a], [b]) => a.localeCompare(b));
+    let cumRev = 0, cumAd = 0;
+    return sorted.map(([date, v]) => {
+      cumRev += v.revenue;
+      cumAd += v.adSpend;
+      return { date: date.slice(5), cumRevenue: cumRev, cumAdSpend: cumAd };
+    });
+  }, [sales, ads]);
+
   /* ── 목표 달성률 ── */
   const targets = useMemo(() => {
     const t = targetsData?.targets || {};
@@ -439,6 +460,34 @@ function OverviewInner() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 7.2 누적 매출 그래프 */}
+      {cumulativeData.length > 1 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">누적 매출 · 광고비</h3>
+              {targets?.revenue_target && (
+                <span className="text-xs text-muted-foreground">목표: {formatCurrency(targets.revenue_target)}</span>
+              )}
+            </div>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={cumulativeData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
+                <Legend />
+                <Line type="monotone" dataKey="cumRevenue" name="누적 매출" stroke="#2563eb" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="cumAdSpend" name="누적 광고비" stroke="#dc2626" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+                {targets?.revenue_target && (
+                  <ReferenceLine y={targets.revenue_target} stroke="#10b981" strokeDasharray="6 3" label={{ value: "목표", position: "right", fontSize: 10, fill: "#10b981" }} />
+                )}
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ROW 3: 퍼널 요약 + TOP 5 제품 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
