@@ -45,12 +45,14 @@ export async function GET(req: NextRequest) {
     }
 
     // default: return everything
-    const [costsRes, listRes, miscRes, shipRes, salesRes] = await Promise.all([
+    const [costsRes, listRes, miscRes, shipRes, salesRes, brandRes, channelRes] = await Promise.all([
       supabase.from("product_costs").select("*").order("brand"),
       supabase.from("product_list").select("*"),
       supabase.from("misc_costs").select("*").order("date", { ascending: false }).limit(50),
       supabase.from("shipping_costs").select("*").order("month", { ascending: false }),
       supabase.from("product_sales").select("product, brand").order("product"),
+      supabase.from("brand_config").select("*").order("order"),
+      supabase.from("channel_config").select("*").order("order"),
     ]);
 
     const costs = costsRes.data || [];
@@ -67,6 +69,8 @@ export async function GET(req: NextRequest) {
       manualCosts: [],
       miscCosts: miscRes.data || [],
       shippingCosts: shipRes.data || [],
+      brands: brandRes.data || [],
+      channels: channelRes.data || [],
     });
   } catch (error) {
     console.error("Settings GET error:", error);
