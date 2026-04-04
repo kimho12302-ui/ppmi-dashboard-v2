@@ -9,11 +9,16 @@ interface KpiCardProps {
   icon?: React.ReactNode;
   subtitle?: string;
   target?: { label: string; percent: number };
+  onClick?: () => void;
+  active?: boolean;
 }
 
-export function KpiCard({ title, value, change, icon, subtitle, target }: KpiCardProps) {
+export function KpiCard({ title, value, change, icon, subtitle, target, onClick, active }: KpiCardProps) {
   return (
-    <Card className="p-5">
+    <Card
+      className={`p-5 ${onClick ? "cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all" : ""} ${active ? "ring-2 ring-primary" : ""}`}
+      onClick={onClick}
+    >
       <div className="flex items-start justify-between">
         <div className="space-y-1 min-w-0 flex-1">
           <p className="text-sm text-muted-foreground font-medium">{title}</p>
