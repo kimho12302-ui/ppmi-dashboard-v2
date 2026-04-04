@@ -19,7 +19,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
-type ViewTab = "trend" | "channel" | "product";
+type ViewTab = "trend" | "channel" | "product" | "gonggu";
 
 export default function SalesPage() {
   return (
@@ -103,6 +103,23 @@ function SalesPageInner() {
       .sort((a, b) => b.revenue - a.revenue);
   }, [sales]);
 
+  /* 공구별 (밸런스랩) */
+  const gongguData = useMemo(() => {
+    const gongguProducts = products.filter((r) => r.brand === "balancelab" && r.channel?.startsWith("공구_"));
+    const selfProducts = products.filter((r) => r.brand === "balancelab" && !r.channel?.startsWith("공구_"));
+    const sellerMap: Record<string, { revenue: number; quantity: number }> = {};
+    for (const r of gongguProducts) {
+      const seller = r.channel?.replace("공구_", "") || "기타";
+      if (!sellerMap[seller]) sellerMap[seller] = { revenue: 0, quantity: 0 };
+      sellerMap[seller].revenue += r.revenue || 0;
+      sellerMap[seller].quantity += r.quantity || 0;
+    }
+    const sellers = Object.entries(sellerMap).map(([s, v]) => ({ seller: s, ...v })).sort((a, b) => b.revenue - a.revenue);
+    const gongguTotal = gongguProducts.reduce((s, r) => s + (r.revenue || 0), 0);
+    const selfTotal = selfProducts.reduce((s, r) => s + (r.revenue || 0), 0);
+    return { sellers, gongguTotal, selfTotal, total: gongguTotal + selfTotal };
+  }, [products]);
+
   /* TOP 제품 */
   const topProducts = useMemo(() => {
     const map: Record<string, { revenue: number; quantity: number; product: string; brand: string }> = {};
@@ -142,6 +159,7 @@ function SalesPageInner() {
           { key: "trend", label: "매출 트렌드" },
           { key: "channel", label: "채널별" },
           { key: "product", label: "제품별" },
+          { key: "gonggu", label: "공구별" },
         ] as { key: ViewTab; label: string }[]).map((t) => (
           <button
             key={t.key}
@@ -288,6 +306,66 @@ function SalesPageInner() {
             </table>
           </CardContent>
         </Card>
+      )}
+      {tab === "gonggu" && (
+        <div className="space-y-4">
+          {/* 자체 vs 공구 비교 */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="p-4 text-center">
+                <p className="text-sm text-muted-foreground">밸런스랩 전체</p>
+                <p className="text-2xl font-bold">{formatCurrency(gongguData.total)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <p className="text-sm text-muted-foreground">자체매출</p>
+                <p className="text-2xl font-bold text-blue-500">{formatCurrency(gongguData.selfTotal)}</p>
+                <p className="text-xs text-muted-foreground">{gongguData.total > 0 ? `${((gongguData.selfTotal / gongguData.total) * 100).toFixed(1)}%` : "—"}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4 text-center">
+                <p className="text-sm text-muted-foreground">공구매출</p>
+                <p className="text-2xl font-bold text-purple-500">{formatCurrency(gongguData.gongguTotal)}</p>
+                <p className="text-xs text-muted-foreground">{gongguData.total > 0 ? `${((gongguData.gongguTotal / gongguData.total) * 100).toFixed(1)}%` : "—"}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* 셀러별 테이블 */}
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold mb-3">공구 셀러별 매출</h3>
+              {gongguData.sellers.length > 0 ? (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-muted-foreground">
+                      <th className="pb-2 pr-4">#</th>
+                      <th className="pb-2 pr-4">셀러</th>
+                      <th className="pb-2 pr-4 text-right">매출</th>
+                      <th className="pb-2 pr-4 text-right">수량</th>
+                      <th className="pb-2 text-right">비중</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gongguData.sellers.map((s, i) => (
+                      <tr key={s.seller} className="border-b border-border/50 hover:bg-muted/50">
+                        <td className="py-2 pr-4 text-muted-foreground">{i + 1}</td>
+                        <td className="py-2 pr-4 font-medium">{s.seller}</td>
+                        <td className="py-2 pr-4 text-right">{formatCurrency(s.revenue)}</td>
+                        <td className="py-2 pr-4 text-right">{formatNumber(s.quantity)}</td>
+                        <td className="py-2 text-right">{gongguData.gongguTotal > 0 ? `${((s.revenue / gongguData.gongguTotal) * 100).toFixed(1)}%` : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">공구 매출 데이터가 없습니다. 판매 엑셀을 업로드해주세요.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
     </PageShell>
   );
