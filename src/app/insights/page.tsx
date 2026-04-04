@@ -5,6 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { BRAND_LABELS, CHANNEL_LABELS, type DailySales, type DailyAdSpend } from "@/lib/types";
+import { useConfig } from "@/hooks/use-config";
 import { formatCurrency } from "@/lib/utils";
 
 interface Insight {
@@ -23,6 +24,7 @@ export default function InsightsPage() {
 
 function InsightsInner() {
   const { brand, from, to } = useFilterParams();
+  const { brandMap, channelMap } = useConfig();
   const { data, loading } = useFetch<{
     sales: DailySales[];
     ads: DailyAdSpend[];
@@ -51,7 +53,7 @@ function InsightsInner() {
         const spend = brandSpend[b] || 0;
         const convVal = brandConvValue[b] || 0;
         const roas = spend > 0 ? convVal / spend : 0;
-        const label = BRAND_LABELS[b] || b;
+        const label = brandMap[b]?.label || BRAND_LABELS[b] || b;
 
         if (roas > 0 && roas < 1) {
           results.push({
@@ -82,7 +84,7 @@ function InsightsInner() {
       const avg = spends.reduce((s, v) => s + v, 0) / spends.length;
       const last = spends[spends.length - 1];
       const change = avg > 0 ? ((last - avg) / avg) * 100 : 0;
-      const label = CHANNEL_LABELS[ch] || ch;
+      const label = channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch;
 
       if (Math.abs(change) >= 50) {
         results.push({
@@ -114,7 +116,7 @@ function InsightsInner() {
     }
 
     return results;
-  }, [data, brand]);
+  }, [data, brand, brandMap, channelMap]);
 
   const iconMap = {
     warning: "⚠️",

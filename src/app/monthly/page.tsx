@@ -5,6 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { BRAND_LABELS, type DailySales, type DailyAdSpend } from "@/lib/types";
+import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 
 type ViewMode = "monthly" | "weekly";
@@ -18,6 +19,7 @@ export default function MonthlyPage() {
 }
 
 function MonthlyInner() {
+  const { brandMap } = useConfig();
   const { data, loading } = useFetch<{
     sales: DailySales[];
     ads: DailyAdSpend[];
@@ -118,7 +120,7 @@ function MonthlyInner() {
                 brandFilter === b ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {b === "all" ? "전체" : (BRAND_LABELS[b] || b)}
+              {b === "all" ? "전체" : (brandMap[b]?.label || BRAND_LABELS[b] || b)}
             </button>
           ))}
         </div>

@@ -6,6 +6,7 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { BRAND_LABELS, BRAND_COLORS, CHANNEL_LABELS, type DailyAdSpend } from "@/lib/types";
+import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import {
   BarChart,
@@ -26,6 +27,7 @@ export default function BudgetPage() {
 }
 
 function BudgetInner() {
+  const { brandMap, channelMap } = useConfig();
   // 이번 달 데이터
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
@@ -46,13 +48,13 @@ function BudgetInner() {
     return Object.entries(map)
       .map(([brand, spent]) => ({
         brand,
-        label: BRAND_LABELS[brand] || brand,
-        color: BRAND_COLORS[brand] || "#6b7280",
+        label: brandMap[brand]?.label || BRAND_LABELS[brand] || brand,
+        color: brandMap[brand]?.color || BRAND_COLORS[brand] || "#6b7280",
         spent,
         projected: daysInMonth > 0 ? (spent / daysPassed) * daysInMonth : spent,
       }))
       .sort((a, b) => b.spent - a.spent);
-  }, [ads, daysPassed, daysInMonth]);
+  }, [ads, daysPassed, daysInMonth, brandMap]);
 
   /* 채널별 집계 */
   const byChannel = useMemo(() => {
@@ -63,7 +65,7 @@ function BudgetInner() {
     return Object.entries(map)
       .map(([ch, spent]) => ({
         channel: ch,
-        label: CHANNEL_LABELS[ch] || ch,
+        label: channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch,
         spent,
         share: 0,
       }))
@@ -72,7 +74,7 @@ function BudgetInner() {
         const total = Object.values(map).reduce((s, v) => s + v, 0);
         return { ...item, share: total > 0 ? (item.spent / total) * 100 : 0 };
       });
-  }, [ads]);
+  }, [ads, channelMap]);
 
   const totalSpent = ads.reduce((s, r) => s + (r.spend || 0), 0);
   const totalProjected = daysInMonth > 0 ? (totalSpent / daysPassed) * daysInMonth : totalSpent;
