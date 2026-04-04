@@ -13,7 +13,7 @@ import {
 } from "@/lib/types";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import {
-  AreaChart, Area, LineChart, Line, ReferenceLine,
+  AreaChart, Area, LineChart, Line, ReferenceLine, BarChart, Bar,
   XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend,
 } from "recharts";
@@ -541,6 +541,32 @@ function OverviewInner() {
           </CardContent>
         </Card>
       </div>
+      {/* 7.3 채널별 ROAS 비교 */}
+      {channelAds.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold">채널별 ROAS</h3>
+              <Link href="/ads" className="text-xs text-primary hover:underline">상세 →</Link>
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={channelAds.slice(0, 8).map(c => ({
+                label: c.label,
+                roas: c.spend > 0 ? c.convValue / c.spend : 0,
+                color: c.color,
+              }))} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis type="number" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v.toFixed(1)}x`} />
+                <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={80} />
+                <ReferenceLine x={1} stroke="#ef4444" strokeDasharray="4 4" />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} formatter={(val) => `${Number(val).toFixed(2)}x`} />
+                <Bar dataKey="roas" fill="#10b981" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ROW 4: 밸런스랩 공구 매출 */}
       {(gongguSummary.gongguTotal > 0 || gongguSummary.selfTotal > 0) && (
         <Card>
