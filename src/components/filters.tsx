@@ -23,9 +23,9 @@ export function Filters({
   to,
 }: FiltersProps) {
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-3 overflow-x-auto">
       {/* 브랜드 필터 */}
-      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
+      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 flex-shrink-0">
         {BRANDS.map((b) => (
           <button
             key={b}

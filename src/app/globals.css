@@ -121,6 +121,16 @@
   background: var(--foreground);
 }
 
+/* 모바일 테이블 최적화 */
+@media (max-width: 640px) {
+  table {
+    font-size: 12px;
+  }
+  table th, table td {
+    padding: 6px 4px;
+  }
+}
+
 /* Recharts tooltip override */
 .recharts-default-tooltip {
   background-color: var(--chart-tooltip-bg) !important;

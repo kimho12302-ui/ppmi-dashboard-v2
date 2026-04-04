@@ -16,12 +16,15 @@ function PageShellInner({ title, description, children, hideFilters }: PageShell
   const { brand, preset, from, to, setBrand, setPreset } = useFilterParams();
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold">{title}</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">{title}</h1>
           {description && (
-            <p className="text-sm text-muted-foreground mt-1">{description}</p>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{description}</p>
+          )}
+          {!hideFilters && from && to && (
+            <p className="text-xs text-muted-foreground/70 mt-0.5">{from} ~ {to}</p>
           )}
         </div>
       </div>

@@ -16,13 +16,13 @@ interface KpiCardProps {
 export function KpiCard({ title, value, change, icon, subtitle, target, onClick, active }: KpiCardProps) {
   return (
     <Card
-      className={`p-5 ${onClick ? "cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all" : ""} ${active ? "ring-2 ring-primary" : ""}`}
+      className={`p-3 sm:p-5 ${onClick ? "cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all" : ""} ${active ? "ring-2 ring-primary" : ""}`}
       onClick={onClick}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1 min-w-0 flex-1">
           <p className="text-sm text-muted-foreground font-medium">{title}</p>
-          <p className="text-2xl font-bold tracking-tight">{value}</p>
+          <p className="text-lg sm:text-2xl font-bold tracking-tight">{value}</p>
           <div className="flex items-center gap-2 flex-wrap">
             {change !== undefined && (
               <span
