@@ -6,10 +6,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { BRAND_LABELS, CHANNEL_LABELS, type DailySales, type DailyAdSpend } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
+
+type InsightLevel = "critical" | "warning" | "opportunity" | "info";
 
 interface Insight {
-  type: "warning" | "info" | "success";
+  level: InsightLevel;
   title: string;
   description: string;
 }
@@ -35,81 +37,134 @@ function InsightsInner() {
     const salesData = data?.sales || [];
     const adsData = (data?.ads || []).filter((r) => !r.channel.startsWith("ga4_"));
 
+    const filterBrand = (r: { brand: string }) => !brand || brand === "all" || r.brand === brand;
+
+    const filteredSales = salesData.filter(filterBrand);
+    const filteredAds = adsData.filter(filterBrand);
+
+    // ── 1. 브랜드별 ROAS 분석 ──
     if (!brand || brand === "all") {
-      // 브랜드별 분석
-      const brandRevenue: Record<string, number> = {};
       const brandSpend: Record<string, number> = {};
       const brandConvValue: Record<string, number> = {};
-
-      for (const r of salesData) {
-        brandRevenue[r.brand] = (brandRevenue[r.brand] || 0) + (r.revenue || 0);
-      }
       for (const r of adsData) {
         brandSpend[r.brand] = (brandSpend[r.brand] || 0) + (r.spend || 0);
         brandConvValue[r.brand] = (brandConvValue[r.brand] || 0) + (r.conversion_value || 0);
       }
-
       for (const b of Object.keys(brandSpend)) {
         const spend = brandSpend[b] || 0;
         const convVal = brandConvValue[b] || 0;
         const roas = spend > 0 ? convVal / spend : 0;
         const label = brandMap[b]?.label || BRAND_LABELS[b] || b;
-
-        if (roas > 0 && roas < 1) {
+        if (spend > 0 && roas < 1) {
           results.push({
-            type: "warning",
-            title: `${label} ROAS ${roas.toFixed(2)}x — 광고비 대비 전환 매출 부족`,
-            description: `광고비 ${formatCurrency(spend)} 대비 전환 매출 ${formatCurrency(convVal)}. 캠페인 효율 점검 필요.`,
+            level: "critical",
+            title: `${label} ROAS ${roas.toFixed(2)}x — 광고비 > 전환매출`,
+            description: `광고비 ${formatCurrency(spend)} 대비 전환 매출 ${formatCurrency(convVal)}. 즉시 캠페인 효율 점검 필요.`,
           });
         } else if (roas >= 3) {
           results.push({
-            type: "success",
-            title: `${label} ROAS ${roas.toFixed(2)}x — 우수`,
-            description: `광고비 ${formatCurrency(spend)}으로 전환 매출 ${formatCurrency(convVal)} 달성.`,
+            level: "opportunity",
+            title: `${label} ROAS ${roas.toFixed(2)}x — 스케일업 기회`,
+            description: `광고비 ${formatCurrency(spend)}으로 전환 매출 ${formatCurrency(convVal)} 달성. 예산 증액 검토.`,
           });
         }
       }
     }
 
-    // 채널별 이상치 탐지
-    const channelSpend: Record<string, number[]> = {};
-    for (const r of adsData) {
-      if (brand && brand !== "all" && r.brand !== brand) continue;
-      if (!channelSpend[r.channel]) channelSpend[r.channel] = [];
-      channelSpend[r.channel].push(r.spend || 0);
+    // ── 2. 채널별 이상치 (±30% 변동) ──
+    const channelDaily: Record<string, { date: string; spend: number }[]> = {};
+    for (const r of filteredAds) {
+      if (!channelDaily[r.channel]) channelDaily[r.channel] = [];
+      channelDaily[r.channel].push({ date: r.date, spend: r.spend || 0 });
     }
-
-    for (const [ch, spends] of Object.entries(channelSpend)) {
-      if (spends.length < 7) continue;
-      const avg = spends.reduce((s, v) => s + v, 0) / spends.length;
-      const last = spends[spends.length - 1];
-      const change = avg > 0 ? ((last - avg) / avg) * 100 : 0;
+    for (const [ch, days] of Object.entries(channelDaily)) {
+      if (days.length < 3) continue;
+      const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
+      const recent = sorted.slice(-1)[0];
+      const prev = sorted.slice(0, -1);
+      const avg = prev.reduce((s, d) => s + d.spend, 0) / prev.length;
+      if (avg <= 0) continue;
+      const change = ((recent.spend - avg) / avg) * 100;
       const label = channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch;
-
-      if (Math.abs(change) >= 50) {
+      if (Math.abs(change) >= 30) {
         results.push({
-          type: "warning",
-          title: `${label} 최근 광고비 ${change > 0 ? "급증" : "급감"} (${change > 0 ? "+" : ""}${change.toFixed(0)}%)`,
-          description: `평균 ${formatCurrency(Math.round(avg))}/일 대비 최근 ${formatCurrency(last)}/일. 의도된 변경인지 확인.`,
+          level: Math.abs(change) >= 80 ? "critical" : "warning",
+          title: `${label} 최근일 광고비 ${change > 0 ? "급증" : "급감"} (${change > 0 ? "+" : ""}${change.toFixed(0)}%)`,
+          description: `평균 ${formatCurrency(Math.round(avg))}/일 → 최근 ${formatCurrency(recent.spend)}/일 (${recent.date}).`,
         });
       }
     }
 
-    // 매출 없는 날 감지
-    const salesDates = new Set(salesData.map((r) => r.date));
-    const adsDates = new Set(adsData.map((r) => r.date));
-    const adOnlyDates = Array.from(adsDates).filter((d) => !salesDates.has(d));
-    if (adOnlyDates.length > 0 && adOnlyDates.length <= 5) {
+    // ── 3. 3일 연속 매출 상승/하락 트렌드 ──
+    const dailyRevenue: Record<string, number> = {};
+    for (const r of filteredSales) {
+      dailyRevenue[r.date] = (dailyRevenue[r.date] || 0) + (r.revenue || 0);
+    }
+    const sortedDays = Object.entries(dailyRevenue).sort(([a], [b]) => a.localeCompare(b));
+    if (sortedDays.length >= 4) {
+      const last4 = sortedDays.slice(-4);
+      const diffs = [];
+      for (let i = 1; i < last4.length; i++) {
+        diffs.push(last4[i][1] - last4[i - 1][1]);
+      }
+      if (diffs.every((d) => d > 0)) {
+        results.push({
+          level: "opportunity",
+          title: "📈 3일 연속 매출 상승 중!",
+          description: `${last4[0][0]} ~ ${last4[last4.length - 1][0]}: ${last4.map(([, v]) => formatCurrency(v)).join(" → ")}`,
+        });
+      } else if (diffs.every((d) => d < 0)) {
+        results.push({
+          level: "warning",
+          title: "📉 3일 연속 매출 하락 중",
+          description: `${last4[0][0]} ~ ${last4[last4.length - 1][0]}: ${last4.map(([, v]) => formatCurrency(v)).join(" → ")}. 원인 확인 필요.`,
+        });
+      }
+    }
+
+    // ── 4. 매출 누락일 감지 ──
+    const salesDates = new Set(filteredSales.map((r) => r.date));
+    const adsDates = new Set(filteredAds.map((r) => r.date));
+    const adOnlyDates = Array.from(adsDates).filter((d) => !salesDates.has(d)).sort();
+    if (adOnlyDates.length > 0 && adOnlyDates.length <= 10) {
       results.push({
-        type: "info",
-        title: `광고비는 있지만 매출 데이터 없는 날짜 ${adOnlyDates.length}일`,
-        description: `${adOnlyDates.slice(0, 3).join(", ")}${adOnlyDates.length > 3 ? " 외" : ""}. 매출 엑셀 업로드 필요.`,
+        level: adOnlyDates.length >= 3 ? "warning" : "info",
+        title: `매출 데이터 누락 ${adOnlyDates.length}일`,
+        description: `${adOnlyDates.slice(0, 5).join(", ")}${adOnlyDates.length > 5 ? ` 외 ${adOnlyDates.length - 5}일` : ""}. 엑셀 업로드 필요.`,
       });
     }
 
+    // ── 5. 광고비 없는 날짜 (크론 실패 가능성) ──
+    const salesOnlyDates = Array.from(salesDates).filter((d) => !adsDates.has(d)).sort();
+    if (salesOnlyDates.length > 0 && salesOnlyDates.length <= 5) {
+      results.push({
+        level: "info",
+        title: `광고 데이터 누락 ${salesOnlyDates.length}일`,
+        description: `${salesOnlyDates.join(", ")}. API 크론 정상 작동 확인 필요.`,
+      });
+    }
+
+    // ── 6. 총 광고비 대비 매출 효율 ──
+    const totalRevenue = filteredSales.reduce((s, r) => s + (r.revenue || 0), 0);
+    const totalSpend = filteredAds.reduce((s, r) => s + (r.spend || 0), 0);
+    if (totalSpend > 0 && totalRevenue > 0) {
+      const overallRoas = totalRevenue / totalSpend;
+      if (overallRoas < 2) {
+        results.push({
+          level: "warning",
+          title: `전체 매출/광고비 비율 ${overallRoas.toFixed(1)}x — 주의`,
+          description: `매출 ${formatCurrency(totalRevenue)} / 광고비 ${formatCurrency(totalSpend)}. 채널별 효율 점검.`,
+        });
+      }
+    }
+
+    // ── 정렬: critical → warning → opportunity → info ──
+    const order: Record<InsightLevel, number> = { critical: 0, warning: 1, opportunity: 2, info: 3 };
+    results.sort((a, b) => order[a.level] - order[b.level]);
+
     if (results.length === 0) {
       results.push({
-        type: "info",
+        level: "info",
         title: "특이사항 없음",
         description: "선택한 기간에 주목할 만한 이상치나 경고가 없습니다.",
       });
@@ -118,28 +173,25 @@ function InsightsInner() {
     return results;
   }, [data, brand, brandMap, channelMap]);
 
-  const iconMap = {
-    warning: "⚠️",
-    info: "ℹ️",
-    success: "✅",
+  const levelConfig: Record<InsightLevel, { icon: string; border: string; badge: string; badgeLabel: string }> = {
+    critical: { icon: "🔴", border: "border-l-red-500 bg-red-500/5", badge: "bg-red-500/10 text-red-600", badgeLabel: "즉시 대응" },
+    warning: { icon: "🟡", border: "border-l-amber-500 bg-amber-500/5", badge: "bg-amber-500/10 text-amber-600", badgeLabel: "주의" },
+    opportunity: { icon: "🟢", border: "border-l-emerald-500 bg-emerald-500/5", badge: "bg-emerald-500/10 text-emerald-600", badgeLabel: "기회" },
+    info: { icon: "🔵", border: "border-l-blue-500 bg-blue-500/5", badge: "bg-blue-500/10 text-blue-600", badgeLabel: "참고" },
   };
 
-  const colorMap = {
-    warning: "border-l-amber-500 bg-amber-500/5",
-    info: "border-l-blue-500 bg-blue-500/5",
-    success: "border-l-emerald-500 bg-emerald-500/5",
-  };
+  const countByLevel = insights.reduce((acc, i) => {
+    acc[i.level] = (acc[i.level] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
 
   if (loading) {
     return (
-      <PageShell title="인사이트" description="Rule-based 자동 분석">
+      <PageShell title="인사이트" description="자동 이상치 감지 · 트렌드 분석 · 효율 경고">
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <Card key={i} className="p-4 animate-pulse">
-              <CardContent className="p-0">
-                <div className="h-4 w-48 bg-muted rounded mb-2" />
-                <div className="h-3 w-72 bg-muted rounded" />
-              </CardContent>
+              <CardContent className="p-0"><div className="h-4 w-48 bg-muted rounded mb-2" /><div className="h-3 w-72 bg-muted rounded" /></CardContent>
             </Card>
           ))}
         </div>
@@ -148,27 +200,48 @@ function InsightsInner() {
   }
 
   return (
-    <PageShell title="인사이트" description="Rule-based 자동 분석">
+    <PageShell title="인사이트" description="자동 이상치 감지 · 트렌드 분석 · 효율 경고">
+      {/* 요약 배지 */}
+      <div className="flex flex-wrap gap-2">
+        {(["critical", "warning", "opportunity", "info"] as InsightLevel[]).map((level) => {
+          const count = countByLevel[level] || 0;
+          if (count === 0) return null;
+          const cfg = levelConfig[level];
+          return (
+            <span key={level} className={cn("text-xs font-medium px-2.5 py-1 rounded-full", cfg.badge)}>
+              {cfg.icon} {cfg.badgeLabel} {count}건
+            </span>
+          );
+        })}
+      </div>
+
+      {/* 인사이트 카드 */}
       <div className="space-y-3">
-        {insights.map((insight, i) => (
-          <Card key={i} className={`border-l-4 ${colorMap[insight.type]}`}>
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <span className="text-lg">{iconMap[insight.type]}</span>
-                <div>
-                  <h4 className="font-semibold text-sm">{insight.title}</h4>
-                  <p className="text-sm text-muted-foreground mt-1">{insight.description}</p>
+        {insights.map((insight, i) => {
+          const cfg = levelConfig[insight.level];
+          return (
+            <Card key={i} className={cn("border-l-4", cfg.border)}>
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-lg">{cfg.icon}</span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-semibold text-sm">{insight.title}</h4>
+                      <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", cfg.badge)}>{cfg.badgeLabel}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{insight.description}</p>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       <Card>
         <CardContent className="p-4">
           <p className="text-xs text-muted-foreground">
-            💡 이 인사이트는 규칙 기반(Rule-based)으로 자동 생성됩니다. ROAS &lt; 1 경고, 광고비 ±50% 이상 변동 감지, 매출 누락일 알림 등을 포함합니다.
+            💡 규칙 기반 자동 감지: ROAS &lt; 1 즉시경고, ±30% 일변동 이상치, 3일 연속 트렌드, 데이터 누락 알림, 매출/광고비 효율 분석.
           </p>
         </CardContent>
       </Card>
