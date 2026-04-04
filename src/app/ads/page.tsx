@@ -10,6 +10,9 @@ import { Suspense, useMemo, useState } from "react";
 import {
   AreaChart,
   Area,
+  LineChart,
+  Line,
+  ReferenceLine,
   XAxis,
   YAxis,
   Tooltip,
@@ -125,6 +128,29 @@ function AdsPageInner() {
       .map(([date, channels]) => ({ date: date.slice(5), ...channels }));
   }, [ads]);
 
+  /* ── 일별 ROAS 트렌드 (채널별) ── */
+  const dailyRoas = useMemo(() => {
+    const spendMap: Record<string, Record<string, number>> = {};
+    const convMap: Record<string, Record<string, number>> = {};
+    for (const r of ads) {
+      if (r.channel.startsWith("ga4_")) continue;
+      if (!spendMap[r.date]) { spendMap[r.date] = {}; convMap[r.date] = {}; }
+      spendMap[r.date][r.channel] = (spendMap[r.date][r.channel] || 0) + (r.spend || 0);
+      convMap[r.date][r.channel] = (convMap[r.date][r.channel] || 0) + (r.conversion_value || 0);
+    }
+    return Object.entries(spendMap).sort(([a], [b]) => a.localeCompare(b)).map(([date, spends]) => {
+      const row: Record<string, string | number> = { date: date.slice(5) };
+      for (const ch of Object.keys(spends)) {
+        row[ch] = spends[ch] > 0 ? Number((convMap[date]?.[ch] || 0) / spends[ch]) : 0;
+      }
+      // 전체 ROAS
+      const totalSpend = Object.values(spends).reduce((s, v) => s + v, 0);
+      const totalConv = Object.values(convMap[date] || {}).reduce((s, v) => s + v, 0);
+      row["__total"] = totalSpend > 0 ? Number((totalConv / totalSpend).toFixed(2)) : 0;
+      return row;
+    });
+  }, [ads]);
+
   const activeChannels = useMemo(() => {
     const chs = new Set<string>();
     for (const r of ads) {
@@ -202,10 +228,10 @@ function AdsPageInner() {
                       <span className="font-semibold text-sm">{c.label}</span>
                       <span className="text-sm font-bold">{formatCurrency(c.spend)}</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                    <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 text-xs text-muted-foreground">
                       <div>
                         <p>ROAS</p>
-                        <p className="font-medium text-foreground">
+                        <p className={`font-medium ${c.roas >= 3 ? "text-green-600" : c.roas >= 1 ? "text-yellow-600" : "text-red-500"}`}>
                           {c.roas.toFixed(2)}x
                         </p>
                       </div>
@@ -221,7 +247,36 @@ function AdsPageInner() {
                           {formatNumber(c.conversions)}
                         </p>
                       </div>
+                      <div>
+                        <p>전환매출</p>
+                        <p className="font-medium text-foreground">
+                          {formatCurrency(c.convValue)}
+                        </p>
+                      </div>
+                      <div>
+                        <p>CPA</p>
+                        <p className="font-medium text-foreground">
+                          {c.conversions > 0 ? formatCurrency(Math.round(c.spend / c.conversions)) : "—"}
+                        </p>
+                      </div>
+                      <div>
+                        <p>CTR</p>
+                        <p className="font-medium text-foreground">
+                          {formatPercent(c.ctr)}
+                        </p>
+                      </div>
                     </div>
+                    {/* 비중 바 */}
+                    {totals.spend > 0 && (
+                      <div className="mt-1">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${Math.min((c.spend / totals.spend) * 100, 100)}%`, backgroundColor: c.color }} />
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">{((c.spend / totals.spend) * 100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    )}
                     {c.reach > 0 && (
                       <div className="text-xs text-muted-foreground">
                         도달: {formatNumber(c.reach)}
@@ -232,7 +287,31 @@ function AdsPageInner() {
               ))}
           </div>
 
-          {/* 광고비 트렌드 */}
+          {/* 5.3-2: 채널별 ROAS 트렌드 */}
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold mb-4">채널별 ROAS 트렌드</h3>
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={dailyRoas}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}x`} />
+                  <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "1.0x", position: "right", fontSize: 10, fill: "#ef4444" }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                    formatter={(val) => `${Number(val).toFixed(2)}x`}
+                  />
+                  <Legend />
+                  {activeChannels.map((ch) => (
+                    <Line key={ch} type="monotone" dataKey={ch} name={CHANNEL_LABELS[ch] || ch} stroke={CHANNEL_COLORS[ch] || "#6b7280"} strokeWidth={1.5} dot={false} />
+                  ))}
+                  <Line type="monotone" dataKey="__total" name="전체" stroke="#000" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* 5.3-1: 채널별 광고비 트렌드 */}
           <Card>
             <CardContent className="p-4">
               <h3 className="font-semibold mb-4">채널별 광고비 트렌드</h3>
@@ -289,6 +368,7 @@ function AdsPageInner() {
                   <th className="pb-2 pr-4 text-right">CPC</th>
                   <th className="pb-2 pr-4 text-right">전환</th>
                   <th className="pb-2 pr-4 text-right">전환매출</th>
+                  <th className="pb-2 pr-4 text-right">CPA</th>
                   <th className="pb-2 text-right">ROAS</th>
                 </tr>
               </thead>
@@ -310,7 +390,8 @@ function AdsPageInner() {
                       <td className="py-2 pr-4 text-right">{c.cpc > 0 ? formatCurrency(Math.round(c.cpc)) : "—"}</td>
                       <td className="py-2 pr-4 text-right">{formatNumber(c.conversions)}</td>
                       <td className="py-2 pr-4 text-right">{formatCurrency(c.convValue)}</td>
-                      <td className="py-2 text-right font-medium">{c.roas.toFixed(2)}x</td>
+                      <td className="py-2 pr-4 text-right">{c.conversions > 0 ? formatCurrency(Math.round(c.spend / c.conversions)) : "—"}</td>
+                      <td className={`py-2 text-right font-medium ${c.roas >= 3 ? "text-green-600" : c.roas >= 1 ? "text-yellow-600" : "text-red-500"}`}>{c.roas.toFixed(2)}x</td>
                     </tr>
                   ))}
               </tbody>
