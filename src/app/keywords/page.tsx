@@ -1,27 +1,214 @@
 "use client";
 
+import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
+import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
+import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
+import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
+import type { KeywordPerformance } from "@/lib/types";
+
+const PLATFORM_LABELS: Record<string, string> = {
+  naver_search: "네이버 검색",
+  naver_shopping: "네이버 쇼핑",
+  naver_gfa: "GFA",
+  google_search: "구글 검색",
+  google_display: "구글 디스플레이",
+  meta: "메타",
+};
+
+const PLATFORM_COLORS: Record<string, string> = {
+  naver_search: "#15803d",
+  naver_shopping: "#0e7490",
+  naver_gfa: "#6d28d9",
+  google_search: "#c2410c",
+  google_display: "#b45309",
+  meta: "#1d4ed8",
+};
 
 export default function KeywordsPage() {
   return (
-    <PageShell title="키워드" description="키워드별 광고 성과 분석">
-      {/* P5에서 구현: KPI 6개 + 키워드 테이블 + 그룹핑 + 버블 차트 */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        {["총 비용", "총 클릭", "키워드 수", "평균 CTR", "전환수", "키워드 ROAS"].map(
-          (label) => (
-            <Card key={label} className="p-5">
+    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
+      <KeywordsInner />
+    </Suspense>
+  );
+}
+
+function KeywordsInner() {
+  const { from, to } = useFilterParams();
+  const { data, loading } = useFetch<{ keywords: KeywordPerformance[] }>(`/api/keywords?from=${from}&to=${to}`);
+  const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr">("cost");
+  const [platformFilter, setPlatformFilter] = useState<string>("all");
+
+  const keywords = useMemo(() => data?.keywords || [], [data]);
+
+  /* 플랫폼 목록 */
+  const platforms = useMemo(() => {
+    const set = new Set(keywords.map((k) => k.platform));
+    return Array.from(set).sort();
+  }, [keywords]);
+
+  /* 키워드 집계 */
+  const aggregated = useMemo(() => {
+    const filtered = platformFilter === "all" ? keywords : keywords.filter((k) => k.platform === platformFilter);
+    const map: Record<string, { keyword: string; platform: string; cost: number; clicks: number; impressions: number; conversions: number; convValue: number }> = {};
+    for (const k of filtered) {
+      const key = `${k.platform}-${k.keyword}`;
+      if (!map[key]) map[key] = { keyword: k.keyword, platform: k.platform, cost: 0, clicks: 0, impressions: 0, conversions: 0, convValue: 0 };
+      map[key].cost += k.cost || 0;
+      map[key].clicks += k.clicks || 0;
+      map[key].impressions += k.impressions || 0;
+      map[key].conversions += k.conversions || 0;
+      map[key].convValue += k.conversion_value || 0;
+    }
+    return Object.values(map)
+      .map((v) => ({
+        ...v,
+        ctr: v.impressions > 0 ? (v.clicks / v.impressions) * 100 : 0,
+        cpc: v.clicks > 0 ? v.cost / v.clicks : 0,
+        roas: v.cost > 0 ? v.convValue / v.cost : 0,
+      }))
+      .sort((a, b) => {
+        switch (sortBy) {
+          case "cost": return b.cost - a.cost;
+          case "clicks": return b.clicks - a.clicks;
+          case "conversions": return b.conversions - a.conversions;
+          case "ctr": return b.ctr - a.ctr;
+          default: return b.cost - a.cost;
+        }
+      })
+      .slice(0, 50);
+  }, [keywords, platformFilter, sortBy]);
+
+  /* KPI */
+  const totals = useMemo(() => {
+    const filtered = platformFilter === "all" ? keywords : keywords.filter((k) => k.platform === platformFilter);
+    const cost = filtered.reduce((s, k) => s + (k.cost || 0), 0);
+    const clicks = filtered.reduce((s, k) => s + (k.clicks || 0), 0);
+    const impressions = filtered.reduce((s, k) => s + (k.impressions || 0), 0);
+    return {
+      cost,
+      clicks,
+      uniqueKeywords: new Set(filtered.map((k) => k.keyword)).size,
+      ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+    };
+  }, [keywords, platformFilter]);
+
+  if (loading) {
+    return (
+      <PageShell title="키워드" description="키워드별 광고 성과">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="p-5 animate-pulse">
               <CardContent className="p-0">
-                <p className="text-sm text-muted-foreground">{label}</p>
-                <p className="text-2xl font-bold mt-1">—</p>
+                <div className="h-4 w-20 bg-muted rounded mb-2" />
+                <div className="h-8 w-28 bg-muted rounded" />
               </CardContent>
             </Card>
-          )
-        )}
+          ))}
+        </div>
+      </PageShell>
+    );
+  }
+
+  return (
+    <PageShell title="키워드" description="키워드별 광고 성과">
+      {/* KPI */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard title="키워드 수" value={formatNumber(totals.uniqueKeywords)} />
+        <KpiCard title="총 비용" value={formatCurrency(totals.cost)} />
+        <KpiCard title="총 클릭" value={formatNumber(totals.clicks)} />
+        <KpiCard title="평균 CTR" value={formatPercent(totals.ctr)} />
       </div>
+
+      {/* 필터 */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
+          <button
+            onClick={() => setPlatformFilter("all")}
+            className={cn(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
+              platformFilter === "all" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            전체
+          </button>
+          {platforms.map((p) => (
+            <button
+              key={p}
+              onClick={() => setPlatformFilter(p)}
+              className={cn(
+                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
+                platformFilter === p ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {PLATFORM_LABELS[p] || p}
+            </button>
+          ))}
+        </div>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          className="text-xs px-2 py-1.5 rounded-md bg-muted border-none"
+        >
+          <option value="cost">비용순</option>
+          <option value="clicks">클릭순</option>
+          <option value="conversions">전환순</option>
+          <option value="ctr">CTR순</option>
+        </select>
+      </div>
+
+      {/* 키워드 테이블 */}
       <Card>
-        <CardContent className="flex items-center justify-center h-64 text-muted-foreground">
-          P5 — 키워드 테이블 + 버블 차트 영역
+        <CardContent className="p-4 overflow-x-auto">
+          <h3 className="font-semibold mb-4">TOP 50 키워드</h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left border-b text-muted-foreground">
+                <th className="pb-2 pr-4">#</th>
+                <th className="pb-2 pr-4">플랫폼</th>
+                <th className="pb-2 pr-4">키워드</th>
+                <th className="pb-2 pr-4 text-right">비용</th>
+                <th className="pb-2 pr-4 text-right">노출</th>
+                <th className="pb-2 pr-4 text-right">클릭</th>
+                <th className="pb-2 pr-4 text-right">CTR</th>
+                <th className="pb-2 pr-4 text-right">CPC</th>
+                <th className="pb-2 text-right">전환</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aggregated.map((k, i) => (
+                <tr key={`${k.platform}-${k.keyword}`} className="border-b border-border/50 hover:bg-muted/50">
+                  <td className="py-2 pr-4 text-muted-foreground">{i + 1}</td>
+                  <td className="py-2 pr-4">
+                    <span
+                      className="text-xs px-1.5 py-0.5 rounded"
+                      style={{
+                        backgroundColor: `${PLATFORM_COLORS[k.platform] || '#6b7280'}20`,
+                        color: PLATFORM_COLORS[k.platform] || '#6b7280',
+                      }}
+                    >
+                      {PLATFORM_LABELS[k.platform] || k.platform}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 font-medium">{k.keyword}</td>
+                  <td className="py-2 pr-4 text-right">{formatCurrency(k.cost)}</td>
+                  <td className="py-2 pr-4 text-right">{formatNumber(k.impressions)}</td>
+                  <td className="py-2 pr-4 text-right">{formatNumber(k.clicks)}</td>
+                  <td className="py-2 pr-4 text-right">{formatPercent(k.ctr)}</td>
+                  <td className="py-2 pr-4 text-right">{k.cpc > 0 ? formatCurrency(Math.round(k.cpc)) : "—"}</td>
+                  <td className="py-2 text-right">{formatNumber(k.conversions)}</td>
+                </tr>
+              ))}
+              {aggregated.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-muted-foreground">
+                    키워드 데이터가 없습니다
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </CardContent>
       </Card>
     </PageShell>
