@@ -25,13 +25,19 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/settings", label: "설정", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" },
 ];
 
-/** 모바일 하단 탭에 표시할 항목 (5개) */
+/** 모바일 하단 탭에 표시할 항목 (4개 + 더보기) */
 const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
-  ["/", "/sales", "/ads", "/funnel", "/settings"].includes(item.href)
+  ["/", "/sales", "/ads", "/funnel"].includes(item.href)
 );
+const MORE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
+  !["/", "/sales", "/ads", "/funnel"].includes(item.href)
+);
+
+import { useState } from "react";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [moreOpen, setMoreOpen] = useState(false);
 
   return (
     <>
@@ -115,21 +121,64 @@ export function Sidebar() {
                   ? "text-[var(--sidebar-active-text)]"
                   : "text-[var(--muted-foreground)]"
               )}
+              onClick={() => setMoreOpen(false)}
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={1.5}
-              >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
               </svg>
               {item.label}
             </Link>
           );
         })}
+        {/* 더보기 */}
+        <button
+          onClick={() => setMoreOpen(!moreOpen)}
+          className={cn(
+            "flex flex-col items-center gap-1 py-1 px-2 rounded-lg text-xs transition-colors",
+            moreOpen || MORE_NAV_ITEMS.some((i) => pathname.startsWith(i.href))
+              ? "text-[var(--sidebar-active-text)]"
+              : "text-[var(--muted-foreground)]"
+          )}
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+          더보기
+        </button>
       </nav>
+
+      {/* 더보기 패널 */}
+      {moreOpen && (
+        <div
+          className="lg:hidden fixed bottom-16 inset-x-0 z-50 border-t p-3 grid grid-cols-3 gap-2"
+          style={{ backgroundColor: "var(--sidebar-bg)", borderColor: "var(--sidebar-border)" }}
+        >
+          {MORE_NAV_ITEMS.map((item) => {
+            const isActive = pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMoreOpen(false)}
+                className={cn(
+                  "flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-lg text-xs transition-colors",
+                  isActive
+                    ? "text-[var(--sidebar-active-text)] bg-[var(--sidebar-active)]"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--sidebar-hover)]"
+                )}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                </svg>
+                {item.label}
+              </Link>
+            );
+          })}
+          <div className="col-span-3 flex justify-end pt-1">
+            <ThemeToggle />
+          </div>
+        </div>
+      )}
     </>
   );
 }
