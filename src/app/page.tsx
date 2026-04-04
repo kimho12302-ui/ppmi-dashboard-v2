@@ -39,8 +39,10 @@ function OverviewInner() {
   }>(`/api/dashboard?from=${from}&to=${to}`);
   const [selectedKpi, setSelectedKpi] = useState<KpiKey>(null);
 
-  // 퍼널 별도 fetch (dashboard API는 brand=all만)
+  // 퍼널 별도 fetch
   const { data: funnelData } = useFetch<{ funnel: DailyFunnel[] }>(`/api/funnel?from=${from}&to=${to}`);
+  // 목표 fetch
+  const { data: targetsData } = useFetch<{ targets: Record<string, { revenue_target: number; ad_budget_target: number; roas_target: number }> }>("/api/targets");
 
   const sales = useMemo(() => {
     const all = data?.sales || [];
@@ -231,6 +233,21 @@ function OverviewInner() {
     return results;
   }, [brandBreakdown, sales, ads]);
 
+  /* ── 목표 달성률 ── */
+  const targets = useMemo(() => {
+    const t = targetsData?.targets || {};
+    const curMonth = new Date().toISOString().slice(0, 7);
+    const b = brand && brand !== "all" ? brand : "all";
+    const key = `${curMonth}_${b}`;
+    const fallback = `${curMonth}_all`;
+    return t[key] || t[fallback] || null;
+  }, [targetsData, brand]);
+
+  const targetProp = (current: number, targetVal: number | undefined, label: string) => {
+    if (!targetVal || targetVal <= 0) return undefined;
+    return { label, percent: (current / targetVal) * 100 };
+  };
+
   const toggleKpi = (key: KpiKey) => setSelectedKpi((prev) => (prev === key ? null : key));
 
   /* ── 드릴다운 ── */
@@ -272,9 +289,9 @@ function OverviewInner() {
     <PageShell title="Overview" description="PPMI 마케팅 대시보드 전체 현황">
       {/* KPI 8개 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, prevKpi.revenue)} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
-        <KpiCard title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, prevKpi.adSpend)} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
-        <KpiCard title="ROAS" value={`${kpi.roas.toFixed(2)}x`} change={pctChange(kpi.roas, prevKpi.roas)} onClick={() => toggleKpi("roas")} active={selectedKpi === "roas"} />
+        <KpiCard title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, prevKpi.revenue)} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
+        <KpiCard title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, prevKpi.adSpend)} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
+        <KpiCard title="ROAS" value={`${kpi.roas.toFixed(2)}x`} change={pctChange(kpi.roas, prevKpi.roas)} target={targetProp(kpi.roas, targets?.roas_target, "목표")} onClick={() => toggleKpi("roas")} active={selectedKpi === "roas"} />
         <KpiCard title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, prevKpi.orders)} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
         <KpiCard title="통상이익" value={formatCurrency(kpi.grossProfit)} change={pctChange(kpi.grossProfit, prevKpi.grossProfit)} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
         <KpiCard title="이익률" value={formatPercent(kpi.profitRate)} change={pctChange(kpi.profitRate, prevKpi.profitRate)} onClick={() => toggleKpi("profitRate")} active={selectedKpi === "profitRate"} />

@@ -29,7 +29,8 @@ status: active
 | v0.9 | 2026-04-04 | `3163b14` | Overview 풀 리빌드 (KPI 드릴다운+경고+듀얼트렌드+채널광고/매출+퍼널+TOP5) |
 | v1.0 | 2026-04-04 | `49acf41` | P4 기획안 작성 (설정 리빌드, 변화율, 목표 달성률, 동적 config) |
 | v1.1 | 2026-04-04 | `610f5eb` | P4-2: 전기간 대비 변화율 (Overview+광고+매출 KPI ▲▼) |
-| v1.2 | 2026-04-04 | — | P4-1: 설정 리빌드 5탭 + brand_config/channel_config CRUD + monthly_targets |
+| v1.2 | 2026-04-04 | `b6abe90` | P4-1: 설정 리빌드 5탭 + brand_config/channel_config CRUD + monthly_targets |
+| v1.3 | 2026-04-04 | — | P4-3: 목표 대비 달성률 (Overview KPI 프로그레스바) |
 
 ---
 
@@ -83,11 +84,11 @@ status: active
 - API: dashboard, ads 모두 prevSales/prevAds 추가 리턴
 - 적용: Overview (8개), 광고 (6개), 매출 (3개) — 총 17개 KPI 카드
 
-#### P4-3. 목표 대비 달성률
-- KpiCard의 `target` prop 활용 (이미 UI 구현됨, 데이터만 연결)
-- `monthly_targets` 테이블 조회 → 해당 월 목표 대비 진행률 표시
-- 프로그레스바: 100% 이상=초록, 70~100%=파랑, 70% 미만=주황
-- 적용: Overview 매출/광고비/ROAS KPI
+#### ✅ P4-3. 목표 대비 달성률 (완료)
+- Overview 매출/광고비/ROAS KPI에 프로그레스바 표시
+- `monthly_targets` 테이블 연동 (월×브랜드별 자동 매칭)
+- 프로그레스바: 100%↑=초록, 70~100%=파랑, 70%↓=주황
+- targets API에 ad_budget_target 필드 추가
 
 #### P4-4. 동적 브랜드/채널 설정
 - `brand_config` 테이블: id, key, label, color, order, active, parent_key, category

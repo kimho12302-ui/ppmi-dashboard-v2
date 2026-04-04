@@ -18,12 +18,13 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { month, brand, revenue_target, roas_target, note } = await req.json();
+    const { month, brand, revenue_target, ad_budget_target, roas_target, note } = await req.json();
     const { error } = await supabase.from("monthly_targets").upsert(
       {
         month,
         brand: brand || "all",
         revenue_target: Number(revenue_target) || 0,
+        ad_budget_target: Number(ad_budget_target) || 0,
         roas_target: Number(roas_target) || 0,
         note: note || "",
       },
