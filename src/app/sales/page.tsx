@@ -35,6 +35,7 @@ function SalesPageInner() {
   const { data, loading } = useFetch<{
     sales: DailySales[];
     products: ProductSales[];
+    prevSales: DailySales[];
   }>(`/api/dashboard?${params}`);
   const [tab, setTab] = useState<ViewTab>("trend");
 
@@ -50,16 +51,25 @@ function SalesPageInner() {
     return all.filter((r) => r.brand === brand);
   }, [data, brand]);
 
+  const prevSales = useMemo(() => {
+    const all = data?.prevSales || [];
+    if (!brand || brand === "all") return all;
+    return all.filter((r) => r.brand === brand);
+  }, [data, brand]);
+
   /* KPI */
-  const totals = useMemo(() => {
-    const revenue = sales.reduce((s, r) => s + (r.revenue || 0), 0);
-    const orders = sales.reduce((s, r) => s + (r.orders || 0), 0);
-    return {
-      revenue,
-      orders,
-      aov: orders > 0 ? revenue / orders : 0,
-    };
-  }, [sales]);
+  const calcSalesKpi = (s: DailySales[]) => {
+    const revenue = s.reduce((acc, r) => acc + (r.revenue || 0), 0);
+    const orders = s.reduce((acc, r) => acc + (r.orders || 0), 0);
+    return { revenue, orders, aov: orders > 0 ? revenue / orders : 0 };
+  };
+  const totals = useMemo(() => calcSalesKpi(sales), [sales]);
+  const prevTotals = useMemo(() => calcSalesKpi(prevSales), [prevSales]);
+
+  const pctChange = (cur: number, prev: number) => {
+    if (prev === 0) return cur > 0 ? 100 : undefined;
+    return ((cur - prev) / Math.abs(prev)) * 100;
+  };
 
   /* 일별 트렌드 */
   const dailyTrend = useMemo(() => {
@@ -150,9 +160,9 @@ function SalesPageInner() {
 
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard title="매출" value={formatCurrency(totals.revenue)} />
-        <KpiCard title="주문 수" value={formatNumber(totals.orders)} />
-        <KpiCard title="평균 객단가" value={totals.aov > 0 ? formatCurrency(Math.round(totals.aov)) : "—"} />
+        <KpiCard title="매출" value={formatCurrency(totals.revenue)} change={pctChange(totals.revenue, prevTotals.revenue)} />
+        <KpiCard title="주문 수" value={formatNumber(totals.orders)} change={pctChange(totals.orders, prevTotals.orders)} />
+        <KpiCard title="평균 객단가" value={totals.aov > 0 ? formatCurrency(Math.round(totals.aov)) : "—"} change={pctChange(totals.aov, prevTotals.aov)} />
       </div>
 
       {tab === "trend" && (

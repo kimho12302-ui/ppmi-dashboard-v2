@@ -37,11 +37,13 @@ export default function AdsPage() {
 function AdsPageInner() {
   const { brand, from, to } = useFilterParams();
   const params = brand && brand !== "all" ? `from=${from}&to=${to}&brand=${brand}` : `from=${from}&to=${to}`;
-  const { data, loading } = useFetch<{ ads: DailyAdSpend[] }>(`/api/ads?${params}`);
+  const { data, loading } = useFetch<{ ads: DailyAdSpend[]; prevAds: DailyAdSpend[] }>(`/api/ads?${params}`);
   const [tab, setTab] = useState<ViewTab>("overview");
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ads = useMemo(() => data?.ads || [], [data]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const prevAds = useMemo(() => data?.prevAds || [], [data]);
 
   /* ── 집계 ── */
   const totals = useMemo(() => {
@@ -63,6 +65,27 @@ function AdsPageInner() {
       cpa: conversions > 0 ? spend / conversions : 0,
     };
   }, [ads]);
+
+  /* ── 이전 기간 집계 ── */
+  const prevTotals = useMemo(() => {
+    const nonGa4 = prevAds.filter((r) => !r.channel.startsWith("ga4_"));
+    const spend = nonGa4.reduce((s, r) => s + (r.spend || 0), 0);
+    const clicks = nonGa4.reduce((s, r) => s + (r.clicks || 0), 0);
+    const impressions = nonGa4.reduce((s, r) => s + (r.impressions || 0), 0);
+    const convValue = nonGa4.reduce((s, r) => s + (r.conversion_value || 0), 0);
+    const conversions = nonGa4.reduce((s, r) => s + (r.conversions || 0), 0);
+    return {
+      spend, clicks, impressions, conversions, convValue,
+      roas: spend > 0 ? convValue / spend : 0,
+      ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+      cpa: conversions > 0 ? spend / conversions : 0,
+    };
+  }, [prevAds]);
+
+  const pctChange = (cur: number, prev: number) => {
+    if (prev === 0) return cur > 0 ? 100 : undefined;
+    return ((cur - prev) / Math.abs(prev)) * 100;
+  };
 
   /* ── 채널별 집계 ── */
   const byChannel = useMemo(() => {
@@ -153,12 +176,12 @@ function AdsPageInner() {
 
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard title="총 광고비" value={formatCurrency(totals.spend)} />
-        <KpiCard title="통합 ROAS" value={`${totals.roas.toFixed(2)}x`} />
-        <KpiCard title="총 클릭" value={formatNumber(totals.clicks)} />
-        <KpiCard title="평균 CTR" value={formatPercent(totals.ctr)} />
-        <KpiCard title="전환수" value={formatNumber(totals.conversions)} />
-        <KpiCard title="CPA" value={totals.cpa > 0 ? formatCurrency(Math.round(totals.cpa)) : "—"} />
+        <KpiCard title="총 광고비" value={formatCurrency(totals.spend)} change={pctChange(totals.spend, prevTotals.spend)} />
+        <KpiCard title="통합 ROAS" value={`${totals.roas.toFixed(2)}x`} change={pctChange(totals.roas, prevTotals.roas)} />
+        <KpiCard title="총 클릭" value={formatNumber(totals.clicks)} change={pctChange(totals.clicks, prevTotals.clicks)} />
+        <KpiCard title="평균 CTR" value={formatPercent(totals.ctr)} change={pctChange(totals.ctr, prevTotals.ctr)} />
+        <KpiCard title="전환수" value={formatNumber(totals.conversions)} change={pctChange(totals.conversions, prevTotals.conversions)} />
+        <KpiCard title="CPA" value={totals.cpa > 0 ? formatCurrency(Math.round(totals.cpa)) : "—"} change={pctChange(totals.cpa, prevTotals.cpa)} />
       </div>
 
       {/* 탭 내용 */}

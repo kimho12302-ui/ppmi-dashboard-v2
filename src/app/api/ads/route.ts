@@ -8,21 +8,27 @@ export async function GET(req: NextRequest) {
   const brand = sp.get("brand") || "";
 
   try {
-    let query = supabase
-      .from("daily_ad_spend")
-      .select("*")
-      .gte("date", from)
-      .lte("date", to)
-      .order("date");
+    // 이전 기간 계산
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    const diffMs = toDate.getTime() - fromDate.getTime();
+    const prevTo = new Date(fromDate.getTime() - 86400000);
+    const prevFrom = new Date(prevTo.getTime() - diffMs);
+    const prevFromStr = prevFrom.toISOString().slice(0, 10);
+    const prevToStr = prevTo.toISOString().slice(0, 10);
+
+    let query = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).order("date");
+    let prevQuery = supabase.from("daily_ad_spend").select("date,brand,channel,spend,clicks,impressions,conversion_value").gte("date", prevFromStr).lte("date", prevToStr);
 
     if (brand && brand !== "all") {
       query = query.eq("brand", brand);
+      prevQuery = prevQuery.eq("brand", brand);
     }
 
-    const { data, error } = await query;
-    if (error) throw error;
+    const [res, prevRes] = await Promise.all([query, prevQuery]);
+    if (res.error) throw res.error;
 
-    return NextResponse.json({ ads: data || [] });
+    return NextResponse.json({ ads: res.data || [], prevAds: prevRes.data || [] });
   } catch (error) {
     console.error("Ads API error:", error);
     return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });
