@@ -30,7 +30,8 @@ status: active
 | v1.0 | 2026-04-04 | `49acf41` | P4 기획안 작성 (설정 리빌드, 변화율, 목표 달성률, 동적 config) |
 | v1.1 | 2026-04-04 | `610f5eb` | P4-2: 전기간 대비 변화율 (Overview+광고+매출 KPI ▲▼) |
 | v1.2 | 2026-04-04 | `b6abe90` | P4-1: 설정 리빌드 5탭 + brand_config/channel_config CRUD + monthly_targets |
-| v1.3 | 2026-04-04 | — | P4-3: 목표 대비 달성률 (Overview KPI 프로그레스바) |
+| v1.3 | 2026-04-04 | `79c54c8` | P4-3: 목표 대비 달성률 (Overview KPI 프로그레스바) |
+| v1.4 | 2026-04-04 | `b8299b7` | P4-4: 동적 config (settings API에서 brand/channel config DB 로드) |
 
 ---
 
@@ -90,11 +91,9 @@ status: active
 - 프로그레스바: 100%↑=초록, 70~100%=파랑, 70%↓=주황
 - targets API에 ad_budget_target 필드 추가
 
-#### P4-4. 동적 브랜드/채널 설정
-- `brand_config` 테이블: id, key, label, color, order, active, parent_key, category
-- `channel_config` 테이블: id, key, label, color, type(ad|sales), auto, order, active
-- 프론트: DB에서 fetch → fallback으로 현재 하드코딩 유지
-- `use-config.ts` 훅 이미 생성됨 → API 연결만 필요
+#### ✅ P4-4. 동적 브랜드/채널 설정 (완료)
+- settings API 기본 GET에 brand_config/channel_config 포함
+- `use-config.ts` 훅이 DB에서 fetch → fallback 하드코딩 유지
 - 설정 페이지에서 CRUD → 즉시 전 페이지 반영
 
 #### P4 구현 순서
