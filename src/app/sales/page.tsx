@@ -19,7 +19,35 @@ import {
   CartesianGrid,
 } from "recharts";
 
-type ViewTab = "trend" | "channel" | "product" | "gonggu";
+type ViewTab = "trend" | "channel" | "category" | "product" | "gonggu";
+
+/* 브랜드별 카테고리 분류 (기획서 4.1) */
+const CATEGORY_MAP: Record<string, Record<string, string>> = {
+  nutty: {}, // lineup으로 분류
+  ironpet: {}, // lineup → "키트" / "기타"
+  saip: {}, // lineup → 파미나/테라카니스/닥터레이
+  balancelab: {}, // lineup → 검사/기타
+};
+function getCategory(brand: string, product: string, lineup?: string): string {
+  if (brand === "nutty") return lineup || "기타";
+  if (brand === "ironpet") {
+    if (product.includes("키트") || product.includes("검사")) return "검사 키트";
+    return "추가 제품";
+  }
+  if (brand === "saip") {
+    if (lineup) return lineup;
+    if (product.includes("파미나")) return "파미나";
+    if (product.includes("테라카니스")) return "테라카니스";
+    if (product.includes("닥터레이")) return "닥터레이";
+    return "기타";
+  }
+  if (brand === "balancelab") {
+    if (product.includes("검사")) return "검사";
+    return "기타";
+  }
+  return lineup || "기타";
+}
+void CATEGORY_MAP;
 
 export default function SalesPage() {
   return (
@@ -103,6 +131,39 @@ function SalesPageInner() {
       .sort((a, b) => b.revenue - a.revenue);
   }, [sales]);
 
+  /* 카테고리별 (기획서 4.3) */
+  const byCategory = useMemo(() => {
+    const map: Record<string, { revenue: number; quantity: number }> = {};
+    for (const r of products) {
+      const cat = getCategory(r.brand, r.product, r.lineup);
+      if (!map[cat]) map[cat] = { revenue: 0, quantity: 0 };
+      map[cat].revenue += r.revenue || 0;
+      map[cat].quantity += r.quantity || 0;
+    }
+    return Object.entries(map).map(([cat, v]) => ({ category: cat, ...v })).sort((a, b) => b.revenue - a.revenue);
+  }, [products]);
+
+  /* 주별/월별 집계 (기획서 4.3-4) */
+  const [periodMode, setPeriodMode] = useState<"weekly" | "monthly">("weekly");
+  const periodData = useMemo(() => {
+    const map: Record<string, { revenue: number; orders: number }> = {};
+    for (const r of sales) {
+      let key: string;
+      if (periodMode === "monthly") {
+        key = r.date.slice(0, 7); // YYYY-MM
+      } else {
+        const d = new Date(r.date);
+        const jan1 = new Date(d.getFullYear(), 0, 1);
+        const weekNum = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
+        key = `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+      }
+      if (!map[key]) map[key] = { revenue: 0, orders: 0 };
+      map[key].revenue += r.revenue || 0;
+      map[key].orders += r.orders || 0;
+    }
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([period, v]) => ({ period, ...v }));
+  }, [sales, periodMode]);
+
   /* 공구별 (밸런스랩) */
   const gongguData = useMemo(() => {
     const gongguProducts = products.filter((r) => r.brand === "balancelab" && r.channel?.startsWith("공구_"));
@@ -158,6 +219,7 @@ function SalesPageInner() {
         {([
           { key: "trend", label: "매출 트렌드" },
           { key: "channel", label: "채널별" },
+          { key: "category", label: "카테고리별" },
           { key: "product", label: "제품별" },
           { key: "gonggu", label: "공구별" },
         ] as { key: ViewTab; label: string }[]).map((t) => (
@@ -215,6 +277,50 @@ function SalesPageInner() {
                   strokeWidth={2}
                 />
               </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === "trend" && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">주별/월별 매출</h3>
+              <div className="flex gap-1 bg-muted rounded-md p-0.5">
+                {(["weekly", "monthly"] as const).map((m) => (
+                  <button key={m} onClick={() => setPeriodMode(m)}
+                    className={cn("px-2 py-1 text-xs rounded", periodMode === m ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
+                    {m === "weekly" ? "주별" : "월별"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={periodData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
+                <Bar dataKey="revenue" name="매출" fill="#2563eb" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === "category" && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold mb-4">카테고리별 매출</h3>
+            <ResponsiveContainer width="100%" height={Math.max(200, byCategory.length * 35)}>
+              <BarChart data={byCategory} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+                <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={100} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
+                <Bar dataKey="revenue" name="매출" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
