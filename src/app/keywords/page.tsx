@@ -6,6 +6,9 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
+import {
+  ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from "recharts";
 import type { KeywordPerformance } from "@/lib/types";
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -121,6 +124,21 @@ function KeywordsInner() {
     const convSet = new Set(byConv.map((k) => k.keyword));
     const overlap = byCost.filter((k) => convSet.has(k.keyword)).map((k) => k.keyword);
     return { byCost, byConv, overlap };
+  }, [aggregated]);
+
+  /* 9.5 버블 차트 데이터 (CTR vs 노출, 버블크기=비용) */
+  const bubbleData = useMemo(() => {
+    return aggregated
+      .filter((k) => k.impressions > 0 && k.cost > 0)
+      .slice(0, 30)
+      .map((k) => ({
+        keyword: k.keyword,
+        ctr: Math.round(k.ctr * 100) / 100,
+        impressions: k.impressions,
+        cost: k.cost,
+        cpc: Math.round(k.cpc),
+        clicks: k.clicks,
+      }));
   }, [aggregated]);
 
   if (loading) {
@@ -297,6 +315,47 @@ function KeywordsInner() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* 9.5 버블 그래프 (CTR vs 노출, 버블=비용) */}
+      {bubbleData.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold text-sm mb-3">키워드 버블 차트 — CTR vs 노출 (버블 크기 = 비용)</h3>
+            <ResponsiveContainer width="100%" height={350}>
+              <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis
+                  type="number" dataKey="ctr" name="CTR"
+                  tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
+                  label={{ value: "CTR (%)", position: "bottom", fontSize: 11, fill: "var(--muted-foreground)" }}
+                />
+                <YAxis
+                  type="number" dataKey="impressions" name="노출"
+                  tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
+                  tickFormatter={(v) => v >= 10000 ? `${(v / 10000).toFixed(0)}만` : formatNumber(v)}
+                  label={{ value: "노출", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--muted-foreground)" }}
+                />
+                <ZAxis type="number" dataKey="cost" range={[40, 400]} name="비용" />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                  formatter={(val, name) => {
+                    const v = Number(val);
+                    if (name === "CTR") return [`${v}%`, name];
+                    if (name === "노출") return [formatNumber(v), name];
+                    if (name === "비용") return [formatCurrency(v), name];
+                    return [v, name];
+                  }}
+                  labelFormatter={() => ""}
+                />
+                <Scatter data={bubbleData} fill="#2563eb" fillOpacity={0.6} />
+              </ScatterChart>
+            </ResponsiveContainer>
+            <p className="text-xs text-muted-foreground mt-2">
+              💡 우상단 = 높은 CTR + 많은 노출 (효율 좋은 키워드). 큰 버블 = 비용 높음.
+            </p>
+          </CardContent>
+        </Card>
       )}
     </PageShell>
   );
