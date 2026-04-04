@@ -25,7 +25,9 @@ status: active
 | v0.5 | 2026-04-04 | `6f6048c` | P1: 스켈레톤 10페이지, 사이드바, PageShell, URL 상태관리, date-fns 추가 |
 | v0.6 | 2026-04-04 | `8e7c5d2` | P2-1: 광고(3탭+KPI+차트+GA4 UTM) + 매출(3탭+KPI+차트+TOP10) 실데이터 연결 |
 | v0.7 | 2026-04-04 | `cede2ac` | P2-2: Overview(KPI 8+파이차트) + 퍼널(소스별 필터+바차트) + 키워드(TOP50+플랫폼필터) |
-| v0.8 | 2026-04-04 | — | P3: 월별요약(월/주토글) + 예산현황(브랜드/채널) + Raw Data(5테이블+CSV) + 인사이트(Rule-based) |
+| v0.8 | 2026-04-04 | `0678578` | P3: 월별요약(월/주토글) + 예산현황(브랜드/채널) + Raw Data(5테이블+CSV) + 인사이트(Rule-based) |
+| v0.9 | 2026-04-04 | `3163b14` | Overview 풀 리빌드 (KPI 드릴다운+경고+듀얼트렌드+채널광고/매출+퍼널+TOP5) |
+| v1.0 | 2026-04-04 | — | P4 기획안 작성 (설정 리빌드, 변화율, 목표 달성률, 동적 config) |
 
 ---
 
@@ -63,11 +65,42 @@ status: active
 - [x] Raw Data: 5개 DB 테이블 직접 조회 + 페이지네이션 + CSV 다운로드
 - [x] 인사이트: Rule-based (ROAS<1 경고, 광고비 ±50% 변동, 매출 누락일)
 
-### 📋 P4 예정 — 설정+고도화
-- [ ] 동적 브랜드/채널 설정 (brand_config, channel_config)
-- [ ] 전기간 대비 변화율
-- [ ] 목표 대비 달성률
-- [ ] 설정 페이지 리빌드
+### 📋 P4 기획안 — 설정+고도화 (승인 대기)
+
+#### P4-1. 설정 페이지 리빌드
+- **브랜드 관리 탭**: CRUD (키/라벨/색상/순서/활성) + 드래그 순서 변경
+- **채널 관리 탭**: CRUD (키/라벨/색상/타입=광고|매출/자동여부/순서)
+- **월별 목표 탭**: 월×브랜드별 매출 목표/광고비 목표/ROAS 목표 입력
+- **일일 입력 탭**: 기존 수기 입력 유지 (cafe24/smartstore/coupang 퍼널)
+- DB: `brand_config`, `channel_config` 테이블 신규 생성 필요
+
+#### P4-2. 전기간 대비 변화율
+- 모든 KPI 카드에 전기간 대비 ▲/▼ % 표시
+- 로직: 선택 기간 N일 → 직전 N일과 비교
+  - 예: 30일 선택 → 이전 30일(60일 전~31일 전) 대비
+- KpiCard의 `change` prop 활용 (이미 UI 구현됨, 데이터만 연결)
+- 적용 페이지: Overview, 매출, 광고, 퍼널
+
+#### P4-3. 목표 대비 달성률
+- KpiCard의 `target` prop 활용 (이미 UI 구현됨, 데이터만 연결)
+- `monthly_targets` 테이블 조회 → 해당 월 목표 대비 진행률 표시
+- 프로그레스바: 100% 이상=초록, 70~100%=파랑, 70% 미만=주황
+- 적용: Overview 매출/광고비/ROAS KPI
+
+#### P4-4. 동적 브랜드/채널 설정
+- `brand_config` 테이블: id, key, label, color, order, active, parent_key, category
+- `channel_config` 테이블: id, key, label, color, type(ad|sales), auto, order, active
+- 프론트: DB에서 fetch → fallback으로 현재 하드코딩 유지
+- `use-config.ts` 훅 이미 생성됨 → API 연결만 필요
+- 설정 페이지에서 CRUD → 즉시 전 페이지 반영
+
+#### P4 구현 순서
+1. DB 테이블 생성 (brand_config, channel_config)
+2. 설정 API 확장 (/api/settings에 config CRUD 추가)
+3. 설정 페이지 리빌드
+4. 전기간 대비 변화율 (dashboard API 확장 + KpiCard 연결)
+5. 목표 대비 달성률 (targets API 연결)
+6. 동적 config 전 페이지 적용
 
 ### ❌ 미해결 이슈
 - Vercel 배포: v3 코드 배포 여부 확인 필요
