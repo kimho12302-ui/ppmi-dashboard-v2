@@ -7,6 +7,10 @@ import { useFetch } from "@/hooks/use-dashboard-data";
 import { BRAND_LABELS, type DailySales, type DailyAdSpend } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
+import {
+  LineChart, Line, ReferenceLine,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ComposedChart, Bar,
+} from "recharts";
 
 type ViewMode = "monthly" | "weekly";
 
@@ -126,6 +130,41 @@ function MonthlyInner() {
         </div>
       </div>
 
+      {/* 8.1 차트: 매출 vs 광고비 + ROAS 추이 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold text-sm mb-3">매출 vs 광고비</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <ComposedChart data={[...rows].reverse()}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} formatter={(val) => formatCurrency(Number(val))} />
+                <Legend />
+                <Bar dataKey="revenue" name="매출" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="adSpend" name="광고비" fill="#dc2626" radius={[4, 4, 0, 0]} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold text-sm mb-3">ROAS 추이</h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={[...rows].reverse()}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v.toFixed(1)}x`} />
+                <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="4 4" />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} formatter={(val) => `${Number(val).toFixed(2)}x`} />
+                <Line type="monotone" dataKey="roas" name="ROAS" stroke="#10b981" strokeWidth={2} dot />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* 테이블 */}
       <Card>
         <CardContent className="p-4 overflow-x-auto">
@@ -142,13 +181,19 @@ function MonthlyInner() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {rows.map((r, i) => {
+                const prev = rows[i + 1]; // rows is desc sorted
+                const momRev = prev && prev.revenue > 0 ? ((r.revenue - prev.revenue) / prev.revenue * 100) : null;
+                return (
                 <tr key={r.period} className="border-b border-border/50 hover:bg-muted/50">
                   <td className="py-2 pr-4 font-medium">{r.period}</td>
-                  <td className="py-2 pr-4 text-right">{formatCurrency(r.revenue)}</td>
+                  <td className="py-2 pr-4 text-right">
+                    {formatCurrency(r.revenue)}
+                    {momRev !== null && <span className={cn("ml-1 text-[10px]", momRev >= 0 ? "text-emerald-500" : "text-red-500")}>{momRev >= 0 ? "▲" : "▼"}{Math.abs(momRev).toFixed(0)}%</span>}
+                  </td>
                   <td className="py-2 pr-4 text-right">{formatNumber(r.orders)}</td>
                   <td className="py-2 pr-4 text-right">{formatCurrency(r.adSpend)}</td>
-                  <td className="py-2 pr-4 text-right">{r.roas.toFixed(2)}x</td>
+                  <td className={cn("py-2 pr-4 text-right", r.roas >= 3 ? "text-emerald-600" : r.roas >= 1 ? "text-yellow-600" : "text-red-500")}>{r.roas.toFixed(2)}x</td>
                   <td className={cn("py-2 pr-4 text-right font-medium", r.profit >= 0 ? "text-emerald-600" : "text-red-500")}>
                     {formatCurrency(r.profit)}
                   </td>
@@ -156,7 +201,8 @@ function MonthlyInner() {
                     {formatPercent(r.profitRate)}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-muted-foreground">데이터 없음</td>
