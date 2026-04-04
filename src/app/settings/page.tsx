@@ -9,6 +9,7 @@ const API = "/api/settings";
 
 const TABS = [
   { key: "daily", label: "📋 일일 입력" },
+  { key: "upload", label: "📤 엑셀 업로드" },
   { key: "brands", label: "🏷️ 브랜드" },
   { key: "channels", label: "📡 채널" },
   { key: "costs", label: "💰 제품 원가" },
@@ -32,6 +33,7 @@ export default function SettingsPage() {
       </div>
 
       {tab === "daily" && <DailyInputTab />}
+      {tab === "upload" && <UploadTab />}
       {tab === "brands" && <BrandConfigTab />}
       {tab === "channels" && <ChannelConfigTab />}
       {tab === "costs" && <CostTab />}
@@ -472,6 +474,136 @@ function TargetsTab() {
             </div>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ── 📤 엑셀 업로드 탭 ── */
+function UploadTab() {
+  const [status, setStatus] = useState<Record<string, string | null>>({});
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  const uploadTypes = [
+    {
+      key: "sales",
+      label: "판매 실적 (이카운트)",
+      description: "이카운트 판매입력 엑셀 → 제품별/일별 매출 데이터",
+      api: "/api/upload-sales",
+      accept: ".xlsx,.xls",
+    },
+    {
+      key: "coupang-ads",
+      label: "쿠팡 광고 보고서",
+      description: "쿠팡 광고 엑셀 → 쿠팡 광고비/노출/클릭/전환",
+      api: "/api/upload-coupang-ads",
+      accept: ".xlsx,.xls,.csv",
+    },
+    {
+      key: "coupang-funnel",
+      label: "쿠팡 퍼널",
+      description: "쿠팡 퍼널 데이터 → 조회/방문자/장바구니/구매",
+      api: "/api/upload-coupang-funnel",
+      accept: ".xlsx,.xls,.csv",
+    },
+  ];
+
+  const handleUpload = async (type: typeof uploadTypes[0], file: File) => {
+    setUploading(type.key);
+    setStatus((prev) => ({ ...prev, [type.key]: null }));
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(type.api, { method: "POST", body: formData });
+      const data = await res.json();
+      if (res.ok) {
+        const msg = data.message || data.summary || "업로드 완료";
+        setStatus((prev) => ({ ...prev, [type.key]: `✅ ${msg}` }));
+      } else {
+        setStatus((prev) => ({ ...prev, [type.key]: `❌ ${data.error || "업로드 실패"}` }));
+      }
+    } catch (err) {
+      setStatus((prev) => ({ ...prev, [type.key]: `❌ 네트워크 오류: ${err}` }));
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-4">
+        <h3 className="text-lg font-semibold">📤 엑셀 업로드</h3>
+        <p className="text-sm text-muted-foreground">엑셀 파일을 선택하면 자동으로 DB에 반영됩니다.</p>
+        
+        {uploadTypes.map((type) => (
+          <div key={type.key} className="border rounded-lg p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-medium">{type.label}</h4>
+                <p className="text-xs text-muted-foreground">{type.description}</p>
+              </div>
+              <label className={cn(
+                "px-4 py-2 text-sm font-medium rounded-md cursor-pointer transition-colors",
+                uploading === type.key
+                  ? "bg-muted text-muted-foreground cursor-wait"
+                  : "bg-primary text-primary-foreground hover:bg-primary/90"
+              )}>
+                {uploading === type.key ? "업로드 중..." : "파일 선택"}
+                <input
+                  type="file"
+                  accept={type.accept}
+                  className="hidden"
+                  disabled={uploading !== null}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleUpload(type, file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {status[type.key] && (
+              <div className={cn(
+                "text-sm px-3 py-2 rounded",
+                status[type.key]?.startsWith("✅") ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-500"
+              )}>
+                {status[type.key]}
+              </div>
+            )}
+          </div>
+        ))}
+
+        <div className="border-t pt-4 mt-4">
+          <h4 className="font-medium mb-2">자동 수집 현황</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+            {[
+              { time: "01:00", label: "Meta 광고", status: "자동" },
+              { time: "02:00", label: "시트 → DB 동기화", status: "자동" },
+              { time: "02:30", label: "DB → 시트 역동기화", status: "자동" },
+              { time: "08:00", label: "네이버 검색광고", status: "자동" },
+              { time: "08:05", label: "Google Ads", status: "자동" },
+              { time: "08:30", label: "GA4 퍼널", status: "자동" },
+              { time: "10:00", label: "쿠팡 광고 (오전)", status: "자동" },
+              { time: "14:00", label: "쿠팡 광고 (오후)", status: "자동" },
+            ].map((cron) => (
+              <div key={cron.time} className="flex items-center gap-2 p-2 bg-muted/50 rounded">
+                <span className="font-mono text-muted-foreground">{cron.time}</span>
+                <span className="flex-1">{cron.label}</span>
+                <span className="text-emerald-500">🟢 {cron.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-t pt-4">
+          <h4 className="font-medium mb-2">수동 입력 필요 항목</h4>
+          <div className="text-xs text-muted-foreground space-y-1">
+            <p>• <strong>판매 실적</strong> — 이카운트 엑셀 (위에서 업로드)</p>
+            <p>• <strong>cafe24 퍼널</strong> — 일일입력 탭에서 수동 입력</p>
+            <p>• <strong>스마트스토어 퍼널</strong> — 일일입력 탭에서 수동 입력</p>
+            <p>• <strong>쿠팡 퍼널</strong> — 쿠팡 엑셀 업로드 또는 일일입력</p>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
