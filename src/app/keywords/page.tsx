@@ -94,6 +94,35 @@ function KeywordsInner() {
     };
   }, [keywords, platformFilter]);
 
+  /* 9.3 키워드 그룹핑 (브랜드 vs 일반) */
+  const groupedStats = useMemo(() => {
+    const brandKws = ["너티", "nutty", "아이언펫", "ironpet", "밸런스랩", "큐모발", "사입"];
+    const filtered = platformFilter === "all" ? keywords : keywords.filter((k) => k.platform === platformFilter);
+    const brand = { cost: 0, clicks: 0, impressions: 0, conversions: 0, count: 0 };
+    const general = { cost: 0, clicks: 0, impressions: 0, conversions: 0, count: 0 };
+    const seen = new Set<string>();
+    for (const k of filtered) {
+      const isBrand = brandKws.some((bk) => k.keyword.toLowerCase().includes(bk));
+      const target = isBrand ? brand : general;
+      target.cost += k.cost || 0;
+      target.clicks += k.clicks || 0;
+      target.impressions += k.impressions || 0;
+      target.conversions += k.conversions || 0;
+      const key = `${isBrand ? "b" : "g"}-${k.keyword}`;
+      if (!seen.has(key)) { seen.add(key); target.count++; }
+    }
+    return { brand, general };
+  }, [keywords, platformFilter]);
+
+  /* 9.4 TOP 비용 vs TOP 전환 비교 */
+  const topComparison = useMemo(() => {
+    const byCost = [...aggregated].sort((a, b) => b.cost - a.cost).slice(0, 10);
+    const byConv = [...aggregated].sort((a, b) => b.conversions - a.conversions).slice(0, 10);
+    const convSet = new Set(byConv.map((k) => k.keyword));
+    const overlap = byCost.filter((k) => convSet.has(k.keyword)).map((k) => k.keyword);
+    return { byCost, byConv, overlap };
+  }, [aggregated]);
+
   if (loading) {
     return (
       <PageShell title="키워드" description="키워드별 광고 성과">
@@ -211,6 +240,64 @@ function KeywordsInner() {
           </table>
         </CardContent>
       </Card>
+      {/* 9.3 브랜드 vs 일반 키워드 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {[
+          { label: "🏷️ 브랜드 키워드", data: groupedStats.brand, color: "#2563eb" },
+          { label: "🔍 일반 키워드", data: groupedStats.general, color: "#6b7280" },
+        ].map((g) => (
+          <Card key={g.label}>
+            <CardContent className="p-4">
+              <h4 className="font-semibold text-sm mb-2" style={{ color: g.color }}>{g.label}</h4>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-muted-foreground">키워드 수</span><p className="font-bold">{formatNumber(g.data.count)}</p></div>
+                <div><span className="text-muted-foreground">비용</span><p className="font-bold">{formatCurrency(g.data.cost)}</p></div>
+                <div><span className="text-muted-foreground">클릭</span><p className="font-bold">{formatNumber(g.data.clicks)}</p></div>
+                <div><span className="text-muted-foreground">전환</span><p className="font-bold">{formatNumber(g.data.conversions)}</p></div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* 9.4 TOP 비용 vs TOP 전환 */}
+      {aggregated.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <h4 className="font-semibold text-sm mb-2">💰 비용 TOP 10</h4>
+              <div className="space-y-1">
+                {topComparison.byCost.map((k, i) => (
+                  <div key={k.keyword} className={cn("flex items-center gap-2 text-sm py-1", topComparison.overlap.includes(k.keyword) && "bg-yellow-500/10 rounded px-1")}>
+                    <span className="text-muted-foreground w-4">{i + 1}</span>
+                    <span className="flex-1 truncate">{k.keyword}</span>
+                    <span className="font-medium">{formatCurrency(k.cost)}</span>
+                    {topComparison.overlap.includes(k.keyword) && <span className="text-[10px] text-yellow-600">⭐</span>}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <h4 className="font-semibold text-sm mb-2">🎯 전환 TOP 10</h4>
+              <div className="space-y-1">
+                {topComparison.byConv.map((k, i) => (
+                  <div key={k.keyword} className={cn("flex items-center gap-2 text-sm py-1", topComparison.overlap.includes(k.keyword) && "bg-yellow-500/10 rounded px-1")}>
+                    <span className="text-muted-foreground w-4">{i + 1}</span>
+                    <span className="flex-1 truncate">{k.keyword}</span>
+                    <span className="font-medium">{formatNumber(k.conversions)}건</span>
+                    {topComparison.overlap.includes(k.keyword) && <span className="text-[10px] text-yellow-600">⭐</span>}
+                  </div>
+                ))}
+              </div>
+              {topComparison.overlap.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-2">⭐ = 비용·전환 모두 TOP 10 ({topComparison.overlap.length}개)</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </PageShell>
   );
 }
