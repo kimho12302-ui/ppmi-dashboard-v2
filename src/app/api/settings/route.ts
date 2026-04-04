@@ -6,6 +6,16 @@ export async function GET(req: NextRequest) {
   try {
     const type = req.nextUrl.searchParams.get("type");
 
+    if (type === "brand_config") {
+      const { data } = await supabase.from("brand_config").select("*").order("order");
+      return NextResponse.json({ brandConfig: data || [] });
+    }
+
+    if (type === "channel_config") {
+      const { data } = await supabase.from("channel_config").select("*").order("order");
+      return NextResponse.json({ channelConfig: data || [] });
+    }
+
     if (type === "product_costs") {
       const [costsRes, listRes] = await Promise.all([
         supabase.from("product_costs").select("*").order("brand"),
@@ -230,6 +240,28 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      // ── 브랜드 설정 ──
+      case "brand_config": {
+        const { key, label, color, order: ord, active, parent_key, category } = data;
+        const { error } = await supabase.from("brand_config").upsert(
+          { key, label, color: color || "#6b7280", order: ord || 0, active: active !== false, parent_key: parent_key || null, category: category || null },
+          { onConflict: "key" }
+        );
+        if (error) throw error;
+        return NextResponse.json({ ok: true });
+      }
+
+      // ── 채널 설정 ──
+      case "channel_config": {
+        const { key, label, color, type: chType, auto: chAuto, order: ord, active } = data;
+        const { error } = await supabase.from("channel_config").upsert(
+          { key, label, color: color || "#6b7280", type: chType || "ad", auto: chAuto || false, order: ord || 0, active: active !== false },
+          { onConflict: "key" }
+        );
+        if (error) throw error;
+        return NextResponse.json({ ok: true });
+      }
+
       // ── 공구 목표 ──
       case "gonggu_target": {
         const { month, seller, target, note } = data;
@@ -262,7 +294,13 @@ export async function DELETE(req: NextRequest) {
     const type = sp.get("type");
     const id = sp.get("id");
 
-    if (type === "product_cost" || !type) {
+    if (type === "brand_config" && id) {
+      await supabase.from("brand_config").delete().eq("id", id);
+      return NextResponse.json({ ok: true });
+    } else if (type === "channel_config" && id) {
+      await supabase.from("channel_config").delete().eq("id", id);
+      return NextResponse.json({ ok: true });
+    } else if (type === "product_cost" || !type) {
       const product = sp.get("product") || "";
       const brand = sp.get("brand") || "";
       if (product) {
