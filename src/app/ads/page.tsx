@@ -5,6 +5,7 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { CHANNEL_LABELS, CHANNEL_COLORS, type DailyAdSpend } from "@/lib/types";
+import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { Suspense, useMemo, useState } from "react";
 import {
@@ -39,6 +40,7 @@ export default function AdsPage() {
 
 function AdsPageInner() {
   const { brand, from, to } = useFilterParams();
+  const { channelMap } = useConfig();
   const params = brand && brand !== "all" ? `from=${from}&to=${to}&brand=${brand}` : `from=${from}&to=${to}`;
   const { data, loading } = useFetch<{ ads: DailyAdSpend[]; prevAds: DailyAdSpend[] }>(`/api/ads?${params}`);
   const [tab, setTab] = useState<ViewTab>("overview");
@@ -105,15 +107,15 @@ function AdsPageInner() {
     return Object.entries(map)
       .map(([ch, v]) => ({
         channel: ch,
-        label: GA4_LABEL[ch] || CHANNEL_LABELS[ch] || ch,
-        color: CHANNEL_COLORS[ch] || "#6b7280",
+        label: GA4_LABEL[ch] || channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch,
+        color: channelMap[ch]?.color || CHANNEL_COLORS[ch] || "#6b7280",
         ...v,
         roas: v.spend > 0 ? v.convValue / v.spend : 0,
         ctr: v.impressions > 0 ? (v.clicks / v.impressions) * 100 : 0,
         cpc: v.clicks > 0 ? v.spend / v.clicks : 0,
       }))
       .sort((a, b) => b.spend - a.spend);
-  }, [ads]);
+  }, [ads, channelMap]);
 
   /* ── 일별 트렌드 (채널별) ── */
   const dailyTrend = useMemo(() => {

@@ -5,6 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
+import { useConfig } from "@/hooks/use-config";
 import {
   BRAND_LABELS, BRAND_COLORS, CHANNEL_LABELS, CHANNEL_COLORS,
   SALES_CHANNEL_COLORS,
@@ -30,6 +31,7 @@ export default function OverviewPage() {
 
 function OverviewInner() {
   const { brand, from, to } = useFilterParams();
+  const { brandMap, channelMap } = useConfig();
   const { data, loading } = useFetch<{
     sales: DailySales[];
     ads: DailyAdSpend[];
@@ -126,7 +128,7 @@ function OverviewInner() {
       map[r.brand].convValue += r.conversion_value || 0;
     }
     return Object.entries(map).map(([b, v]) => ({
-      brand: b, label: BRAND_LABELS[b] || b, color: BRAND_COLORS[b] || "#6b7280",
+      brand: b, label: brandMap[b]?.label || BRAND_LABELS[b] || b, color: brandMap[b]?.color || BRAND_COLORS[b] || "#6b7280",
       ...v,
       roas: v.adSpend > 0 ? v.convValue / v.adSpend : 0,
       profit: v.revenue - v.adSpend,
@@ -134,7 +136,7 @@ function OverviewInner() {
       ctr: v.impressions > 0 ? (v.clicks / v.impressions) * 100 : 0,
       aov: v.orders > 0 ? v.revenue / v.orders : 0,
     })).sort((a, b) => b.revenue - a.revenue);
-  }, [sales, ads]);
+  }, [sales, ads, brandMap]);
 
   /* ── 채널별 광고 ── */
   const channelAds = useMemo(() => {
@@ -148,12 +150,12 @@ function OverviewInner() {
       map[r.channel].convValue += r.conversion_value || 0;
     }
     return Object.entries(map).map(([ch, v]) => ({
-      channel: ch, label: CHANNEL_LABELS[ch] || ch, color: CHANNEL_COLORS[ch] || "#6b7280",
+      channel: ch, label: channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch, color: channelMap[ch]?.color || CHANNEL_COLORS[ch] || "#6b7280",
       ...v,
       roas: v.spend > 0 ? v.convValue / v.spend : 0,
       ctr: v.impressions > 0 ? (v.clicks / v.impressions) * 100 : 0,
     })).sort((a, b) => b.spend - a.spend);
-  }, [ads]);
+  }, [ads, channelMap]);
 
   /* ── 채널별 매출 ── */
   const channelSales = useMemo(() => {
@@ -165,9 +167,9 @@ function OverviewInner() {
       map[ch].orders += r.orders || 0;
     }
     return Object.entries(map).map(([ch, v]) => ({
-      channel: ch, label: CHANNEL_LABELS[ch] || ch, color: SALES_CHANNEL_COLORS[ch] || "#6b7280", ...v,
+      channel: ch, label: channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch, color: channelMap[ch]?.color || SALES_CHANNEL_COLORS[ch] || "#6b7280", ...v,
     })).sort((a, b) => b.revenue - a.revenue);
-  }, [sales]);
+  }, [sales, channelMap]);
 
   /* ── 일별 매출+광고비 트렌드 ── */
   const dailyTrend = useMemo(() => {
@@ -190,9 +192,9 @@ function OverviewInner() {
     const map: Record<string, number> = {};
     for (const r of sales) map[r.brand] = (map[r.brand] || 0) + (r.revenue || 0);
     return Object.entries(map).map(([b, revenue]) => ({
-      name: BRAND_LABELS[b] || b, value: revenue, color: BRAND_COLORS[b] || "#6b7280",
+      name: brandMap[b]?.label || BRAND_LABELS[b] || b, value: revenue, color: brandMap[b]?.color || BRAND_COLORS[b] || "#6b7280",
     })).sort((a, b) => b.value - a.value);
-  }, [sales]);
+  }, [sales, brandMap]);
 
   /* ── 퍼널 요약 ── */
   const funnelSummary = useMemo(() => {

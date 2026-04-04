@@ -5,6 +5,7 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
+import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { Suspense, useMemo, useState } from "react";
 import {
@@ -65,6 +66,7 @@ function SalesPageInner() {
     products: ProductSales[];
     prevSales: DailySales[];
   }>(`/api/dashboard?${params}`);
+  const { brandMap, channelMap } = useConfig();
   const [tab, setTab] = useState<ViewTab>("trend");
 
   const sales = useMemo(() => {
@@ -124,12 +126,12 @@ function SalesPageInner() {
     return Object.entries(map)
       .map(([ch, v]) => ({
         channel: ch,
-        label: CHANNEL_LABELS[ch] || ch,
-        color: SALES_CHANNEL_COLORS[ch] || "#6b7280",
+        label: channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch,
+        color: channelMap[ch]?.color || SALES_CHANNEL_COLORS[ch] || "#6b7280",
         ...v,
       }))
       .sort((a, b) => b.revenue - a.revenue);
-  }, [sales]);
+  }, [sales, channelMap]);
 
   /* 카테고리별 (기획서 4.3) */
   const byCategory = useMemo(() => {
@@ -392,8 +394,8 @@ function SalesPageInner() {
                   <tr key={`${p.brand}-${p.product}`} className="border-b border-border/50 hover:bg-muted/50">
                     <td className="py-2 pr-4 text-muted-foreground">{i + 1}</td>
                     <td className="py-2 pr-4">
-                      <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: `${BRAND_COLORS[p.brand] || '#6b7280'}20`, color: BRAND_COLORS[p.brand] || '#6b7280' }}>
-                        {BRAND_LABELS[p.brand] || p.brand}
+                      <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: `${brandMap[p.brand]?.color || BRAND_COLORS[p.brand] || '#6b7280'}20`, color: brandMap[p.brand]?.color || BRAND_COLORS[p.brand] || '#6b7280' }}>
+                        {brandMap[p.brand]?.label || BRAND_LABELS[p.brand] || p.brand}
                       </span>
                     </td>
                     <td className="py-2 pr-4">{p.product}</td>
