@@ -206,6 +206,23 @@ function OverviewInner() {
     };
   }, [funnel]);
 
+  /* ── 밸런스랩 공구 요약 ── */
+  const gongguSummary = useMemo(() => {
+    const gonggu = products.filter((r) => r.brand === "balancelab" && r.channel?.startsWith("공구_"));
+    const self = products.filter((r) => r.brand === "balancelab" && !r.channel?.startsWith("공구_"));
+    const sellerMap: Record<string, number> = {};
+    for (const r of gonggu) {
+      const seller = r.channel?.replace("공구_", "") || "기타";
+      sellerMap[seller] = (sellerMap[seller] || 0) + (r.revenue || 0);
+    }
+    const sellers = Object.entries(sellerMap).map(([s, v]) => ({ seller: s, revenue: v })).sort((a, b) => b.revenue - a.revenue);
+    return {
+      gongguTotal: gonggu.reduce((s, r) => s + (r.revenue || 0), 0),
+      selfTotal: self.reduce((s, r) => s + (r.revenue || 0), 0),
+      sellers,
+    };
+  }, [products]);
+
   /* ── TOP 5 제품 ── */
   const topProducts = useMemo(() => {
     const map: Record<string, { product: string; brand: string; revenue: number; quantity: number }> = {};
@@ -473,6 +490,33 @@ function OverviewInner() {
           </CardContent>
         </Card>
       </div>
+      {/* ROW 4: 밸런스랩 공구 매출 */}
+      {(gongguSummary.gongguTotal > 0 || gongguSummary.selfTotal > 0) && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold">밸런스랩 공구 매출</h3>
+              <Link href="/sales?tab=gonggu" className="text-xs text-primary hover:underline">상세 →</Link>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">자체매출</p>
+                <p className="text-lg font-bold text-blue-500">{formatCurrency(gongguSummary.selfTotal)}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">공구매출</p>
+                <p className="text-lg font-bold text-purple-500">{formatCurrency(gongguSummary.gongguTotal)}</p>
+              </div>
+              {gongguSummary.sellers.slice(0, 2).map((s) => (
+                <div key={s.seller} className="text-center">
+                  <p className="text-xs text-muted-foreground">공구_{s.seller}</p>
+                  <p className="text-lg font-bold">{formatCurrency(s.revenue)}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </PageShell>
   );
 }
