@@ -28,7 +28,7 @@ const GA4_LABEL: Record<string, string> = {
   "ga4_Search": "GA4 Search",
 };
 
-type ViewTab = "overview" | "channels" | "ga4";
+type ViewTab = "overview" | "channels" | "ga4" | "creatives";
 
 export default function AdsPage() {
   return (
@@ -186,6 +186,7 @@ function AdsPageInner() {
           { key: "overview", label: "개요" },
           { key: "channels", label: "채널별 상세" },
           { key: "ga4", label: "GA4 UTM" },
+          { key: "creatives", label: "Meta 소재" },
         ] as { key: ViewTab; label: string }[]).map((t) => (
           <button
             key={t.key}
@@ -446,6 +447,77 @@ function AdsPageInner() {
           </Card>
         </>
       )}
+
+      {tab === "creatives" && (
+        <CreativesSection brand={brand} from={from} to={to} />
+      )}
     </PageShell>
+  );
+}
+
+/* ── Meta 크리에이티브 섹션 (P9) ── */
+interface Creative {
+  id: string; name: string; status: string; brand: string;
+  thumbnail_url: string; spend: number; impressions: number; clicks: number;
+  ctr: number; cpc: number; purchases: number; revenue: number; roas: number;
+  cac: number; add_to_cart: number; landing_page_views: number;
+}
+
+function CreativesSection({ brand, from, to }: { brand: string; from: string; to: string }) {
+  const { data, loading } = useFetch<{ creatives: Creative[]; error?: string }>(
+    `/api/creatives?brand=${brand}&from=${from}&to=${to}`
+  );
+  const [sort, setSort] = useState<"spend" | "roas" | "purchases">("spend");
+
+  const creatives = useMemo(() => {
+    const list = data?.creatives || [];
+    return [...list].sort((a, b) => {
+      if (sort === "roas") return b.roas - a.roas;
+      if (sort === "purchases") return b.purchases - a.purchases;
+      return b.spend - a.spend;
+    });
+  }, [data, sort]);
+
+  if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">Meta 소재 로딩 중...</CardContent></Card>;
+  if (data?.error) return <Card><CardContent className="p-4 text-sm text-amber-600">{data.error}</CardContent></Card>;
+  if (creatives.length === 0) return <Card><CardContent className="p-4 text-sm text-muted-foreground">소재 데이터가 없습니다.</CardContent></Card>;
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">정렬:</span>
+        {(["spend", "roas", "purchases"] as const).map(s => (
+          <button key={s} onClick={() => setSort(s)}
+            className={cn("px-2 py-1 text-xs rounded", sort === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+            {s === "spend" ? "광고비순" : s === "roas" ? "ROAS순" : "전환순"}
+          </button>
+        ))}
+        <span className="text-xs text-muted-foreground ml-auto">{creatives.length}개 소재</span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+        {creatives.slice(0, 30).map(c => (
+          <Card key={c.id} className={cn("overflow-hidden", c.roas >= 3 ? "border-green-500/30" : c.roas >= 1 ? "border-yellow-500/30" : c.roas > 0 ? "border-red-500/30" : "")}>
+            <CardContent className="p-3">
+              <div className="flex gap-3">
+                {c.thumbnail_url && (
+                  <img src={c.thumbnail_url} alt="" className="w-16 h-16 rounded object-cover flex-shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{c.name}</p>
+                  <p className={cn("text-[10px]", c.status === "ACTIVE" ? "text-green-500" : "text-muted-foreground")}>{c.status}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-1 mt-2 text-center">
+                <div><p className="text-[10px] text-muted-foreground">광고비</p><p className="text-xs font-medium">{formatCurrency(c.spend)}</p></div>
+                <div><p className="text-[10px] text-muted-foreground">ROAS</p><p className={cn("text-xs font-bold", c.roas >= 3 ? "text-green-500" : c.roas >= 1 ? "text-yellow-500" : "text-red-500")}>{c.roas.toFixed(2)}x</p></div>
+                <div><p className="text-[10px] text-muted-foreground">구매</p><p className="text-xs font-medium">{c.purchases}</p></div>
+                <div><p className="text-[10px] text-muted-foreground">CTR</p><p className="text-xs font-medium">{c.ctr.toFixed(1)}%</p></div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </>
   );
 }

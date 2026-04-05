@@ -546,7 +546,10 @@ function OverviewInner() {
         </Card>
       )}
 
-      {/* ROW 4: 밸런스랩 공구 매출 */}
+      {/* ROW 4: 브랜드 상세 (단일 브랜드 선택 시) */}
+      {brand && brand !== "all" && <BrandDetailSection brand={brand} from={from} to={to} />}
+
+      {/* ROW 5: 밸런스랩 공구 매출 */}
       {(gongguSummary.gongguTotal > 0 || gongguSummary.selfTotal > 0) && (
         <Card>
           <CardContent className="p-4">
@@ -574,5 +577,63 @@ function OverviewInner() {
         </Card>
       )}
     </PageShell>
+  );
+}
+
+/* ── 브랜드 상세 섹션 (P8) ── */
+function BrandDetailSection({ brand, from, to }: { brand: string; from: string; to: string }) {
+  const { data } = useFetch<{
+    lineupBreakdown: { lineup: string; revenue: number; quantity: number }[];
+    topProducts: { product: string; revenue: number; quantity: number }[];
+  }>(`/api/brand-detail?brand=${brand}&from=${from}&to=${to}`);
+
+  const lineups = data?.lineupBreakdown || [];
+  const tops = data?.topProducts || [];
+  const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#ec4899"];
+
+  if (lineups.length === 0 && tops.length === 0) return null;
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {lineups.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold mb-3">라인업별 매출</h3>
+            <div className="space-y-2">
+              {lineups.map((l, i) => {
+                const maxRev = lineups[0]?.revenue || 1;
+                return (
+                  <div key={l.lineup} className="flex items-center gap-2 text-sm">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                    <span className="flex-1 truncate">{l.lineup}</span>
+                    <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${(l.revenue / maxRev) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                    </div>
+                    <span className="font-medium w-20 text-right">{formatCurrency(l.revenue)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {tops.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold mb-3">제품 TOP 10</h3>
+            <div className="space-y-2">
+              {tops.slice(0, 10).map((p, i) => (
+                <div key={p.product} className="flex items-center gap-2 text-sm">
+                  <span className="text-xs text-muted-foreground w-5">{i + 1}</span>
+                  <span className="flex-1 truncate">{p.product}</span>
+                  <span className="font-medium">{formatCurrency(p.revenue)}</span>
+                  <span className="text-muted-foreground text-xs w-12 text-right">{formatNumber(p.quantity)}개</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
