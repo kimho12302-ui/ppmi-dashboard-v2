@@ -80,8 +80,37 @@ export async function GET(req: NextRequest) {
       totalMiscCost += Number(r.amount || 0);
     }
 
+    // ── 공구 분석 (밸런스랩) — product_sales 기준 (공구채널이 daily_sales에 없고 product_sales에만 있음) ──
+    // KPI 계산 전에 먼저 집계해야 totalRevenue에 포함 가능
+    let gongguSales: { seller: string; revenue: number; orders: number }[] = [];
+    let selfSalesTotal = 0;
+    let gongguSalesTotal = 0;
+    const gongguChannelMap = new Map<string, number>(); // channel → revenue (for salesByChannel)
+    // gongguByDate: date → revenue (밸런스랩 공구 일별 집계, trend에 반영)
+    const gongguByDate = new Map<string, number>();
+    if (brand === "balancelab" || brand === "all") {
+      const { data: gongguData } = await supabase.from("product_sales").select("date,channel,revenue,quantity")
+        .gte("date", from).lte("date", to).eq("brand", "balancelab");
+      const sellerMap = new Map<string, { revenue: number; orders: number }>();
+      for (const r of gongguData || []) {
+        if (r.channel && r.channel.startsWith("공구_")) {
+          const seller = r.channel.replace("공구_", "");
+          const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };
+          e.revenue += Number(r.revenue); e.orders += Number(r.quantity || 0);
+          sellerMap.set(seller, e);
+          gongguSalesTotal += Number(r.revenue);
+          gongguChannelMap.set(r.channel, (gongguChannelMap.get(r.channel) || 0) + Number(r.revenue));
+          // 일별 집계
+          gongguByDate.set(r.date, (gongguByDate.get(r.date) || 0) + Number(r.revenue));
+        } else {
+          selfSalesTotal += Number(r.revenue);
+        }
+      }
+      gongguSales = Array.from(sellerMap.entries()).map(([seller, d]) => ({ seller, ...d })).sort((a, b) => b.revenue - a.revenue);
+    }
+
     // ── KPI 계산 ──
-    const totalRevenue = (sales || []).reduce((s, r) => s + Number(r.revenue), 0);
+    const totalRevenue = (sales || []).reduce((s, r) => s + Number(r.revenue), 0) + gongguSalesTotal;
     const totalOrders = (sales || []).reduce((s, r) => s + Number(r.orders), 0);
     const totalAdSpend = (adSpend || []).reduce((s, r) => s + Number(r.spend), 0) + totalMiscCost;
     const totalConvValue = (adSpend || []).reduce((s, r) => s + Number(r.conversion_value || 0), 0);
@@ -114,6 +143,13 @@ export async function GET(req: NextRequest) {
       const d = trendMap.get(r.date) || { revenue: 0, adSpend: 0 };
       d.adSpend += Number(r.spend);
       trendMap.set(r.date, d);
+    }
+    // 공구 매출 일별 trend 반영
+    for (const [date, rev] of gongguByDate.entries()) {
+      const d = trendMap.get(date) || { revenue: 0, adSpend: 0 };
+      d.revenue += rev;
+      d["밸런스랩"] = (d["밸런스랩"] || 0) + rev;
+      trendMap.set(date, d);
     }
     // Fill missing dates
     for (let d = new Date(from); d <= new Date(to); d.setDate(d.getDate() + 1)) {
@@ -165,6 +201,12 @@ export async function GET(req: NextRequest) {
       e.revenue += Number(r.revenue); e.orders += Number(r.orders);
       brandRevMap.set(r.brand, e);
     }
+    // 밸런스랩 공구 매출 추가 (product_sales → daily_sales에 없는 채널)
+    if (gongguSalesTotal > 0) {
+      const e = brandRevMap.get("balancelab") || { revenue: 0, orders: 0 };
+      e.revenue += gongguSalesTotal;
+      brandRevMap.set("balancelab", e);
+    }
     const brandRevenue = Array.from(brandRevMap.entries()).map(([b, d]) => ({ brand: b, ...d }));
 
     // ── Brand profit ──
@@ -193,12 +235,22 @@ export async function GET(req: NextRequest) {
       e[bl] = (e[bl] || 0) + Number(r.revenue);
       brandTrendMap.set(r.date, e);
     }
+    // 공구 매출 일별 brandTrend에 반영
+    for (const [date, rev] of gongguByDate.entries()) {
+      const e = brandTrendMap.get(date) || {};
+      e["밸런스랩"] = (e["밸런스랩"] || 0) + rev;
+      brandTrendMap.set(date, e);
+    }
     const brandRevenueTrend = Array.from(brandTrendMap.entries()).sort(([a], [b]) => a.localeCompare(b))
       .map(([date, d]) => ({ date, ...d }));
 
     // ── Sales by channel ──
     const salesChMap = new Map<string, number>();
     for (const r of sales || []) salesChMap.set(r.channel, (salesChMap.get(r.channel) || 0) + Number(r.revenue));
+    // 공구 채널 추가 (product_sales에만 있음)
+    for (const [ch, rev] of gongguChannelMap.entries()) {
+      salesChMap.set(ch, (salesChMap.get(ch) || 0) + rev);
+    }
     const salesByChannel = Array.from(salesChMap.entries()).map(([channel, revenue]) => ({ channel, revenue })).sort((a, b) => b.revenue - a.revenue);
 
     // ── Top 5 products ──
@@ -214,12 +266,13 @@ export async function GET(req: NextRequest) {
     const topProducts = Array.from(prodMap.entries()).map(([product, d]) => ({ product, ...d })).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
 
     // ── Funnel summary ──
+    // purchases는 daily_sales의 orders와 동일 소스 사용 (daily_funnel.purchases는 brand="all" 혼합으로 부정확)
     const { data: funnelData } = await supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to);
     const funnelRows = funnelData || [];
     const funnelSummary = {
       sessions: funnelRows.reduce((s, r) => s + Number(r.sessions || 0), 0),
       cartAdds: funnelRows.reduce((s, r) => s + Number(r.cart_adds || 0), 0),
-      purchases: funnelRows.reduce((s, r) => s + Number(r.purchases || 0), 0),
+      purchases: totalOrders, // daily_sales 기준으로 통일 (funnel purchases는 brand="all" 혼재)
       repurchases: funnelRows.reduce((s, r) => s + Number(r.repurchases || 0), 0),
     };
     const convRate = funnelSummary.sessions > 0 ? (funnelSummary.purchases / funnelSummary.sessions) * 100 : 0;
@@ -228,28 +281,6 @@ export async function GET(req: NextRequest) {
     const currentMonth = to.slice(0, 7);
     const { data: targetData } = await supabase.from("monthly_targets").select("*").eq("month", currentMonth);
     const targets = (targetData || []).filter(r => brand === "all" || r.brand === brand);
-
-    // ── 공구 분석 (밸런스랩) ──
-    let gongguSales: { seller: string; revenue: number; orders: number }[] = [];
-    let selfSalesTotal = 0;
-    let gongguSalesTotal = 0;
-    if (brand === "balancelab" || brand === "all") {
-      const { data: gongguData } = await supabase.from("daily_sales").select("channel,revenue,orders")
-        .gte("date", from).lte("date", to).eq("brand", "balancelab");
-      const sellerMap = new Map<string, { revenue: number; orders: number }>();
-      for (const r of gongguData || []) {
-        if (r.channel.startsWith("공구_")) {
-          const seller = r.channel.replace("공구_", "");
-          const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };
-          e.revenue += Number(r.revenue); e.orders += Number(r.orders);
-          sellerMap.set(seller, e);
-          gongguSalesTotal += Number(r.revenue);
-        } else {
-          selfSalesTotal += Number(r.revenue);
-        }
-      }
-      gongguSales = Array.from(sellerMap.entries()).map(([seller, d]) => ({ seller, ...d })).sort((a, b) => b.revenue - a.revenue);
-    }
 
     // ── Anomaly detection ──
     const anomalies: { brand: string; metric: string; change: number; current: number; previous: number }[] = [];
