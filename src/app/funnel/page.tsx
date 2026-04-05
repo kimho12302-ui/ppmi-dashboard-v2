@@ -13,13 +13,13 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 
-const SOURCE_COLORS: Record<string, string> = {
-  nutty: "#2563eb", cafe24: "#2563eb", smartstore: "#16a34a",
-  coupang: "#dc2626", balancelab_smartstore: "#7c3aed", all: "#6b7280",
+const CHANNEL_COLORS: Record<string, string> = {
+  cafe24: "#2563eb", smartstore: "#16a34a",
+  coupang: "#dc2626", "balancelab:smartstore": "#7c3aed",
 };
-const SOURCE_LABELS: Record<string, string> = {
-  nutty: "GA4 (너티)", cafe24: "카페24", smartstore: "스마트스토어",
-  coupang: "쿠팡", balancelab_smartstore: "밸런스랩 스마트스토어", all: "전체",
+const CHANNEL_LABELS: Record<string, string> = {
+  cafe24: "카페24 (자사몰)", smartstore: "스마트스토어",
+  coupang: "쿠팡", "balancelab:smartstore": "밸런스랩 스마트스토어",
 };
 
 export default function FunnelPage() {
@@ -35,13 +35,14 @@ function FunnelInner() {
   const { data, loading } = useFetch<{ funnel: DailyFunnel[]; metaAds: MetaAdRow[] }>(`/api/funnel?from=${from}&to=${to}`);
   const [selectedSource, setSelectedSource] = useState<string>("all");
 
-  const funnel = useMemo(() => (data?.funnel || []).filter((r) => r.brand !== "all"), [data]);
+  const funnel = useMemo(() => data?.funnel || [], [data]);
 
-  /* 소스별 집계 */
+  /* 소스별 집계 (channel 기준) */
   const bySource = useMemo(() => {
     const map: Record<string, { sessions: number; cart_adds: number; purchases: number; repurchases: number; signups: number; subscribers: number }> = {};
     for (const r of funnel) {
-      const key = r.brand;
+      const key = r.brand === "balancelab" ? `balancelab:${r.channel}` : r.channel;
+      if (!key) continue;
       if (!map[key]) map[key] = { sessions: 0, cart_adds: 0, purchases: 0, repurchases: 0, signups: 0, subscribers: 0 };
       map[key].sessions += r.sessions || 0;
       map[key].cart_adds += r.cart_adds || 0;
@@ -68,7 +69,8 @@ function FunnelInner() {
   const dailyTrend = useMemo(() => {
     const map: Record<string, { sessions: number; cart_adds: number; purchases: number; repurchases: number }> = {};
     for (const r of funnel) {
-      if (selectedSource !== "all" && r.brand !== selectedSource) continue;
+      const key = r.brand === "balancelab" ? `balancelab:${r.channel}` : r.channel;
+      if (selectedSource !== "all" && key !== selectedSource) continue;
       if (!map[r.date]) map[r.date] = { sessions: 0, cart_adds: 0, purchases: 0, repurchases: 0 };
       map[r.date].sessions += r.sessions || 0;
       map[r.date].cart_adds += r.cart_adds || 0;
@@ -82,7 +84,7 @@ function FunnelInner() {
   /* 소스별 비교 */
   const sourceRows = useMemo(() => {
     return Object.entries(bySource).map(([key, v]) => ({
-      source: key, label: SOURCE_LABELS[key] || key, color: SOURCE_COLORS[key] || "#6b7280",
+      source: key, label: CHANNEL_LABELS[key] || key, color: CHANNEL_COLORS[key] || "#6b7280",
       ...v,
       cartRate: v.sessions > 0 ? (v.cart_adds / v.sessions * 100) : 0,
       purchaseRate: v.cart_adds > 0 ? (v.purchases / v.cart_adds * 100) : 0,
@@ -173,7 +175,7 @@ function FunnelInner() {
         {Object.keys(bySource).map((src) => (
           <button key={src} onClick={() => setSelectedSource(src)}
             className={cn("px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap", selectedSource === src ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-            {SOURCE_LABELS[src] || src}
+            {CHANNEL_LABELS[src] || src}
           </button>
         ))}
       </div>
@@ -187,7 +189,7 @@ function FunnelInner() {
               <div className="flex items-center gap-2 text-sm">
                 {[
                   { label: r.source === "coupang" ? "노출" : "유입", value: r.sessions },
-                  { label: r.source === "smartstore" || r.source === "balancelab_smartstore" ? "알림" : "장바구니", value: r.source === "smartstore" || r.source === "balancelab_smartstore" ? r.subscribers : r.cart_adds },
+                  { label: r.source === "smartstore" || r.source === "balancelab:smartstore" ? "알림" : "장바구니", value: r.source === "smartstore" || r.source === "balancelab:smartstore" ? r.subscribers : r.cart_adds },
                   { label: "구매", value: r.purchases },
                   { label: "재구매", value: r.repurchases },
                 ].map((step, i, arr) => {

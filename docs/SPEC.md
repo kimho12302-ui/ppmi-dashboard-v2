@@ -45,6 +45,7 @@ status: active
 | v2.5 | 2026-04-05 | `ae234a8` | 인사이트 14번 4단계분류 + 키워드 9.5 버블그래프 |
 | v2.6 | 2026-04-05 | `41ca76b` | 모바일 더보기 메뉴 + UI 반응형 |
 | v2.7 | 2026-04-05 | `808cdb3` | Overview 7.3 채널ROAS 바차트 + 모바일 폴리싱 |
+| v2.8 | 2026-04-05 | — | 미해결 이슈 정리 + daily_funnel channel 컬럼 추가 기획 |
 
 ---
 
@@ -118,10 +119,399 @@ status: active
 6. 동적 config 전 페이지 적용
 
 ### ❌ 미해결 이슈
-- Vercel 배포: v3 코드 배포 여부 확인 필요
-- Meta 전환: 너티만 작동 (아이언펫/밸런스랩 0)
-- product_sales_unique 구 constraint 미삭제
-- daily_funnel brand 오염 데이터 (brand='smartstore' 에 balancelab 데이터)
+
+---
+
+#### 이슈 1. daily_funnel channel 컬럼 누락 (우선순위: 높음)
+
+**현상:** daily_funnel 테이블에 channel 컬럼이 없어서, 채널명(cafe24/smartstore/coupang)이 brand 컬럼에 들어감. 프론트에서 브랜드 필터가 퍼널에 적용 안 됨.
+
+**원인:** 테이블 설계 시 channel 컬럼 누락. 다른 테이블(daily_sales, daily_ad_spend, product_sales)은 모두 brand+channel 구조인데 daily_funnel만 brand 단일 키.
+
+**현재 DB 상태 (561행, 2025-07-31 ~ 2026-04-04):**
+```
+brand별 행수: nutty=248, cafe24=101, coupang=101, smartstore=101, balancelab_smartstore=7, all=3
+```
+```
+date       | brand               | sessions | purchases
+2026-04-04 | nutty               | 244      | 0         ← GA4 (brand 자리에 실제로는 채널 의미)
+2026-04-01 | smartstore          | 145      | 0         ← 채널명이 brand에
+2026-04-01 | coupang             | 293      | 20        ← 채널명이 brand에
+2026-04-01 | cafe24              | 0        | 0         ← 채널명이 brand에
+2026-03-29 | balancelab_smartstore| 700      | 0         ← 브랜드+채널 합성
+```
+
+**brand/channel 매핑 규칙 (확정):**
+| 데이터 소스 | brand | channel | 비고 |
+|---|---|---|---|
+| GA4 (sync_all.py) | all | cafe24 | 자사몰 유입: 세션, 페이지뷰 (밸런스랩 제외) |
+| 카페24 수기입력 (settings API) | all | cafe24 | 자사몰 전환: 장바구니, 회원가입, 재구매 |
+| 스마트스토어 일반 (settings API) | all | smartstore | 너티/아이언펫/사입 퍼널 |
+| 스마트스토어 밸런스랩 (settings API) | balancelab | smartstore | 밸런스랩 전용 |
+| 쿠팡 (upload-coupang-funnel API) | all | coupang | 너티 위주 |
+
+> - GA4와 카페24 수기입력은 같은 (date, all, cafe24) 행에 합쳐서 저장
+> - cafe24(자사몰) = 밸런스랩 제외. 밸런스랩은 현재 스마트스토어만
+> - brand="all"은 특정 브랜드가 아닌 해당 채널 전체를 의미
+
+**데이터 마이그레이션 (기존 561행 → 변환):**
+| 현재 brand 값 | → brand | → channel | 행수 |
+|---|---|---|---|
+| nutty | all | cafe24 | 248 |
+| cafe24 | all | cafe24 | 101 (같은 행에 merge) |
+| smartstore | all | smartstore | 101 |
+| coupang | all | coupang | 101 |
+| balancelab_smartstore | balancelab | smartstore | 7 |
+| all | all | all | 3 (삭제 또는 유지) |
+
+> nutty + cafe24 행은 같은 (date, all, cafe24)에 merge해야 함.
+> nutty 행: sessions, impressions 값 있음 (GA4 유입 지표)
+> cafe24 행: cart_adds, signups, repurchases 값 있음 (전환 지표)
+> → 하나의 행으로 합침
+
+**수정 범위 (파일별 상세):**
+
+**Step 1. DB 스키마 변경** (Supabase 대시보드, service_role key 필요)
+```sql
+-- 1) channel 컬럼 추가
+ALTER TABLE daily_funnel ADD COLUMN channel TEXT NOT NULL DEFAULT 'cafe24';
+
+-- 2) 기존 데이터 마이그레이션
+UPDATE daily_funnel SET channel = 'cafe24', brand = 'all' WHERE brand = 'nutty';
+UPDATE daily_funnel SET channel = 'cafe24' WHERE brand = 'cafe24';
+-- cafe24 + 기존 nutty 행 merge (같은 date에 대해)
+-- → 별도 마이그레이션 스크립트 필요
+
+UPDATE daily_funnel SET channel = 'smartstore', brand = 'all' WHERE brand = 'smartstore';
+UPDATE daily_funnel SET channel = 'smartstore', brand = 'balancelab' WHERE brand = 'balancelab_smartstore';
+UPDATE daily_funnel SET channel = 'coupang', brand = 'all' WHERE brand = 'coupang';
+UPDATE daily_funnel SET channel = 'all' WHERE brand = 'all';
+
+-- 3) 기존 unique constraint 삭제 + 새 constraint
+ALTER TABLE daily_funnel DROP CONSTRAINT IF EXISTS daily_funnel_date_brand_key;
+ALTER TABLE daily_funnel ADD CONSTRAINT daily_funnel_date_brand_channel_key UNIQUE (date, brand, channel);
+```
+
+**Step 2. Data Hub 시트 (Funnel 탭)**
+- 현재 컬럼: date, brand, sessions, avg_duration, cart_adds, signups, purchases, repurchases, subscribers, impressions
+- 변경: date, brand, **channel**, sessions, avg_duration, cart_adds, signups, purchases, repurchases, subscribers, impressions
+- Python 스크립트로 기존 데이터 마이그레이션 (DB와 동일 규칙)
+
+**Step 3. sync_all.py (GA4 퍼널 섹션, 라인 302~317)**
+- 현재: `brand: "nutty"`, channel 없음
+- 변경: `brand: "all"`, `channel: "cafe24"`
+- onConflict: `"date,brand"` → `"date,brand,channel"`
+
+**Step 4. API 수정 (정확한 코드 변경)**
+
+**4-1. `src/app/api/settings/route.ts`**
+
+smartstore_funnel (라인 88~106):
+```typescript
+// 현재
+const dbBrand = brand === "balancelab" ? "balancelab_smartstore" : "smartstore";
+const { error } = await supabase.from("daily_funnel").upsert(
+  { date, brand: dbBrand, subscribers, sessions, avg_duration, repurchases },
+  { onConflict: "date,brand" }
+);
+
+// 변경
+const dbBrand = brand === "balancelab" ? "balancelab" : "all";
+const { error } = await supabase.from("daily_funnel").upsert(
+  { date, brand: dbBrand, channel: "smartstore", subscribers, sessions, avg_duration, repurchases },
+  { onConflict: "date,brand,channel" }
+);
+```
+
+cafe24_funnel (라인 110~123):
+```typescript
+// 현재
+{ date, brand: "cafe24", cart_adds, signups, repurchases },
+{ onConflict: "date,brand" }
+
+// 변경
+{ date, brand: "all", channel: "cafe24", cart_adds, signups, repurchases },
+{ onConflict: "date,brand,channel" }
+```
+
+**4-2. `src/app/api/upload-coupang-funnel/route.ts` (라인 56~58)**
+```typescript
+// 현재
+{ date: d, brand: "coupang", ...vals },
+{ onConflict: "date,brand" }
+
+// 변경
+{ date: d, brand: "all", channel: "coupang", ...vals },
+{ onConflict: "date,brand,channel" }
+```
+
+**4-3. `src/app/api/funnel/route.ts` (전체)**
+```typescript
+// 현재: 전체 조회, 필터 없음
+supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to).order("date")
+
+// 변경: 그대로 유지 (프론트에서 channel 기준 필터)
+// brand 파라미터가 있으면 적용
+const brand = sp.get("brand");
+let query = supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to).order("date");
+if (brand && brand !== "all") query = query.eq("brand", brand);
+```
+
+**4-4. `src/app/api/dashboard/route.ts` (라인 23)**
+```typescript
+// 현재 — Overview에서 brand="all" 퍼널만 조회
+supabase.from("daily_funnel").select("*").eq("brand", "all").gte("date", from).lte("date", to).order("date")
+// 변경 없음 — brand="all" 행이 채널별로 나뉘므로 전체 합산에 문제 없음
+```
+
+**4-5. `src/app/api/missing-dates/route.ts` (라인 20~27)**
+```typescript
+// 현재
+supabase.from("daily_funnel").select("date, brand").gte("date", from).lte("date", to),
+// ...
+const cafe24Dates = new Set((funnelRes.data || []).filter((r) => r.brand === "cafe24").map((r) => r.date));
+const ssDates = new Set((funnelRes.data || []).filter((r) => r.brand === "smartstore").map((r) => r.date));
+const coupangFunnelDates = new Set((funnelRes.data || []).filter((r) => r.brand === "coupang").map((r) => r.date));
+
+// 변경
+supabase.from("daily_funnel").select("date, brand, channel").gte("date", from).lte("date", to),
+// ...
+const cafe24Dates = new Set((funnelRes.data || []).filter((r) => r.channel === "cafe24").map((r) => r.date));
+const ssDates = new Set((funnelRes.data || []).filter((r) => r.channel === "smartstore" && r.brand === "all").map((r) => r.date));
+const coupangFunnelDates = new Set((funnelRes.data || []).filter((r) => r.channel === "coupang").map((r) => r.date));
+```
+
+**4-6. `src/app/api/data-status/route.ts` (라인 32~39, 64, 77~81)**
+
+getLatestFunnel 함수 변경:
+```typescript
+// 현재
+async function getLatestFunnel(brand: string): Promise<string | null> {
+  const { data } = await supabase.from("daily_funnel").select("date")
+    .eq("brand", brand).order("date", { ascending: false }).limit(1);
+  return data?.[0]?.date || null;
+}
+
+// 변경 — channel 기준으로 조회
+async function getLatestFunnelByChannel(channel: string, brand?: string): Promise<string | null> {
+  let query = supabase.from("daily_funnel").select("date").eq("channel", channel);
+  if (brand) query = query.eq("brand", brand);
+  const { data } = await query.order("date", { ascending: false }).limit(1);
+  return data?.[0]?.date || null;
+}
+```
+
+sourceDefs 변경 (라인 64):
+```typescript
+// 현재: getLatestFunnel("nutty")
+// 변경: getLatestFunnelByChannel("cafe24")
+```
+
+퍼널 소스 정의 변경 (라인 77~81):
+```typescript
+// 현재
+{ id: "coupang_funnel", ..., fetcher: () => getLatestFunnel("coupang") },
+{ id: "smartstore_ironpet", ..., fetcher: () => getLatestFunnel("smartstore") },
+{ id: "smartstore_balancelab", ..., fetcher: () => getLatestFunnel("balancelab_smartstore") },
+{ id: "cafe24_funnel", ..., fetcher: () => getLatestFunnel("cafe24") },
+
+// 변경
+{ id: "coupang_funnel", ..., fetcher: () => getLatestFunnelByChannel("coupang") },
+{ id: "smartstore_ironpet", ..., fetcher: () => getLatestFunnelByChannel("smartstore", "all") },
+{ id: "smartstore_balancelab", ..., fetcher: () => getLatestFunnelByChannel("smartstore", "balancelab") },
+{ id: "cafe24_funnel", ..., fetcher: () => getLatestFunnelByChannel("cafe24") },
+```
+
+**Step 5. 타입 + 프론트엔드 수정**
+
+**5-1. `src/lib/types.ts` (라인 43~53)**
+```typescript
+// 현재
+export interface DailyFunnel {
+  date: string;
+  brand: string;
+  // ...
+}
+
+// 변경 — channel 추가
+export interface DailyFunnel {
+  date: string;
+  brand: string;
+  channel: string;  // 추가
+  // ...
+}
+```
+
+**5-2. `src/app/funnel/page.tsx`**
+
+SOURCE_COLORS/LABELS 변경 (라인 16~23):
+```typescript
+// 현재
+const SOURCE_COLORS: Record<string, string> = {
+  nutty: "#2563eb", cafe24: "#2563eb", smartstore: "#16a34a",
+  coupang: "#dc2626", balancelab_smartstore: "#7c3aed", all: "#6b7280",
+};
+const SOURCE_LABELS: Record<string, string> = {
+  nutty: "GA4 (너티)", cafe24: "카페24", smartstore: "스마트스토어",
+  coupang: "쿠팡", balancelab_smartstore: "밸런스랩 스마트스토어", all: "전체",
+};
+
+// 변경 — channel 기준, balancelab은 brand+channel 조합
+const CHANNEL_COLORS: Record<string, string> = {
+  cafe24: "#2563eb", smartstore: "#16a34a",
+  coupang: "#dc2626", "balancelab:smartstore": "#7c3aed",
+};
+const CHANNEL_LABELS: Record<string, string> = {
+  cafe24: "카페24 (자사몰)", smartstore: "스마트스토어",
+  coupang: "쿠팡", "balancelab:smartstore": "밸런스랩 스마트스토어",
+};
+```
+
+소스별 집계 변경 (라인 38~53):
+```typescript
+// 현재
+const funnel = useMemo(() => (data?.funnel || []).filter((r) => r.brand !== "all"), [data]);
+const bySource = useMemo(() => {
+  for (const r of funnel) {
+    const key = r.brand;  // brand 기준
+    // ...
+  }
+}, [funnel]);
+
+// 변경 — channel 기준, balancelab은 별도 키
+const funnel = useMemo(() => data?.funnel || [], [data]);
+const bySource = useMemo(() => {
+  for (const r of funnel) {
+    const key = r.brand === "balancelab" ? `balancelab:${r.channel}` : r.channel;
+    // ...
+  }
+}, [funnel]);
+```
+
+일별 트렌드 필터 변경 (라인 68~80):
+```typescript
+// 현재: r.brand로 필터
+if (selectedSource !== "all" && r.brand !== selectedSource) continue;
+
+// 변경: channel 키로 필터
+const key = r.brand === "balancelab" ? `balancelab:${r.channel}` : r.channel;
+if (selectedSource !== "all" && key !== selectedSource) continue;
+```
+
+채널별 카드 (라인 189~190) — 스마트스토어/밸런스랩 판단 변경:
+```typescript
+// 현재
+r.source === "smartstore" || r.source === "balancelab_smartstore"
+
+// 변경
+r.source === "smartstore" || r.source === "balancelab:smartstore"
+```
+
+**Step 6. 추가 프론트엔드 수정**
+
+**6-1. `src/app/page.tsx` (Overview — 라인 68~71)**
+```typescript
+// 현재 — brand="all" 제외 (변경 전에는 brand="all"이 전체 합산 행이었음)
+const funnel = useMemo(() => {
+  const all = funnelData?.funnel || [];
+  return all.filter((r) => r.brand !== "all");
+}, [funnelData]);
+
+// 변경 — brand="all"이 이제 정상 데이터(채널별)이므로 필터 제거
+// Overview는 /api/funnel에서 전체 데이터를 가져와 합산하므로 전부 포함
+const funnel = useMemo(() => funnelData?.funnel || [], [funnelData]);
+```
+
+> Overview의 funnelSummary(라인 200~210)는 전체 합산이므로 코드 변경 불필요.
+> 단, Overview에서 /api/funnel을 호출하고 있으므로(라인 46), dashboard API의 brand="all" 필터와 중복 조회 아닌지 확인 필요.
+> → page.tsx 라인 46에서 /api/funnel 호출, 라인 39에서 /api/dashboard 호출. dashboard API(라인 23)도 daily_funnel에서 brand="all"만 가져옴.
+> → 변경 후: dashboard API는 brand="all" 행만 가져오므로 cafe24/smartstore/coupang 3행. /api/funnel은 전체.
+> → Overview에서 funnel 데이터는 /api/funnel에서 가져오므로, funnelSummary 합산에 balancelab:smartstore도 포함됨. 이건 정상 동작.
+
+**6-2. `src/app/settings/page.tsx` (라인 80~86)**
+```typescript
+// 현재 — payload는 API로 전달만 하므로 프론트 변경 불필요
+// settings API 쪽에서 brand/channel 매핑하므로 그대로 유지
+// 단, coupang_funnel은 settings API가 아닌 upload-coupang-funnel API를 쓰므로 확인
+// → 라인 85: type: "coupang_funnel" → settings API에는 이 case가 없음!
+// → 실제로는 설정 페이지에서 쿠팡 퍼널 수기입력 시 어디로 가는지 확인 필요
+```
+
+확인: 설정 페이지 쿠팡 퍼널 수기입력(라인 85)은 `type: "coupang_funnel"`로 settings API에 POST하는데, settings/route.ts에는 이 case가 없어서 `Unknown type` 400 에러가 남. **기존 버그.**
+
+수정: settings/route.ts에 coupang_funnel case 추가하거나, 설정 페이지에서 upload-coupang-funnel API로 보내도록 변경.
+```typescript
+// settings/route.ts에 case 추가 (권장)
+case "coupang_funnel": {
+  const { date, impressions, sessions, cart_adds, purchases } = data;
+  const { error } = await supabase.from("daily_funnel").upsert(
+    {
+      date, brand: "all", channel: "coupang",
+      impressions: Number(impressions) || 0,
+      sessions: Number(sessions) || 0,
+      cart_adds: Number(cart_adds) || 0,
+      purchases: Number(purchases) || 0,
+    },
+    { onConflict: "date,brand,channel" }
+  );
+  if (error) throw error;
+  return NextResponse.json({ ok: true, message: `쿠팡 퍼널 저장 완료 (${date})` });
+}
+```
+
+**6-3. `src/app/raw/page.tsx`**
+```typescript
+// 변경 불필요 — daily_funnel 테이블을 select("*")로 전체 조회하므로
+// channel 컬럼 추가되면 자동으로 Raw Data 페이지에 표시됨
+```
+
+**검증 체크리스트:**
+- [ ] DB: daily_funnel에 channel 컬럼 존재, unique (date, brand, channel)
+- [ ] DB: brand에 채널명 없음 (all, balancelab만)
+- [ ] DB: nutty+cafe24 merge 후 데이터 누락 없음
+- [ ] Data Hub 시트: Funnel 탭 channel 컬럼 정상
+- [ ] sync_all.py: GA4 → (all, cafe24) 정상 저장
+- [ ] settings API: smartstore/cafe24 퍼널 정상 저장
+- [ ] upload-coupang-funnel: (all, coupang) 정상 저장
+- [ ] funnel 페이지: 소스별 필터 정상 작동
+- [ ] Overview: 퍼널 데이터 정상 표시
+- [ ] missing-dates: 채널별 누락 감지 정상
+
+**확장 원칙:** 브랜드-채널 매핑은 설정 페이지(brand_config/channel_config)에서 동적 관리. 밸런스랩이 쿠팡 입점하면 설정에서 추가만 하면 되는 구조. 코드 수정 0, 배포 0.
+
+**원칙:** 원본 시트(통계 시트)는 건드리지 않음. Data Hub 시트에서만 작업.
+
+---
+
+#### 이슈 2. product_sales unique constraint lineup 미포함 (우선순위: 중간)
+
+**현상:** product_sales의 unique key가 (date, brand, product, channel)인데 lineup 미포함. 같은 상품+채널의 다른 셀러(코루비/키키맘 등) 구분 불가, upsert 시 덮어씌워짐.
+
+**수정:**
+```sql
+ALTER TABLE product_sales DROP CONSTRAINT IF EXISTS product_sales_date_brand_product_channel_key;
+ALTER TABLE product_sales ADD CONSTRAINT product_sales_date_brand_product_channel_lineup_key 
+  UNIQUE (date, brand, product, channel, lineup);
+```
+Supabase 대시보드에서 실행. anon key로는 불가, service_role key 필요.
+
+**영향 범위:** upload-sales API의 onConflict도 `"date,brand,product,channel,lineup"`으로 변경 필요.
+
+---
+
+#### 이슈 3. Vercel 공구 override 미작동 (우선순위: 낮음)
+
+**현상:** upload-sales API에서 밸런스랩 공동구매 셀러를 channel=공구_셀러명으로 override하는 로직이 Vercel 배포 시 작동 안 함. 로컬 Python에서는 정상.
+
+**현재 우회:** Python 스크립트로 직접 업로드.
+
+**디버깅 계획:** Vercel 런타임 로그에서 override 조건 분기 도달 여부 확인. 인코딩(한글 비교) 문제 가능성 높음.
+
+---
+
+#### ~~이슈 4. Meta 전환 너티만 작동~~ (이슈 아님)
+- 아이언펫: 너티와 같은 픽셀, 실제 전환 없어서 0
+- 밸런스랩: 자사몰 한계로 전환 추적 불가
 
 ---
 

@@ -17,14 +17,14 @@ export async function GET() {
     const [salesRes, adsRes, funnelRes] = await Promise.all([
       supabase.from("daily_sales").select("date").gte("date", from).lte("date", to),
       supabase.from("daily_ad_spend").select("date, channel").gte("date", from).lte("date", to),
-      supabase.from("daily_funnel").select("date, brand").gte("date", from).lte("date", to),
+      supabase.from("daily_funnel").select("date, brand, channel").gte("date", from).lte("date", to),
     ]);
 
     const salesDates = new Set((salesRes.data || []).map((r) => r.date));
     const adsDates = new Set((adsRes.data || []).map((r) => r.date));
-    const cafe24Dates = new Set((funnelRes.data || []).filter((r) => r.brand === "cafe24").map((r) => r.date));
-    const ssDates = new Set((funnelRes.data || []).filter((r) => r.brand === "smartstore").map((r) => r.date));
-    const coupangFunnelDates = new Set((funnelRes.data || []).filter((r) => r.brand === "coupang").map((r) => r.date));
+    const cafe24Dates = new Set((funnelRes.data || []).filter((r) => r.channel === "cafe24").map((r) => r.date));
+    const ssDates = new Set((funnelRes.data || []).filter((r) => r.channel === "smartstore" && r.brand === "all").map((r) => r.date));
+    const coupangFunnelDates = new Set((funnelRes.data || []).filter((r) => r.channel === "coupang").map((r) => r.date));
 
     const gaps: { date: string; missing: string[] }[] = [];
     const missingSales: string[] = [];

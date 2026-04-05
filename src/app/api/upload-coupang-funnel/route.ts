@@ -54,8 +54,8 @@ export async function POST(req: NextRequest) {
       for (const entry of Array.from(byDate.entries())) {
         const [d, vals] = entry;
         const { error } = await supabase.from("daily_funnel").upsert(
-          { date: d, brand: "coupang", ...vals },
-          { onConflict: "date,brand" }
+          { date: d, brand: "all", channel: "coupang", ...vals },
+          { onConflict: "date,brand,channel" }
         );
         if (error) console.error(`Funnel upsert error for ${d}:`, error);
         else funnelDays++;

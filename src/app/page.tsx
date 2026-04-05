@@ -65,10 +65,7 @@ function OverviewInner() {
     return all.filter((r) => r.brand === brand);
   }, [data, brand]);
 
-  const funnel = useMemo(() => {
-    const all = funnelData?.funnel || [];
-    return all.filter((r) => r.brand !== "all");
-  }, [funnelData]);
+  const funnel = useMemo(() => funnelData?.funnel || [], [funnelData]);
 
   /* ── 이전 기간 (전기간 대비) ── */
   const prevSales = useMemo(() => {

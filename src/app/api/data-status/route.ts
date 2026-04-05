@@ -29,13 +29,10 @@ async function getLatestByChannelLike(pattern: string): Promise<string | null> {
   return data?.[0]?.date || null;
 }
 
-async function getLatestFunnel(brand: string): Promise<string | null> {
-  const { data } = await supabase
-    .from("daily_funnel")
-    .select("date")
-    .eq("brand", brand)
-    .order("date", { ascending: false })
-    .limit(1);
+async function getLatestFunnelByChannel(channel: string, brand?: string): Promise<string | null> {
+  let query = supabase.from("daily_funnel").select("date").eq("channel", channel);
+  if (brand) query = query.eq("brand", brand);
+  const { data } = await query.order("date", { ascending: false }).limit(1);
   return data?.[0]?.date || null;
 }
 
@@ -61,7 +58,7 @@ export async function GET() {
       { id: "ga4", label: "GA4", type: "auto", fetcher: async () => {
         const [adDate, funnelDate] = await Promise.all([
           getLatestByChannelLike("ga4_%"),
-          getLatestFunnel("nutty"),
+          getLatestFunnelByChannel("cafe24"),
         ]);
         // 둘 중 더 오래된 날짜 반환 (둘 다 수집되어야 완료)
         if (!adDate) return funnelDate;
@@ -74,10 +71,10 @@ export async function GET() {
       { id: "coupang_ads", label: "\uCFE0\uD321 \uAD11\uACE0\uBE44", type: "manual", fetcher: () => getLatestByChannel("coupang_ads") },
       { id: "gfa", label: "GFA \uAD11\uACE0\uBE44", type: "manual", fetcher: () => getLatestByChannel("gfa") },
       { id: "sales", label: "\uD310\uB9E4\uC2E4\uC801", type: "manual", fetcher: () => getLatestFromTable("daily_sales") },
-      { id: "coupang_funnel", label: "\uCFE0\uD321 \uD37C\uB110", type: "manual", fetcher: () => getLatestFunnel("coupang") },
-      { id: "smartstore_ironpet", label: "\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4 (\uC544\uC774\uC5B8\uD3AB)", type: "manual", fetcher: () => getLatestFunnel("smartstore") },
-      { id: "smartstore_balancelab", label: "\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4 (\uBC38\uB7F0\uC2A4\uB7A9)", type: "manual", fetcher: () => getLatestFunnel("balancelab_smartstore") },
-      { id: "cafe24_funnel", label: "\uCE74\uD39824 \uD37C\uB110", type: "manual", fetcher: () => getLatestFunnel("cafe24") },
+      { id: "coupang_funnel", label: "\uCFE0\uD321 \uD37C\uB110", type: "manual", fetcher: () => getLatestFunnelByChannel("coupang") },
+      { id: "smartstore_ironpet", label: "\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4 (\uC544\uC774\uC5B8\uD3AB)", type: "manual", fetcher: () => getLatestFunnelByChannel("smartstore", "all") },
+      { id: "smartstore_balancelab", label: "\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4 (\uBC38\uB7F0\uC2A4\uB7A9)", type: "manual", fetcher: () => getLatestFunnelByChannel("smartstore", "balancelab") },
+      { id: "cafe24_funnel", label: "\uCE74\uD39824 \uD37C\uB110", type: "manual", fetcher: () => getLatestFunnelByChannel("cafe24") },
     ];
 
     const sources: SourceStatus[] = await Promise.all(

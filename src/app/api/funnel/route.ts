@@ -7,13 +7,17 @@ export async function GET(req: NextRequest) {
   const to = sp.get("to") || "";
 
   try {
+    const brand = sp.get("brand");
+    let funnelQuery = supabase
+      .from("daily_funnel")
+      .select("*")
+      .gte("date", from)
+      .lte("date", to)
+      .order("date");
+    if (brand && brand !== "all") funnelQuery = funnelQuery.eq("brand", brand);
+
     const [funnelRes, metaRes] = await Promise.all([
-      supabase
-        .from("daily_funnel")
-        .select("*")
-        .gte("date", from)
-        .lte("date", to)
-        .order("date"),
+      funnelQuery,
       supabase
         .from("daily_ad_spend")
         .select("date,brand,impressions,clicks,conversions,conversion_value,reach,spend")

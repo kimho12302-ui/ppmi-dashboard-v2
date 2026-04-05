@@ -85,22 +85,22 @@ export async function POST(req: NextRequest) {
     const { type, data, forceOverride, extra } = body;
 
     switch (type) {
-      // ── 스마트스토어 퍼널 (아이언펫 / 밸런스랩) ──
+      // ── 스마트스토어 퍼널 (일반 / 밸런스랩) ──
       case "smartstore_funnel": {
         const { date, brand, subscribers, sessions, avg_duration, repurchases } = data;
-        // ★ brand 매핑: balancelab → balancelab_smartstore, 나머지 → smartstore
-        const dbBrand = brand === "balancelab" ? "balancelab_smartstore" : "smartstore";
+        const dbBrand = brand === "balancelab" ? "balancelab" : "all";
 
         const { error } = await supabase.from("daily_funnel").upsert(
           {
             date,
             brand: dbBrand,
+            channel: "smartstore",
             subscribers: Number(subscribers) || 0,
             sessions: Number(sessions) || 0,
             avg_duration: Number(avg_duration) || 0,
             repurchases: Number(repurchases) || 0,
           },
-          { onConflict: "date,brand" }
+          { onConflict: "date,brand,channel" }
         );
         if (error) throw error;
         return NextResponse.json({ ok: true, message: `smartstore 퍼널 저장 완료 (${date})` });
@@ -112,15 +112,35 @@ export async function POST(req: NextRequest) {
         const { error } = await supabase.from("daily_funnel").upsert(
           {
             date,
-            brand: "cafe24",
+            brand: "all",
+            channel: "cafe24",
             cart_adds: Number(cart_adds) || 0,
             signups: Number(signups) || 0,
             repurchases: Number(repurchases) || 0,
           },
-          { onConflict: "date,brand" }
+          { onConflict: "date,brand,channel" }
         );
         if (error) throw error;
         return NextResponse.json({ ok: true, message: `카페24 퍼널 저장 완료 (${date})` });
+      }
+
+      // ── 쿠팡 퍼널 (수기입력) ──
+      case "coupang_funnel": {
+        const { date, impressions, sessions, cart_adds, purchases } = data;
+        const { error } = await supabase.from("daily_funnel").upsert(
+          {
+            date,
+            brand: "all",
+            channel: "coupang",
+            impressions: Number(impressions) || 0,
+            sessions: Number(sessions) || 0,
+            cart_adds: Number(cart_adds) || 0,
+            purchases: Number(purchases) || 0,
+          },
+          { onConflict: "date,brand,channel" }
+        );
+        if (error) throw error;
+        return NextResponse.json({ ok: true, message: `쿠팡 퍼널 저장 완료 (${date})` });
       }
 
       // ── 수동 광고비 (GFA, 쿠팡 등) ──

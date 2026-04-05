@@ -43,6 +43,7 @@ export interface DailyAdSpend {
 export interface DailyFunnel {
   date: string;
   brand: string;
+  channel: string;
   impressions: number;
   sessions: number;
   cart_adds: number;
