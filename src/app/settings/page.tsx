@@ -49,6 +49,73 @@ function StatusBadge({ status }: { status: string | null }) {
   return <div className={`text-sm px-3 py-1.5 rounded ${isOk ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>{status}</div>;
 }
 
+/* ── 데이터 수집 현황 ── */
+interface SourceStatus { id: string; label: string; type: "auto" | "manual"; latestDate: string | null; ok: boolean }
+
+function DataStatusPanel() {
+  const [sources, setSources] = useState<SourceStatus[]>([]);
+  const [refDate, setRefDate] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/data-status");
+      const d = await res.json();
+      setSources(d.sources || []);
+      setRefDate(d.referenceDate || "");
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <div className="text-sm text-muted-foreground py-2">현황 로딩 중...</div>;
+
+  const auto = sources.filter(s => s.type === "auto");
+  const manual = sources.filter(s => s.type === "manual");
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-sm">데이터 수집 현황 <span className="text-muted-foreground font-normal">({refDate} 기준)</span></h3>
+          <button onClick={load} className="text-xs text-muted-foreground hover:text-foreground">↻ 새로고침</button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">🤖 자동 수집</p>
+            <div className="space-y-1">
+              {auto.map(s => (
+                <div key={s.id} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5">
+                    <span>{s.ok ? "✅" : "⚠️"}</span>
+                    <span className={s.ok ? "" : "text-amber-600"}>{s.label}</span>
+                  </span>
+                  <span className="text-xs text-muted-foreground">{s.latestDate || "없음"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground mb-2">✍️ 수동 입력</p>
+            <div className="space-y-1">
+              {manual.map(s => (
+                <div key={s.id} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-1.5">
+                    <span>{s.ok ? "✅" : "⚠️"}</span>
+                    <span className={s.ok ? "" : "text-amber-600"}>{s.label}</span>
+                  </span>
+                  <span className="text-xs text-muted-foreground">{s.latestDate || "없음"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ── 일일 입력 탭 ── */
 function DailyInputTab() {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -91,6 +158,8 @@ function DailyInputTab() {
   };
 
   return (
+    <div className="space-y-4">
+    <DataStatusPanel />
     <Card>
       <CardContent className="p-4 space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
@@ -140,6 +209,7 @@ function DailyInputTab() {
         </div>
       </CardContent>
     </Card>
+    </div>
   );
 }
 
