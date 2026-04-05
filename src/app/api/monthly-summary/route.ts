@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+// Supabase anon key has max-rows=1000 per request. Use pagination to fetch all rows.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAll(baseQuery: any): Promise<any[]> {
+  const PAGE = 1000;
+  let from = 0;
+  const all: unknown[] = [];
+  while (true) {
+    const { data, error } = await baseQuery.range(from, from + PAGE - 1);
+    if (error) break;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
@@ -14,12 +31,12 @@ export async function GET(request: NextRequest) {
     let salesQ = supabase.from("daily_sales").select("date,revenue,orders").gte("date", fromDate).lte("date", toDate);
     if (brand !== "all") { salesQ = salesQ.eq("brand", brand); }
     else { salesQ = salesQ.neq("brand", "all"); }
-    const { data: sales } = await salesQ;
+    const sales = await fetchAll(salesQ);
 
     let adQ = supabase.from("daily_ad_spend").select("date,spend,conversion_value").gte("date", fromDate).lte("date", toDate);
     if (brand !== "all") { adQ = adQ.eq("brand", brand); }
     else { adQ = adQ.neq("brand", "all"); }
-    const { data: ads } = await adQ;
+    const ads = await fetchAll(adQ);
 
     // Fetch misc costs (monthly granularity)
     let miscQ = supabase.from("manual_monthly").select("month,value").eq("category", "misc_cost").gte("month", fromDate).lte("month", toDate);
@@ -30,6 +47,19 @@ export async function GET(request: NextRequest) {
     let shipQ = supabase.from("manual_monthly").select("month,value").eq("category", "shipping_cost").gte("month", fromDate).lte("month", toDate);
     if (brand !== "all") shipQ = shipQ.eq("brand", brand);
     const { data: shipData } = await shipQ;
+
+    // Fetch balancelab gonggu revenue from product_sales (공구채널은 daily_sales에 없음)
+    const gongguMonthMap = new Map<string, number>(); // month → gonggu revenue
+    if (brand === "balancelab" || brand === "all") {
+      const gongguData = await fetchAll(supabase.from("product_sales").select("date,channel,revenue")
+        .gte("date", fromDate).lte("date", toDate).eq("brand", "balancelab"));
+      for (const r of gongguData || []) {
+        if (r.channel && r.channel.startsWith("공구_")) {
+          const m = r.date.slice(0, 7);
+          gongguMonthMap.set(m, (gongguMonthMap.get(m) || 0) + Number(r.revenue));
+        }
+      }
+    }
 
     // Fetch product costs for COGS
     const { data: productCostsData } = await supabase.from("product_costs").select("product,brand,cost_price,manufacturing_cost,shipping_cost");
@@ -42,7 +72,7 @@ export async function GET(request: NextRequest) {
     // Fetch product_sales for COGS matching
     let cogsProdQ = supabase.from("product_sales").select("date,product,brand,quantity").gte("date", fromDate).lte("date", toDate);
     if (brand !== "all") cogsProdQ = cogsProdQ.eq("brand", brand);
-    const { data: cogsProdData } = await cogsProdQ;
+    const cogsProdData = await fetchAll(cogsProdQ);
 
     // Group by month
     const months = new Map<string, { revenue: number; orders: number; adSpend: number; cv: number; miscCost: number; shipCost: number; cogs: number }>();
@@ -75,6 +105,13 @@ export async function GET(request: NextRequest) {
       const m = r.month.slice(0, 7);
       const existing = months.get(m);
       if (existing) existing.shipCost += Number(r.value || 0);
+    }
+
+    // Add gonggu revenue by month (balancelab 공구 채널)
+    for (const [m, rev] of gongguMonthMap.entries()) {
+      const existing = months.get(m) || { revenue: 0, orders: 0, adSpend: 0, cv: 0, miscCost: 0, shipCost: 0, cogs: 0 };
+      existing.revenue += rev;
+      months.set(m, existing);
     }
 
     // Add COGS by month
@@ -110,7 +147,9 @@ export async function GET(request: NextRequest) {
     for (let i = 1; i < summary.length; i++) {
       const prev = summary[i - 1];
       const curr = summary[i];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (curr as any).revGrowth = prev.revenue > 0 ? ((curr.revenue / prev.revenue) - 1) * 100 : 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (curr as any).orderGrowth = prev.orders > 0 ? ((curr.orders / prev.orders) - 1) * 100 : 0;
     }
 
@@ -131,7 +170,7 @@ export async function GET(request: NextRequest) {
     ytd.profitRate = ytd.revenue > 0 ? (ytd.profit / ytd.revenue) * 100 : 0;
 
     return NextResponse.json({ summary, ytd, year });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Failed to fetch monthly summary" }, { status: 500 });
   }
 }

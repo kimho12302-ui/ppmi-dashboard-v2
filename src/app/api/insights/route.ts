@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 
     const { data: funnel } = await supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to);
 
-    let prodQ = supabase.from("product_sales").select("*").gte("date", from).lte("date", to);
+    let prodQ = supabase.from("product_sales").select("*").gte("date", from).lte("date", to).range(0, 9999);
     if (brand !== "all") prodQ = prodQ.eq("brand", brand);
     const { data: products } = await prodQ;
 
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
 
     // ===== REVENUE ANALYSIS =====
     const totalRevenue = salesRows.reduce((s, r) => s + Number(r.revenue), 0);
-    const totalOrders = salesRows.reduce((s, r) => s + Number(r.orders), 0);
+    const _totalOrders = salesRows.reduce((s, r) => s + Number(r.orders), 0); // eslint-disable-line @typescript-eslint/no-unused-vars
     const totalAdSpend = adRows.reduce((s, r) => s + Number(r.spend), 0);
     const roas = totalAdSpend > 0 ? totalRevenue / totalAdSpend : 0;
 
@@ -163,7 +163,7 @@ export async function GET(request: NextRequest) {
     const { data: prevAds } = await supabase.from("daily_ad_spend").select("*").gte("date", prevFrom).lte("date", prevTo);
 
     const prevRevenue = (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0);
-    const prevTotalAdSpend = (prevAds || []).reduce((s, r) => s + Number(r.spend), 0);
+    void (prevAds || []).reduce((s, r) => s + Number(r.spend), 0); // prevTotalAdSpend - reserved for future use
 
     if (prevRevenue > 0 && totalRevenue < prevRevenue * 0.85) {
       // Revenue dropped 15%+ → find root cause
@@ -205,7 +205,7 @@ export async function GET(request: NextRequest) {
 
       // Product-level drill
       const prevProdMap = new Map<string, number>();
-      const { data: prevProducts } = await supabase.from("product_sales").select("product,revenue").gte("date", prevFrom).lte("date", prevTo);
+      const { data: prevProducts } = await supabase.from("product_sales").select("product,revenue").gte("date", prevFrom).lte("date", prevTo).range(0, 9999);
       for (const r of prevProducts || []) {
         prevProdMap.set(r.product, (prevProdMap.get(r.product) || 0) + Number(r.revenue));
       }

@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    let cogsProdQ = supabase.from("product_sales").select("product,brand,quantity").gte("date", from).lte("date", to);
+    let cogsProdQ = supabase.from("product_sales").select("product,brand,quantity").gte("date", from).lte("date", to).range(0, 9999);
     if (brand !== "all") cogsProdQ = cogsProdQ.eq("brand", brand);
     const { data: cogsProdData } = await cogsProdQ;
 
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
     const gongguByDate = new Map<string, number>();
     if (brand === "balancelab" || brand === "all") {
       const { data: gongguData } = await supabase.from("product_sales").select("date,channel,revenue,quantity")
-        .gte("date", from).lte("date", to).eq("brand", "balancelab");
+        .gte("date", from).lte("date", to).eq("brand", "balancelab").range(0, 9999);
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
       for (const r of gongguData || []) {
         if (r.channel && r.channel.startsWith("공구_")) {
@@ -254,7 +254,7 @@ export async function GET(req: NextRequest) {
     const salesByChannel = Array.from(salesChMap.entries()).map(([channel, revenue]) => ({ channel, revenue })).sort((a, b) => b.revenue - a.revenue);
 
     // ── Top 5 products ──
-    let prodQ = supabase.from("product_sales").select("product,revenue,quantity,brand").gte("date", from).lte("date", to);
+    let prodQ = supabase.from("product_sales").select("product,revenue,quantity,brand").gte("date", from).lte("date", to).range(0, 9999);
     if (brand !== "all") prodQ = prodQ.eq("brand", brand);
     const { data: prodData } = await prodQ;
     const prodMap = new Map<string, { revenue: number; quantity: number; brand: string }>();
