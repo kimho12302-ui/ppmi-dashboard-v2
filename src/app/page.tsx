@@ -32,81 +32,53 @@ export default function OverviewPage() {
 function OverviewInner() {
   const { brand, from, to } = useFilterParams();
   const { brandMap, channelMap } = useConfig();
-  const { data, loading } = useFetch<{
-    sales: DailySales[];
-    ads: DailyAdSpend[];
-    products: ProductSales[];
-    funnel: DailyFunnel[];
-    prevSales: DailySales[];
-    prevAds: DailyAdSpend[];
-  }>(`/api/dashboard?from=${from}&to=${to}`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, loading } = useFetch<any>(`/api/dashboard?from=${from}&to=${to}&brand=${brand || "all"}`);
   const [selectedKpi, setSelectedKpi] = useState<KpiKey>(null);
 
-  // 퍼널 별도 fetch
-  const { data: funnelData } = useFetch<{ funnel: DailyFunnel[] }>(`/api/funnel?from=${from}&to=${to}`);
   // 목표 fetch
-  const { data: targetsData } = useFetch<{ targets: Record<string, { revenue_target: number; ad_budget_target: number; roas_target: number }> }>("/api/targets");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: targetsData } = useFetch<any>("/api/targets");
 
-  const sales = useMemo(() => {
-    const all = data?.sales || [];
-    if (!brand || brand === "all") return all;
-    return all.filter((r) => r.brand === brand);
-  }, [data, brand]);
+  // API가 서버에서 계산한 KPI 직접 사용
+  const kpi = useMemo(() => data?.kpi || {
+    revenue: 0, revenuePrev: 0, adSpend: 0, adSpendPrev: 0,
+    roas: 0, roasPrev: 0, orders: 0, ordersPrev: 0,
+    profit: 0, profitPrev: 0, mer: 0, merPrev: 0, aov: 0, aovPrev: 0,
+    cogs: 0, shippingCost: 0, miscCost: 0, matchedRate: 0,
+  }, [data]);
 
-  const ads = useMemo(() => {
-    const all = data?.ads || [];
-    if (!brand || brand === "all") return all;
-    return all.filter((r) => r.brand === brand);
-  }, [data, brand]);
-
+  // 서버에서 보낸 집계 데이터 직접 사용
+  const sales = useMemo(() => [] as DailySales[], []);  // raw 데이터 더 이상 안 씀
+  const ads = useMemo(() => [] as DailyAdSpend[], []);
   const products = useMemo(() => {
-    const all = data?.products || [];
-    if (!brand || brand === "all") return all;
-    return all.filter((r) => r.brand === brand);
-  }, [data, brand]);
+    const top = data?.topProducts || [];
+    return top.map((p: { product: string; revenue: number; quantity: number; brand: string }) => ({
+      ...p, channel: "", lineup: "", category: "", buyers: 0, avg_price: 0, date: "",
+    })) as ProductSales[];
+  }, [data]);
 
-  const funnel = useMemo(() => funnelData?.funnel || [], [funnelData]);
+  const funnel = useMemo(() => [] as DailyFunnel[], []);
 
-  /* ── 이전 기간 (전기간 대비) ── */
-  const prevSales = useMemo(() => {
-    const all = data?.prevSales || [];
-    if (!brand || brand === "all") return all;
-    return all.filter((r) => r.brand === brand);
-  }, [data, brand]);
-
-  const prevAds = useMemo(() => {
-    const all = data?.prevAds || [];
-    if (!brand || brand === "all") return all;
-    return all.filter((r) => r.brand === brand);
-  }, [data, brand]);
-
-  /* ── KPI ── */
-  const calcKpi = (s: DailySales[], a: DailyAdSpend[]) => {
-    const revenue = s.reduce((acc, r) => acc + (r.revenue || 0), 0);
-    const orders = s.reduce((acc, r) => acc + (r.orders || 0), 0);
-    const nonGa4 = a.filter((r) => !r.channel.startsWith("ga4_"));
-    const adSpend = nonGa4.reduce((acc, r) => acc + (r.spend || 0), 0);
-    const clicks = nonGa4.reduce((acc, r) => acc + (r.clicks || 0), 0);
-    const impressions = nonGa4.reduce((acc, r) => acc + (r.impressions || 0), 0);
-    const convValue = nonGa4.reduce((acc, r) => acc + (r.conversion_value || 0), 0);
-    return {
-      revenue, orders, adSpend,
-      roas: adSpend > 0 ? convValue / adSpend : 0,
-      grossProfit: revenue - adSpend,
-      profitRate: revenue > 0 ? ((revenue - adSpend) / revenue) * 100 : 0,
-      ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
-      aov: orders > 0 ? revenue / orders : 0,
-    };
-  };
-
-  const kpi = useMemo(() => calcKpi(sales, ads), [sales, ads]);
-  const prevKpi = useMemo(() => calcKpi(prevSales, prevAds), [prevSales, prevAds]);
+  // 이상치 감지
+  const anomalies = useMemo(() => data?.anomalies || [], [data]);
 
   /* 변화율 계산 */
   const pctChange = (cur: number, prev: number) => {
     if (prev === 0) return cur > 0 ? 100 : undefined;
     return ((cur - prev) / Math.abs(prev)) * 100;
   };
+
+  // 서버에서 가져온 트렌드/채널 데이터
+  const dailyTrendFromApi = useMemo(() => (data?.trend || []).map((t: { date: string; revenue: number; adSpend: number; maRevenue: number; maAdSpend: number }) => ({
+    date: t.date.slice(5), revenue: t.revenue, adSpend: t.adSpend, maRevenue: t.maRevenue, maAdSpend: t.maAdSpend,
+  })), [data]);
+
+  const funnelSummary = useMemo(() => data?.funnelSummary || { sessions: 0, cartAdds: 0, purchases: 0, repurchases: 0, convRate: 0 }, [data]);
+
+  const gongguSales = useMemo(() => data?.gongguSales || [], [data]);
+  const gongguSalesTotal = data?.gongguSalesTotal || 0;
+  const selfSalesTotal = data?.selfSalesTotal || 0;
 
   /* ── 브랜드별 ── */
   const brandBreakdown = useMemo(() => {
@@ -168,21 +140,8 @@ function OverviewInner() {
     })).sort((a, b) => b.revenue - a.revenue);
   }, [sales, channelMap]);
 
-  /* ── 일별 매출+광고비 트렌드 ── */
-  const dailyTrend = useMemo(() => {
-    const map: Record<string, { revenue: number; adSpend: number }> = {};
-    for (const r of sales) {
-      if (!map[r.date]) map[r.date] = { revenue: 0, adSpend: 0 };
-      map[r.date].revenue += r.revenue || 0;
-    }
-    for (const r of ads) {
-      if (r.channel.startsWith("ga4_")) continue;
-      if (!map[r.date]) map[r.date] = { revenue: 0, adSpend: 0 };
-      map[r.date].adSpend += r.spend || 0;
-    }
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, v]) => ({ date: date.slice(5), ...v }));
-  }, [sales, ads]);
+  /* ── 일별 매출+광고비 트렌드 (API에서 가져옴) ── */
+  const dailyTrend = dailyTrendFromApi;
 
   /* ── 브랜드/제품 비중 (파이) — 단일 브랜드 선택 시 제품 비중으로 전환 ── */
   const shareData = useMemo(() => {
@@ -203,18 +162,8 @@ function OverviewInner() {
     })).sort((a, b) => b.value - a.value) };
   }, [sales, products, brand, brandMap]);
 
-  /* ── 퍼널 요약 ── */
-  const funnelSummary = useMemo(() => {
-    const sessions = funnel.reduce((s, r) => s + (r.sessions || 0), 0);
-    const cartAdds = funnel.reduce((s, r) => s + (r.cart_adds || 0), 0);
-    const purchases = funnel.reduce((s, r) => s + (r.purchases || 0), 0);
-    const repurchases = funnel.reduce((s, r) => s + (r.repurchases || 0), 0);
-    return {
-      sessions, cartAdds, purchases, repurchases,
-      cartRate: sessions > 0 ? (cartAdds / sessions) * 100 : 0,
-      purchaseRate: cartAdds > 0 ? (purchases / cartAdds) * 100 : 0,
-    };
-  }, [funnel]);
+  /* ── 퍼널 요약 (API에서 가져옴) ── */
+  // funnelSummary는 상단에서 data?.funnelSummary로 가져옴
 
   /* ── 밸런스랩 공구 요약 ── */
   const gongguSummary = useMemo(() => {
@@ -336,14 +285,14 @@ function OverviewInner() {
     <PageShell title="Overview" description="PPMI 마케팅 대시보드 전체 현황">
       {/* KPI 8개 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, prevKpi.revenue)} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
-        <KpiCard title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, prevKpi.adSpend)} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
-        <KpiCard title="ROAS" value={`${kpi.roas.toFixed(2)}x`} change={pctChange(kpi.roas, prevKpi.roas)} target={targetProp(kpi.roas, targets?.roas_target, "목표")} onClick={() => toggleKpi("roas")} active={selectedKpi === "roas"} />
-        <KpiCard title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, prevKpi.orders)} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
-        <KpiCard title="통상이익" value={formatCurrency(kpi.grossProfit)} change={pctChange(kpi.grossProfit, prevKpi.grossProfit)} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
-        <KpiCard title="이익률" value={formatPercent(kpi.profitRate)} change={pctChange(kpi.profitRate, prevKpi.profitRate)} onClick={() => toggleKpi("profitRate")} active={selectedKpi === "profitRate"} />
-        <KpiCard title="CTR" value={formatPercent(kpi.ctr)} change={pctChange(kpi.ctr, prevKpi.ctr)} onClick={() => toggleKpi("ctr")} active={selectedKpi === "ctr"} />
-        <KpiCard title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "—"} change={pctChange(kpi.aov, prevKpi.aov)} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
+        <KpiCard title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
+        <KpiCard title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, kpi.adSpendPrev)} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
+        <KpiCard title="ROAS" value={`${(kpi.roas || 0).toFixed(2)}x`} change={pctChange(kpi.roas, kpi.roasPrev)} target={targetProp(kpi.roas, targets?.roas_target, "목표")} onClick={() => toggleKpi("roas")} active={selectedKpi === "roas"} />
+        <KpiCard title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, kpi.ordersPrev)} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
+        <KpiCard title="이익" value={formatCurrency(kpi.profit)} change={pctChange(kpi.profit, kpi.profitPrev)} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
+        <KpiCard title="이익률" value={kpi.revenue > 0 ? formatPercent((kpi.profit / kpi.revenue) * 100) : "—"} onClick={() => toggleKpi("profitRate")} active={selectedKpi === "profitRate"} />
+        <KpiCard title="MER" value={`${(kpi.mer || 0).toFixed(2)}x`} change={pctChange(kpi.mer, kpi.merPrev)} onClick={() => toggleKpi("ctr")} active={selectedKpi === "ctr"} />
+        <KpiCard title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "—"} change={pctChange(kpi.aov, kpi.aovPrev)} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
       </div>
 
       {/* 드릴다운 */}
