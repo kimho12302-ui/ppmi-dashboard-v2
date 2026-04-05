@@ -126,8 +126,9 @@ export async function GET(req: NextRequest) {
     // ── KPI 계산 ──
     const totalRevenue = (sales || []).reduce((s, r) => s + Number(r.revenue), 0) + gongguSalesTotal;
     const totalOrders = (sales || []).reduce((s, r) => s + Number(r.orders), 0);
-    const totalAdSpend = (adSpend || []).reduce((s, r) => s + Number(r.spend), 0) + totalMiscCost;
-    const totalConvValue = (adSpend || []).reduce((s, r) => s + Number(r.conversion_value || 0), 0);
+    const nonGa4Ad = (adSpend || []).filter(r => !r.channel.startsWith("ga4_"));
+    const totalAdSpend = nonGa4Ad.reduce((s, r) => s + Number(r.spend), 0) + totalMiscCost;
+    const totalConvValue = nonGa4Ad.reduce((s, r) => s + Number(r.conversion_value || 0), 0);
     const roas = totalAdSpend > 0 ? totalConvValue / totalAdSpend : 0;
     const profit = totalRevenue - totalAdSpend - totalCOGS - totalShippingCost;
     const mer = totalAdSpend > 0 ? totalRevenue / totalAdSpend : 0;
@@ -135,8 +136,9 @@ export async function GET(req: NextRequest) {
 
     const prevRevenue = (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0);
     const prevOrders = (prevSales || []).reduce((s, r) => s + Number(r.orders), 0);
-    const prevAdSpendTotal = (prevAd || []).reduce((s, r) => s + Number(r.spend), 0);
-    const prevConvValue = (prevAd || []).reduce((s, r) => s + Number(r.conversion_value || 0), 0);
+    const prevNonGa4Ad = (prevAd || []).filter(r => !r.channel.startsWith("ga4_"));
+    const prevAdSpendTotal = prevNonGa4Ad.reduce((s, r) => s + Number(r.spend), 0);
+    const prevConvValue = prevNonGa4Ad.reduce((s, r) => s + Number(r.conversion_value || 0), 0);
     const prevRoas = prevAdSpendTotal > 0 ? prevConvValue / prevAdSpendTotal : 0;
     const cogsRate = totalRevenue > 0 ? totalCOGS / totalRevenue : 0;
     const prevProfit = prevRevenue - prevAdSpendTotal - (prevRevenue * cogsRate);

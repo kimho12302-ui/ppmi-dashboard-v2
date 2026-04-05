@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAll(baseQuery: any): Promise<any[]> {
+  const PAGE = 1000;
+  let from = 0;
+  const all: unknown[] = [];
+  while (true) {
+    const { data, error } = await baseQuery.range(from, from + PAGE - 1);
+    if (error) break;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const from = sp.get("from") || "";
@@ -25,10 +41,9 @@ export async function GET(req: NextRequest) {
       prevQuery = prevQuery.eq("brand", brand);
     }
 
-    const [res, prevRes] = await Promise.all([query, prevQuery]);
-    if (res.error) throw res.error;
+    const [ads, prevAds] = await Promise.all([fetchAll(query), fetchAll(prevQuery)]);
 
-    return NextResponse.json({ ads: res.data || [], prevAds: prevRes.data || [] });
+    return NextResponse.json({ ads, prevAds });
   } catch (error) {
     console.error("Ads API error:", error);
     return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });

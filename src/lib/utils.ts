@@ -58,7 +58,7 @@ export function getDateRangeFromPreset(preset: DatePreset): DateRange {
       return { from: fmt(startOfMonth(last)), to: fmt(endOfMonth(last)) };
     }
     case "all":
-      return { from: "2024-01-01", to: fmt(today) };
+      return { from: "2020-01-01", to: fmt(today) };
     default:
       return { from: fmt(subDays(today, 30)), to: fmt(today) };
   }

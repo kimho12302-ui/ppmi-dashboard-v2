@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAll(baseQuery: any): Promise<any[]> {
+  const PAGE = 1000;
+  let from = 0;
+  const all: unknown[] = [];
+  while (true) {
+    const { data, error } = await baseQuery.range(from, from + PAGE - 1);
+    if (error) break;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
@@ -13,13 +29,10 @@ export async function GET(req: NextRequest) {
 
   try {
     // Product sales for this brand
-    const { data: prodData } = await supabase
-      .from("product_sales")
-      .select("date,product,channel,lineup,category,revenue,quantity,buyers")
-      .eq("brand", brand)
-      .gte("date", from)
-      .lte("date", to);
-    const products = prodData || [];
+    const products = await fetchAll(
+      supabase.from("product_sales").select("date,product,channel,lineup,category,revenue,quantity,buyers")
+        .eq("brand", brand).gte("date", from).lte("date", to)
+    );
 
     // ── Lineup/SubBrand breakdown ──
     const lineupMap = new Map<string, { revenue: number; quantity: number; orders: number }>();
@@ -86,26 +99,20 @@ export async function GET(req: NextRequest) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, revenue]) => ({ date, revenue }));
 
-    // ── Gonggu analysis (balancelab only) ──
+    // ── Gonggu analysis (balancelab only) — product_sales 단일 소스 ──
     let gongguSales: { seller: string; revenue: number; orders: number }[] = [];
     let selfSalesTotal = 0;
     let gongguSalesTotal = 0;
 
     if (brand === "balancelab") {
-      const { data: salesData } = await supabase
-        .from("daily_sales")
-        .select("date,channel,revenue,orders")
-        .eq("brand", "balancelab")
-        .gte("date", from)
-        .lte("date", to);
-
+      // product_sales에서 공구/자체 구분 (daily_sales와 단일 소스 통일)
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
-      for (const r of salesData || []) {
-        if (r.channel.startsWith("공구_")) {
+      for (const r of products) {
+        if (r.channel && r.channel.startsWith("공구_")) {
           const seller = r.channel.replace("공구_", "");
           const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };
           e.revenue += Number(r.revenue);
-          e.orders += Number(r.orders);
+          e.orders += Number(r.buyers || 0);
           sellerMap.set(seller, e);
           gongguSalesTotal += Number(r.revenue);
         } else {
@@ -116,11 +123,11 @@ export async function GET(req: NextRequest) {
         .map(([seller, d]) => ({ seller, ...d }))
         .sort((a, b) => b.revenue - a.revenue);
 
-      // Self vs gonggu daily trend
+      // Self vs gonggu daily trend (product_sales 기반)
       const selfGongguMap = new Map<string, { self: number; gonggu: number }>();
-      for (const r of salesData || []) {
+      for (const r of products) {
         const e = selfGongguMap.get(r.date) || { self: 0, gonggu: 0 };
-        if (r.channel.startsWith("공구_")) {
+        if (r.channel && r.channel.startsWith("공구_")) {
           e.gonggu += Number(r.revenue);
         } else {
           e.self += Number(r.revenue);

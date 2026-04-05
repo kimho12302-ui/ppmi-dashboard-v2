@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     else { salesQ = salesQ.neq("brand", "all"); }
     const sales = await fetchAll(salesQ);
 
-    let adQ = supabase.from("daily_ad_spend").select("date,spend,conversion_value").gte("date", fromDate).lte("date", toDate);
+    let adQ = supabase.from("daily_ad_spend").select("date,channel,spend,conversion_value").gte("date", fromDate).lte("date", toDate);
     if (brand !== "all") { adQ = adQ.eq("brand", brand); }
     else { adQ = adQ.neq("brand", "all"); }
     const ads = await fetchAll(adQ);
@@ -86,6 +86,7 @@ export async function GET(request: NextRequest) {
     }
 
     for (const r of ads || []) {
+      if (r.channel && r.channel.startsWith("ga4_")) continue; // GA4 중복 제외
       const m = r.date.slice(0, 7);
       const existing = months.get(m) || { revenue: 0, orders: 0, adSpend: 0, cv: 0, miscCost: 0, shipCost: 0, cogs: 0 };
       existing.adSpend += Number(r.spend);

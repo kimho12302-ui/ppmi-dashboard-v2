@@ -9,7 +9,10 @@ export async function GET(request: NextRequest) {
   const to = sp.get("to") || "";
 
   try {
-    let query = supabase.from("content_performance").select("*").gte("date", from).lte("date", to).order("date");
+    // 미래 날짜 데이터 제외 (오늘까지만)
+    const today = new Date().toISOString().slice(0, 10);
+    const effectiveTo = to && to < today ? to : today;
+    let query = supabase.from("content_performance").select("*").gte("date", from).lte("date", effectiveTo).order("date");
     if (brand !== "all") query = query.eq("brand", brand);
     const { data, error } = await query;
     if (error) throw error;

@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAll(baseQuery: any): Promise<any[]> {
+  const PAGE = 1000;
+  let from = 0;
+  const all: unknown[] = [];
+  while (true) {
+    const { data, error } = await baseQuery.range(from, from + PAGE - 1);
+    if (error) break;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
@@ -25,17 +41,12 @@ export async function GET(req: NextRequest) {
     if (brand !== "all") {
       adQuery = adQuery.eq("brand", brand);
     }
-    const { data: adData } = await adQuery;
-    const adRows = adData || [];
+    const adRows = await fetchAll(adQuery);
 
     // ── 2. Sessions/cart from daily_funnel ──
-    const { data: funnelData } = await supabase
-      .from("daily_funnel")
-      .select("*")
-      .gte("date", from)
-      .lte("date", to)
-      .order("date", { ascending: true });
-    const allFunnelRows = funnelData || [];
+    const allFunnelRows = await fetchAll(
+      supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to).order("date", { ascending: true })
+    );
 
     // Filter funnel rows by brand
     let funnelRows = allFunnelRows;
@@ -61,8 +72,7 @@ export async function GET(req: NextRequest) {
     if (brand !== "all") {
       salesQuery = salesQuery.eq("brand", brand);
     }
-    const { data: salesData } = await salesQuery;
-    const salesRows = salesData || [];
+    const salesRows = await fetchAll(salesQuery);
 
     // ── Aggregate by date ──
     const dateMap = new Map<string, {
