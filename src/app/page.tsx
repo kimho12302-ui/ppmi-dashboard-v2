@@ -18,6 +18,7 @@ import {
   ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend,
 } from "recharts";
 import Link from "next/link";
+import MissingDataAlert from "@/components/missing-data-alert";
 
 type KpiKey = "revenue" | "adSpend" | "roas" | "orders" | "profit" | "profitRate" | "ctr" | "aov" | null;
 
@@ -288,6 +289,23 @@ function OverviewInner() {
 
   return (
     <PageShell title="Overview" description="PPMI 마케팅 대시보드 전체 현황">
+      {/* 데이터 누락 알림 */}
+      <MissingDataAlert />
+
+      {/* 이상치 감지 배너 */}
+      {anomalies.length > 0 && (
+        <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
+          <CardContent className="p-3">
+            <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-1">이상치 감지 ({anomalies.length}건)</p>
+            {anomalies.map((a: { brand: string; metric: string; change: number }, i: number) => (
+              <p key={i} className="text-xs text-red-600 dark:text-red-300">
+                • {a.brand} {a.metric}: {a.change > 0 ? "+" : ""}{a.change.toFixed(0)}% 변동
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* KPI 8개 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
