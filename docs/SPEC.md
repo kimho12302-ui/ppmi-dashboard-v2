@@ -1832,10 +1832,10 @@ campaignTp == "SHOPPING" → naver_shopping
 | D1 | CRITICAL | ✅ 완료 | 공구 매출 전부 0 | product_sales 기반 gonggu 집계로 해결 |
 | D2 | CRITICAL | ✅ 완료 | 밸런스랩 매출 누락 | dashboard/monthly-summary KPI에 gonggu 포함 |
 | D3 | CRITICAL | ✅ 완료 | Overview 빈 데이터 | page.tsx 전면 재작성, API 응답 직접 사용 |
-| D4 | CRITICAL | ⚡ 구조한계 | daily_funnel 83%가 brand="all" | GA4 데이터 특성상 카페24 채널로 브랜드 구분 불가. 채널 기반 필터링 워크어라운드 적용 중 |
+| D4 | CRITICAL | ✅ 개선 | daily_funnel 83%가 brand="all" | 노출/유입: 브랜드별 daily_ad_spend 사용. 구매수: daily_sales 사용. 장바구니만 brand="all" 한계 |
 | D5 | MAJOR | ✅ 완료 | Dashboard funnelSummary 합산 불일치 | daily_sales orders 기준으로 통일 |
 | D6 | MAJOR | ✅ 완료 | 광고비 cross-API 불일치 | GA4 채널 중복 광고비 dashboard/monthly-summary에서 제외 |
-| D7 | MAJOR | ⚡ 데이터한계 | product_sales vs daily_sales 30%+ 차이 | 너티 product_sales 시작일(2025-12-22) vs daily_sales(2025-09-12) 차이. 데이터 커버리지 문제 |
+| D7 | MAJOR | ✅ 수용 | product_sales vs daily_sales 30%+ 차이 | 너티 product_sales 기준일 2025-12-22 확정. 이전 데이터는 추후 필요 시 소급 입력 |
 | D8 | MAJOR | ✅ 완료 | brand-detail 밸런스랩 lineupBreakdown 176% 차이 | product_sales 단일 소스로 통일 (daily_sales 참조 제거) |
 | D9 | MODERATE | ✅ 완료 | 키워드 페이지 brand 파라미터 미전달 | brand 파라미터 추가 |
 | D10 | MODERATE | ✅ 수용 | 광고 페이지 ROAS/CTR 프론트 재계산 | 차트 렌더링 위해 raw data 필요. GA4 제외 로직 ads API fetchAll 적용으로 정합성 확보 |

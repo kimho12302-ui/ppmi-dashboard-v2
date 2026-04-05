@@ -181,7 +181,15 @@ export async function GET(req: NextRequest) {
       channelTotals.signups_smartstore += d.signups_smartstore;
     }
 
-    // If no sessions from funnel but we have clicks, use clicks as proxy
+    // brand 필터 시: 노출/유입은 광고 데이터(브랜드별)를 우선 사용
+    // GA4 funnel sessions은 brand="all" 합산이라 브랜드별 분리 불가
+    if (brand !== "all" && totals.clicks > 0) {
+      totals.sessions = totals.clicks;
+      for (const [, d] of dates) {
+        d.sessions = d.clicks;
+      }
+    }
+    // all 브랜드에서도 funnel sessions 없으면 clicks fallback
     if (totals.sessions === 0 && totals.clicks > 0) {
       totals.sessions = totals.clicks;
       for (const [, d] of dates) {
