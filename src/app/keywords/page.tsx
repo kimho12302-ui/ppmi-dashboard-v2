@@ -38,8 +38,8 @@ export default function KeywordsPage() {
 }
 
 function KeywordsInner() {
-  const { from, to } = useFilterParams();
-  const { data, loading } = useFetch<{ keywords: KeywordPerformance[] }>(`/api/keywords?from=${from}&to=${to}`);
+  const { from, to, brand } = useFilterParams();
+  const { data, loading } = useFetch<{ keywords: KeywordPerformance[] }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
   const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
 
