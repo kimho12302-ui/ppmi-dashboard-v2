@@ -55,6 +55,7 @@ status: active
 | v3.5 | 2026-04-05 | `092385f` | P10+P11 API 포팅 (content, gsc, naver-campaigns, utm, insights, monthly-summary) |
 | v3.6 | 2026-04-06 | — | P10+P11 프론트 연동 (인사이트 API 전환, 콘텐츠/SNS 신규, 월별요약 API 전환) |
 | v3.7 | 2026-04-06 | — | P12 데이터 정합성 감사: 12개 이슈 발견, 원인분석 + 해결계획 수립 |
+| v3.8 | 2026-04-06 | `9fa16ad` | D4~D12 정합성 수정 일괄 적용 (GA4 중복제거, 공구분석 단일소스, fetchAll 전체확장, 미래날짜 필터, 전체기간 시작일 확장) |
 
 ---
 
@@ -1826,20 +1827,20 @@ campaignTp == "SHOPPING" → naver_shopping
 
 ### 22.1 발견된 문제 목록
 
-| # | 심각도 | 문제 | 영향 |
-|---|--------|------|------|
-| D1 | CRITICAL | 공구 매출 전부 0 | Overview/매출 페이지에서 공구 데이터 미표시 |
-| D2 | CRITICAL | 밸런스랩 매출 누락 (daily_sales에 공구분 미포함) | 밸런스랩 실제 매출의 ~40% 누락 |
-| D3 | CRITICAL | Overview 누적매출 차트 빈 데이터 | sales/ads 배열 초기화 오류 |
-| D4 | CRITICAL | daily_funnel 83%가 brand="all" | 브랜드별 퍼널 불가 |
-| D5 | MAJOR | Dashboard funnelSummary 합산 불일치 (893 ≠ 844) | 퍼널 지표 부정확 |
-| D6 | MAJOR | 광고비 cross-API 불일치 (miscCost 합산 기준 상이) | 페이지별 광고비 수치 불일치 |
-| D7 | MAJOR | product_sales vs daily_sales 30%+ 차이 | 상품별 매출 ≠ 채널별 매출 |
-| D8 | MAJOR | brand-detail 밸런스랩 lineupBreakdown 176% 차이 | 브랜드 드릴다운 수치 불일치 |
-| D9 | MODERATE | 키워드 페이지 brand 파라미터 미전달 | 브랜드 필터 무시됨 |
-| D10 | MODERATE | 광고 페이지 ROAS/CTR 프론트 재계산 | 서버 vs 클라이언트 계산 차이 가능 |
-| D11 | MODERATE | content_performance 미래 날짜 (2026-12-21) | 잘못된 데이터 포함 |
-| D12 | LOW | "all" 프리셋 하드코딩 2024-01-01 | 실제 데이터 시작일과 불일치 |
+| # | 심각도 | 상태 | 문제 | 영향 |
+|---|--------|------|------|------|
+| D1 | CRITICAL | ✅ 완료 | 공구 매출 전부 0 | product_sales 기반 gonggu 집계로 해결 |
+| D2 | CRITICAL | ✅ 완료 | 밸런스랩 매출 누락 | dashboard/monthly-summary KPI에 gonggu 포함 |
+| D3 | CRITICAL | ✅ 완료 | Overview 빈 데이터 | page.tsx 전면 재작성, API 응답 직접 사용 |
+| D4 | CRITICAL | ⚡ 구조한계 | daily_funnel 83%가 brand="all" | GA4 데이터 특성상 카페24 채널로 브랜드 구분 불가. 채널 기반 필터링 워크어라운드 적용 중 |
+| D5 | MAJOR | ✅ 완료 | Dashboard funnelSummary 합산 불일치 | daily_sales orders 기준으로 통일 |
+| D6 | MAJOR | ✅ 완료 | 광고비 cross-API 불일치 | GA4 채널 중복 광고비 dashboard/monthly-summary에서 제외 |
+| D7 | MAJOR | ⚡ 데이터한계 | product_sales vs daily_sales 30%+ 차이 | 너티 product_sales 시작일(2025-12-22) vs daily_sales(2025-09-12) 차이. 데이터 커버리지 문제 |
+| D8 | MAJOR | ✅ 완료 | brand-detail 밸런스랩 lineupBreakdown 176% 차이 | product_sales 단일 소스로 통일 (daily_sales 참조 제거) |
+| D9 | MODERATE | ✅ 완료 | 키워드 페이지 brand 파라미터 미전달 | brand 파라미터 추가 |
+| D10 | MODERATE | ✅ 수용 | 광고 페이지 ROAS/CTR 프론트 재계산 | 차트 렌더링 위해 raw data 필요. GA4 제외 로직 ads API fetchAll 적용으로 정합성 확보 |
+| D11 | MODERATE | ✅ 완료 | content_performance 미래 날짜 (2026-12-21) | content API에서 오늘 이후 데이터 자동 필터링 |
+| D12 | LOW | ✅ 완료 | "all" 프리셋 하드코딩 2024-01-01 | 2020-01-01로 확장 |
 
 ### 22.2 원인 분석
 
