@@ -45,7 +45,7 @@ status: active
 | v2.5 | 2026-04-05 | `ae234a8` | 인사이트 14번 4단계분류 + 키워드 9.5 버블그래프 |
 | v2.6 | 2026-04-05 | `41ca76b` | 모바일 더보기 메뉴 + UI 반응형 |
 | v2.7 | 2026-04-05 | `808cdb3` | Overview 7.3 채널ROAS 바차트 + 모바일 폴리싱 |
-| v2.8 | 2026-04-05 | — | 미해결 이슈 정리 + daily_funnel channel 컬럼 추가 기획 |
+| v2.8 | 2026-04-05 | `c2d3c8d` | daily_funnel channel 컬럼 추가, brand/channel 분리, 마이그레이션 완료, coupang_funnel 버그 수정 |
 
 ---
 
