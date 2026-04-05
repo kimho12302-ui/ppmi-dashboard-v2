@@ -48,7 +48,7 @@ export async function GET(req: NextRequest) {
     else prevSalesQ = prevSalesQ.neq("brand", "all");
     const prevSales = await fetchAll(prevSalesQ);
 
-    let prevAdQ = supabase.from("daily_ad_spend").select("spend, conversion_value").gte("date", prevFrom).lte("date", prevTo);
+    let prevAdQ = supabase.from("daily_ad_spend").select("channel, spend, conversion_value").gte("date", prevFrom).lte("date", prevTo);
     if (brand !== "all") prevAdQ = prevAdQ.eq("brand", brand);
     else prevAdQ = prevAdQ.neq("brand", "all");
     const prevAd = await fetchAll(prevAdQ);
