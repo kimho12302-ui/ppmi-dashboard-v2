@@ -58,9 +58,11 @@ function OverviewInner() {
     })) as ProductSales[];
   }, [data]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const funnel = useMemo(() => [] as DailyFunnel[], []);
 
-  // 이상치 감지
+  // 이상치 감지 (TODO: UI에서 사용 예정)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const anomalies = useMemo(() => data?.anomalies || [], [data]);
 
   /* 변화율 계산 */
@@ -76,8 +78,11 @@ function OverviewInner() {
 
   const funnelSummary = useMemo(() => data?.funnelSummary || { sessions: 0, cartAdds: 0, purchases: 0, repurchases: 0, convRate: 0 }, [data]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const gongguSales = useMemo(() => data?.gongguSales || [], [data]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const gongguSalesTotal = data?.gongguSalesTotal || 0;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const selfSalesTotal = data?.selfSalesTotal || 0;
 
   /* ── 브랜드별 ── */
