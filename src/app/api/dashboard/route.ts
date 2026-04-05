@@ -280,7 +280,17 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Raw data for sales/ads pages (backward compat)
+    const prevSalesRaw = (prevSales || []).map(r => ({ ...r, date: "", brand: "", channel: "" }));
+
     return NextResponse.json({
+      // Raw data (for sales/ads pages)
+      sales: sales || [],
+      ads: adSpend || [],
+      products: (prodData || []),
+      prevSales: prevSalesRaw,
+      prevAds: (prevAd || []),
+      // Computed KPI
       kpi: {
         revenue: totalRevenue, revenuePrev: prevRevenue,
         adSpend: totalAdSpend, adSpendPrev: prevAdSpendTotal,

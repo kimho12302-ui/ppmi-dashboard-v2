@@ -61,7 +61,7 @@ export default function SalesPage() {
 
 function SalesPageInner() {
   const { brand, from, to } = useFilterParams();
-  const params = `from=${from}&to=${to}`;
+  const params = `from=${from}&to=${to}&brand=${brand || "all"}`;
   const { data, loading } = useFetch<{
     sales: DailySales[];
     products: ProductSales[];
