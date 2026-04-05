@@ -1,24 +1,23 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
-import { BRAND_LABELS, CHANNEL_LABELS, type DailySales, type DailyAdSpend } from "@/lib/types";
-import { useConfig } from "@/hooks/use-config";
-import { formatCurrency, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
-type InsightLevel = "critical" | "warning" | "opportunity" | "info";
+type InsightType = "critical" | "warning" | "opportunity" | "info";
 
 interface Insight {
-  level: InsightLevel;
-  title: string;
-  description: string;
+  type: InsightType;
+  text: string;
+  detail?: string;
+  actions?: string[];
 }
 
 export default function InsightsPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">Loading...</div>}>
       <InsightsInner />
     </Suspense>
   );
@@ -26,172 +25,34 @@ export default function InsightsPage() {
 
 function InsightsInner() {
   const { brand, from, to } = useFilterParams();
-  const { brandMap, channelMap } = useConfig();
-  const { data, loading } = useFetch<{
-    sales: DailySales[];
-    ads: DailyAdSpend[];
-  }>(`/api/dashboard?from=${from}&to=${to}`);
+  const { data, loading } = useFetch<{ insights: Insight[] }>(
+    `/api/insights?from=${from}&to=${to}&brand=${brand}`
+  );
 
-  const insights = useMemo(() => {
-    const results: Insight[] = [];
-    const salesData = data?.sales || [];
-    const adsData = (data?.ads || []).filter((r) => !r.channel.startsWith("ga4_"));
+  const insights = data?.insights || [];
 
-    const filterBrand = (r: { brand: string }) => !brand || brand === "all" || r.brand === brand;
-
-    const filteredSales = salesData.filter(filterBrand);
-    const filteredAds = adsData.filter(filterBrand);
-
-    // ── 1. 브랜드별 ROAS 분석 ──
-    if (!brand || brand === "all") {
-      const brandSpend: Record<string, number> = {};
-      const brandConvValue: Record<string, number> = {};
-      for (const r of adsData) {
-        brandSpend[r.brand] = (brandSpend[r.brand] || 0) + (r.spend || 0);
-        brandConvValue[r.brand] = (brandConvValue[r.brand] || 0) + (r.conversion_value || 0);
-      }
-      for (const b of Object.keys(brandSpend)) {
-        const spend = brandSpend[b] || 0;
-        const convVal = brandConvValue[b] || 0;
-        const roas = spend > 0 ? convVal / spend : 0;
-        const label = brandMap[b]?.label || BRAND_LABELS[b] || b;
-        if (spend > 0 && roas < 1) {
-          results.push({
-            level: "critical",
-            title: `${label} ROAS ${roas.toFixed(2)}x — 광고비 > 전환매출`,
-            description: `광고비 ${formatCurrency(spend)} 대비 전환 매출 ${formatCurrency(convVal)}. 즉시 캠페인 효율 점검 필요.`,
-          });
-        } else if (roas >= 3) {
-          results.push({
-            level: "opportunity",
-            title: `${label} ROAS ${roas.toFixed(2)}x — 스케일업 기회`,
-            description: `광고비 ${formatCurrency(spend)}으로 전환 매출 ${formatCurrency(convVal)} 달성. 예산 증액 검토.`,
-          });
-        }
-      }
-    }
-
-    // ── 2. 채널별 이상치 (±30% 변동) ──
-    const channelDaily: Record<string, { date: string; spend: number }[]> = {};
-    for (const r of filteredAds) {
-      if (!channelDaily[r.channel]) channelDaily[r.channel] = [];
-      channelDaily[r.channel].push({ date: r.date, spend: r.spend || 0 });
-    }
-    for (const [ch, days] of Object.entries(channelDaily)) {
-      if (days.length < 3) continue;
-      const sorted = [...days].sort((a, b) => a.date.localeCompare(b.date));
-      const recent = sorted.slice(-1)[0];
-      const prev = sorted.slice(0, -1);
-      const avg = prev.reduce((s, d) => s + d.spend, 0) / prev.length;
-      if (avg <= 0) continue;
-      const change = ((recent.spend - avg) / avg) * 100;
-      const label = channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch;
-      if (Math.abs(change) >= 30) {
-        results.push({
-          level: Math.abs(change) >= 80 ? "critical" : "warning",
-          title: `${label} 최근일 광고비 ${change > 0 ? "급증" : "급감"} (${change > 0 ? "+" : ""}${change.toFixed(0)}%)`,
-          description: `평균 ${formatCurrency(Math.round(avg))}/일 → 최근 ${formatCurrency(recent.spend)}/일 (${recent.date}).`,
-        });
-      }
-    }
-
-    // ── 3. 3일 연속 매출 상승/하락 트렌드 ──
-    const dailyRevenue: Record<string, number> = {};
-    for (const r of filteredSales) {
-      dailyRevenue[r.date] = (dailyRevenue[r.date] || 0) + (r.revenue || 0);
-    }
-    const sortedDays = Object.entries(dailyRevenue).sort(([a], [b]) => a.localeCompare(b));
-    if (sortedDays.length >= 4) {
-      const last4 = sortedDays.slice(-4);
-      const diffs = [];
-      for (let i = 1; i < last4.length; i++) {
-        diffs.push(last4[i][1] - last4[i - 1][1]);
-      }
-      if (diffs.every((d) => d > 0)) {
-        results.push({
-          level: "opportunity",
-          title: "📈 3일 연속 매출 상승 중!",
-          description: `${last4[0][0]} ~ ${last4[last4.length - 1][0]}: ${last4.map(([, v]) => formatCurrency(v)).join(" → ")}`,
-        });
-      } else if (diffs.every((d) => d < 0)) {
-        results.push({
-          level: "warning",
-          title: "📉 3일 연속 매출 하락 중",
-          description: `${last4[0][0]} ~ ${last4[last4.length - 1][0]}: ${last4.map(([, v]) => formatCurrency(v)).join(" → ")}. 원인 확인 필요.`,
-        });
-      }
-    }
-
-    // ── 4. 매출 누락일 감지 ──
-    const salesDates = new Set(filteredSales.map((r) => r.date));
-    const adsDates = new Set(filteredAds.map((r) => r.date));
-    const adOnlyDates = Array.from(adsDates).filter((d) => !salesDates.has(d)).sort();
-    if (adOnlyDates.length > 0 && adOnlyDates.length <= 10) {
-      results.push({
-        level: adOnlyDates.length >= 3 ? "warning" : "info",
-        title: `매출 데이터 누락 ${adOnlyDates.length}일`,
-        description: `${adOnlyDates.slice(0, 5).join(", ")}${adOnlyDates.length > 5 ? ` 외 ${adOnlyDates.length - 5}일` : ""}. 엑셀 업로드 필요.`,
-      });
-    }
-
-    // ── 5. 광고비 없는 날짜 (크론 실패 가능성) ──
-    const salesOnlyDates = Array.from(salesDates).filter((d) => !adsDates.has(d)).sort();
-    if (salesOnlyDates.length > 0 && salesOnlyDates.length <= 5) {
-      results.push({
-        level: "info",
-        title: `광고 데이터 누락 ${salesOnlyDates.length}일`,
-        description: `${salesOnlyDates.join(", ")}. API 크론 정상 작동 확인 필요.`,
-      });
-    }
-
-    // ── 6. 총 광고비 대비 매출 효율 ──
-    const totalRevenue = filteredSales.reduce((s, r) => s + (r.revenue || 0), 0);
-    const totalSpend = filteredAds.reduce((s, r) => s + (r.spend || 0), 0);
-    if (totalSpend > 0 && totalRevenue > 0) {
-      const overallRoas = totalRevenue / totalSpend;
-      if (overallRoas < 2) {
-        results.push({
-          level: "warning",
-          title: `전체 매출/광고비 비율 ${overallRoas.toFixed(1)}x — 주의`,
-          description: `매출 ${formatCurrency(totalRevenue)} / 광고비 ${formatCurrency(totalSpend)}. 채널별 효율 점검.`,
-        });
-      }
-    }
-
-    // ── 정렬: critical → warning → opportunity → info ──
-    const order: Record<InsightLevel, number> = { critical: 0, warning: 1, opportunity: 2, info: 3 };
-    results.sort((a, b) => order[a.level] - order[b.level]);
-
-    if (results.length === 0) {
-      results.push({
-        level: "info",
-        title: "특이사항 없음",
-        description: "선택한 기간에 주목할 만한 이상치나 경고가 없습니다.",
-      });
-    }
-
-    return results;
-  }, [data, brand, brandMap, channelMap]);
-
-  const levelConfig: Record<InsightLevel, { icon: string; border: string; badge: string; badgeLabel: string }> = {
-    critical: { icon: "🔴", border: "border-l-red-500 bg-red-500/5", badge: "bg-red-500/10 text-red-600", badgeLabel: "즉시 대응" },
-    warning: { icon: "🟡", border: "border-l-amber-500 bg-amber-500/5", badge: "bg-amber-500/10 text-amber-600", badgeLabel: "주의" },
-    opportunity: { icon: "🟢", border: "border-l-emerald-500 bg-emerald-500/5", badge: "bg-emerald-500/10 text-emerald-600", badgeLabel: "기회" },
-    info: { icon: "🔵", border: "border-l-blue-500 bg-blue-500/5", badge: "bg-blue-500/10 text-blue-600", badgeLabel: "참고" },
+  const levelConfig: Record<InsightType, { icon: string; border: string; badge: string; badgeLabel: string }> = {
+    critical: { icon: "\uD83D\uDD34", border: "border-l-red-500 bg-red-500/5", badge: "bg-red-500/10 text-red-600", badgeLabel: "\uC989\uC2DC \uB300\uC751" },
+    warning: { icon: "\uD83D\uDFE1", border: "border-l-amber-500 bg-amber-500/5", badge: "bg-amber-500/10 text-amber-600", badgeLabel: "\uC8FC\uC758" },
+    opportunity: { icon: "\uD83D\uDFE2", border: "border-l-emerald-500 bg-emerald-500/5", badge: "bg-emerald-500/10 text-emerald-600", badgeLabel: "\uAE30\uD68C" },
+    info: { icon: "\uD83D\uDD35", border: "border-l-blue-500 bg-blue-500/5", badge: "bg-blue-500/10 text-blue-600", badgeLabel: "\uCC38\uACE0" },
   };
 
   const countByLevel = insights.reduce((acc, i) => {
-    acc[i.level] = (acc[i.level] || 0) + 1;
+    acc[i.type] = (acc[i.type] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
   if (loading) {
     return (
-      <PageShell title="인사이트" description="자동 이상치 감지 · 트렌드 분석 · 효율 경고">
+      <PageShell title="\uC778\uC0AC\uC774\uD2B8" description="\uC790\uB3D9 \uC774\uC0C1\uCE58 \uAC10\uC9C0 \xB7 \uD2B8\uB80C\uB4DC \uBD84\uC11D \xB7 \uD6A8\uC728 \uACBD\uACE0 \xB7 \uC6D0\uC778 \uBD84\uC11D">
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <Card key={i} className="p-4 animate-pulse">
-              <CardContent className="p-0"><div className="h-4 w-48 bg-muted rounded mb-2" /><div className="h-3 w-72 bg-muted rounded" /></CardContent>
+              <CardContent className="p-0">
+                <div className="h-4 w-48 bg-muted rounded mb-2" />
+                <div className="h-3 w-72 bg-muted rounded" />
+              </CardContent>
             </Card>
           ))}
         </div>
@@ -200,36 +61,69 @@ function InsightsInner() {
   }
 
   return (
-    <PageShell title="인사이트" description="자동 이상치 감지 · 트렌드 분석 · 효율 경고">
-      {/* 요약 배지 */}
+    <PageShell title="\uC778\uC0AC\uC774\uD2B8" description="\uC790\uB3D9 \uC774\uC0C1\uCE58 \uAC10\uC9C0 \xB7 \uD2B8\uB80C\uB4DC \uBD84\uC11D \xB7 \uD6A8\uC728 \uACBD\uACE0 \xB7 \uC6D0\uC778 \uBD84\uC11D">
+      {/* Summary badges */}
       <div className="flex flex-wrap gap-2">
-        {(["critical", "warning", "opportunity", "info"] as InsightLevel[]).map((level) => {
+        {(["critical", "warning", "opportunity", "info"] as InsightType[]).map((level) => {
           const count = countByLevel[level] || 0;
           if (count === 0) return null;
           const cfg = levelConfig[level];
           return (
             <span key={level} className={cn("text-xs font-medium px-2.5 py-1 rounded-full", cfg.badge)}>
-              {cfg.icon} {cfg.badgeLabel} {count}건
+              {cfg.icon} {cfg.badgeLabel} {count}\uAC74
             </span>
           );
         })}
       </div>
 
-      {/* 인사이트 카드 */}
+      {/* Insight cards */}
       <div className="space-y-3">
+        {insights.length === 0 && (
+          <Card className="border-l-4 border-l-blue-500 bg-blue-500/5">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <span className="text-lg">{levelConfig.info.icon}</span>
+                <div>
+                  <h4 className="font-semibold text-sm">\uD2B9\uC774\uC0AC\uD56D \uC5C6\uC74C</h4>
+                  <p className="text-sm text-muted-foreground">\uC120\uD0DD\uD55C \uAE30\uAC04\uC5D0 \uC8FC\uBAA9\uD560 \uB9CC\uD55C \uC774\uC0C1\uCE58\uB098 \uACBD\uACE0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {insights.map((insight, i) => {
-          const cfg = levelConfig[insight.level];
+          const cfg = levelConfig[insight.type];
           return (
             <Card key={i} className={cn("border-l-4", cfg.border)}>
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">
-                  <span className="text-lg">{cfg.icon}</span>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-semibold text-sm">{insight.title}</h4>
-                      <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", cfg.badge)}>{cfg.badgeLabel}</span>
+                  <span className="text-lg flex-shrink-0">{cfg.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h4 className="font-semibold text-sm">{insight.text}</h4>
+                      <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap", cfg.badge)}>
+                        {cfg.badgeLabel}
+                      </span>
                     </div>
-                    <p className="text-sm text-muted-foreground">{insight.description}</p>
+
+                    {insight.detail && (
+                      <p className="text-sm text-muted-foreground whitespace-pre-line mb-2">{insight.detail}</p>
+                    )}
+
+                    {insight.actions && insight.actions.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs font-medium text-muted-foreground">\uAD8C\uC7A5 \uC561\uC158:</p>
+                        <ul className="space-y-0.5">
+                          {insight.actions.map((action, j) => (
+                            <li key={j} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                              <span className="text-primary mt-0.5">&bull;</span>
+                              <span>{action}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -241,7 +135,7 @@ function InsightsInner() {
       <Card>
         <CardContent className="p-4">
           <p className="text-xs text-muted-foreground">
-            💡 규칙 기반 자동 감지: ROAS &lt; 1 즉시경고, ±30% 일변동 이상치, 3일 연속 트렌드, 데이터 누락 알림, 매출/광고비 효율 분석.
+            \uD83D\uDCA1 \uADDC\uCE59 \uAE30\uBC18 \uC790\uB3D9 \uAC10\uC9C0: ROAS &lt; 1 \uC801\uC790\uCC44\uB110, \uC804\uCCB4 ROAS \uBAA9\uD45C \uBBF8\uB2EC, \uC804\uD658\uC728/\uC7A5\uBC14\uAD6C\uB2C8 \uC774\uD0C8\uB960, \uB9E4\uCD9C 15%+ \uD558\uB77D \uC2DC \uBE0C\uB79C\uB4DC/\uCC44\uB110/\uC81C\uD488\uBCC4 \uC6D0\uC778 \uBD84\uC11D.
           </p>
         </CardContent>
       </Card>

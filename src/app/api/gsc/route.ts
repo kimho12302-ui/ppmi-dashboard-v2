@@ -73,8 +73,9 @@ export async function GET(request: NextRequest) {
       queries,
       summary: { totalClicks, totalImpressions, avgCtr, avgPosition },
     });
-  } catch (error: any) {
-    console.error("GSC API error:", error?.message || error);
-    return NextResponse.json({ error: "GSC API failed", detail: error?.message }, { status: 500 });
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error("GSC API error:", errMsg);
+    return NextResponse.json({ error: "GSC API failed", detail: errMsg }, { status: 500 });
   }
 }

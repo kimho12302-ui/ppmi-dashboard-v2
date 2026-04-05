@@ -53,6 +53,8 @@ status: active
 | v3.3 | 2026-04-05 | `ba73a06` | P8 brand-detail API + P9 Meta creatives/trend/video API |
 | v3.4 | 2026-04-05 | `891b942` | P8+P9 프론트 연동 (Overview 브랜드 상세 + 광고 크리에이티브 탭) |
 | v3.5 | 2026-04-05 | `092385f` | P10+P11 API 포팅 (content, gsc, naver-campaigns, utm, insights, monthly-summary) |
+| v3.6 | 2026-04-06 | — | P10+P11 프론트 연동 (인사이트 API 전환, 콘텐츠/SNS 신규, 월별요약 API 전환) |
+| v3.7 | 2026-04-06 | — | P12 데이터 정합성 감사: 12개 이슈 발견, 원인분석 + 해결계획 수립 |
 
 ---
 
@@ -1815,6 +1817,128 @@ campaignTp == "SHOPPING" → naver_shopping
 - 모든 시트 ID → Data Hub ID로 변경
 - sync_db_to_sheet에 밸런스랩 추가
 - 에러 시 텔레그램 알림 추가
+
+---
+
+## 22. 데이터 정합성 감사 (2026-04-06)
+
+> 전체 API + DB + 프론트엔드 교차 검증 결과. 발견된 문제 → 원인 → 해결방안 → 재발방지.
+
+### 22.1 발견된 문제 목록
+
+| # | 심각도 | 문제 | 영향 |
+|---|--------|------|------|
+| D1 | CRITICAL | 공구 매출 전부 0 | Overview/매출 페이지에서 공구 데이터 미표시 |
+| D2 | CRITICAL | 밸런스랩 매출 누락 (daily_sales에 공구분 미포함) | 밸런스랩 실제 매출의 ~40% 누락 |
+| D3 | CRITICAL | Overview 누적매출 차트 빈 데이터 | sales/ads 배열 초기화 오류 |
+| D4 | CRITICAL | daily_funnel 83%가 brand="all" | 브랜드별 퍼널 불가 |
+| D5 | MAJOR | Dashboard funnelSummary 합산 불일치 (893 ≠ 844) | 퍼널 지표 부정확 |
+| D6 | MAJOR | 광고비 cross-API 불일치 (miscCost 합산 기준 상이) | 페이지별 광고비 수치 불일치 |
+| D7 | MAJOR | product_sales vs daily_sales 30%+ 차이 | 상품별 매출 ≠ 채널별 매출 |
+| D8 | MAJOR | brand-detail 밸런스랩 lineupBreakdown 176% 차이 | 브랜드 드릴다운 수치 불일치 |
+| D9 | MODERATE | 키워드 페이지 brand 파라미터 미전달 | 브랜드 필터 무시됨 |
+| D10 | MODERATE | 광고 페이지 ROAS/CTR 프론트 재계산 | 서버 vs 클라이언트 계산 차이 가능 |
+| D11 | MODERATE | content_performance 미래 날짜 (2026-12-21) | 잘못된 데이터 포함 |
+| D12 | LOW | "all" 프리셋 하드코딩 2024-01-01 | 실제 데이터 시작일과 불일치 |
+
+### 22.2 원인 분석
+
+#### D1+D2: 공구 매출 0 & 밸런스랩 누락
+
+**원인:** 엑셀 업로드 시 공구 주문은 `brand="공동구매"`, `channel="공구_{lineup}"`으로 저장되어야 하는데:
+1. daily_sales에는 공구 데이터가 **아예 없음** (channel이 smartstore만 존재)
+2. product_sales에는 공구 데이터가 **있음** (revenue 차이의 원인)
+3. Dashboard API는 `r.channel.startsWith("공구_")`로 daily_sales만 조회 → 항상 0
+
+**근본 원인:** sync_all.py 또는 엑셀 업로드 로직에서 공구 주문을 daily_sales에 별도 채널로 넣지 않고, product_sales에만 상품 단위로 넣음. daily_sales는 채널별 일 합산이라 공구가 smartstore에 합산되거나 누락됨.
+
+#### D3: Overview 누적매출 빈 차트
+
+**원인:** page.tsx에서 `const sales = []`, `const ads = []`로 빈 배열 초기화 후 누적 계산. API 응답의 `data.sales`를 사용해야 하는데 빈 배열로 덮어씀.
+
+#### D4: daily_funnel brand="all"
+
+**원인:** GA4 퍼널 데이터는 카페24 전체(너티+아이언펫+사입) 합산이라 개별 브랜드 분리 불가. sync_all.py에서 brand="all"로 저장. 밸런스랩만 스마트스토어 단독이라 분리 가능.
+
+#### D5: funnelSummary 합산 오류
+
+**원인:** daily_funnel의 purchases와 repurchases가 독립 집계됨. purchases는 daily_funnel 테이블, orders는 daily_sales 테이블에서 각각 합산 → 소스가 다름.
+
+#### D6: 광고비 불일치
+
+**원인:** Dashboard API는 `totalAdSpend = ad_spend + miscCost`로 합산. monthly-summary는 adSpend에 miscCost를 포함하지만 manual_monthly 테이블에서 별도 조회. 두 API의 miscCost 조회 조건이 다름 (하나는 date 기반, 하나는 month 기반).
+
+#### D7: product_sales vs daily_sales 불일치
+
+**원인:**
+- daily_sales: 채널별 일 합산 (cafe24/smartstore/coupang 매출)
+- product_sales: 상품별 매출 (모든 상품의 개별 매출)
+- 밸런스랩: product_sales에 공구 포함 → daily_sales보다 큼
+- 너티: product_sales 시작일(2025-12-22)이 daily_sales(2025-09-12)보다 늦음 → daily_sales가 더 큼
+
+### 22.3 해결 계획 (P12: 데이터 정합성)
+
+#### P12-1: 공구 매출 복구 (D1, D2, D8)
+
+**방안:** daily_sales에 공구 데이터 삽입
+```sql
+-- product_sales에서 공구 매출을 daily_sales로 집계
+INSERT INTO daily_sales (date, brand, channel, revenue, orders)
+SELECT date, 'balancelab', '공구_' || lineup, SUM(revenue), SUM(quantity)
+FROM product_sales 
+WHERE brand = 'balancelab' AND product LIKE '%공구%'
+GROUP BY date, lineup
+ON CONFLICT (date, brand, channel) DO UPDATE SET revenue=EXCLUDED.revenue, orders=EXCLUDED.orders;
+```
+- 또는 Dashboard API에서 product_sales도 참조하여 공구 매출 산출
+- sync_all.py에서 공구 주문을 daily_sales에 별도 channel로 적재하도록 수정
+
+#### P12-2: Overview 빈 데이터 수정 (D3)
+
+**방안:** page.tsx에서 빈 배열 초기화 제거, API 응답의 `data.sales`/`data.ads` 직접 사용
+```typescript
+// 수정 전: const sales = []; const ads = [];
+// 수정 후: const sales = data?.sales || []; const ads = data?.ads || [];
+```
+
+#### P12-3: funnelSummary 정합성 (D5)
+
+**방안:** Dashboard API의 funnelSummary에서 purchases를 daily_sales의 orders로 대체하거나, funnel API와 동일한 로직으로 통일
+```
+funnelSummary.purchases = KPI의 totalOrders (daily_sales 기준)
+```
+
+#### P12-4: 광고비 계산 통일 (D6)
+
+**방안:** 모든 API에서 "광고비" 정의를 통일
+- `adSpend` = 순수 매체비 (daily_ad_spend.spend 합산)
+- `totalCost` = 매체비 + miscCost + shippingCost + COGS
+- miscCost 조회: 항상 month 기반 (date가 아님)
+
+#### P12-5: 키워드 brand 전달 (D9)
+
+**방안:** keywords API에 brand 파라미터 추가, 프론트에서 전달
+
+#### P12-6: 프론트 재계산 제거 (D3, D10)
+
+**방안:** 서버에서 계산한 KPI를 그대로 사용. 프론트에서 재계산하는 모든 ROAS/CTR/CPC 로직 제거.
+- Overview: API의 kpi 객체 직접 사용
+- Ads: API에서 계산된 channel metrics 직접 사용
+- Sales: API의 brandRevenue/topProducts 직접 사용
+
+#### P12-7: content_performance 미래 데이터 정리 (D11)
+
+```sql
+DELETE FROM content_performance WHERE date > '2026-04-06';
+```
+
+### 22.4 재발 방지 원칙
+
+1. **단일 진실 원천 (SSoT):** 모든 수치는 API 서버에서 1회 계산. 프론트엔드는 표시만.
+2. **Cross-API 일관성 테스트:** 동일 기간 동일 브랜드로 dashboard/monthly-summary/brand-detail 호출 시 revenue 합계가 일치해야 함.
+3. **공구 데이터 파이프라인:** sync 시 공구 주문은 반드시 daily_sales에 `channel="공구_{seller}"` 로 적재.
+4. **프론트 재계산 금지:** KPI/ROAS/CTR 등은 API에서만 계산. 프론트는 `data.kpi.roas` 형태로만 접근.
+5. **배포 전 정합성 체크:** 배포 전 `/api/dashboard`와 `/api/monthly-summary`의 매출 합계 교차 검증.
 
 ---
 

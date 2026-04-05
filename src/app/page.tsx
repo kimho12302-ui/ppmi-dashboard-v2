@@ -9,7 +9,6 @@ import { useConfig } from "@/hooks/use-config";
 import {
   BRAND_LABELS, BRAND_COLORS, CHANNEL_LABELS, CHANNEL_COLORS,
   SALES_CHANNEL_COLORS,
-  type DailySales, type DailyAdSpend, type DailyFunnel, type ProductSales,
 } from "@/lib/types";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import {
@@ -22,6 +21,29 @@ import MissingDataAlert from "@/components/missing-data-alert";
 
 type KpiKey = "revenue" | "adSpend" | "roas" | "orders" | "profit" | "profitRate" | "ctr" | "aov" | null;
 
+interface DashboardData {
+  kpi: {
+    revenue: number; revenuePrev: number; adSpend: number; adSpendPrev: number;
+    roas: number; roasPrev: number; orders: number; ordersPrev: number;
+    profit: number; profitPrev: number; mer: number; merPrev: number;
+    aov: number; aovPrev: number; cogs: number; shippingCost: number;
+    miscCost: number; matchedRate: number;
+  };
+  trend: { date: string; revenue: number; adSpend: number; maRevenue: number; maAdSpend: number; [k: string]: string | number }[];
+  channels: { channel: string; spend: number; roas: number }[];
+  brandRevenue: { brand: string; revenue: number; orders: number }[];
+  brandProfit: { brand: string; revenue: number; orders: number; adSpend: number; cogs: number; profit: number; margin: number }[];
+  salesByChannel: { channel: string; revenue: number }[];
+  topProducts: { product: string; revenue: number; quantity: number; brand: string }[];
+  funnelSummary: { sessions: number; cartAdds: number; purchases: number; repurchases: number; convRate: number };
+  gongguSales: { seller: string; revenue: number; orders: number }[];
+  gongguSalesTotal: number;
+  selfSalesTotal: number;
+  anomalies: { brand: string; metric: string; change: number; current: number; previous: number }[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  targets: any[];
+}
+
 export default function OverviewPage() {
   return (
     <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
@@ -33,209 +55,117 @@ export default function OverviewPage() {
 function OverviewInner() {
   const { brand, from, to } = useFilterParams();
   const { brandMap, channelMap } = useConfig();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, loading } = useFetch<any>(`/api/dashboard?from=${from}&to=${to}&brand=${brand || "all"}`);
+  const { data, loading } = useFetch<DashboardData>(`/api/dashboard?from=${from}&to=${to}&brand=${brand || "all"}`);
   const [selectedKpi, setSelectedKpi] = useState<KpiKey>(null);
 
-  // 목표 fetch
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: targetsData } = useFetch<any>("/api/targets");
 
-  // API가 서버에서 계산한 KPI 직접 사용
-  const kpi = useMemo(() => data?.kpi || {
+  // === 서버 KPI 직접 사용 ===
+  const kpi = data?.kpi || {
     revenue: 0, revenuePrev: 0, adSpend: 0, adSpendPrev: 0,
     roas: 0, roasPrev: 0, orders: 0, ordersPrev: 0,
     profit: 0, profitPrev: 0, mer: 0, merPrev: 0, aov: 0, aovPrev: 0,
     cogs: 0, shippingCost: 0, miscCost: 0, matchedRate: 0,
-  }, [data]);
-
-  // 서버에서 보낸 집계 데이터 직접 사용
-  const sales = useMemo(() => [] as DailySales[], []);  // raw 데이터 더 이상 안 씀
-  const ads = useMemo(() => [] as DailyAdSpend[], []);
-  const products = useMemo(() => {
-    const top = data?.topProducts || [];
-    return top.map((p: { product: string; revenue: number; quantity: number; brand: string }) => ({
-      ...p, channel: "", lineup: "", category: "", buyers: 0, avg_price: 0, date: "",
-    })) as ProductSales[];
-  }, [data]);
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const funnel = useMemo(() => [] as DailyFunnel[], []);
-
-  // 이상치 감지 (TODO: UI에서 사용 예정)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const anomalies = useMemo(() => data?.anomalies || [], [data]);
-
-  /* 변화율 계산 */
-  const pctChange = (cur: number, prev: number) => {
-    if (prev === 0) return cur > 0 ? 100 : undefined;
-    return ((cur - prev) / Math.abs(prev)) * 100;
   };
 
-  // 서버에서 가져온 트렌드/채널 데이터
-  const dailyTrendFromApi = useMemo(() => (data?.trend || []).map((t: { date: string; revenue: number; adSpend: number; maRevenue: number; maAdSpend: number }) => ({
+  // === 서버 집계 데이터 직접 사용 ===
+  const brandBreakdown = useMemo(() => {
+    return (data?.brandProfit || []).map((b) => ({
+      brand: b.brand,
+      label: brandMap[b.brand]?.label || BRAND_LABELS[b.brand] || b.brand,
+      color: brandMap[b.brand]?.color || BRAND_COLORS[b.brand] || "#6b7280",
+      revenue: b.revenue,
+      orders: b.orders,
+      adSpend: b.adSpend,
+      profit: b.profit,
+      profitRate: b.margin,
+      roas: b.adSpend > 0 ? b.revenue / b.adSpend : 0,
+      aov: b.orders > 0 ? b.revenue / b.orders : 0,
+    })).filter(b => b.revenue > 0 || b.adSpend > 0).sort((a, b) => b.revenue - a.revenue);
+  }, [data, brandMap]);
+
+  const channelAds = useMemo(() => {
+    return (data?.channels || []).map((c) => ({
+      channel: c.channel,
+      label: channelMap[c.channel]?.label || CHANNEL_LABELS[c.channel] || c.channel,
+      color: channelMap[c.channel]?.color || CHANNEL_COLORS[c.channel] || "#6b7280",
+      spend: c.spend,
+      roas: c.roas,
+    })).sort((a, b) => b.spend - a.spend);
+  }, [data, channelMap]);
+
+  const channelSales = useMemo(() => {
+    return (data?.salesByChannel || []).map((c) => ({
+      channel: c.channel,
+      label: channelMap[c.channel]?.label || CHANNEL_LABELS[c.channel] || c.channel,
+      color: channelMap[c.channel]?.color || SALES_CHANNEL_COLORS[c.channel] || CHANNEL_COLORS[c.channel] || "#6b7280",
+      revenue: c.revenue,
+    })).sort((a, b) => b.revenue - a.revenue);
+  }, [data, channelMap]);
+
+  const dailyTrend = useMemo(() => (data?.trend || []).map((t) => ({
     date: t.date.slice(5), revenue: t.revenue, adSpend: t.adSpend, maRevenue: t.maRevenue, maAdSpend: t.maAdSpend,
   })), [data]);
 
-  const funnelSummary = useMemo(() => data?.funnelSummary || { sessions: 0, cartAdds: 0, purchases: 0, repurchases: 0, convRate: 0 }, [data]);
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const gongguSales = useMemo(() => data?.gongguSales || [], [data]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const funnelSummary = data?.funnelSummary || { sessions: 0, cartAdds: 0, purchases: 0, repurchases: 0, convRate: 0 };
+  const topProducts = data?.topProducts || [];
+  const anomalies = data?.anomalies || [];
   const gongguSalesTotal = data?.gongguSalesTotal || 0;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const selfSalesTotal = data?.selfSalesTotal || 0;
+  const gongguSales = data?.gongguSales || [];
 
-  /* ── 브랜드별 ── */
-  const brandBreakdown = useMemo(() => {
-    const map: Record<string, { revenue: number; orders: number; adSpend: number; clicks: number; impressions: number; convValue: number }> = {};
-    for (const r of sales) {
-      if (!map[r.brand]) map[r.brand] = { revenue: 0, orders: 0, adSpend: 0, clicks: 0, impressions: 0, convValue: 0 };
-      map[r.brand].revenue += r.revenue || 0;
-      map[r.brand].orders += r.orders || 0;
-    }
-    for (const r of ads) {
-      if (r.channel.startsWith("ga4_")) continue;
-      if (!map[r.brand]) map[r.brand] = { revenue: 0, orders: 0, adSpend: 0, clicks: 0, impressions: 0, convValue: 0 };
-      map[r.brand].adSpend += r.spend || 0;
-      map[r.brand].clicks += r.clicks || 0;
-      map[r.brand].impressions += r.impressions || 0;
-      map[r.brand].convValue += r.conversion_value || 0;
-    }
-    return Object.entries(map).map(([b, v]) => ({
-      brand: b, label: brandMap[b]?.label || BRAND_LABELS[b] || b, color: brandMap[b]?.color || BRAND_COLORS[b] || "#6b7280",
-      ...v,
-      roas: v.adSpend > 0 ? v.convValue / v.adSpend : 0,
-      profit: v.revenue - v.adSpend,
-      profitRate: v.revenue > 0 ? ((v.revenue - v.adSpend) / v.revenue) * 100 : 0,
-      ctr: v.impressions > 0 ? (v.clicks / v.impressions) * 100 : 0,
-      aov: v.orders > 0 ? v.revenue / v.orders : 0,
-    })).sort((a, b) => b.revenue - a.revenue);
-  }, [sales, ads, brandMap]);
-
-  /* ── 채널별 광고 ── */
-  const channelAds = useMemo(() => {
-    const map: Record<string, { spend: number; clicks: number; impressions: number; convValue: number }> = {};
-    for (const r of ads) {
-      if (r.channel.startsWith("ga4_")) continue;
-      if (!map[r.channel]) map[r.channel] = { spend: 0, clicks: 0, impressions: 0, convValue: 0 };
-      map[r.channel].spend += r.spend || 0;
-      map[r.channel].clicks += r.clicks || 0;
-      map[r.channel].impressions += r.impressions || 0;
-      map[r.channel].convValue += r.conversion_value || 0;
-    }
-    return Object.entries(map).map(([ch, v]) => ({
-      channel: ch, label: channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch, color: channelMap[ch]?.color || CHANNEL_COLORS[ch] || "#6b7280",
-      ...v,
-      roas: v.spend > 0 ? v.convValue / v.spend : 0,
-      ctr: v.impressions > 0 ? (v.clicks / v.impressions) * 100 : 0,
-    })).sort((a, b) => b.spend - a.spend);
-  }, [ads, channelMap]);
-
-  /* ── 채널별 매출 ── */
-  const channelSales = useMemo(() => {
-    const map: Record<string, { revenue: number; orders: number }> = {};
-    for (const r of sales) {
-      const ch = r.channel || "other";
-      if (!map[ch]) map[ch] = { revenue: 0, orders: 0 };
-      map[ch].revenue += r.revenue || 0;
-      map[ch].orders += r.orders || 0;
-    }
-    return Object.entries(map).map(([ch, v]) => ({
-      channel: ch, label: channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch, color: channelMap[ch]?.color || SALES_CHANNEL_COLORS[ch] || "#6b7280", ...v,
-    })).sort((a, b) => b.revenue - a.revenue);
-  }, [sales, channelMap]);
-
-  /* ── 일별 매출+광고비 트렌드 (API에서 가져옴) ── */
-  const dailyTrend = dailyTrendFromApi;
-
-  /* ── 브랜드/제품 비중 (파이) — 단일 브랜드 선택 시 제품 비중으로 전환 ── */
+  // 브랜드/제품 비중 파이차트
   const shareData = useMemo(() => {
     if (brand && brand !== "all") {
-      // 단일 브랜드 → 제품별 매출 비중
-      const map: Record<string, number> = {};
-      for (const r of products) map[r.product] = (map[r.product] || 0) + (r.revenue || 0);
       const PRODUCT_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#ec4899", "#06b6d4", "#84cc16"];
-      return { title: "제품 매출 비중", data: Object.entries(map).map(([p, revenue], i) => ({
-        name: p.length > 15 ? p.slice(0, 15) + "…" : p, value: revenue, color: PRODUCT_COLORS[i % PRODUCT_COLORS.length],
-      })).sort((a, b) => b.value - a.value).slice(0, 10) };
+      return {
+        title: "제품 매출 비중",
+        data: topProducts.map((p, i) => ({
+          name: p.product.length > 15 ? p.product.slice(0, 15) + "…" : p.product,
+          value: p.revenue,
+          color: PRODUCT_COLORS[i % PRODUCT_COLORS.length],
+        })),
+      };
     }
-    // 전체 → 브랜드별 매출 비중
-    const map: Record<string, number> = {};
-    for (const r of sales) map[r.brand] = (map[r.brand] || 0) + (r.revenue || 0);
-    return { title: "브랜드 매출 비중", data: Object.entries(map).map(([b, revenue]) => ({
-      name: brandMap[b]?.label || BRAND_LABELS[b] || b, value: revenue, color: brandMap[b]?.color || BRAND_COLORS[b] || "#6b7280",
-    })).sort((a, b) => b.value - a.value) };
-  }, [sales, products, brand, brandMap]);
-
-  /* ── 퍼널 요약 (API에서 가져옴) ── */
-  // funnelSummary는 상단에서 data?.funnelSummary로 가져옴
-
-  /* ── 밸런스랩 공구 요약 ── */
-  const gongguSummary = useMemo(() => {
-    const gonggu = products.filter((r) => r.brand === "balancelab" && r.channel?.startsWith("공구_"));
-    const self = products.filter((r) => r.brand === "balancelab" && !r.channel?.startsWith("공구_"));
-    const sellerMap: Record<string, number> = {};
-    for (const r of gonggu) {
-      const seller = r.channel?.replace("공구_", "") || "기타";
-      sellerMap[seller] = (sellerMap[seller] || 0) + (r.revenue || 0);
-    }
-    const sellers = Object.entries(sellerMap).map(([s, v]) => ({ seller: s, revenue: v })).sort((a, b) => b.revenue - a.revenue);
     return {
-      gongguTotal: gonggu.reduce((s, r) => s + (r.revenue || 0), 0),
-      selfTotal: self.reduce((s, r) => s + (r.revenue || 0), 0),
-      sellers,
+      title: "브랜드 매출 비중",
+      data: (data?.brandRevenue || [])
+        .filter(b => b.revenue > 0)
+        .map((b) => ({
+          name: brandMap[b.brand]?.label || BRAND_LABELS[b.brand] || b.brand,
+          value: b.revenue,
+          color: brandMap[b.brand]?.color || BRAND_COLORS[b.brand] || "#6b7280",
+        }))
+        .sort((a, b) => b.value - a.value),
     };
-  }, [products]);
+  }, [data, topProducts, brand, brandMap]);
 
-  /* ── TOP 5 제품 ── */
-  const topProducts = useMemo(() => {
-    const map: Record<string, { product: string; brand: string; revenue: number; quantity: number }> = {};
-    for (const r of products) {
-      const key = `${r.brand}-${r.product}`;
-      if (!map[key]) map[key] = { product: r.product, brand: r.brand, revenue: 0, quantity: 0 };
-      map[key].revenue += r.revenue || 0;
-      map[key].quantity += r.quantity || 0;
-    }
-    return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-  }, [products]);
+  // 누적 매출
+  const cumulativeData = useMemo(() => {
+    const trend = data?.trend || [];
+    if (trend.length === 0) return [];
+    let cumRev = 0, cumAd = 0;
+    return trend.map((t) => {
+      cumRev += t.revenue;
+      cumAd += t.adSpend;
+      return { date: t.date.slice(5), cumRevenue: cumRev, cumAdSpend: cumAd };
+    });
+  }, [data]);
 
-  /* ── 인사이트 ── */
   const warnings = useMemo(() => {
     const results: string[] = [];
     for (const b of brandBreakdown) {
       if (b.roas > 0 && b.roas < 1) results.push(`${b.label} ROAS ${b.roas.toFixed(2)}x — 광고비 대비 전환 부족`);
     }
-    const salesDates = new Set(sales.map((r) => r.date));
-    const adsDates = new Set(ads.filter((r) => !r.channel.startsWith("ga4_")).map((r) => r.date));
-    const missing = Array.from(adsDates).filter((d) => !salesDates.has(d));
-    if (missing.length > 0 && missing.length <= 5) {
-      results.push(`매출 누락 ${missing.length}일 — 엑셀 업로드 필요`);
-    }
     return results;
-  }, [brandBreakdown, sales, ads]);
+  }, [brandBreakdown]);
 
-  /* ── 7.2 누적 매출 그래프 ── */
-  const cumulativeData = useMemo(() => {
-    const dailyMap: Record<string, { revenue: number; adSpend: number }> = {};
-    for (const r of sales) {
-      if (!dailyMap[r.date]) dailyMap[r.date] = { revenue: 0, adSpend: 0 };
-      dailyMap[r.date].revenue += r.revenue || 0;
-    }
-    for (const r of ads.filter((a) => !a.channel.startsWith("ga4_"))) {
-      if (!dailyMap[r.date]) dailyMap[r.date] = { revenue: 0, adSpend: 0 };
-      dailyMap[r.date].adSpend += r.spend || 0;
-    }
-    const sorted = Object.entries(dailyMap).sort(([a], [b]) => a.localeCompare(b));
-    let cumRev = 0, cumAd = 0;
-    return sorted.map(([date, v]) => {
-      cumRev += v.revenue;
-      cumAd += v.adSpend;
-      return { date: date.slice(5), cumRevenue: cumRev, cumAdSpend: cumAd };
-    });
-  }, [sales, ads]);
+  const pctChange = (cur: number, prev: number) => {
+    if (prev === 0) return cur > 0 ? 100 : undefined;
+    return ((cur - prev) / Math.abs(prev)) * 100;
+  };
 
-  /* ── 목표 달성률 ── */
   const targets = useMemo(() => {
     const t = targetsData?.targets || {};
     const curMonth = new Date().toISOString().slice(0, 7);
@@ -252,7 +182,6 @@ function OverviewInner() {
 
   const toggleKpi = (key: KpiKey) => setSelectedKpi((prev) => (prev === key ? null : key));
 
-  /* ── 드릴다운 ── */
   const drilldownData = useMemo(() => {
     if (!selectedKpi) return null;
     const configs: Record<string, { title: string; type: "brand" | "channel"; valueKey: string; format: (v: number) => string }> = {
@@ -262,7 +191,7 @@ function OverviewInner() {
       roas: { title: "채널별 ROAS", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
       profit: { title: "브랜드별 통상이익", type: "brand", valueKey: "profit", format: formatCurrency },
       profitRate: { title: "브랜드별 이익률", type: "brand", valueKey: "profitRate", format: (v) => formatPercent(v) },
-      ctr: { title: "채널별 CTR", type: "channel", valueKey: "ctr", format: (v) => formatPercent(v) },
+      ctr: { title: "채널별 ROAS", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
       aov: { title: "브랜드별 객단가", type: "brand", valueKey: "aov", format: (v) => formatCurrency(Math.round(v)) },
     };
     const c = configs[selectedKpi];
@@ -289,15 +218,13 @@ function OverviewInner() {
 
   return (
     <PageShell title="Overview" description="PPMI 마케팅 대시보드 전체 현황">
-      {/* 데이터 누락 알림 */}
       <MissingDataAlert />
 
-      {/* 이상치 감지 배너 */}
       {anomalies.length > 0 && (
         <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
           <CardContent className="p-3">
             <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-1">이상치 감지 ({anomalies.length}건)</p>
-            {anomalies.map((a: { brand: string; metric: string; change: number }, i: number) => (
+            {anomalies.map((a, i) => (
               <p key={i} className="text-xs text-red-600 dark:text-red-300">
                 • {a.brand} {a.metric}: {a.change > 0 ? "+" : ""}{a.change.toFixed(0)}% 변동
               </p>
@@ -346,7 +273,7 @@ function OverviewInner() {
         </Card>
       )}
 
-      {/* 경고/인사이트 */}
+      {/* 경고 */}
       {warnings.length > 0 && (
         <div className="space-y-2">
           {warnings.map((w, i) => (
@@ -360,7 +287,7 @@ function OverviewInner() {
         </div>
       )}
 
-      {/* ROW 1: 매출+광고비 트렌드 + 브랜드 비중 */}
+      {/* 일별 트렌드 + 브랜드 비중 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardContent className="p-4">
@@ -401,7 +328,7 @@ function OverviewInner() {
         </Card>
       </div>
 
-      {/* ROW 2: 채널별 광고비 + 채널별 매출 */}
+      {/* 채널별 광고비 + 채널별 매출 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4">
@@ -418,6 +345,7 @@ function OverviewInner() {
                   <span className="text-muted-foreground w-16 text-right">{c.roas.toFixed(2)}x</span>
                 </div>
               ))}
+              {channelAds.length === 0 && <div className="text-sm text-muted-foreground">데이터 없음</div>}
             </div>
           </CardContent>
         </Card>
@@ -434,15 +362,15 @@ function OverviewInner() {
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
                   <span className="flex-1">{c.label}</span>
                   <span className="font-medium">{formatCurrency(c.revenue)}</span>
-                  <span className="text-muted-foreground w-16 text-right">{formatNumber(c.orders)}건</span>
                 </div>
               ))}
+              {channelSales.length === 0 && <div className="text-sm text-muted-foreground">데이터 없음</div>}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* 7.2 누적 매출 그래프 */}
+      {/* 누적 매출 */}
       {cumulativeData.length > 1 && (
         <Card>
           <CardContent className="p-4">
@@ -470,7 +398,7 @@ function OverviewInner() {
         </Card>
       )}
 
-      {/* ROW 3: 퍼널 요약 + TOP 5 제품 */}
+      {/* 퍼널 요약 + TOP 5 제품 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4">
@@ -481,20 +409,20 @@ function OverviewInner() {
             <div className="flex items-center gap-2 text-sm">
               {[
                 { label: "세션", value: funnelSummary.sessions, color: "#3b82f6" },
-                { label: "장바구니", value: funnelSummary.cartAdds, color: "#f59e0b", rate: funnelSummary.cartRate },
-                { label: "구매", value: funnelSummary.purchases, color: "#10b981", rate: funnelSummary.purchaseRate },
+                { label: "장바구니", value: funnelSummary.cartAdds, color: "#f59e0b" },
+                { label: "구매", value: funnelSummary.purchases, color: "#10b981" },
                 { label: "재구매", value: funnelSummary.repurchases, color: "#8b5cf6" },
               ].map((step, i) => (
                 <div key={step.label} className="flex-1 text-center">
                   <div className="text-xs text-muted-foreground mb-1">{step.label}</div>
                   <div className="text-lg font-bold" style={{ color: step.color }}>{formatNumber(step.value)}</div>
-                  {step.rate !== undefined && (
-                    <div className="text-xs text-muted-foreground">{step.rate.toFixed(1)}%</div>
-                  )}
                   {i < 3 && <div className="text-muted-foreground mt-1">→</div>}
                 </div>
               ))}
             </div>
+            {funnelSummary.convRate > 0 && (
+              <p className="text-xs text-muted-foreground mt-2 text-center">전환율: {funnelSummary.convRate.toFixed(2)}%</p>
+            )}
           </CardContent>
         </Card>
 
@@ -502,10 +430,10 @@ function OverviewInner() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold">TOP 5 제품</h3>
-              <Link href="/sales?tab=product" className="text-xs text-primary hover:underline">상세 →</Link>
+              <Link href="/sales" className="text-xs text-primary hover:underline">상세 →</Link>
             </div>
             <div className="space-y-2">
-              {topProducts.map((p, i) => (
+              {topProducts.slice(0, 5).map((p, i) => (
                 <div key={`${p.brand}-${p.product}`} className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground w-4">{i + 1}</span>
                   <span className="text-xs px-1 py-0.5 rounded" style={{ backgroundColor: `${BRAND_COLORS[p.brand] || '#6b7280'}20`, color: BRAND_COLORS[p.brand] || '#6b7280' }}>
@@ -520,7 +448,8 @@ function OverviewInner() {
           </CardContent>
         </Card>
       </div>
-      {/* 7.3 채널별 ROAS 비교 */}
+
+      {/* 채널별 ROAS */}
       {channelAds.length > 0 && (
         <Card>
           <CardContent className="p-4">
@@ -529,11 +458,7 @@ function OverviewInner() {
               <Link href="/ads" className="text-xs text-primary hover:underline">상세 →</Link>
             </div>
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={channelAds.slice(0, 8).map(c => ({
-                label: c.label,
-                roas: c.spend > 0 ? c.convValue / c.spend : 0,
-                color: c.color,
-              }))} layout="vertical">
+              <BarChart data={channelAds.slice(0, 8).map(c => ({ label: c.label, roas: c.roas, color: c.color }))} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis type="number" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v.toFixed(1)}x`} />
                 <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={80} />
@@ -546,27 +471,27 @@ function OverviewInner() {
         </Card>
       )}
 
-      {/* ROW 4: 브랜드 상세 (단일 브랜드 선택 시) */}
+      {/* 브랜드 상세 */}
       {brand && brand !== "all" && <BrandDetailSection brand={brand} from={from} to={to} />}
 
-      {/* ROW 5: 밸런스랩 공구 매출 */}
-      {(gongguSummary.gongguTotal > 0 || gongguSummary.selfTotal > 0) && (
+      {/* 밸런스랩 공구 매출 */}
+      {(gongguSalesTotal > 0 || selfSalesTotal > 0) && (
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold">밸런스랩 공구 매출</h3>
-              <Link href="/sales?tab=gonggu" className="text-xs text-primary hover:underline">상세 →</Link>
+              <Link href="/sales" className="text-xs text-primary hover:underline">상세 →</Link>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="text-center">
                 <p className="text-xs text-muted-foreground">자체매출</p>
-                <p className="text-lg font-bold text-blue-500">{formatCurrency(gongguSummary.selfTotal)}</p>
+                <p className="text-lg font-bold text-blue-500">{formatCurrency(selfSalesTotal)}</p>
               </div>
               <div className="text-center">
                 <p className="text-xs text-muted-foreground">공구매출</p>
-                <p className="text-lg font-bold text-purple-500">{formatCurrency(gongguSummary.gongguTotal)}</p>
+                <p className="text-lg font-bold text-purple-500">{formatCurrency(gongguSalesTotal)}</p>
               </div>
-              {gongguSummary.sellers.slice(0, 2).map((s) => (
+              {gongguSales.slice(0, 2).map((s) => (
                 <div key={s.seller} className="text-center">
                   <p className="text-xs text-muted-foreground">공구_{s.seller}</p>
                   <p className="text-lg font-bold">{formatCurrency(s.revenue)}</p>
@@ -580,7 +505,6 @@ function OverviewInner() {
   );
 }
 
-/* ── 브랜드 상세 섹션 (P8) ── */
 function BrandDetailSection({ brand, from, to }: { brand: string; from: string; to: string }) {
   const { data } = useFetch<{
     lineupBreakdown: { lineup: string; revenue: number; quantity: number }[];

@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     const res = await globalThis.fetch(url);
     const data = await res.json();
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const trend = (data.data || []).map((row: any) => {
       let purchases = 0, revenue = 0;
       for (const a of row.actions || []) {
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({ trend });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ trend: [], error: "Failed to fetch trend" });
   }
 }
