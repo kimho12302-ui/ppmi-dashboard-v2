@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAll(baseQuery: any): Promise<any[]> {
+  const PAGE = 1000;
+  let from = 0;
+  const all: unknown[] = [];
+  while (true) {
+    const { data, error } = await baseQuery.range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
@@ -12,15 +28,13 @@ export async function GET(req: NextRequest) {
     let salesQuery = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).order("date");
     if (brand !== "all") salesQuery = salesQuery.eq("brand", brand);
     else salesQuery = salesQuery.neq("brand", "all");
-    const { data: sales, error: salesErr } = await salesQuery;
-    if (salesErr) throw salesErr;
+    const sales = await fetchAll(salesQuery);
 
     // ── 2. Ad Spend ──
     let adQuery = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).order("date");
     if (brand !== "all") adQuery = adQuery.eq("brand", brand);
     else adQuery = adQuery.neq("brand", "all");
-    const { data: adSpend, error: adErr } = await adQuery;
-    if (adErr) throw adErr;
+    const adSpend = await fetchAll(adQuery);
 
     // ── 3. Previous period ──
     const fromDate = new Date(from);
@@ -32,12 +46,12 @@ export async function GET(req: NextRequest) {
     let prevSalesQ = supabase.from("daily_sales").select("revenue, orders").gte("date", prevFrom).lte("date", prevTo);
     if (brand !== "all") prevSalesQ = prevSalesQ.eq("brand", brand);
     else prevSalesQ = prevSalesQ.neq("brand", "all");
-    const { data: prevSales } = await prevSalesQ;
+    const prevSales = await fetchAll(prevSalesQ);
 
     let prevAdQ = supabase.from("daily_ad_spend").select("spend, conversion_value").gte("date", prevFrom).lte("date", prevTo);
     if (brand !== "all") prevAdQ = prevAdQ.eq("brand", brand);
     else prevAdQ = prevAdQ.neq("brand", "all");
-    const { data: prevAd } = await prevAdQ;
+    const prevAd = await fetchAll(prevAdQ);
 
     // ── 4. Product costs (COGS) ──
     const { data: productCostsData } = await supabase.from("product_costs").select("product,brand,cost_price,manufacturing_cost,shipping_cost");
@@ -49,9 +63,9 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    let cogsProdQ = supabase.from("product_sales").select("product,brand,quantity").gte("date", from).lte("date", to).range(0, 9999);
+    let cogsProdQ = supabase.from("product_sales").select("product,brand,quantity").gte("date", from).lte("date", to);
     if (brand !== "all") cogsProdQ = cogsProdQ.eq("brand", brand);
-    const { data: cogsProdData } = await cogsProdQ;
+    const cogsProdData = await fetchAll(cogsProdQ);
 
     let totalCOGS = 0;
     let matchedProducts = 0;
@@ -89,8 +103,8 @@ export async function GET(req: NextRequest) {
     // gongguByDate: date → revenue (밸런스랩 공구 일별 집계, trend에 반영)
     const gongguByDate = new Map<string, number>();
     if (brand === "balancelab" || brand === "all") {
-      const { data: gongguData } = await supabase.from("product_sales").select("date,channel,revenue,quantity")
-        .gte("date", from).lte("date", to).eq("brand", "balancelab").range(0, 9999);
+      const gongguData = await fetchAll(supabase.from("product_sales").select("date,channel,revenue,quantity")
+        .gte("date", from).lte("date", to).eq("brand", "balancelab"));
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
       for (const r of gongguData || []) {
         if (r.channel && r.channel.startsWith("공구_")) {
@@ -254,9 +268,9 @@ export async function GET(req: NextRequest) {
     const salesByChannel = Array.from(salesChMap.entries()).map(([channel, revenue]) => ({ channel, revenue })).sort((a, b) => b.revenue - a.revenue);
 
     // ── Top 5 products ──
-    let prodQ = supabase.from("product_sales").select("product,revenue,quantity,brand").gte("date", from).lte("date", to).range(0, 9999);
+    let prodQ = supabase.from("product_sales").select("product,revenue,quantity,brand").gte("date", from).lte("date", to);
     if (brand !== "all") prodQ = prodQ.eq("brand", brand);
-    const { data: prodData } = await prodQ;
+    const prodData = await fetchAll(prodQ);
     const prodMap = new Map<string, { revenue: number; quantity: number; brand: string }>();
     for (const r of prodData || []) {
       const e = prodMap.get(r.product) || { revenue: 0, quantity: 0, brand: r.brand };
