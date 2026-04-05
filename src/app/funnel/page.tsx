@@ -31,11 +31,21 @@ export default function FunnelPage() {
 }
 
 function FunnelInner() {
-  const { from, to } = useFilterParams();
+  const { from, to, brand } = useFilterParams();
   const { data, loading } = useFetch<{ funnel: DailyFunnel[]; metaAds: MetaAdRow[] }>(`/api/funnel?from=${from}&to=${to}`);
   const [selectedSource, setSelectedSource] = useState<string>("all");
 
-  const funnel = useMemo(() => data?.funnel || [], [data]);
+  /* 브랜드 필터 적용 — 브랜드별 판매 채널만 표시 */
+  const funnel = useMemo(() => {
+    const all = data?.funnel || [];
+    if (!brand || brand === "all") return all;
+    if (brand === "balancelab") {
+      // 밸런스랩 → smartstore(balancelab)만
+      return all.filter((r) => r.brand === "balancelab");
+    }
+    // 너티/아이언펫/사입 → cafe24 + smartstore(일반) + coupang
+    return all.filter((r) => r.brand === "all");
+  }, [data, brand]);
 
   /* 소스별 집계 (channel 기준) */
   const bySource = useMemo(() => {
