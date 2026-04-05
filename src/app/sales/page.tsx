@@ -103,17 +103,25 @@ function SalesPageInner() {
     return ((cur - prev) / Math.abs(prev)) * 100;
   };
 
-  /* 일별 트렌드 */
+  /* 브랜드별 누적 매출 트렌드 */
+  const brandLabels: Record<string, string> = { nutty: "너티", ironpet: "아이언펫", saip: "사입", balancelab: "밸런스랩" };
+  const brandColors: Record<string, string> = { 너티: "#dc2626", 아이언펫: "#ea580c", 사입: "#92400e", 밸런스랩: "#2563eb" };
   const dailyTrend = useMemo(() => {
-    const map: Record<string, { revenue: number; orders: number }> = {};
+    const map: Record<string, Record<string, number>> = {};
     for (const r of sales) {
-      if (!map[r.date]) map[r.date] = { revenue: 0, orders: 0 };
-      map[r.date].revenue += r.revenue || 0;
-      map[r.date].orders += r.orders || 0;
+      if (!map[r.date]) map[r.date] = { revenue: 0 };
+      map[r.date].revenue = (map[r.date].revenue || 0) + (r.revenue || 0);
+      const bl = brandLabels[r.brand] || r.brand;
+      map[r.date][bl] = (map[r.date][bl] || 0) + (r.revenue || 0);
     }
     return Object.entries(map)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, v]) => ({ date: date.slice(5), ...v }));
+  }, [sales]);
+  const activeBrands = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of sales) set.add(brandLabels[r.brand] || r.brand);
+    return Array.from(set);
   }, [sales]);
 
   /* 채널별 */
@@ -229,7 +237,7 @@ function SalesPageInner() {
       {(
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-semibold mb-4">일별 매출 트렌드</h3>
+            <h3 className="font-semibold mb-4">브랜드별 누적 매출 트렌드</h3>
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={dailyTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -248,15 +256,18 @@ function SalesPageInner() {
                   }}
                   formatter={(val) => formatCurrency(Number(val))}
                 />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  name="매출"
-                  stroke="#2563eb"
-                  fill="#2563eb"
-                  fillOpacity={0.15}
-                  strokeWidth={2}
-                />
+                {activeBrands.map((bl) => (
+                  <Area
+                    key={bl}
+                    type="monotone"
+                    dataKey={bl}
+                    name={bl}
+                    stackId="brand"
+                    stroke={brandColors[bl] || "#6b7280"}
+                    fill={brandColors[bl] || "#6b7280"}
+                    fillOpacity={0.6}
+                  />
+                ))}
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
