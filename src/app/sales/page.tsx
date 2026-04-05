@@ -20,6 +20,7 @@ import {
   CartesianGrid,
 } from "recharts";
 
+// 탭 제거 — 모든 섹션을 한 페이지에 표시
 type ViewTab = "trend" | "channel" | "category" | "product" | "gonggu";
 
 /* 브랜드별 카테고리 분류 (기획서 4.1) */
@@ -67,6 +68,7 @@ function SalesPageInner() {
     prevSales: DailySales[];
   }>(`/api/dashboard?${params}`);
   const { brandMap, channelMap } = useConfig();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [tab, setTab] = useState<ViewTab>("trend");
 
   const sales = useMemo(() => {
@@ -217,29 +219,6 @@ function SalesPageInner() {
   return (
     <PageShell title="매출 분석" description="채널별·브랜드별 매출 트렌드">
       {/* 탭 */}
-      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
-        {([
-          { key: "trend", label: "매출 트렌드" },
-          { key: "channel", label: "채널별" },
-          { key: "category", label: "카테고리별" },
-          { key: "product", label: "제품별" },
-          { key: "gonggu", label: "공구별" },
-        ] as { key: ViewTab; label: string }[]).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={cn(
-              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
-              tab === t.key
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <KpiCard title="매출" value={formatCurrency(totals.revenue)} change={pctChange(totals.revenue, prevTotals.revenue)} />
@@ -247,7 +226,7 @@ function SalesPageInner() {
         <KpiCard title="평균 객단가" value={totals.aov > 0 ? formatCurrency(Math.round(totals.aov)) : "—"} change={pctChange(totals.aov, prevTotals.aov)} />
       </div>
 
-      {tab === "trend" && (
+      {(
         <Card>
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">일별 매출 트렌드</h3>
@@ -284,7 +263,7 @@ function SalesPageInner() {
         </Card>
       )}
 
-      {tab === "trend" && (
+      {(
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-4">
@@ -311,7 +290,7 @@ function SalesPageInner() {
         </Card>
       )}
 
-      {tab === "category" && (
+      {(
         <Card>
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">카테고리별 매출</h3>
@@ -328,7 +307,7 @@ function SalesPageInner() {
         </Card>
       )}
 
-      {tab === "channel" && (
+      {(
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {byChannel.map((c) => (
@@ -375,7 +354,7 @@ function SalesPageInner() {
         </>
       )}
 
-      {tab === "product" && (
+      {(
         <Card>
           <CardContent className="p-4 overflow-x-auto">
             <h3 className="font-semibold mb-4">TOP 10 제품</h3>
@@ -415,7 +394,7 @@ function SalesPageInner() {
           </CardContent>
         </Card>
       )}
-      {tab === "gonggu" && (
+      {(
         <div className="space-y-4">
           {/* 자체 vs 공구 비교 */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

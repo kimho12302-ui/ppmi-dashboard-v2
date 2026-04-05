@@ -184,14 +184,24 @@ function OverviewInner() {
       .map(([date, v]) => ({ date: date.slice(5), ...v }));
   }, [sales, ads]);
 
-  /* ── 브랜드 비중 (파이) ── */
-  const brandShare = useMemo(() => {
+  /* ── 브랜드/제품 비중 (파이) — 단일 브랜드 선택 시 제품 비중으로 전환 ── */
+  const shareData = useMemo(() => {
+    if (brand && brand !== "all") {
+      // 단일 브랜드 → 제품별 매출 비중
+      const map: Record<string, number> = {};
+      for (const r of products) map[r.product] = (map[r.product] || 0) + (r.revenue || 0);
+      const PRODUCT_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#ec4899", "#06b6d4", "#84cc16"];
+      return { title: "제품 매출 비중", data: Object.entries(map).map(([p, revenue], i) => ({
+        name: p.length > 15 ? p.slice(0, 15) + "…" : p, value: revenue, color: PRODUCT_COLORS[i % PRODUCT_COLORS.length],
+      })).sort((a, b) => b.value - a.value).slice(0, 10) };
+    }
+    // 전체 → 브랜드별 매출 비중
     const map: Record<string, number> = {};
     for (const r of sales) map[r.brand] = (map[r.brand] || 0) + (r.revenue || 0);
-    return Object.entries(map).map(([b, revenue]) => ({
+    return { title: "브랜드 매출 비중", data: Object.entries(map).map(([b, revenue]) => ({
       name: brandMap[b]?.label || BRAND_LABELS[b] || b, value: revenue, color: brandMap[b]?.color || BRAND_COLORS[b] || "#6b7280",
-    })).sort((a, b) => b.value - a.value);
-  }, [sales, brandMap]);
+    })).sort((a, b) => b.value - a.value) };
+  }, [sales, products, brand, brandMap]);
 
   /* ── 퍼널 요약 ── */
   const funnelSummary = useMemo(() => {
@@ -399,15 +409,15 @@ function OverviewInner() {
 
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-semibold mb-4">브랜드 매출 비중</h3>
-            {brandShare.length > 0 ? (
+            <h3 className="font-semibold mb-4">{shareData.title}</h3>
+            {shareData.data.length > 0 ? (
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
-                  <Pie data={brandShare} cx="50%" cy="50%" innerRadius={45} outerRadius={85} dataKey="value" nameKey="name"
+                  <Pie data={shareData.data} cx="50%" cy="50%" innerRadius={45} outerRadius={85} dataKey="value" nameKey="name"
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     label={({ name, percent }: any) => `${name || ''} ${((percent || 0) * 100).toFixed(0)}%`} labelLine={false}
                   >
-                    {brandShare.map((e, i) => <Cell key={i} fill={e.color} />)}
+                    {shareData.data.map((e, i) => <Cell key={i} fill={e.color} />)}
                   </Pie>
                   <Tooltip formatter={(val) => formatCurrency(Number(val))} />
                 </PieChart>
