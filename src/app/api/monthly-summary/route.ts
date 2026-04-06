@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     else { salesQ = salesQ.neq("brand", "all"); }
     const sales = await fetchAll(salesQ);
 
-    let adQ = supabase.from("daily_ad_spend").select("date,channel,spend,conversion_value").gte("date", fromDate).lte("date", toDate);
+    let adQ = supabase.from("daily_ad_spend").select("date,channel,spend,conversion_value").gte("date", fromDate).lte("date", toDate).not("channel", "like", "ga4_%");
     if (brand !== "all") { adQ = adQ.eq("brand", brand); }
     else { adQ = adQ.neq("brand", "all"); }
     const ads = await fetchAll(adQ);

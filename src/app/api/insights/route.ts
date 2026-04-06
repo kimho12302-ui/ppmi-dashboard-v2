@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     if (brand !== "all") salesQ = salesQ.eq("brand", brand);
     const { data: sales } = await salesQ;
 
-    let adQ = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).neq("brand", "all");
+    let adQ = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).neq("brand", "all").not("channel", "like", "ga4_%");
     if (brand !== "all") adQ = adQ.eq("brand", brand);
     const { data: adSpend } = await adQ;
 
@@ -160,7 +160,7 @@ export async function GET(request: NextRequest) {
     const prevTo = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
 
     const { data: prevSales } = await supabase.from("daily_sales").select("*").gte("date", prevFrom).lte("date", prevTo);
-    const { data: prevAds } = await supabase.from("daily_ad_spend").select("*").gte("date", prevFrom).lte("date", prevTo);
+    const { data: prevAds } = await supabase.from("daily_ad_spend").select("*").gte("date", prevFrom).lte("date", prevTo).not("channel", "like", "ga4_%");
 
     const prevRevenue = (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0);
     void (prevAds || []).reduce((s, r) => s + Number(r.spend), 0); // prevTotalAdSpend - reserved for future use

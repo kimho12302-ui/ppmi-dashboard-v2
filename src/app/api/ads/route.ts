@@ -33,8 +33,9 @@ export async function GET(req: NextRequest) {
     const prevFromStr = prevFrom.toISOString().slice(0, 10);
     const prevToStr = prevTo.toISOString().slice(0, 10);
 
-    let query = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).order("date");
-    let prevQuery = supabase.from("daily_ad_spend").select("date,brand,channel,spend,clicks,impressions,conversion_value").gte("date", prevFromStr).lte("date", prevToStr);
+    // ga4_* 채널은 UTM 추적 전용 (퍼널 데이터) — 광고비 집계에서 제외
+    let query = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).not("channel", "like", "ga4_%").order("date");
+    let prevQuery = supabase.from("daily_ad_spend").select("date,brand,channel,spend,clicks,impressions,conversion_value").gte("date", prevFromStr).lte("date", prevToStr).not("channel", "like", "ga4_%");
 
     if (brand && brand !== "all") {
       query = query.eq("brand", brand);
