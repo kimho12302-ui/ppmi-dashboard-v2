@@ -19,15 +19,6 @@ async function getLatestByChannel(channel: string): Promise<string | null> {
   return data?.[0]?.date || null;
 }
 
-async function getLatestByChannelLike(pattern: string): Promise<string | null> {
-  const { data } = await supabase
-    .from("daily_ad_spend")
-    .select("date")
-    .like("channel", pattern)
-    .order("date", { ascending: false })
-    .limit(1);
-  return data?.[0]?.date || null;
-}
 
 async function getLatestFunnelByChannel(channel: string, brand?: string): Promise<string | null> {
   let query = supabase.from("daily_funnel").select("date").eq("channel", channel);
@@ -55,16 +46,7 @@ export async function GET() {
       // Auto - API
       { id: "meta_ads", label: "Meta \uAD11\uACE0\uBE44", type: "auto", fetcher: () => getLatestByChannel("meta") },
       { id: "google_ads", label: "Google Ads", type: "auto", fetcher: () => getLatestByChannel("google_pmax") },
-      { id: "ga4", label: "GA4", type: "auto", fetcher: async () => {
-        const [adDate, funnelDate] = await Promise.all([
-          getLatestByChannelLike("ga4_%"),
-          getLatestFunnelByChannel("cafe24"),
-        ]);
-        // 둘 중 더 오래된 날짜 반환 (둘 다 수집되어야 완료)
-        if (!adDate) return funnelDate;
-        if (!funnelDate) return adDate;
-        return adDate < funnelDate ? adDate : funnelDate;
-      }},
+      { id: "ga4", label: "GA4 (카페24 세션)", type: "auto", fetcher: () => getLatestFunnelByChannel("cafe24") },
       { id: "naver_sa", label: "\uB124\uC774\uBC84 \uAC80\uC0C9\uAD11\uACE0", type: "auto", fetcher: () => getLatestByChannel("naver_search") },
       { id: "naver_shopping", label: "\uB124\uC774\uBC84 \uC1FC\uD551\uAD11\uACE0", type: "auto", fetcher: () => getLatestByChannel("naver_shopping") },
       // Manual

@@ -96,7 +96,7 @@ function ContentInner() {
       <PageShell title="\uCF58\uD150\uCE20/SNS" description="\uCF58\uD150\uCE20 \uC720\uD615\uBCC4 \uC131\uACFC \xB7 \uD314\uB85C\uC6CC \uCD94\uC774 \xB7 \uAC8C\uC2DC \uD2B8\uB80C\uB4DC">
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
-            \uC120\uD0DD\uD55C \uAE30\uAC04\uC5D0 \uCF58\uD150\uCE20 \uB370\uC774\uD130\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.
+            선택한 기간에 콘텐츠 데이터가 없습니다.
           </CardContent>
         </Card>
       </PageShell>
@@ -109,31 +109,31 @@ function ContentInner() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">\uCD1D \uAC8C\uC2DC\uBB3C</p>
+            <p className="text-xs text-muted-foreground">총 게시물</p>
             <p className="text-xl font-bold">{formatNumber(totalPosts)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">\uCD1D \uB178\uCD9C</p>
+            <p className="text-xs text-muted-foreground">총 노출</p>
             <p className="text-xl font-bold">{formatNumber(totalImpressions)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">\uD074\uB9AD</p>
+            <p className="text-xs text-muted-foreground">클릭</p>
             <p className="text-xl font-bold">{formatNumber(totalClicks)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">\uD3C9\uADE0 CTR</p>
+            <p className="text-xs text-muted-foreground">평균 CTR</p>
             <p className="text-xl font-bold">{avgCtr.toFixed(2)}%</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">\uD314\uB85C\uC6CC</p>
+            <p className="text-xs text-muted-foreground">팔로워</p>
             <p className="text-xl font-bold">{formatNumber(latestFollowers)}</p>
           </CardContent>
         </Card>
@@ -164,7 +164,7 @@ function ContentInner() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardContent className="p-4">
-                <h3 className="font-semibold text-sm mb-3">\uCF58\uD150\uCE20 \uC720\uD615\uBCC4 \uAC8C\uC2DC \uC218</h3>
+                <h3 className="font-semibold text-sm mb-3">콘텐츠 유형별 게시 수</h3>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={byType}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -187,7 +187,7 @@ function ContentInner() {
 
             <Card>
               <CardContent className="p-4">
-                <h3 className="font-semibold text-sm mb-3">\uC720\uD615\uBCC4 CTR & \uC778\uAC8C\uC774\uC9C0\uBA3C\uD2B8</h3>
+                <h3 className="font-semibold text-sm mb-3">유형별 CTR & 인게이지먼트</h3>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={byType}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -218,12 +218,12 @@ function ContentInner() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left border-b text-muted-foreground">
-                    <th className="pb-2 pr-4">\uCF58\uD150\uCE20 \uC720\uD615</th>
-                    <th className="pb-2 pr-4 text-right">\uAC8C\uC2DC \uC218</th>
-                    <th className="pb-2 pr-4 text-right">\uB178\uCD9C</th>
-                    <th className="pb-2 pr-4 text-right">\uD074\uB9AD</th>
+                    <th className="pb-2 pr-4">콘텐츠 유형</th>
+                    <th className="pb-2 pr-4 text-right">게시 수</th>
+                    <th className="pb-2 pr-4 text-right">노출</th>
+                    <th className="pb-2 pr-4 text-right">클릭</th>
                     <th className="pb-2 pr-4 text-right">CTR</th>
-                    <th className="pb-2 text-right">\uC778\uAC8C\uC774\uC9C0\uBA3C\uD2B8</th>
+                    <th className="pb-2 text-right">인게이지먼트</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -252,7 +252,7 @@ function ContentInner() {
           {/* Posts trend by content type */}
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-semibold text-sm mb-3">\uC8FC\uAC04\uBCC4 \uAC8C\uC2DC \uD2B8\uB80C\uB4DC</h3>
+              <h3 className="font-semibold text-sm mb-3">주간별 게시 트렌드</h3>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={postsTrend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -280,7 +280,7 @@ function ContentInner() {
           {followerTrend.length > 0 && (
             <Card>
               <CardContent className="p-4">
-                <h3 className="font-semibold text-sm mb-3">\uD314\uB85C\uC6CC \uCD94\uC774</h3>
+                <h3 className="font-semibold text-sm mb-3">팔로워 추이</h3>
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart data={followerTrend}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />

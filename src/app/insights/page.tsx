@@ -70,7 +70,7 @@ function InsightsInner() {
           const cfg = levelConfig[level];
           return (
             <span key={level} className={cn("text-xs font-medium px-2.5 py-1 rounded-full", cfg.badge)}>
-              {cfg.icon} {cfg.badgeLabel} {count}\uAC74
+              {cfg.icon} {cfg.badgeLabel} {count}건
             </span>
           );
         })}
@@ -84,8 +84,8 @@ function InsightsInner() {
               <div className="flex items-start gap-3">
                 <span className="text-lg">{levelConfig.info.icon}</span>
                 <div>
-                  <h4 className="font-semibold text-sm">\uD2B9\uC774\uC0AC\uD56D \uC5C6\uC74C</h4>
-                  <p className="text-sm text-muted-foreground">\uC120\uD0DD\uD55C \uAE30\uAC04\uC5D0 \uC8FC\uBAA9\uD560 \uB9CC\uD55C \uC774\uC0C1\uCE58\uB098 \uACBD\uACE0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.</p>
+                  <h4 className="font-semibold text-sm">특이사항 없음</h4>
+                  <p className="text-sm text-muted-foreground">선택한 기간에 주목할 만한 이상치나 경고가 없습니다.</p>
                 </div>
               </div>
             </CardContent>
@@ -113,7 +113,7 @@ function InsightsInner() {
 
                     {insight.actions && insight.actions.length > 0 && (
                       <div className="mt-2 space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground">\uAD8C\uC7A5 \uC561\uC158:</p>
+                        <p className="text-xs font-medium text-muted-foreground">권장 액션:</p>
                         <ul className="space-y-0.5">
                           {insight.actions.map((action, j) => (
                             <li key={j} className="text-xs text-muted-foreground flex items-start gap-1.5">
@@ -135,7 +135,7 @@ function InsightsInner() {
       <Card>
         <CardContent className="p-4">
           <p className="text-xs text-muted-foreground">
-            \uD83D\uDCA1 \uADDC\uCE59 \uAE30\uBC18 \uC790\uB3D9 \uAC10\uC9C0: ROAS &lt; 1 \uC801\uC790\uCC44\uB110, \uC804\uCCB4 ROAS \uBAA9\uD45C \uBBF8\uB2EC, \uC804\uD658\uC728/\uC7A5\uBC14\uAD6C\uB2C8 \uC774\uD0C8\uB960, \uB9E4\uCD9C 15%+ \uD558\uB77D \uC2DC \uBE0C\uB79C\uB4DC/\uCC44\uB110/\uC81C\uD488\uBCC4 \uC6D0\uC778 \uBD84\uC11D.
+            💡 규칙 기반 자동 감지: ROAS &lt; 1 적자채널, 전체 ROAS 목표 미달, 전환율/장바구니 이탈률, 매출 15%+ 하락 시 브랜드/채널/제품별 원인 분석.
           </p>
         </CardContent>
       </Card>

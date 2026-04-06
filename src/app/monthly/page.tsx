@@ -94,7 +94,7 @@ function MonthlyInner() {
                 year === y ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {y}\uB144
+              {y}년
             </button>
           ))}
         </div>
@@ -121,25 +121,25 @@ function MonthlyInner() {
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">YTD \uB9E4\uCD9C</p>
+              <p className="text-xs text-muted-foreground">YTD 매출</p>
               <p className="text-xl font-bold">{formatCurrency(ytd.revenue)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">YTD \uAD11\uACE0\uBE44</p>
+              <p className="text-xs text-muted-foreground">YTD 광고비</p>
               <p className="text-xl font-bold">{formatCurrency(ytd.adSpend)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">YTD \uC6D0\uAC00</p>
+              <p className="text-xs text-muted-foreground">YTD 원가</p>
               <p className="text-xl font-bold">{formatCurrency(ytd.cogs)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">YTD \uC774\uC775</p>
+              <p className="text-xs text-muted-foreground">YTD 이익</p>
               <p className={cn("text-xl font-bold", ytd.profit >= 0 ? "text-emerald-600" : "text-red-500")}>
                 {formatCurrency(ytd.profit)}
               </p>
@@ -147,7 +147,7 @@ function MonthlyInner() {
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">YTD \uC774\uC775\uB960</p>
+              <p className="text-xs text-muted-foreground">YTD 이익률</p>
               <p className={cn("text-xl font-bold", ytd.profitRate >= 0 ? "text-emerald-600" : "text-red-500")}>
                 {formatPercent(ytd.profitRate)}
               </p>
@@ -160,7 +160,7 @@ function MonthlyInner() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-semibold text-sm mb-3">\uB9E4\uCD9C vs \uCD1D\uBE44\uC6A9 (\uAD11\uACE0\uBE44+\uC6D0\uAC00+\uBC30\uC1A1)</h3>
+            <h3 className="font-semibold text-sm mb-3">매출 vs 총비용 (광고비+원가+배송)</h3>
             <ResponsiveContainer width="100%" height={220}>
               <ComposedChart data={summary}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -182,7 +182,7 @@ function MonthlyInner() {
 
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-semibold text-sm mb-3">\uC774\uC775\uB960 & ROAS \uCD94\uC774</h3>
+            <h3 className="font-semibold text-sm mb-3">이익률 & ROAS 추이</h3>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={summary}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -208,17 +208,17 @@ function MonthlyInner() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left border-b text-muted-foreground">
-                <th className="pb-2 pr-3">\uC6D4</th>
-                <th className="pb-2 pr-3 text-right">\uB9E4\uCD9C</th>
-                <th className="pb-2 pr-3 text-right">\uC804\uC6D4\uBE44</th>
-                <th className="pb-2 pr-3 text-right">\uC8FC\uBB38</th>
+                <th className="pb-2 pr-3">월</th>
+                <th className="pb-2 pr-3 text-right">매출</th>
+                <th className="pb-2 pr-3 text-right">전월비</th>
+                <th className="pb-2 pr-3 text-right">주문</th>
                 <th className="pb-2 pr-3 text-right">AOV</th>
-                <th className="pb-2 pr-3 text-right">\uAD11\uACE0\uBE44</th>
-                <th className="pb-2 pr-3 text-right">\uC6D0\uAC00</th>
-                <th className="pb-2 pr-3 text-right">\uBC30\uC1A1\uBE44</th>
+                <th className="pb-2 pr-3 text-right">광고비</th>
+                <th className="pb-2 pr-3 text-right">원가</th>
+                <th className="pb-2 pr-3 text-right">배송비</th>
                 <th className="pb-2 pr-3 text-right">ROAS</th>
-                <th className="pb-2 pr-3 text-right">\uC774\uC775</th>
-                <th className="pb-2 text-right">\uC774\uC775\uB960</th>
+                <th className="pb-2 pr-3 text-right">이익</th>
+                <th className="pb-2 text-right">이익률</th>
               </tr>
             </thead>
             <tbody>
@@ -251,7 +251,7 @@ function MonthlyInner() {
               ))}
               {reversed.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="py-8 text-center text-muted-foreground">\uB370\uC774\uD130 \uC5C6\uC74C</td>
+                  <td colSpan={11} className="py-8 text-center text-muted-foreground">데이터 없음</td>
                 </tr>
               )}
             </tbody>

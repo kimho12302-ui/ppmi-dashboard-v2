@@ -11,13 +11,12 @@ import { Suspense, useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  Legend,
 } from "recharts";
 
 // 탭 제거 — 모든 섹션을 한 페이지에 표시
@@ -66,6 +65,8 @@ function SalesPageInner() {
     sales: DailySales[];
     products: ProductSales[];
     prevSales: DailySales[];
+    gongguSalesTotal?: number;
+    brandRevenueTrend?: { date: string; [brand: string]: number | string }[];
   }>(`/api/dashboard?${params}`);
   const { brandMap, channelMap } = useConfig();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -95,7 +96,10 @@ function SalesPageInner() {
     const orders = s.reduce((acc, r) => acc + (r.orders || 0), 0);
     return { revenue, orders, aov: orders > 0 ? revenue / orders : 0 };
   };
-  const totals = useMemo(() => calcSalesKpi(sales), [sales]);
+  const totals = useMemo(() => {
+    const base = calcSalesKpi(sales);
+    return { ...base, revenue: base.revenue + (data?.gongguSalesTotal || 0) };
+  }, [sales, data?.gongguSalesTotal]);
   const prevTotals = useMemo(() => calcSalesKpi(prevSales), [prevSales]);
 
   const pctChange = (cur: number, prev: number) => {
@@ -103,26 +107,18 @@ function SalesPageInner() {
     return ((cur - prev) / Math.abs(prev)) * 100;
   };
 
-  /* 브랜드별 누적 매출 트렌드 */
-  const brandLabels: Record<string, string> = { nutty: "너티", ironpet: "아이언펫", saip: "사입", balancelab: "밸런스랩" };
+  /* 브랜드별 누적 매출 트렌드 — API의 brandRevenueTrend 사용 (공구 포함) */
   const brandColors: Record<string, string> = { 너티: "#dc2626", 아이언펫: "#ea580c", 사입: "#92400e", 밸런스랩: "#2563eb" };
   const dailyTrend = useMemo(() => {
-    const map: Record<string, Record<string, number>> = {};
-    for (const r of sales) {
-      if (!map[r.date]) map[r.date] = { revenue: 0 };
-      map[r.date].revenue = (map[r.date].revenue || 0) + (r.revenue || 0);
-      const bl = brandLabels[r.brand] || r.brand;
-      map[r.date][bl] = (map[r.date][bl] || 0) + (r.revenue || 0);
-    }
-    return Object.entries(map)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, v]) => ({ date: date.slice(5), ...v }));
-  }, [sales]);
+    return (data?.brandRevenueTrend || []).map((r) => ({ ...r, date: r.date.slice(5) }));
+  }, [data?.brandRevenueTrend]);
   const activeBrands = useMemo(() => {
     const set = new Set<string>();
-    for (const r of sales) set.add(brandLabels[r.brand] || r.brand);
+    for (const r of data?.brandRevenueTrend || []) {
+      Object.keys(r).filter((k) => k !== "date").forEach((k) => set.add(k));
+    }
     return Array.from(set);
-  }, [sales]);
+  }, [data?.brandRevenueTrend]);
 
   /* 채널별 */
   const byChannel = useMemo(() => {
@@ -239,7 +235,7 @@ function SalesPageInner() {
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">브랜드별 누적 매출 트렌드</h3>
             <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={dailyTrend}>
+              <BarChart data={dailyTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
                 <YAxis
@@ -256,19 +252,18 @@ function SalesPageInner() {
                   }}
                   formatter={(val) => formatCurrency(Number(val))}
                 />
+                <Legend />
                 {activeBrands.map((bl) => (
-                  <Area
+                  <Bar
                     key={bl}
-                    type="monotone"
                     dataKey={bl}
                     name={bl}
                     stackId="brand"
-                    stroke={brandColors[bl] || "#6b7280"}
                     fill={brandColors[bl] || "#6b7280"}
-                    fillOpacity={0.6}
+                    radius={activeBrands.indexOf(bl) === activeBrands.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                   />
                 ))}
-              </AreaChart>
+              </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
