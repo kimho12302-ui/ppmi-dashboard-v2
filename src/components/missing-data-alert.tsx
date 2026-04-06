@@ -20,9 +20,10 @@ export default function MissingDataAlert({ className = "" }: { className?: strin
             const days = s.latestDate
               ? Math.floor((Date.now() - new Date(s.latestDate).getTime()) / 86400000)
               : 99;
-            if (days >= 2) {
-              alerts.push(`${s.label}: ${days}일 미갱신 (최신: ${s.latestDate || "없음"})`);
-            }
+            const msg = days <= 1
+              ? `${s.label}: 어제 미수집 (최신: ${s.latestDate || "없음"})`
+              : `${s.label}: ${days}일 미갱신 (최신: ${s.latestDate || "없음"})`;
+            alerts.push(msg);
           }
         }
 
