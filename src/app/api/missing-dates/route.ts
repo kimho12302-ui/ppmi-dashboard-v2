@@ -19,7 +19,7 @@ export async function GET() {
     const [salesRes, adsRes, funnelRes] = await Promise.all([
       supabase.from("daily_sales").select("date").gte("date", from).lte("date", to),
       supabase.from("daily_ad_spend").select("date, channel").gte("date", from).lte("date", to),
-      supabase.from("daily_funnel").select("date, brand, channel").gte("date", from).lte("date", to),
+      supabase.from("daily_funnel").select("date, brand, channel, cart_adds").gte("date", from).lte("date", to),
     ]);
 
     const salesDates = new Set((salesRes.data || []).map((r) => r.date));
@@ -27,7 +27,8 @@ export async function GET() {
     const gfaDates = new Set((adsRes.data || []).filter((r) => r.channel === "gfa").map((r) => r.date));
     const metaDates = new Set((adsRes.data || []).filter((r) => r.channel === "meta").map((r) => r.date));
     const googleDates = new Set((adsRes.data || []).filter((r) => r.channel === "google_pmax" || r.channel.startsWith("ga4_")).map((r) => r.date));
-    const cafe24Dates = new Set((funnelRes.data || []).filter((r) => r.channel === "cafe24").map((r) => r.date));
+    // 카페24 퍼널: GA4 자동수집과 수기입력이 같은 행(cafe24) — cart_adds > 0 인 것만 수기입력
+    const cafe24Dates = new Set((funnelRes.data || []).filter((r) => r.channel === "cafe24" && (r.cart_adds ?? 0) > 0).map((r) => r.date));
     // 기획서 2.7: 스마트스토어 일반(너티/아이언펫/사입) → brand="all", 밸런스랩은 별도
     const ssDates = new Set((funnelRes.data || []).filter((r) => r.channel === "smartstore" && r.brand === "all").map((r) => r.date));
     const coupangFunnelDates = new Set((funnelRes.data || []).filter((r) => r.channel === "coupang").map((r) => r.date));

@@ -22,9 +22,11 @@ async function getLatestByChannel(channel: string): Promise<string | null> {
 }
 
 
-async function getLatestFunnelByChannel(channel: string, brand?: string): Promise<string | null> {
+async function getLatestFunnelByChannel(channel: string, brand?: string, manualOnly = false): Promise<string | null> {
   let query = supabase.from("daily_funnel").select("date").eq("channel", channel);
   if (brand) query = query.eq("brand", brand);
+  // GA4와 카페24 수기입력이 같은 행에 저장되므로, 수기 전용 필드(cart_adds)로 구분
+  if (manualOnly) query = query.gt("cart_adds", 0);
   const { data } = await query.order("date", { ascending: false }).limit(1);
   return data?.[0]?.date || null;
 }
@@ -58,7 +60,7 @@ export async function GET() {
       { id: "coupang_funnel", label: "\uCFE0\uD321 \uD37C\uB110", type: "manual", fetcher: () => getLatestFunnelByChannel("coupang") },
       { id: "smartstore_ironpet", label: "\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4 (\uC544\uC774\uC5B8\uD3AB)", type: "manual", fetcher: () => getLatestFunnelByChannel("smartstore", "all") },
       { id: "smartstore_balancelab", label: "\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4 (\uBC38\uB7F0\uC2A4\uB7A9)", type: "manual", fetcher: () => getLatestFunnelByChannel("smartstore", "balancelab") },
-      { id: "cafe24_funnel", label: "\uCE74\uD39824 \uD37C\uB110", type: "manual", fetcher: () => getLatestFunnelByChannel("cafe24") },
+      { id: "cafe24_funnel", label: "\uCE74\uD39824 \uD37C\uB110", type: "manual", fetcher: () => getLatestFunnelByChannel("cafe24", undefined, true) },
     ];
 
     const sources: SourceStatus[] = await Promise.all(
