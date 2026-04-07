@@ -7,6 +7,8 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const date = formData.get("date") as string;
+    // 기획서 2.5: 쿠팡 광고는 너티 전용
+    const brand = (formData.get("brand") as string) || "nutty";
 
     if (!file || !date) {
       return NextResponse.json({ error: "파일과 날짜가 필요합니다" }, { status: 400 });
@@ -21,29 +23,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "데이터가 비어있습니다" }, { status: 400 });
     }
 
-    // 쿠팡 광고 보고서 파싱
-    let totalSpend = 0, totalImp = 0, totalClick = 0, totalConvValue = 0;
+    let totalSpend = 0, totalImp = 0, totalClick = 0, totalConv = 0, totalConvValue = 0;
 
     for (const r of rows) {
-      const spend = Number(r["광고비"] || r["총비용"] || r["spend"] || 0);
-      const imp = Number(r["노출수"] || r["impressions"] || 0);
-      const click = Number(r["클릭수"] || r["clicks"] || 0);
-      const convValue = Number(r["전환매출"] || r["총매출액"] || r["conversion_value"] || 0);
-      totalSpend += spend;
-      totalImp += imp;
-      totalClick += click;
-      totalConvValue += convValue;
+      totalSpend    += Number(r["광고비"] || r["총비용"] || r["spend"] || 0);
+      totalImp      += Number(r["노출수"] || r["impressions"] || 0);
+      totalClick    += Number(r["클릭수"] || r["clicks"] || 0);
+      totalConv     += Number(r["전환수"] || r["conversions"] || 0);
+      totalConvValue += Number(r["전환매출"] || r["총매출액"] || r["conversion_value"] || 0);
     }
 
     const { error } = await supabase.from("daily_ad_spend").upsert(
       {
         date,
         channel: "coupang_ads",
-        brand: "nutty",
+        brand,
         spend: totalSpend,
         impressions: totalImp,
         clicks: totalClick,
-        conversions: 0,
+        conversions: totalConv,
         conversion_value: totalConvValue,
       },
       { onConflict: "date,channel,brand" }
@@ -52,8 +50,9 @@ export async function POST(req: NextRequest) {
     if (error) throw error;
     return NextResponse.json({
       ok: true,
-      message: `쿠팡 광고 ${date} 저장 완료`,
+      message: `쿠팡 광고 ${date} 저장 완료 (${brand})`,
       spend: totalSpend,
+      conversions: totalConv,
       conversion_value: totalConvValue,
     });
   } catch (error) {

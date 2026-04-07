@@ -85,18 +85,21 @@ export async function POST(request: NextRequest) {
       if (h) colMap[String(h).trim()] = i;
     });
 
-    const dateCol = colMap["\uB0A0\uC790"] ?? -1;
-    const clientCol = colMap["\uAC70\uB798\uCC98\uBA85"] ?? -1;
-    const productCodeCol = colMap["\uD488\uBAA9\uCF54\uB4DC"] ?? -1;
-    const productNameCol = colMap["\uD488\uBAA9\uBA85"] ?? -1;
-    const qtyCol = colMap["\uC218\uB7C9"] ?? -1;
-    const unitPriceCol = colMap["\uB2E8\uAC00"] ?? -1;
-    const supplyCol = colMap["\uACF5\uAE09\uAC00\uC561"] ?? -1;
-    const taxCol = colMap["\uBD80\uAC00\uC138"] ?? -1;
+    // 이카운트 판매입력 포맷: 일자, 거래처명, 품목코드, 공급가액, 부가세
+    // 이카운트 주문관리 포맷: 결제일, 판매몰, 상품코드, 실결제금액
+    const dateCol = colMap["일자"] ?? colMap["날짜"] ?? colMap["결제일"] ?? -1;
+    const clientCol = colMap["거래처명"] ?? colMap["판매몰"] ?? -1;
+    const productCodeCol = colMap["품목코드"] ?? colMap["상품코드"] ?? -1;
+    const productNameCol = colMap["품목명"] ?? colMap["상품명"] ?? -1;
+    const qtyCol = colMap["수량"] ?? -1;
+    const unitPriceCol = colMap["단가"] ?? colMap["상품가"] ?? -1;
+    const supplyCol = colMap["공급가액"] ?? -1;
+    const taxCol = colMap["부가세"] ?? -1;
+    const actualPayCol = colMap["실결제금액"] ?? -1;
 
     if (dateCol < 0 || productCodeCol < 0) {
       return NextResponse.json({
-        error: `\uD544\uC218 \uCEEC\uB7FC \uB204\uB77D: \uB0A0\uC790(${dateCol}), \uD488\uBAA9\uCF54\uB4DC(${productCodeCol}). \uD5E4\uB354: ${headers.slice(0, 20).join(", ")}`,
+        error: `필수 컬럼 누락: 날짜(${dateCol}), 품목코드(${productCodeCol}). 헤더: ${headers.slice(0, 20).join(", ")}`,
       }, { status: 400 });
     }
 
@@ -160,7 +163,13 @@ export async function POST(request: NextRequest) {
       if (!productCode) { skipped++; continue; }
 
       const client = clientCol >= 0 ? String(row[clientCol] || "").trim() : "";
-      let channel = CHANNEL_MAP[client] || "other";
+      // 이카운트 판매입력: CHANNEL_MAP 정확 매칭, 주문관리: 부분 문자열 매칭
+      let channel = CHANNEL_MAP[client] || (
+        client.includes("스마트") ? "smartstore" :
+        client.includes("쿠팡") ? "coupang" :
+        client.includes("카페24") || client.includes("cafe24") ? "cafe24" :
+        "other"
+      );
       const qty = Number(row[qtyCol] || 0);
       const unitPrice = Number(row[unitPriceCol] || 0);
       const supply = supplyCol >= 0 ? Number(row[supplyCol] || 0) : 0;
@@ -185,7 +194,10 @@ export async function POST(request: NextRequest) {
         else { unmatchedCodes.set(productCode, { name: prodName, count: 1 }); }
       }
 
-      const revenue = supply + tax;
+      // 공급가액+부가세 있으면 합산, 없으면 실결제금액 사용
+      const revenue = (supply + tax > 0)
+        ? supply + tax
+        : (actualPayCol >= 0 ? Number(row[actualPayCol] || 0) : 0);
 
       rows.push({
         date: dateStr,
@@ -248,13 +260,19 @@ export async function POST(request: NextRequest) {
     }
     const dailySalesRows = Array.from(dailyAgg.values());
 
-    // Upsert to Supabase
+    // DB 저장 (product_sales: 날짜 삭제 후 재삽입 / daily_sales: upsert)
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     let dbResults: Record<string, any> = {};
 
+    // product_sales: 날짜별 delete → insert (unique: date,brand,product,channel,lineup)
+    const uploadDates = [...new Set(productSalesRows.map(r => r.date))];
+    for (const d of uploadDates) {
+      const { error: delErr } = await supabase.from("product_sales").delete().eq("date", d);
+      if (delErr) dbResults.productSalesError = delErr.message;
+    }
     for (let i = 0; i < productSalesRows.length; i += 500) {
       const chunk = productSalesRows.slice(i, i + 500);
-      const { error } = await supabase.from("product_sales").upsert(chunk, { onConflict: "date,brand,product,channel" });
+      const { error } = await supabase.from("product_sales").insert(chunk);
       if (error) dbResults.productSalesError = error.message;
     }
 

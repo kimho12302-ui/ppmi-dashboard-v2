@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
       // ── 스마트스토어 퍼널 (일반 / 밸런스랩) ──
       case "smartstore_funnel": {
         const { date, brand, subscribers, sessions, avg_duration, repurchases } = data;
+        // 기획서 2.7: 너티/아이언펫/사입 통합 → brand="all", 밸런스랩 전용 → brand="balancelab"
         const dbBrand = brand === "balancelab" ? "balancelab" : "all";
 
         const { error } = await supabase.from("daily_funnel").upsert(
@@ -143,13 +144,17 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, message: `쿠팡 퍼널 저장 완료 (${date})` });
       }
 
-      // ── 수동 광고비 (GFA, 쿠팡 등) ──
+      // ── 수동 광고비 (GFA 등) ──
       case "manual_ad_spend": {
         const { date, channel, brand, spend, impressions, clicks, conversions, conversion_value } = data;
+        // 기획서 원칙 9: daily_ad_spend에 brand="all" 금지 — 브랜드 필수
+        if (!brand || brand === "all") {
+          return NextResponse.json({ error: "브랜드를 선택해주세요" }, { status: 400 });
+        }
         const row: Record<string, unknown> = {
           date,
           channel: channel || "gfa",
-          brand: brand || "all",
+          brand,
           spend: Number(spend) || 0,
           impressions: Number(impressions) || 0,
           clicks: Number(clicks) || 0,

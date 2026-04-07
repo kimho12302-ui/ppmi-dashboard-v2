@@ -60,6 +60,10 @@ function OverviewInner() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: targetsData } = useFetch<any>("/api/targets");
+  const { data: eventsData } = useFetch<{ events: { id: number; date: string; title: string; color: string }[] }>(
+    `/api/events?from=${from}&to=${to}${brand && brand !== "all" ? `&brand=${brand}` : ""}`
+  );
+  const events = eventsData?.events || [];
 
   // === 서버 KPI 직접 사용 ===
   const kpi = data?.kpi || {
@@ -291,7 +295,18 @@ function OverviewInner() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardContent className="p-4">
-            <h3 className="font-semibold mb-4">일별 매출 · 광고비 트렌드</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">일별 매출 · 광고비 트렌드</h3>
+              {events.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {events.map(e => (
+                    <span key={e.id} className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border" style={{ borderColor: e.color, color: e.color }} title={e.title}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: e.color }} />{e.date.slice(5)} {e.title}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
             <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={dailyTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -301,6 +316,10 @@ function OverviewInner() {
                 <Legend />
                 <Area type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} />
                 <Area type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} />
+                {events.map(e => (
+                  <ReferenceLine key={e.id} x={e.date} stroke={e.color} strokeDasharray="4 4" strokeWidth={1.5}
+                    label={{ value: e.title, position: "top", fill: e.color, fontSize: 10, fontWeight: 600 }} />
+                ))}
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
