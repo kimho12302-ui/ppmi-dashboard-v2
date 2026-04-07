@@ -49,6 +49,111 @@ function StatusBadge({ status }: { status: string | null }) {
   return <div className={`text-sm px-3 py-1.5 rounded ${isOk ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}>{status}</div>;
 }
 
+/* ── 날짜 행 테이블 (v2 ManualAdInput 방식) ── */
+let _rowIdCounter = 0;
+type RowStatus = "pending" | "saving" | "done" | "error";
+type ManualRow = { id: number; date: string; values: Record<string, string>; status: RowStatus; message?: string };
+type FieldDef = { key: string; label: string; placeholder?: string; type?: "number" | "select" | "text"; options?: { key: string; label: string }[]; width?: string };
+
+function makeRow(date: string): ManualRow {
+  return { id: ++_rowIdCounter, date, values: {}, status: "pending" };
+}
+
+function ManualRowTable({
+  title, fields, onSave, today,
+}: {
+  title: string;
+  fields: FieldDef[];
+  onSave: (row: { date: string } & Record<string, string>) => Promise<{ ok?: boolean; message?: string; error?: string }>;
+  today: string;
+}) {
+  const [rows, setRows] = useState<ManualRow[]>([makeRow(today)]);
+
+  const update = (id: number, patch: Partial<ManualRow>) =>
+    setRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
+
+  const setVal = (id: number, key: string, val: string) =>
+    setRows(prev => prev.map(r => r.id === id ? { ...r, values: { ...r.values, [key]: val } } : r));
+
+  const removeRow = (id: number) => setRows(prev => prev.filter(r => r.id !== id));
+
+  const saveAll = async () => {
+    for (const row of rows) {
+      if (row.status !== "pending") continue;
+      update(row.id, { status: "saving" });
+      try {
+        const payload: Record<string, string> = { date: row.date };
+        for (const f of fields) payload[f.key] = row.values[f.key] || "";
+        const res = await onSave(payload as { date: string } & Record<string, string>);
+        if (res.error) {
+          update(row.id, { status: "error", message: res.error });
+        } else {
+          update(row.id, { status: "done", message: res.message || "저장 완료" });
+        }
+      } catch {
+        update(row.id, { status: "error", message: "네트워크 오류" });
+      }
+    }
+  };
+
+  const pendingCount = rows.filter(r => r.status === "pending").length;
+
+  return (
+    <div className="space-y-2">
+      <h3 className="font-medium text-sm">{title}</h3>
+      {/* 헤더 */}
+      <div className="flex items-center gap-1 text-xs text-muted-foreground px-0.5">
+        <span className="w-32 shrink-0">날짜</span>
+        {fields.map(f => <span key={f.key} className={cn("flex-1 min-w-0 truncate", f.width)}>{f.label}</span>)}
+        <span className="w-8 shrink-0" />
+      </div>
+      {rows.map(row => {
+        const isPending = row.status === "pending";
+        return (
+          <div key={row.id} className={cn("flex items-center gap-1 p-1.5 rounded-lg border transition-all",
+            row.status === "done" ? "border-emerald-300 bg-emerald-500/5 dark:border-emerald-800" :
+            row.status === "error" ? "border-red-300 bg-red-500/5 dark:border-red-800" :
+            "border-border")}>
+            <input type="date" value={row.date} onChange={e => update(row.id, { date: e.target.value })}
+              disabled={!isPending}
+              className="w-32 shrink-0 text-xs border rounded px-2 py-1 bg-transparent disabled:opacity-60" />
+            {fields.map(f => (
+              f.type === "select" && f.options ? (
+                <select key={f.key} value={row.values[f.key] || ""} onChange={e => setVal(row.id, f.key, e.target.value)}
+                  disabled={!isPending}
+                  className={cn("flex-1 min-w-0 text-xs border rounded px-1 py-1 bg-transparent disabled:opacity-60", f.width)}>
+                  {f.options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                </select>
+              ) : (
+                <input key={f.key} type={f.type || "number"} placeholder={f.placeholder || "0"}
+                  value={row.values[f.key] || ""} onChange={e => setVal(row.id, f.key, e.target.value)}
+                  disabled={!isPending}
+                  className={cn("flex-1 min-w-0 text-xs border rounded px-2 py-1 bg-transparent disabled:opacity-60", f.width)} />
+              )
+            ))}
+            <div className="w-8 shrink-0 flex items-center justify-center text-xs">
+              {isPending && <button onClick={() => removeRow(row.id)} className="text-muted-foreground hover:text-red-500">✕</button>}
+              {row.status === "saving" && <span className="animate-pulse text-blue-500">⏳</span>}
+              {row.status === "done" && <span className="text-emerald-500" title={row.message}>✅</span>}
+              {row.status === "error" && <span className="text-red-500" title={row.message}>❌</span>}
+            </div>
+          </div>
+        );
+      })}
+      <div className="flex items-center justify-between pt-1">
+        <button onClick={() => setRows(prev => [...prev, makeRow(today)])}
+          className="text-xs text-primary hover:underline">+ 날짜 추가</button>
+        {pendingCount > 0 && (
+          <button onClick={saveAll}
+            className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-md font-medium hover:opacity-90">
+            💾 저장 ({pendingCount}건)
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── 데이터 수집 현황 ── */
 interface SourceStatus { id: string; label: string; type: "auto" | "manual"; latestDate: string | null; ok: boolean }
 
@@ -192,7 +297,7 @@ function DailyInputGuide({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
 /* ── 일일 입력 탭 ── */
 interface MissingGap { date: string; missing: string[] }
 
-function MissingDatesBanner({ onSelectDate }: { onSelectDate: (date: string, type: "cafe24" | "smartstore" | "coupang") => void }) {
+function MissingDatesBanner() {
   const [gaps, setGaps] = useState<MissingGap[]>([]);
 
   useEffect(() => {
@@ -201,13 +306,7 @@ function MissingDatesBanner({ onSelectDate }: { onSelectDate: (date: string, typ
 
   if (gaps.length === 0) return null;
 
-  // 이 탭에서 직접 입력 가능한 항목 → 버튼
-  const typeMap: Record<string, "cafe24" | "smartstore" | "coupang"> = {
-    "카페24퍼널": "cafe24", "스마트스토어퍼널": "smartstore",
-  };
-  // 엑셀 업로드 탭에서 처리하는 항목 → 일일입력 배너에서 제외
   const uploadTabItems = new Set(["판매실적", "쿠팡광고보고서", "쿠팡퍼널"]);
-
   const filtered = gaps.map(g => ({
     date: g.date,
     missing: g.missing.filter(m => !uploadTabItems.has(m)),
@@ -218,214 +317,138 @@ function MissingDatesBanner({ onSelectDate }: { onSelectDate: (date: string, typ
   return (
     <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
       <CardContent className="p-4 space-y-2">
-        <p className="text-sm font-medium text-orange-700 dark:text-orange-400">⚠️ 미입력 날짜</p>
-        <div className="space-y-1.5">
+        <p className="text-sm font-medium text-orange-700 dark:text-orange-400">⚠️ 미입력 날짜 — 아래 폼에서 해당 날짜를 추가해 입력하세요</p>
+        <div className="space-y-1">
           {filtered.map(({ date, missing }) => (
-            <div key={date} className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium w-24 shrink-0 text-orange-700 dark:text-orange-400">{date}</span>
+            <div key={date} className="flex items-center gap-2 flex-wrap text-sm">
+              <span className="font-medium w-24 shrink-0 text-orange-700 dark:text-orange-400">{date}</span>
               <div className="flex gap-1.5 flex-wrap">
-                {missing.map(m => typeMap[m] ? (
-                  <button key={m} type="button" onClick={() => onSelectDate(date, typeMap[m])}
-                    className="px-2 py-0.5 text-xs rounded bg-orange-300 dark:bg-orange-700 hover:bg-orange-400 dark:hover:bg-orange-600 text-orange-900 dark:text-orange-100 font-medium">
-                    {m} 입력 →
-                  </button>
-                ) : (
-                  <span key={m} className="px-2 py-0.5 text-xs rounded bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400">
-                    {m} 누락
-                  </span>
+                {missing.map(m => (
+                  <span key={m} className="px-2 py-0.5 text-xs rounded bg-orange-200 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300">{m}</span>
                 ))}
               </div>
             </div>
           ))}
         </div>
-        <p className="text-xs text-orange-600 dark:text-orange-500">버튼 클릭 시 해당 날짜로 입력 폼 이동 / 판매실적·쿠팡 항목은 엑셀 업로드 탭에서 처리</p>
       </CardContent>
     </Card>
   );
 }
 
 function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [status, setStatus] = useState<string | null>(null);
-  const [inputType, setInputType] = useState<"cafe24" | "smartstore">("cafe24");
+  const today = new Date(Date.now() + 32400000).toISOString().slice(0, 10);
 
-  const handleSelectMissing = (d: string, type: "cafe24" | "smartstore" | "coupang") => {
-    setDate(d);
-    if (type !== "coupang") setInputType(type);
+  const saveCafe24 = async (row: { date: string } & Record<string, string>) => {
+    const res = await fetch(API, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "cafe24_funnel", data: { date: row.date, cart_adds: row.cart_adds, signups: row.signups, repurchases: row.repurchases } }),
+    });
+    return res.json();
   };
 
-  // cafe24 필드
-  const [c24Cart, setC24Cart] = useState("");
-  const [c24Signup, setC24Signup] = useState("");
-  const [c24Repurchase, setC24Repurchase] = useState("");
-
-  // smartstore 필드
-  const [ssBrand, setSsBrand] = useState("nutty");
-  const [ssSessions, setSsSessions] = useState("");
-  const [ssDuration, setSsDuration] = useState("");
-  const [ssSubscribers, setSsSubscribers] = useState("");
-  const [ssRepurchase, setSsRepurchase] = useState("");
-
-  const save = async () => {
-    setStatus(null);
-    try {
-      let payload;
-      if (inputType === "cafe24") {
-        payload = { type: "cafe24_funnel", data: { date, cart_adds: c24Cart, signups: c24Signup, repurchases: c24Repurchase } };
-      } else {
-        payload = { type: "smartstore_funnel", data: { date, brand: ssBrand, sessions: ssSessions, avg_duration: ssDuration, subscribers: ssSubscribers, repurchases: ssRepurchase } };
-      }
-      const res = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const json = await res.json();
-      setStatus(res.ok ? `✅ ${json.message || "저장 완료"}` : `❌ ${json.error || json.message}`);
-    } catch { setStatus("❌ 네트워크 오류"); }
+  const saveSmartstore = async (row: { date: string } & Record<string, string>) => {
+    const res = await fetch(API, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "smartstore_funnel", data: { date: row.date, brand: row.brand, sessions: row.sessions, avg_duration: row.avg_duration, subscribers: row.subscribers, repurchases: row.repurchases } }),
+    });
+    return res.json();
   };
 
   return (
     <div className="space-y-4">
-    <DailyInputGuide onSwitchTab={onSwitchTab} />
-    <MissingDatesBanner onSelectDate={handleSelectMissing} />
-    <DataStatusPanel />
-    <Card>
-      <CardContent className="p-4 space-y-4">
-        <div className="flex items-center gap-3 flex-wrap">
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border rounded px-3 py-1.5 text-sm bg-transparent" />
-          {(["cafe24", "smartstore"] as const).map((t) => (
-            <button key={t} onClick={() => setInputType(t)}
-              className={cn("px-3 py-1.5 text-sm rounded-md", inputType === t ? "bg-primary text-primary-foreground" : "bg-muted")}
-            >{t === "cafe24" ? "카페24" : "스마트스토어"}</button>
-          ))}
-        </div>
+      <DailyInputGuide onSwitchTab={onSwitchTab} />
+      <MissingDatesBanner />
+      <DataStatusPanel />
 
-        {inputType === "cafe24" && (
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="장바구니" value={c24Cart} set={setC24Cart} />
-            <Field label="회원가입" value={c24Signup} set={setC24Signup} />
-            <Field label="재구매" value={c24Repurchase} set={setC24Repurchase} />
-          </div>
-        )}
+      {/* 카페24 퍼널 */}
+      <Card>
+        <CardContent className="p-4">
+          <ManualRowTable
+            title="카페24 퍼널"
+            today={today}
+            onSave={saveCafe24}
+            fields={[
+              { key: "cart_adds", label: "장바구니" },
+              { key: "signups", label: "회원가입" },
+              { key: "repurchases", label: "재구매" },
+            ]}
+          />
+        </CardContent>
+      </Card>
 
-        {inputType === "smartstore" && (
-          <div className="space-y-3">
-            <select value={ssBrand} onChange={(e) => setSsBrand(e.target.value)} className="border rounded px-3 py-1.5 text-sm bg-transparent">
-              <option value="nutty">일반 (너티/아이언펫/사입)</option>
-              <option value="balancelab">밸런스랩</option>
-            </select>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Field label="세션" value={ssSessions} set={setSsSessions} />
-              <Field label="체류시간(초)" value={ssDuration} set={setSsDuration} />
-              <Field label="알림받기" value={ssSubscribers} set={setSsSubscribers} />
-              <Field label="재구매" value={ssRepurchase} set={setSsRepurchase} />
-            </div>
-          </div>
-        )}
+      {/* 스마트스토어 퍼널 */}
+      <Card>
+        <CardContent className="p-4">
+          <ManualRowTable
+            title="스마트스토어 퍼널"
+            today={today}
+            onSave={saveSmartstore}
+            fields={[
+              { key: "brand", label: "브랜드", type: "select", options: [{ key: "nutty", label: "일반 (너티/아이언펫/사입)" }, { key: "balancelab", label: "밸런스랩" }] },
+              { key: "sessions", label: "세션" },
+              { key: "avg_duration", label: "체류(초)" },
+              { key: "subscribers", label: "알림받기" },
+              { key: "repurchases", label: "재구매" },
+            ]}
+          />
+        </CardContent>
+      </Card>
 
-        <div className="flex items-center gap-3">
-          <button onClick={save} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90">저장</button>
-          <StatusBadge status={status} />
-        </div>
-      </CardContent>
-    </Card>
-
-    <GfaInputCard />
-    <MiscCostCard />
-    <EventInputCard />
+      <GfaInputCard today={today} />
+      <MiscCostCard />
+      <EventInputCard />
     </div>
   );
 }
 
 /* ── GFA 수동 광고비 입력 ── */
 // 기획서 2.5절: GFA 브랜드 = 너티, 사입, 밸런스랩
-const GFA_BRANDS = [
-  { key: "nutty", label: "너티" },
-  { key: "saip", label: "사입" },
-  { key: "balancelab", label: "밸런스랩" },
-];
-
-function GfaInputCard() {
-  const today = new Date(Date.now() + 32400000).toISOString().slice(0, 10);
-  const [date, setDate] = useState(today);
-  const [brand, setBrand] = useState("nutty");
-  const [spend, setSpend] = useState("");
-  const [impressions, setImpressions] = useState("");
-  const [clicks, setClicks] = useState("");
-  const [conversions, setConversions] = useState("");
-  const [conversionValue, setConversionValue] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
-
-  const doSave = async (forceOverride = false) => {
+function GfaInputCard({ today }: { today: string }) {
+  const saveGfa = async (row: { date: string } & Record<string, string>) => {
     const res = await fetch(API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type: "manual_ad_spend",
-        forceOverride,
-        data: { date, channel: "gfa", brand, spend, impressions, clicks, conversions, conversion_value: conversionValue },
+        forceOverride: false,
+        data: { date: row.date, channel: "gfa", brand: row.brand || "nutty", spend: row.spend, impressions: row.impressions, clicks: row.clicks, conversions: row.conversions, conversion_value: row.conversion_value },
       }),
     });
-    return { res, json: await res.json() };
-  };
-
-  const save = async () => {
-    setStatus(null);
-    try {
-      const { res, json } = await doSave();
-      if (res.status === 409) {
-        if (window.confirm(`⚠️ ${json.message}\n덮어쓰시겠습니까?`)) {
-          const { res: res2, json: j2 } = await doSave(true);
-          setStatus(res2.ok ? `✅ ${j2.message || "저장 완료"}` : `❌ ${j2.error}`);
-        }
-      } else {
-        setStatus(res.ok ? `✅ ${json.message || "저장 완료"}` : `❌ ${json.error || json.message}`);
+    const json = await res.json();
+    if (res.status === 409) {
+      if (window.confirm(`⚠️ ${json.message}\n덮어쓰시겠습니까?`)) {
+        const res2 = await fetch(API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "manual_ad_spend",
+            forceOverride: true,
+            data: { date: row.date, channel: "gfa", brand: row.brand || "nutty", spend: row.spend, impressions: row.impressions, clicks: row.clicks, conversions: row.conversions, conversion_value: row.conversion_value },
+          }),
+        });
+        return res2.json();
       }
-    } catch { setStatus("❌ 네트워크 오류"); }
+      return { error: "취소됨" };
+    }
+    return json;
   };
 
   return (
     <Card>
-      <CardContent className="p-4 space-y-4">
-        <h3 className="font-medium">GFA 광고비 수동 입력 <span className="text-xs text-muted-foreground font-normal">너티·사입·밸런스랩 브랜드별 입력</span></h3>
-        <div className="flex items-end gap-3 flex-wrap">
-          <div>
-            <label className="text-xs text-muted-foreground">날짜</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              className="block border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground">브랜드</label>
-            <select value={brand} onChange={e => setBrand(e.target.value)}
-              className="block border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5">
-              {GFA_BRANDS.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
-            </select>
-          </div>
-          <div className="w-32">
-            <label className="text-xs text-muted-foreground">광고비 (원)</label>
-            <input type="number" value={spend} onChange={e => setSpend(e.target.value)}
-              placeholder="0" className="w-full border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5" />
-          </div>
-          <div className="w-28">
-            <label className="text-xs text-muted-foreground">노출수</label>
-            <input type="number" value={impressions} onChange={e => setImpressions(e.target.value)}
-              placeholder="0" className="w-full border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5" />
-          </div>
-          <div className="w-28">
-            <label className="text-xs text-muted-foreground">클릭수</label>
-            <input type="number" value={clicks} onChange={e => setClicks(e.target.value)}
-              placeholder="0" className="w-full border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5" />
-          </div>
-          <div className="w-28">
-            <label className="text-xs text-muted-foreground">전환수</label>
-            <input type="number" value={conversions} onChange={e => setConversions(e.target.value)}
-              placeholder="0" className="w-full border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5" />
-          </div>
-          <div className="w-32">
-            <label className="text-xs text-muted-foreground">전환매출액 (원)</label>
-            <input type="number" value={conversionValue} onChange={e => setConversionValue(e.target.value)}
-              placeholder="0" className="w-full border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5" />
-          </div>
-          <button onClick={save} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 self-end">저장</button>
-        </div>
-        <StatusBadge status={status} />
+      <CardContent className="p-4">
+        <ManualRowTable
+          title="GFA 광고비 (너티·사입·밸런스랩 브랜드별)"
+          today={today}
+          onSave={saveGfa}
+          fields={[
+            { key: "brand", label: "브랜드", type: "select", options: [{ key: "nutty", label: "너티" }, { key: "saip", label: "사입" }, { key: "balancelab", label: "밸런스랩" }] },
+            { key: "spend", label: "광고비" },
+            { key: "impressions", label: "노출수" },
+            { key: "clicks", label: "클릭수" },
+            { key: "conversions", label: "전환수" },
+            { key: "conversion_value", label: "전환매출" },
+          ]}
+        />
       </CardContent>
     </Card>
   );
@@ -636,15 +659,6 @@ function EventInputCard() {
   );
 }
 
-function Field({ label, value, set }: { label: string; value: string; set: (v: string) => void }) {
-  return (
-    <div>
-      <label className="text-xs text-muted-foreground">{label}</label>
-      <input type="number" value={value} onChange={(e) => set(e.target.value)}
-        className="w-full border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5" placeholder="0" />
-    </div>
-  );
-}
 
 /* ── 브랜드 설정 탭 ── */
 interface BrandRow { id: number; key: string; label: string; color: string; order: number; active: boolean; parent_key: string | null; category: string | null }
