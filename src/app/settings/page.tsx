@@ -349,6 +349,8 @@ function GfaInputCard() {
   const [spend, setSpend] = useState("");
   const [impressions, setImpressions] = useState("");
   const [clicks, setClicks] = useState("");
+  const [conversions, setConversions] = useState("");
+  const [conversionValue, setConversionValue] = useState("");
   const [status, setStatus] = useState<string | null>(null);
 
   const doSave = async (forceOverride = false) => {
@@ -358,7 +360,7 @@ function GfaInputCard() {
       body: JSON.stringify({
         type: "manual_ad_spend",
         forceOverride,
-        data: { date, channel: "gfa", brand, spend, impressions, clicks, conversions: 0, conversion_value: 0 },
+        data: { date, channel: "gfa", brand, spend, impressions, clicks, conversions, conversion_value: conversionValue },
       }),
     });
     return { res, json: await res.json() };
@@ -409,6 +411,16 @@ function GfaInputCard() {
           <div className="w-28">
             <label className="text-xs text-muted-foreground">클릭수</label>
             <input type="number" value={clicks} onChange={e => setClicks(e.target.value)}
+              placeholder="0" className="w-full border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5" />
+          </div>
+          <div className="w-28">
+            <label className="text-xs text-muted-foreground">전환수</label>
+            <input type="number" value={conversions} onChange={e => setConversions(e.target.value)}
+              placeholder="0" className="w-full border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5" />
+          </div>
+          <div className="w-32">
+            <label className="text-xs text-muted-foreground">전환매출액 (원)</label>
+            <input type="number" value={conversionValue} onChange={e => setConversionValue(e.target.value)}
               placeholder="0" className="w-full border rounded px-3 py-1.5 text-sm bg-transparent mt-0.5" />
           </div>
           <button onClick={save} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 self-end">저장</button>
