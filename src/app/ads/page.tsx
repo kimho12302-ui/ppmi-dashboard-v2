@@ -508,8 +508,9 @@ function CreativesSection({ brand, from, to }: { brand: string; from: string; to
                   <p className={cn("text-[10px]", c.status === "ACTIVE" ? "text-green-500" : "text-muted-foreground")}>{c.status}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-1 mt-2 text-center">
-                <div><p className="text-[10px] text-muted-foreground">광고비</p><p className="text-xs font-medium">{formatCurrency(c.spend)}</p></div>
+              <div className="grid grid-cols-5 gap-1 mt-2 text-center">
+                <div><p className="text-[10px] text-muted-foreground">광고비</p><p className="text-xs font-medium">₩{c.spend.toLocaleString("ko-KR")}</p></div>
+                <div><p className="text-[10px] text-muted-foreground">노출</p><p className="text-xs font-medium">{formatNumber(c.impressions)}</p></div>
                 <div><p className="text-[10px] text-muted-foreground">ROAS</p><p className={cn("text-xs font-bold", c.roas >= 3 ? "text-green-500" : c.roas >= 1 ? "text-yellow-500" : "text-red-500")}>{c.roas.toFixed(2)}x</p></div>
                 <div><p className="text-[10px] text-muted-foreground">구매</p><p className="text-xs font-medium">{c.purchases}</p></div>
                 <div><p className="text-[10px] text-muted-foreground">CTR</p><p className="text-xs font-medium">{c.ctr.toFixed(1)}%</p></div>

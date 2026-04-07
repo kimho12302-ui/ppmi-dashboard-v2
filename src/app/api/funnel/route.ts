@@ -235,16 +235,23 @@ export async function GET(req: NextRequest) {
       imp_coupang: d.imp_coupang,
     }));
 
-    // Channel-level funnel summaries
+    // Channel-level funnel summaries — purchases from daily_sales (기준 데이터)
     const channelMap = new Map<string, { sessions: number; cart_adds: number; purchases: number; repurchases: number }>();
     for (const r of funnelRows) {
       const ch = r.channel;
       const existing = channelMap.get(ch) || { sessions: 0, cart_adds: 0, purchases: 0, repurchases: 0 };
       existing.sessions += Number(r.sessions) || 0;
       existing.cart_adds += Number(r.cart_adds) || 0;
-      existing.purchases += Number(r.purchases) || 0;
       existing.repurchases += Number(r.repurchases) || 0;
       channelMap.set(ch, existing);
+    }
+    // 구매수는 daily_sales에서 채널별로 집계 (기획서: 매출 데이터가 기준)
+    for (const r of salesRows) {
+      const ch = r.channel || "";
+      const chKey = ch === "cafe24" ? "cafe24" : ch === "coupang" ? "coupang" : "smartstore";
+      const existing = channelMap.get(chKey) || { sessions: 0, cart_adds: 0, purchases: 0, repurchases: 0 };
+      existing.purchases += Number(r.orders) || 0;
+      channelMap.set(chKey, existing);
     }
     const channelLabels: Record<string, string> = { cafe24: "카페24", smartstore: "스마트스토어", coupang: "쿠팡" };
     const channelFunnel = Array.from(channelMap.entries()).map(([ch, d]) => ({
