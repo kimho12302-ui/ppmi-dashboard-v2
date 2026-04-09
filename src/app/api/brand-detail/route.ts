@@ -108,8 +108,10 @@ export async function GET(req: NextRequest) {
       // product_sales에서 공구/자체 구분 (daily_sales와 단일 소스 통일)
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
       for (const r of products) {
-        if (r.channel && r.channel.startsWith("공구_")) {
-          const seller = r.channel.replace("공구_", "");
+        // 공구: channel="공구_셀러명" 또는 lineup이 있는 경우(이카운트 업로드 시 거래처명=스마트스토어로 override 실패한 경우)
+        const isGonggu = (r.channel && r.channel.startsWith("공구_")) || (r.lineup && r.lineup.trim() !== "");
+        const seller = r.channel?.startsWith("공구_") ? r.channel.replace("공구_", "") : (r.lineup || "기타");
+        if (isGonggu) {
           const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };
           e.revenue += Number(r.revenue);
           e.orders += Number(r.buyers || 0);
@@ -127,7 +129,8 @@ export async function GET(req: NextRequest) {
       const selfGongguMap = new Map<string, { self: number; gonggu: number }>();
       for (const r of products) {
         const e = selfGongguMap.get(r.date) || { self: 0, gonggu: 0 };
-        if (r.channel && r.channel.startsWith("공구_")) {
+        const isGonggu = (r.channel && r.channel.startsWith("공구_")) || (r.lineup && r.lineup.trim() !== "");
+        if (isGonggu) {
           e.gonggu += Number(r.revenue);
         } else {
           e.self += Number(r.revenue);

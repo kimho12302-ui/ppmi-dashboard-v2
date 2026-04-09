@@ -24,7 +24,9 @@ export function useFilterParams() {
   const setParam = useCallback(
     (key: string, value: string) => {
       const params = new URLSearchParams(searchParams.toString());
-      if (value && value !== "all" && value !== "30d") {
+      // 기본값(brand=all, preset=30d)은 URL에서 제거, 나머지는 유지
+      const isDefault = (key === "brand" && value === "all") || (key === "preset" && value === "30d");
+      if (value && !isDefault) {
         params.set(key, value);
       } else {
         params.delete(key);
@@ -42,14 +44,26 @@ export function useFilterParams() {
 
   const setBrand = useCallback((b: string) => setParam("brand", b), [setParam]);
   const setPreset = useCallback((p: DatePreset) => setParam("preset", p), [setParam]);
+  const setCustomRange = useCallback((f: string, t: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("from", f);
+    params.set("to", t);
+    params.delete("preset");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [searchParams, router, pathname]);
+
+  // 커스텀 날짜 직접 입력 여부 (URL에 from/to가 있으면 custom)
+  const isCustom = !!(searchParams.get("from") && searchParams.get("to"));
 
   return {
     brand,
     preset,
     from: dateRange.from,
     to: dateRange.to,
+    isCustom,
     setBrand,
     setPreset,
+    setCustomRange,
   };
 }
 

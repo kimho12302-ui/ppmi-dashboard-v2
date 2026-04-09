@@ -308,7 +308,7 @@ function OverviewInner() {
               )}
             </div>
             <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={dailyTrend}>
+              <AreaChart data={dailyTrend} margin={{ top: 24, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
                 <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
@@ -317,8 +317,19 @@ function OverviewInner() {
                 <Area type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} />
                 <Area type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} />
                 {events.map(e => (
-                  <ReferenceLine key={e.id} x={e.date} stroke={e.color} strokeDasharray="4 4" strokeWidth={1.5}
-                    label={{ value: e.title, position: "top", fill: e.color, fontSize: 10, fontWeight: 600 }} />
+                  <ReferenceLine key={e.id} x={e.date} stroke={e.color} strokeDasharray="4 4" strokeWidth={2}
+                    label={(props: { viewBox?: { x: number; y: number; width: number; height: number } }) => {
+                      const vb = props.viewBox;
+                      if (!vb) return <g />;
+                      const title = e.title.length > 10 ? e.title.slice(0, 10) + "…" : e.title;
+                      const w = title.length * 6 + 8;
+                      return (
+                        <g style={{ pointerEvents: "none" }}>
+                          <rect x={vb.x + 2} y={vb.y} width={w} height={15} rx={3} fill={e.color} fillOpacity={0.9} />
+                          <text x={vb.x + 6} y={vb.y + 10.5} fill="#fff" fontSize={9} fontWeight={700}>{title}</text>
+                        </g>
+                      );
+                    }} />
                 ))}
               </AreaChart>
             </ResponsiveContainer>
@@ -400,7 +411,7 @@ function OverviewInner() {
               )}
             </div>
             <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={cumulativeData}>
+              <LineChart data={cumulativeData} margin={{ top: 24, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
                 <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
@@ -411,6 +422,21 @@ function OverviewInner() {
                 {targets?.revenue_target && (
                   <ReferenceLine y={targets.revenue_target} stroke="#10b981" strokeDasharray="6 3" label={{ value: "목표", position: "right", fontSize: 10, fill: "#10b981" }} />
                 )}
+                {events.map(e => (
+                  <ReferenceLine key={e.id} x={e.date} stroke={e.color} strokeDasharray="4 4" strokeWidth={2}
+                    label={(props: { viewBox?: { x: number; y: number; width: number; height: number } }) => {
+                      const vb = props.viewBox;
+                      if (!vb) return <g />;
+                      const title = e.title.length > 10 ? e.title.slice(0, 10) + "…" : e.title;
+                      const w = title.length * 6 + 8;
+                      return (
+                        <g style={{ pointerEvents: "none" }}>
+                          <rect x={vb.x + 2} y={vb.y} width={w} height={15} rx={3} fill={e.color} fillOpacity={0.9} />
+                          <text x={vb.x + 6} y={vb.y + 10.5} fill="#fff" fontSize={9} fontWeight={700}>{title}</text>
+                        </g>
+                      );
+                    }} />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </CardContent>

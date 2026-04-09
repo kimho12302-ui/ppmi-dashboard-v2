@@ -125,7 +125,10 @@ export async function GET(req: NextRequest) {
       const subscribers = Number(r.subscribers) || 0;
       d.sessions += sess;
       d.cart_adds += cart;
-      d.repurchases += Number(r.repurchases) || 0;
+      // brand="all" 재구매는 통합 스마트스토어 수치 → brand 특정 조회 시 제외 (이중집계 방지)
+      if (brand === "all" || r.brand !== "all") {
+        d.repurchases += Number(r.repurchases) || 0;
+      }
       d.signups += signups;
       d.subscribers += subscribers;
       // Channel breakdown (using r.channel)
@@ -242,7 +245,9 @@ export async function GET(req: NextRequest) {
       const existing = channelMap.get(ch) || { sessions: 0, cart_adds: 0, purchases: 0, repurchases: 0 };
       existing.sessions += Number(r.sessions) || 0;
       existing.cart_adds += Number(r.cart_adds) || 0;
-      existing.repurchases += Number(r.repurchases) || 0;
+      if (brand === "all" || r.brand !== "all") {
+        existing.repurchases += Number(r.repurchases) || 0;
+      }
       channelMap.set(ch, existing);
     }
     // 구매수는 daily_sales에서 채널별로 집계 (기획서: 매출 데이터가 기준)

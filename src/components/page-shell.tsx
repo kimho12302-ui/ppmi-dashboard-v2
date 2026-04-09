@@ -13,7 +13,7 @@ interface PageShellProps {
 }
 
 function PageShellInner({ title, description, children, hideFilters }: PageShellProps) {
-  const { brand, preset, from, to, setBrand, setPreset } = useFilterParams();
+  const { brand, preset, from, to, isCustom, setBrand, setPreset, setCustomRange } = useFilterParams();
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -34,8 +34,10 @@ function PageShellInner({ title, description, children, hideFilters }: PageShell
           onBrandChange={setBrand}
           preset={preset}
           onPresetChange={setPreset}
+          onCustomRange={setCustomRange}
           from={from}
           to={to}
+          isCustom={isCustom}
         />
       )}
       {children}

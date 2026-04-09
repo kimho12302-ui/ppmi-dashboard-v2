@@ -105,17 +105,19 @@ export async function GET(req: NextRequest) {
     // gongguByDate: date → revenue (밸런스랩 공구 일별 집계, trend에 반영)
     const gongguByDate = new Map<string, number>();
     if (brand === "balancelab" || brand === "all") {
-      const gongguData = await fetchAll(supabase.from("product_sales").select("date,channel,revenue,quantity")
+      const gongguData = await fetchAll(supabase.from("product_sales").select("date,channel,lineup,revenue,quantity")
         .gte("date", from).lte("date", to).eq("brand", "balancelab"));
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
       for (const r of gongguData || []) {
-        if (r.channel && r.channel.startsWith("공구_")) {
-          const seller = r.channel.replace("공구_", "");
+        const isGonggu = (r.channel && r.channel.startsWith("공구_")) || (r.lineup && r.lineup.trim() !== "");
+        if (isGonggu) {
+          const seller = r.channel?.startsWith("공구_") ? r.channel.replace("공구_", "") : (r.lineup || "기타");
           const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };
           e.revenue += Number(r.revenue); e.orders += Number(r.quantity || 0);
           sellerMap.set(seller, e);
           gongguSalesTotal += Number(r.revenue);
-          gongguChannelMap.set(r.channel, (gongguChannelMap.get(r.channel) || 0) + Number(r.revenue));
+          const chKey = r.channel?.startsWith("공구_") ? r.channel : `공구_${seller}`;
+          gongguChannelMap.set(chKey, (gongguChannelMap.get(chKey) || 0) + Number(r.revenue));
           // 일별 집계
           gongguByDate.set(r.date, (gongguByDate.get(r.date) || 0) + Number(r.revenue));
         } else {
@@ -272,7 +274,7 @@ export async function GET(req: NextRequest) {
     const salesByChannel = Array.from(salesChMap.entries()).map(([channel, revenue]) => ({ channel, revenue })).sort((a, b) => b.revenue - a.revenue);
 
     // ── Top 5 products ──
-    let prodQ = supabase.from("product_sales").select("product,revenue,quantity,brand").gte("date", from).lte("date", to);
+    let prodQ = supabase.from("product_sales").select("product,revenue,quantity,brand,channel,lineup").gte("date", from).lte("date", to);
     if (brand !== "all") prodQ = prodQ.eq("brand", brand);
     const prodData = await fetchAll(prodQ);
     const prodMap = new Map<string, { revenue: number; quantity: number; brand: string }>();

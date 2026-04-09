@@ -10,8 +10,10 @@ interface FiltersProps {
   onBrandChange: (brand: string) => void;
   preset: DatePreset;
   onPresetChange: (preset: DatePreset) => void;
+  onCustomRange?: (from: string, to: string) => void;
   from?: string;
   to?: string;
+  isCustom?: boolean;
 }
 
 export function Filters({
@@ -19,8 +21,10 @@ export function Filters({
   onBrandChange,
   preset,
   onPresetChange,
+  onCustomRange,
   from,
   to,
+  isCustom,
 }: FiltersProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 overflow-x-auto">
@@ -43,7 +47,7 @@ export function Filters({
       </div>
 
       {/* 날짜 프리셋 */}
-      <DateRangeSelector preset={preset} onChange={onPresetChange} from={from} to={to} />
+      <DateRangeSelector preset={preset} onChange={onPresetChange} onCustomRange={onCustomRange} from={from} to={to} isCustom={isCustom} />
     </div>
   );
 }

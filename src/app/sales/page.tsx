@@ -174,11 +174,13 @@ function SalesPageInner() {
 
   /* 공구별 (밸런스랩) */
   const gongguData = useMemo(() => {
-    const gongguProducts = products.filter((r) => r.brand === "balancelab" && r.channel?.startsWith("공구_"));
-    const selfProducts = products.filter((r) => r.brand === "balancelab" && !r.channel?.startsWith("공구_"));
+    const isGonggu = (r: { brand: string; channel?: string; lineup?: string }) =>
+      r.brand === "balancelab" && ((r.channel?.startsWith("공구_")) || (r.lineup && r.lineup.trim() !== ""));
+    const gongguProducts = products.filter(isGonggu);
+    const selfProducts = products.filter((r) => r.brand === "balancelab" && !isGonggu(r));
     const sellerMap: Record<string, { revenue: number; quantity: number }> = {};
     for (const r of gongguProducts) {
-      const seller = r.channel?.replace("공구_", "") || "기타";
+      const seller = r.channel?.startsWith("공구_") ? r.channel.replace("공구_", "") : (r.lineup || "기타");
       if (!sellerMap[seller]) sellerMap[seller] = { revenue: 0, quantity: 0 };
       sellerMap[seller].revenue += r.revenue || 0;
       sellerMap[seller].quantity += r.quantity || 0;

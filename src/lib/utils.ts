@@ -31,6 +31,7 @@ export type DatePreset =
   | "30d"
   | "this_month"
   | "last_month"
+  | "this_year"
   | "all";
 
 export interface DateRange {
@@ -57,6 +58,8 @@ export function getDateRangeFromPreset(preset: DatePreset): DateRange {
       const last = subMonths(today, 1);
       return { from: fmt(startOfMonth(last)), to: fmt(endOfMonth(last)) };
     }
+    case "this_year":
+      return { from: fmt(new Date(today.getFullYear(), 0, 1)), to: fmt(today) };
     case "all":
       return { from: "2020-01-01", to: fmt(today) };
     default:
