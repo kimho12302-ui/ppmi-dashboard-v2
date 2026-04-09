@@ -109,14 +109,16 @@ export async function POST(req: NextRequest) {
 
       // ── 카페24 퍼널 ──
       case "cafe24_funnel": {
-        const { date, cart_adds, signups, repurchases } = data;
+        const { date, cart_adds, purchases, repurchases } = data;
+        // purchases 컬럼을 카페24 실제 회원가입 수 저장에 사용
+        // signups는 GA4 신규방문자 전용이므로 수기입력 시 건드리지 않음
         const { error } = await supabase.from("daily_funnel").upsert(
           {
             date,
             brand: "all",
             channel: "cafe24",
             cart_adds: Number(cart_adds) || 0,
-            signups: Number(signups) || 0,
+            purchases: Number(purchases) || 0,
             repurchases: Number(repurchases) || 0,
           },
           { onConflict: "date,brand,channel" }

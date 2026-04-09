@@ -341,7 +341,7 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
   const saveCafe24 = async (row: { date: string } & Record<string, string>) => {
     const res = await fetch(API, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "cafe24_funnel", data: { date: row.date, cart_adds: row.cart_adds, signups: row.signups, repurchases: row.repurchases } }),
+      body: JSON.stringify({ type: "cafe24_funnel", data: { date: row.date, cart_adds: row.cart_adds, purchases: row.purchases, repurchases: row.repurchases } }),
     });
     return res.json();
   };
@@ -369,7 +369,7 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
             onSave={saveCafe24}
             fields={[
               { key: "cart_adds", label: "장바구니" },
-              { key: "signups", label: "회원가입" },
+              { key: "purchases", label: "회원가입" },
               { key: "repurchases", label: "재구매" },
             ]}
           />
