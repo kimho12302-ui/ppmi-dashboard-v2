@@ -63,6 +63,7 @@ status: active
 | v4.3 | 2026-04-06 | `a97cb69` | 데이터 정합성 테스트 스크립트 추가 (scripts/integrity-test.mjs, 13개 항목) |
 | v4.4 | 2026-04-10 | `c34f3b6` | P7/P11/P8 구현 — DataStatusCard(설정), 채널효율 사분면(광고), 키워드 사분면, BrandDetailSection 강화 |
 | v4.5 | 2026-04-10 | `633fb46` | P10 — 광고에 네이버 캠페인 탭, 키워드에 GSC 탭 추가 |
+| v4.6 | 2026-04-10 | `cf479a2` | P7.2 이벤트 관리 탭(설정) + P11.4 Sales CAC vs ROAS 사분면 |
 
 ---
 
