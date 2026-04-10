@@ -40,13 +40,13 @@ export async function GET(request: NextRequest) {
     else { adQ = adQ.neq("brand", "all"); }
     const ads = await fetchAll(adQ);
 
-    // Fetch misc costs (monthly granularity)
-    let miscQ = supabase.from("manual_monthly").select("month,value").eq("category", "misc_cost").gte("month", fromDate).lte("month", toDate);
+    // Fetch misc costs (dashboard API와 동일 테이블 사용: misc_costs)
+    let miscQ = supabase.from("misc_costs").select("date,brand,amount").gte("date", fromDate).lte("date", toDate);
     if (brand !== "all") miscQ = miscQ.eq("brand", brand);
     const { data: miscData } = await miscQ;
 
-    // Fetch shipping costs (monthly granularity)
-    let shipQ = supabase.from("manual_monthly").select("month,value").eq("category", "shipping_cost").gte("month", fromDate).lte("month", toDate);
+    // Fetch shipping costs (dashboard API와 동일 테이블 사용: shipping_costs)
+    let shipQ = supabase.from("shipping_costs").select("month,brand,amount").gte("month", fromDate.slice(0, 7)).lte("month", toDate.slice(0, 7));
     if (brand !== "all") shipQ = shipQ.eq("brand", brand);
     const { data: shipData } = await shipQ;
 
@@ -96,18 +96,18 @@ export async function GET(request: NextRequest) {
       months.set(m, existing);
     }
 
-    // Add misc costs by month
+    // Add misc costs by month (misc_costs: date + amount)
     for (const r of miscData || []) {
-      const m = r.month.slice(0, 7);
+      const m = (r.date || "").slice(0, 7);
       const existing = months.get(m);
-      if (existing) existing.miscCost += Number(r.value || 0);
+      if (existing) existing.miscCost += Number(r.amount || 0);
     }
 
-    // Add shipping costs by month
+    // Add shipping costs by month (shipping_costs: month + amount)
     for (const r of shipData || []) {
-      const m = r.month.slice(0, 7);
+      const m = (r.month || "").slice(0, 7);
       const existing = months.get(m);
-      if (existing) existing.shipCost += Number(r.value || 0);
+      if (existing) existing.shipCost += Number(r.amount || 0);
     }
 
     // Add gonggu revenue by month (balancelab 공구 채널)

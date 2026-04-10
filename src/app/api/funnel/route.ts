@@ -70,7 +70,8 @@ export async function GET(req: NextRequest) {
       .from("daily_sales")
       .select("date, brand, channel, orders, revenue")
       .gte("date", from)
-      .lte("date", to);
+      .lte("date", to)
+      .neq("channel", "total"); // total 집계행 제외 (채널별 합산과 이중 계산 방지)
     if (brand !== "all") {
       salesQuery = salesQuery.eq("brand", brand);
     }

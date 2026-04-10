@@ -108,8 +108,8 @@ export async function GET(req: NextRequest) {
       // product_sales에서 공구/자체 구분 (daily_sales와 단일 소스 통일)
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
       for (const r of products) {
-        // 공구: channel="공구_셀러명" 또는 lineup이 있는 경우(이카운트 업로드 시 거래처명=스마트스토어로 override 실패한 경우)
-        const isGonggu = (r.channel && r.channel.startsWith("공구_")) || (r.lineup && r.lineup.trim() !== "");
+        // 공구: channel="공구_셀러명" — dashboard API와 동일 조건 (lineup 불일치 방지)
+        const isGonggu = r.channel && r.channel.startsWith("공구_");
         const seller = r.channel?.startsWith("공구_") ? r.channel.replace("공구_", "") : (r.lineup || "기타");
         if (isGonggu) {
           const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };

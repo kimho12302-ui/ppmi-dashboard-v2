@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
 
     // 어제 매출
     const { data: sales } = await supabase.from("daily_sales").select("brand,revenue,orders")
-      .eq("date", yStr).neq("brand", "all");
+      .eq("date", yStr).neq("brand", "all").neq("channel", "total");
     // 어제 광고비 (GA4 제외)
     const { data: ads } = await supabase.from("daily_ad_spend").select("brand,channel,spend,conversion_value")
       .eq("date", yStr).neq("brand", "all");
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
     const dayBefore = new Date(yesterday);
     dayBefore.setDate(dayBefore.getDate() - 1);
     const dbStr = dayBefore.toISOString().slice(0, 10);
-    const { data: prevSales } = await supabase.from("daily_sales").select("revenue,orders").eq("date", dbStr).neq("brand", "all");
+    const { data: prevSales } = await supabase.from("daily_sales").select("revenue,orders").eq("date", dbStr).neq("brand", "all").neq("channel", "total");
     const { data: prevGonggu } = await supabase.from("product_sales").select("channel,revenue").eq("date", dbStr).eq("brand", "balancelab");
     const prevRevenue = (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0)
       + (prevGonggu || []).filter(r => r.channel?.startsWith("공구_")).reduce((s, r) => s + Number(r.revenue), 0);
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
 
     // 이달 누계 (월초~어제)
     const monthStart = yStr.slice(0, 7) + "-01";
-    const { data: mtdSales } = await supabase.from("daily_sales").select("revenue").gte("date", monthStart).lte("date", yStr).neq("brand", "all");
+    const { data: mtdSales } = await supabase.from("daily_sales").select("revenue").gte("date", monthStart).lte("date", yStr).neq("brand", "all").neq("channel", "total");
     const { data: mtdGonggu } = await supabase.from("product_sales").select("channel,revenue").gte("date", monthStart).lte("date", yStr).eq("brand", "balancelab");
     const mtdRevenue = (mtdSales || []).reduce((s, r) => s + Number(r.revenue), 0)
       + (mtdGonggu || []).filter(r => r.channel?.startsWith("공구_")).reduce((s, r) => s + Number(r.revenue), 0);

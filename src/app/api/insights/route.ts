@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Get sales data (with brand filter)
-    let salesQ = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("brand", "all");
+    let salesQ = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("brand", "all").neq("channel", "total");
     if (brand !== "all") salesQ = salesQ.eq("brand", brand);
     const { data: sales } = await salesQ;
 
