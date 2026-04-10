@@ -25,16 +25,17 @@ async function sendTelegram(text: string) {
 
 export async function GET(req: NextRequest) {
   // Vercel cron 시크릿 검증
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || req.headers.get("authorization") !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yStr = yesterday.toISOString().slice(0, 10);
+    // KST 기준 어제 날짜 (UTC+9)
+    const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const yesterdayKST = new Date(nowKST);
+    yesterdayKST.setUTCDate(yesterdayKST.getUTCDate() - 1);
+    const yStr = yesterdayKST.toISOString().slice(0, 10);
 
     // 어제 매출
     const { data: sales } = await supabase.from("daily_sales").select("brand,revenue,orders")
@@ -69,8 +70,8 @@ export async function GET(req: NextRequest) {
     }
 
     // 전일 대비 (그제)
-    const dayBefore = new Date(yesterday);
-    dayBefore.setDate(dayBefore.getDate() - 1);
+    const dayBefore = new Date(yesterdayKST);
+    dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
     const dbStr = dayBefore.toISOString().slice(0, 10);
     const { data: prevSales } = await supabase.from("daily_sales").select("revenue,orders").eq("date", dbStr).neq("brand", "all").neq("channel", "total");
     const { data: prevGonggu } = await supabase.from("product_sales").select("channel,revenue").eq("date", dbStr).eq("brand", "balancelab");
