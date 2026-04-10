@@ -186,6 +186,49 @@ function OverviewInner() {
 
   const toggleKpi = (key: KpiKey) => setSelectedKpi((prev) => (prev === key ? null : key));
 
+  /* P11.2 CSV 내보내기 */
+  const exportCSV = () => {
+    const rows: string[] = [];
+    // KPI 요약
+    rows.push("=== KPI 요약 ===");
+    rows.push("항목,값,전기간");
+    rows.push(`매출,${kpi.revenue},${kpi.revenuePrev}`);
+    rows.push(`광고비,${kpi.adSpend},${kpi.adSpendPrev}`);
+    rows.push(`ROAS,${kpi.roas.toFixed(2)},${kpi.roasPrev.toFixed(2)}`);
+    rows.push(`주문수,${kpi.orders},${kpi.ordersPrev}`);
+    rows.push(`이익,${kpi.profit},${kpi.profitPrev}`);
+    rows.push(`MER,${kpi.mer.toFixed(2)},${kpi.merPrev.toFixed(2)}`);
+    rows.push("");
+    // 일별 트렌드
+    rows.push("=== 일별 트렌드 ===");
+    rows.push("날짜,매출,광고비,이동평균매출,이동평균광고비");
+    for (const t of data?.trend || []) {
+      rows.push(`${t.date},${t.revenue},${t.adSpend},${t.maRevenue},${t.maAdSpend}`);
+    }
+    rows.push("");
+    // 브랜드별
+    rows.push("=== 브랜드별 매출 ===");
+    rows.push("브랜드,매출,주문수");
+    for (const b of data?.brandRevenue || []) {
+      rows.push(`${b.brand},${b.revenue},${b.orders}`);
+    }
+    rows.push("");
+    // 채널별 광고비
+    rows.push("=== 채널별 광고비 ===");
+    rows.push("채널,광고비,ROAS");
+    for (const c of data?.channels || []) {
+      rows.push(`${c.channel},${c.spend},${c.roas.toFixed(2)}`);
+    }
+    const csv = "\uFEFF" + rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ppmi_report_${from}_${to}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const drilldownData = useMemo(() => {
     if (!selectedKpi) return null;
     const configs: Record<string, { title: string; type: "brand" | "channel"; valueKey: string; format: (v: number) => string }> = {
@@ -238,6 +281,12 @@ function OverviewInner() {
       )}
 
       {/* KPI 8개 */}
+      <div className="flex justify-end">
+        <button onClick={exportCSV}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md text-muted-foreground transition-colors">
+          ⬇ CSV 내보내기
+        </button>
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
         <KpiCard title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, kpi.adSpendPrev)} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
