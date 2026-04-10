@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { EventManagerPanel } from "@/components/event-markers";
 
 const API = "/api/settings";
 
@@ -14,6 +15,7 @@ const TABS = [
   { key: "channels", label: "📡 채널" },
   { key: "costs", label: "💰 제품 원가" },
   { key: "targets", label: "🎯 목표 설정" },
+  { key: "events", label: "📅 이벤트 관리" },
 ] as const;
 
 type Tab = (typeof TABS)[number]["key"];
@@ -38,6 +40,7 @@ export default function SettingsPage() {
       {tab === "channels" && <ChannelConfigTab />}
       {tab === "costs" && <CostTab />}
       {tab === "targets" && <TargetsTab />}
+      {tab === "events" && <EventsTab />}
     </PageShell>
   );
 }
@@ -1462,3 +1465,19 @@ function UploadTab() {
   );
 }
 
+/* ── 이벤트 관리 탭 ── */
+function EventsTab() {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="p-4">
+          <h3 className="font-semibold mb-1">마케팅 이벤트 관리</h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            이벤트를 등록하면 Overview 트렌드 차트에 마커로 표시됩니다. (프로모션, 캠페인, 이슈 등)
+          </p>
+          <EventManagerPanel />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

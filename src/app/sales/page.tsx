@@ -9,14 +9,9 @@ import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { Suspense, useMemo, useState } from "react";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  Legend,
+  BarChart, Bar, ScatterChart, Scatter, ZAxis,
+  XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Legend, ReferenceLine,
 } from "recharts";
 
 // 탭 제거 — 모든 섹션을 한 페이지에 표시
@@ -462,6 +457,119 @@ function SalesPageInner() {
           </Card>
         </div>
       )}
+
+      {/* P11.4 채널별 CAC vs ROAS 사분면 */}
+      <ChannelEfficiencySection brand={brand} from={from} to={to} />
     </PageShell>
+  );
+}
+
+/* ── P11.4 채널 효율 사분면 ── */
+interface ChannelAdData {
+  channel: string; spend: number; clicks: number; impressions: number;
+  conversions: number; conversion_value: number; roas: number; ctr: number; cpc: number;
+}
+const CH_LABELS: Record<string, string> = {
+  meta: "Meta", naver_search: "네이버검색", naver_shopping: "네이버쇼핑",
+  google_search: "구글검색", google_pmax: "P-Max", coupang_ads: "쿠팡광고", gfa: "GFA",
+};
+
+function ChannelEfficiencySection({ brand, from, to }: { brand: string; from: string; to: string }) {
+  const params = brand && brand !== "all" ? `from=${from}&to=${to}&brand=${brand}` : `from=${from}&to=${to}`;
+  const { data } = useFetch<{ ads: ChannelAdData[] }>(`/api/ads?${params}`);
+
+  const scatterData = useMemo(() => {
+    const ads = data?.ads || [];
+    // Aggregate by channel
+    const map: Record<string, ChannelAdData> = {};
+    for (const r of ads) {
+      if (r.channel.startsWith("ga4_")) continue;
+      if (!map[r.channel]) map[r.channel] = { channel: r.channel, spend: 0, clicks: 0, impressions: 0, conversions: 0, conversion_value: 0, roas: 0, ctr: 0, cpc: 0 };
+      map[r.channel].spend += r.spend || 0;
+      map[r.channel].clicks += r.clicks || 0;
+      map[r.channel].conversions += r.conversions || 0;
+      map[r.channel].conversion_value += r.conversion_value || 0;
+    }
+    const channels = Object.values(map).filter(c => c.spend > 0);
+    if (channels.length === 0) return [];
+
+    return channels.map(c => ({
+      channel: c.channel,
+      name: CH_LABELS[c.channel] || c.channel,
+      spend: c.spend,
+      cac: c.conversions > 0 ? Math.round(c.spend / c.conversions) : c.spend,
+      roas: c.conversion_value > 0 ? c.conversion_value / c.spend : 0,
+      conversions: c.conversions,
+    }));
+  }, [data]);
+
+  if (scatterData.length < 2) return null;
+
+  const avgCac = scatterData.reduce((s, d) => s + d.cac, 0) / scatterData.length;
+  const avgRoas = scatterData.reduce((s, d) => s + d.roas, 0) / scatterData.length;
+
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <h3 className="font-semibold text-sm mb-1">채널 효율 사분면 — CAC vs ROAS</h3>
+        <div className="flex gap-4 text-xs text-muted-foreground mb-3 flex-wrap">
+          <span className="text-green-600 font-medium">● 좌상단: 저CAC + 고ROAS (최적)</span>
+          <span className="text-yellow-600 font-medium">● 우상단: 고CAC + 고ROAS (규모확대)</span>
+          <span className="text-blue-600 font-medium">● 좌하단: 저CAC + 저ROAS (최적화필요)</span>
+          <span className="text-red-500 font-medium">● 우하단: 고CAC + 저ROAS (재검토)</span>
+        </div>
+        <ResponsiveContainer width="100%" height={320}>
+          <ScatterChart margin={{ top: 20, right: 30, bottom: 30, left: 10 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis
+              type="number" dataKey="cac" name="CAC"
+              tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
+              label={{ value: "CAC (원)", position: "insideBottom", offset: -10, fontSize: 11, fill: "var(--muted-foreground)" }}
+              tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`}
+            />
+            <YAxis
+              type="number" dataKey="roas" name="ROAS"
+              tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
+              label={{ value: "ROAS", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--muted-foreground)" }}
+              tickFormatter={(v) => `${v.toFixed(1)}x`}
+            />
+            <ZAxis type="number" dataKey="spend" range={[60, 500]} name="광고비" />
+            <ReferenceLine x={avgCac} stroke="#94a3b8" strokeDasharray="4 4"
+              label={{ value: `평균 CAC`, position: "top", fontSize: 9, fill: "#94a3b8" }} />
+            <ReferenceLine y={avgRoas} stroke="#94a3b8" strokeDasharray="4 4"
+              label={{ value: `평균 ROAS`, position: "right", fontSize: 9, fill: "#94a3b8" }} />
+            <Tooltip
+              contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+              formatter={(val, name) => {
+                const v = Number(val);
+                if (name === "CAC") return [formatCurrency(v), name];
+                if (name === "ROAS") return [`${v.toFixed(2)}x`, name];
+                if (name === "광고비") return [formatCurrency(v), name];
+                return [v, name];
+              }}
+              labelFormatter={(_, payload) => payload?.[0]?.payload?.name || ""}
+            />
+            <Scatter
+              data={scatterData}
+              shape={(props: { cx?: number; cy?: number; fill?: string; payload?: { name: string; spend: number } }) => {
+                const { cx = 0, cy = 0, fill = "#6366f1", payload } = props;
+                if (!payload) return <g />;
+                const r = Math.sqrt(payload.spend / 5000) + 10;
+                return (
+                  <g>
+                    <circle cx={cx} cy={cy} r={r} fill={fill} fillOpacity={0.7} stroke={fill} strokeWidth={1} />
+                    <text x={cx} y={cy - r - 3} textAnchor="middle" fontSize={10} fill="var(--foreground)">{payload.name}</text>
+                  </g>
+                );
+              }}
+              fill="#6366f1"
+            />
+          </ScatterChart>
+        </ResponsiveContainer>
+        <p className="text-xs text-muted-foreground mt-2">
+          💡 버블 크기 = 광고비. 전환수 0인 채널은 CAC = 광고비 원금으로 표시.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
