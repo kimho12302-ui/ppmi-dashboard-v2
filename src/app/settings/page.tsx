@@ -60,12 +60,13 @@ function makeRow(date: string): ManualRow {
 }
 
 function ManualRowTable({
-  title, fields, onSave, today,
+  title, fields, onSave, today, onSaved,
 }: {
   title: string;
   fields: FieldDef[];
   onSave: (row: { date: string } & Record<string, string>) => Promise<{ ok?: boolean; message?: string; error?: string }>;
   today: string;
+  onSaved?: () => void;
 }) {
   const [rows, setRows] = useState<ManualRow[]>([makeRow(today)]);
 
@@ -78,6 +79,7 @@ function ManualRowTable({
   const removeRow = (id: number) => setRows(prev => prev.filter(r => r.id !== id));
 
   const saveAll = async () => {
+    let anySaved = false;
     for (const row of rows) {
       if (row.status !== "pending") continue;
       update(row.id, { status: "saving" });
@@ -89,11 +91,13 @@ function ManualRowTable({
           update(row.id, { status: "error", message: res.error });
         } else {
           update(row.id, { status: "done", message: res.message || "저장 완료" });
+          anySaved = true;
         }
       } catch {
         update(row.id, { status: "error", message: "네트워크 오류" });
       }
     }
+    if (anySaved) onSaved?.();
   };
 
   const pendingCount = rows.filter(r => r.status === "pending").length;
@@ -157,7 +161,7 @@ function ManualRowTable({
 /* ── 데이터 수집 현황 ── */
 interface SourceStatus { id: string; label: string; type: "auto" | "manual"; latestDate: string | null; ok: boolean }
 
-function DataStatusPanel() {
+function DataStatusPanel({ refreshKey }: { refreshKey?: number }) {
   const [sources, setSources] = useState<SourceStatus[]>([]);
   const [refDate, setRefDate] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -172,7 +176,7 @@ function DataStatusPanel() {
     } finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refreshKey]);
 
   if (loading) return <div className="text-sm text-muted-foreground py-2">현황 로딩 중...</div>;
 
@@ -222,6 +226,60 @@ function DataStatusPanel() {
 }
 
 /* ── 일일 입력 가이드 (5단계 체크리스트) ── */
+/* ── 데이터 수집 현황 카드 (P7 SyncButton 역할) ── */
+function DataStatusCard() {
+  const [data, setData] = useState<{ sources: { id: string; label: string; type: string; latestDate: string | null; ok: boolean }[]; referenceDate: string; summary: { total: number; ok: number; stale: number } } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/data-status");
+      setData(await res.json());
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-semibold">📡 데이터 수집 현황</h3>
+            {data && <p className="text-xs text-muted-foreground">기준일: {data.referenceDate} · {data.summary.ok}/{data.summary.total}개 정상</p>}
+          </div>
+          <button onClick={refresh} disabled={loading}
+            className={cn("px-3 py-1.5 text-xs font-medium rounded-md border transition-colors",
+              loading ? "opacity-50 cursor-not-allowed" : "hover:bg-muted")}>
+            {loading ? "확인 중..." : "새로고침"}
+          </button>
+        </div>
+        {data && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {data.sources.map(s => (
+              <div key={s.id} className={cn("flex items-center justify-between px-3 py-2 rounded-lg text-sm",
+                s.ok ? "bg-emerald-500/5 border border-emerald-200 dark:border-emerald-800" : "bg-orange-500/5 border border-orange-200 dark:border-orange-800")}>
+                <div className="flex items-center gap-2">
+                  <span>{s.ok ? "✅" : "⚠️"}</span>
+                  <span className={cn("font-medium", !s.ok && "text-orange-700 dark:text-orange-400")}>{s.label}</span>
+                  <span className={cn("text-[10px] px-1 rounded", s.type === "auto" ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30" : "bg-gray-100 text-gray-600 dark:bg-gray-800")}>
+                    {s.type === "auto" ? "자동" : "수동"}
+                  </span>
+                </div>
+                <span className={cn("text-xs", s.ok ? "text-muted-foreground" : "text-orange-600 dark:text-orange-400 font-medium")}>
+                  {s.latestDate || "없음"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {!data && !loading && <p className="text-sm text-muted-foreground">새로고침을 눌러 현황을 확인하세요.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
 function DailyInputGuide({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
   const today = new Date(Date.now() + 32400000).toISOString().slice(0, 10);
   const [done, setDone] = useState<Set<number>>(() => {
@@ -297,12 +355,12 @@ function DailyInputGuide({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
 /* ── 일일 입력 탭 ── */
 interface MissingGap { date: string; missing: string[] }
 
-function MissingDatesBanner() {
+function MissingDatesBanner({ refreshKey }: { refreshKey?: number }) {
   const [gaps, setGaps] = useState<MissingGap[]>([]);
 
   useEffect(() => {
     fetch("/api/missing-dates").then(r => r.json()).then(d => setGaps(d.gaps || []));
-  }, []);
+  }, [refreshKey]);
 
   if (gaps.length === 0) return null;
 
@@ -337,6 +395,14 @@ function MissingDatesBanner() {
 
 function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
   const today = new Date(Date.now() + 32400000).toISOString().slice(0, 10);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+
+  const handleSaved = useCallback(() => {
+    setRefreshKey(k => k + 1);
+    setSavedMsg("✅ 저장 완료! 미입력 현황을 업데이트했습니다.");
+    setTimeout(() => setSavedMsg(null), 4000);
+  }, []);
 
   const saveCafe24 = async (row: { date: string } & Record<string, string>) => {
     const res = await fetch(API, {
@@ -357,8 +423,16 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
   return (
     <div className="space-y-4">
       <DailyInputGuide onSwitchTab={onSwitchTab} />
-      <MissingDatesBanner />
-      <DataStatusPanel />
+      <DataStatusCard />
+
+      {savedMsg && (
+        <div className="px-4 py-3 rounded-lg bg-emerald-500/10 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 text-sm font-medium">
+          {savedMsg}
+        </div>
+      )}
+
+      <MissingDatesBanner refreshKey={refreshKey} />
+      <DataStatusPanel refreshKey={refreshKey} />
 
       {/* 카페24 퍼널 */}
       <Card>
@@ -367,6 +441,7 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
             title="카페24 퍼널"
             today={today}
             onSave={saveCafe24}
+            onSaved={handleSaved}
             fields={[
               { key: "cart_adds", label: "장바구니" },
               { key: "purchases", label: "회원가입" },
@@ -383,6 +458,7 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
             title="스마트스토어 퍼널"
             today={today}
             onSave={saveSmartstore}
+            onSaved={handleSaved}
             fields={[
               { key: "brand", label: "브랜드", type: "select", options: [{ key: "nutty", label: "일반 (너티/아이언펫/사입)" }, { key: "balancelab", label: "밸런스랩" }] },
               { key: "sessions", label: "세션" },
@@ -394,8 +470,8 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
         </CardContent>
       </Card>
 
-      <GfaInputCard today={today} />
-      <MiscCostCard />
+      <GfaInputCard today={today} onSaved={handleSaved} />
+      <MiscCostCard onSaved={handleSaved} />
       <EventInputCard />
     </div>
   );
@@ -403,7 +479,7 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
 
 /* ── GFA 수동 광고비 입력 ── */
 // 기획서 2.5절: GFA 브랜드 = 너티, 사입, 밸런스랩
-function GfaInputCard({ today }: { today: string }) {
+function GfaInputCard({ today, onSaved }: { today: string; onSaved?: () => void }) {
   const saveGfa = async (row: { date: string } & Record<string, string>) => {
     const res = await fetch(API, {
       method: "POST",
@@ -440,6 +516,7 @@ function GfaInputCard({ today }: { today: string }) {
           title="GFA 광고비 (너티·사입·밸런스랩 브랜드별)"
           today={today}
           onSave={saveGfa}
+          onSaved={onSaved}
           fields={[
             { key: "brand", label: "브랜드", type: "select", options: [{ key: "nutty", label: "너티" }, { key: "saip", label: "사입" }, { key: "balancelab", label: "밸런스랩" }] },
             { key: "spend", label: "광고비" },
@@ -458,7 +535,7 @@ function GfaInputCard({ today }: { today: string }) {
 const MISC_CATEGORIES = ["인플루언서", "협찬", "공구", "체험단", "촬영비", "디자인비", "샘플비", "배송비", "수수료", "기타"];
 const BRAND_MAP: Record<string, string> = { "아이언펫": "ironpet", "너티": "nutty", "사입": "saip", "밸런스랩": "balancelab" };
 
-function MiscCostCard() {
+function MiscCostCard({ onSaved }: { onSaved?: () => void }) {
   const today = new Date(Date.now() + 32400000).toISOString().slice(0, 10);
   const [date, setDate] = useState(today);
   const [brand, setBrand] = useState("아이언펫");
@@ -493,7 +570,7 @@ function MiscCostCard() {
         }
       } else {
         setStatus(res.ok ? "✅ 저장 완료" : `❌ ${json.error || json.message}`);
-        if (res.ok) { setDescription(""); setAmount(""); setNote(""); }
+        if (res.ok) { setDescription(""); setAmount(""); setNote(""); onSaved?.(); }
       }
     } catch { setStatus("❌ 네트워크 오류"); }
   };

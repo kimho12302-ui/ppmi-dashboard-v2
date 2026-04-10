@@ -13,6 +13,9 @@ import {
   Area,
   LineChart,
   Line,
+  ScatterChart,
+  Scatter,
+  ZAxis,
   ReferenceLine,
   XAxis,
   YAxis,
@@ -353,6 +356,61 @@ function AdsPageInner() {
               </ResponsiveContainer>
             </CardContent>
           </Card>
+
+          {/* 11.4 채널 효율 사분면 — ROAS vs CPA */}
+          {byChannel.filter(c => !c.channel.startsWith("ga4_") && c.spend > 0).length > 1 && (
+            <Card>
+              <CardContent className="p-4">
+                <h3 className="font-semibold mb-1">채널 효율 사분면 — ROAS vs 광고비</h3>
+                <p className="text-xs text-muted-foreground mb-4">우상단(고ROAS·저광고비) = 효율 우수. 버블 크기 = 광고비</p>
+                <ResponsiveContainer width="100%" height={320}>
+                  <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis
+                      type="number" dataKey="spend" name="광고비"
+                      tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
+                      tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`}
+                      label={{ value: "광고비", position: "insideBottom", offset: -10, fontSize: 11, fill: "var(--muted-foreground)" }}
+                    />
+                    <YAxis
+                      type="number" dataKey="roas" name="ROAS"
+                      tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
+                      tickFormatter={(v) => `${v.toFixed(1)}x`}
+                      label={{ value: "ROAS", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--muted-foreground)" }}
+                    />
+                    <ZAxis type="number" dataKey="spend" range={[60, 600]} name="광고비" />
+                    <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="4 4"
+                      label={{ value: "ROAS 1.0x", position: "right", fontSize: 10, fill: "#ef4444" }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                      formatter={(val, name) => {
+                        if (name === "ROAS") return [`${Number(val).toFixed(2)}x`, name];
+                        if (name === "광고비") return [formatCurrency(Number(val)), name];
+                        return [val, name];
+                      }}
+                      labelFormatter={(_, payload) => payload?.[0]?.payload?.label || ""}
+                    />
+                    <Scatter
+                      data={byChannel.filter(c => !c.channel.startsWith("ga4_") && c.spend > 0)
+                        .map(c => ({ ...c, label: c.label }))}
+                      shape={(props: { cx?: number; cy?: number; fill?: string; payload?: { label: string; spend: number } }) => {
+                        const { cx = 0, cy = 0, fill = "#6366f1", payload } = props;
+                        if (!payload) return <g />;
+                        const r = Math.sqrt(payload.spend / 1000) + 8;
+                        return (
+                          <g>
+                            <circle cx={cx} cy={cy} r={r} fill={fill} fillOpacity={0.7} stroke={fill} strokeWidth={1} />
+                            <text x={cx} y={cy - r - 2} textAnchor="middle" fontSize={10} fill="var(--foreground)">{payload.label}</text>
+                          </g>
+                        );
+                      }}
+                      fill="#6366f1"
+                    />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 

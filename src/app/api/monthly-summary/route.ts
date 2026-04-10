@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const fromDate = `${year}-01-01`;
     const toDate = `${year}-12-31`;
 
-    let salesQ = supabase.from("daily_sales").select("date,revenue,orders").gte("date", fromDate).lte("date", toDate);
+    let salesQ = supabase.from("daily_sales").select("date,revenue,orders").gte("date", fromDate).lte("date", toDate).neq("channel", "total");
     if (brand !== "all") { salesQ = salesQ.eq("brand", brand); }
     else { salesQ = salesQ.neq("brand", "all"); }
     const sales = await fetchAll(salesQ);

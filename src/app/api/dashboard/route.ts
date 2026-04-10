@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
 
   try {
     // ── 1. Sales ──
-    let salesQuery = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).order("date");
+    // channel="total"은 Total 탭 집계값 — 채널별(cafe24/smartstore/coupang) 합과 중복이므로 제외
+    let salesQuery = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("channel", "total").order("date");
     if (brand !== "all") salesQuery = salesQuery.eq("brand", brand);
     else salesQuery = salesQuery.neq("brand", "all");
     const sales = await fetchAll(salesQuery);
@@ -45,7 +46,7 @@ export async function GET(req: NextRequest) {
     const prevFrom = new Date(fromDate.getTime() - diff - 86400000).toISOString().slice(0, 10);
     const prevTo = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
 
-    let prevSalesQ = supabase.from("daily_sales").select("revenue, orders").gte("date", prevFrom).lte("date", prevTo);
+    let prevSalesQ = supabase.from("daily_sales").select("revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total");
     if (brand !== "all") prevSalesQ = prevSalesQ.eq("brand", brand);
     else prevSalesQ = prevSalesQ.neq("brand", "all");
     const prevSales = await fetchAll(prevSalesQ);
@@ -109,7 +110,7 @@ export async function GET(req: NextRequest) {
         .gte("date", from).lte("date", to).eq("brand", "balancelab"));
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
       for (const r of gongguData || []) {
-        const isGonggu = (r.channel && r.channel.startsWith("공구_")) || (r.lineup && r.lineup.trim() !== "");
+        const isGonggu = r.channel && r.channel.startsWith("공구_");
         if (isGonggu) {
           const seller = r.channel?.startsWith("공구_") ? r.channel.replace("공구_", "") : (r.lineup || "기타");
           const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };

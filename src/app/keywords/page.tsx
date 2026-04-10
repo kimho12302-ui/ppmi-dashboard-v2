@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import {
-  ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
 import type { KeywordPerformance } from "@/lib/types";
 
@@ -317,46 +317,60 @@ function KeywordsInner() {
         </div>
       )}
 
-      {/* 9.5 버블 그래프 (CTR vs 노출, 버블=비용) */}
-      {bubbleData.length > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="font-semibold text-sm mb-3">키워드 버블 차트 — CTR vs 노출 (버블 크기 = 비용)</h3>
-            <ResponsiveContainer width="100%" height={350}>
-              <ScatterChart margin={{ top: 10, right: 20, bottom: 20, left: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis
-                  type="number" dataKey="ctr" name="CTR"
-                  tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
-                  label={{ value: "CTR (%)", position: "bottom", fontSize: 11, fill: "var(--muted-foreground)" }}
-                />
-                <YAxis
-                  type="number" dataKey="impressions" name="노출"
-                  tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
-                  tickFormatter={(v) => v >= 10000 ? `${(v / 10000).toFixed(0)}만` : formatNumber(v)}
-                  label={{ value: "노출", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--muted-foreground)" }}
-                />
-                <ZAxis type="number" dataKey="cost" range={[40, 400]} name="비용" />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
-                  formatter={(val, name) => {
-                    const v = Number(val);
-                    if (name === "CTR") return [`${v}%`, name];
-                    if (name === "노출") return [formatNumber(v), name];
-                    if (name === "비용") return [formatCurrency(v), name];
-                    return [v, name];
-                  }}
-                  labelFormatter={() => ""}
-                />
-                <Scatter data={bubbleData} fill="#2563eb" fillOpacity={0.6} />
-              </ScatterChart>
-            </ResponsiveContainer>
-            <p className="text-xs text-muted-foreground mt-2">
-              💡 우상단 = 높은 CTR + 많은 노출 (효율 좋은 키워드). 큰 버블 = 비용 높음.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {/* 9.5 버블 그래프 (CTR vs 노출, 버블=비용) — 사분면 참조선 포함 */}
+      {bubbleData.length > 0 && (() => {
+        const avgCtr = bubbleData.reduce((s, d) => s + d.ctr, 0) / bubbleData.length;
+        const avgImp = bubbleData.reduce((s, d) => s + d.impressions, 0) / bubbleData.length;
+        return (
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold text-sm mb-1">키워드 사분면 — CTR vs 노출 (버블 크기 = 비용)</h3>
+              <div className="flex gap-4 text-xs text-muted-foreground mb-3 flex-wrap">
+                <span className="text-green-600 font-medium">●  스타: 고CTR + 고노출</span>
+                <span className="text-blue-600 font-medium">●  잠재력: 고CTR + 저노출</span>
+                <span className="text-yellow-600 font-medium">●  비용최적화: 저CTR + 고노출</span>
+                <span className="text-red-500 font-medium">●  재검토: 저CTR + 저노출</span>
+              </div>
+              <ResponsiveContainer width="100%" height={380}>
+                <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis
+                    type="number" dataKey="ctr" name="CTR"
+                    tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
+                    label={{ value: "CTR (%)", position: "insideBottom", offset: -10, fontSize: 11, fill: "var(--muted-foreground)" }}
+                  />
+                  <YAxis
+                    type="number" dataKey="impressions" name="노출"
+                    tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
+                    tickFormatter={(v) => v >= 10000 ? `${(v / 10000).toFixed(0)}만` : formatNumber(v)}
+                    label={{ value: "노출", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--muted-foreground)" }}
+                  />
+                  <ZAxis type="number" dataKey="cost" range={[40, 400]} name="비용" />
+                  <ReferenceLine x={avgCtr} stroke="#94a3b8" strokeDasharray="4 4"
+                    label={{ value: `평균 CTR ${avgCtr.toFixed(1)}%`, position: "top", fontSize: 9, fill: "#94a3b8" }} />
+                  <ReferenceLine y={avgImp} stroke="#94a3b8" strokeDasharray="4 4"
+                    label={{ value: `평균 노출 ${avgImp >= 10000 ? (avgImp / 10000).toFixed(0) + "만" : formatNumber(Math.round(avgImp))}`, position: "right", fontSize: 9, fill: "#94a3b8" }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                    formatter={(val, name) => {
+                      const v = Number(val);
+                      if (name === "CTR") return [`${v}%`, name];
+                      if (name === "노출") return [formatNumber(v), name];
+                      if (name === "비용") return [formatCurrency(v), name];
+                      return [v, name];
+                    }}
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.keyword || ""}
+                  />
+                  <Scatter data={bubbleData} fill="#2563eb" fillOpacity={0.6} />
+                </ScatterChart>
+              </ResponsiveContainer>
+              <p className="text-xs text-muted-foreground mt-2">
+                💡 참조선 기준: 평균 CTR·노출. 우상단 = 스타 키워드. 큰 버블 = 비용 높음.
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
     </PageShell>
   );
 }

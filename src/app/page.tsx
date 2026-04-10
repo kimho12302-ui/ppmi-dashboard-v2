@@ -554,55 +554,114 @@ function BrandDetailSection({ brand, from, to }: { brand: string; from: string; 
   const { data } = useFetch<{
     lineupBreakdown: { lineup: string; revenue: number; quantity: number }[];
     topProducts: { product: string; revenue: number; quantity: number }[];
+    channelBreakdown: { channel: string; revenue: number; quantity: number }[];
+    gongguSales: { seller: string; revenue: number; orders: number }[];
+    gongguSalesTotal: number;
+    selfSalesTotal: number;
   }>(`/api/brand-detail?brand=${brand}&from=${from}&to=${to}`);
 
   const lineups = data?.lineupBreakdown || [];
   const tops = data?.topProducts || [];
+  const channels = (data?.channelBreakdown || []).filter(c => c.revenue > 0);
+  const gongguSales = data?.gongguSales || [];
+  const gongguTotal = data?.gongguSalesTotal || 0;
+  const selfTotal = data?.selfSalesTotal || 0;
   const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#ec4899"];
 
-  if (lineups.length === 0 && tops.length === 0) return null;
+  if (lineups.length === 0 && tops.length === 0 && channels.length === 0 && gongguSales.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {lineups.length > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="font-semibold mb-3">라인업별 매출</h3>
-            <div className="space-y-2">
-              {lineups.map((l, i) => {
-                const maxRev = lineups[0]?.revenue || 1;
-                return (
-                  <div key={l.lineup} className="flex items-center gap-2 text-sm">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                    <span className="flex-1 truncate">{l.lineup}</span>
-                    <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${(l.revenue / maxRev) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {lineups.length > 0 && (
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold mb-3">라인업별 매출</h3>
+              <div className="space-y-2">
+                {lineups.map((l, i) => {
+                  const maxRev = lineups[0]?.revenue || 1;
+                  return (
+                    <div key={l.lineup} className="flex items-center gap-2 text-sm">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                      <span className="flex-1 truncate">{l.lineup}</span>
+                      <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${(l.revenue / maxRev) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                      </div>
+                      <span className="font-medium w-20 text-right">{formatCurrency(l.revenue)}</span>
                     </div>
-                    <span className="font-medium w-20 text-right">{formatCurrency(l.revenue)}</span>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        {tops.length > 0 && (
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold mb-3">제품 TOP 10</h3>
+              <div className="space-y-2">
+                {tops.slice(0, 10).map((p, i) => (
+                  <div key={p.product} className="flex items-center gap-2 text-sm">
+                    <span className="text-xs text-muted-foreground w-5">{i + 1}</span>
+                    <span className="flex-1 truncate">{p.product}</span>
+                    <span className="font-medium">{formatCurrency(p.revenue)}</span>
+                    <span className="text-muted-foreground text-xs w-12 text-right">{formatNumber(p.quantity)}개</span>
                   </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      {tops.length > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="font-semibold mb-3">제품 TOP 10</h3>
-            <div className="space-y-2">
-              {tops.slice(0, 10).map((p, i) => (
-                <div key={p.product} className="flex items-center gap-2 text-sm">
-                  <span className="text-xs text-muted-foreground w-5">{i + 1}</span>
-                  <span className="flex-1 truncate">{p.product}</span>
-                  <span className="font-medium">{formatCurrency(p.revenue)}</span>
-                  <span className="text-muted-foreground text-xs w-12 text-right">{formatNumber(p.quantity)}개</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        {channels.length > 1 && (
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold mb-3">채널별 매출</h3>
+              <div className="space-y-2">
+                {channels.map((c, i) => {
+                  const maxRev = channels[0]?.revenue || 1;
+                  return (
+                    <div key={c.channel} className="flex items-center gap-2 text-sm">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                      <span className="flex-1 truncate capitalize">{c.channel}</span>
+                      <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${(c.revenue / maxRev) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                      </div>
+                      <span className="font-medium w-20 text-right">{formatCurrency(c.revenue)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        {gongguSales.length > 0 && (
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold mb-1">공구 셀러별 매출</h3>
+              <div className="flex gap-4 text-xs text-muted-foreground mb-3">
+                <span>자체판매 <span className="font-medium text-foreground">{formatCurrency(selfTotal)}</span></span>
+                <span>공구 <span className="font-medium text-foreground">{formatCurrency(gongguTotal)}</span></span>
+              </div>
+              <div className="space-y-2">
+                {gongguSales.map((s, i) => {
+                  const maxRev = gongguSales[0]?.revenue || 1;
+                  return (
+                    <div key={s.seller} className="flex items-center gap-2 text-sm">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                      <span className="flex-1 truncate">{s.seller}</span>
+                      <span className="text-muted-foreground text-xs w-12 text-right">{formatNumber(s.orders)}건</span>
+                      <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${(s.revenue / maxRev) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
+                      </div>
+                      <span className="font-medium w-20 text-right">{formatCurrency(s.revenue)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
