@@ -42,6 +42,7 @@ function KeywordsInner() {
   const { data, loading } = useFetch<{ keywords: KeywordPerformance[] }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
   const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
+  const [tab, setTab] = useState<"keywords" | "gsc">("keywords");
 
   const keywords = useMemo(() => data?.keywords || [], [data]);
 
@@ -160,6 +161,28 @@ function KeywordsInner() {
 
   return (
     <PageShell title="키워드" description="키워드별 광고 성과">
+      {/* 탭 */}
+      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
+        {([
+          { key: "keywords", label: "키워드 분석" },
+          { key: "gsc", label: "Google Search Console" },
+        ] as { key: "keywords" | "gsc"; label: string }[]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
+              tab === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "gsc" && <GscSection brand={brand} from={from} to={to} />}
+
+      {tab === "keywords" && <>
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="키워드 수" value={formatNumber(totals.uniqueKeywords)} />
@@ -371,6 +394,94 @@ function KeywordsInner() {
           </Card>
         );
       })()}
+      </>}
     </PageShell>
+  );
+}
+
+/* ── GSC 섹션 (P10) ── */
+interface GscQuery {
+  query: string; device: string; clicks: number; impressions: number; ctr: number; position: number;
+}
+interface GscSummary {
+  totalClicks: number; totalImpressions: number; avgCtr: number; avgPosition: number;
+}
+
+function GscSection({ brand, from, to }: { brand: string; from: string; to: string }) {
+  const { data, loading } = useFetch<{ queries: GscQuery[]; summary: GscSummary; error?: string }>(
+    `/api/gsc?brand=${brand}&from=${from}&to=${to}`
+  );
+  const [sortBy, setSortBy] = useState<"clicks" | "impressions" | "ctr" | "position">("clicks");
+
+  const queries = useMemo(() => {
+    const list = data?.queries || [];
+    return [...list].sort((a, b) => {
+      if (sortBy === "impressions") return b.impressions - a.impressions;
+      if (sortBy === "ctr") return b.ctr - a.ctr;
+      if (sortBy === "position") return a.position - b.position;
+      return b.clicks - a.clicks;
+    }).slice(0, 100);
+  }, [data, sortBy]);
+
+  if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">GSC 로딩 중...</CardContent></Card>;
+  if (data?.error) return <Card><CardContent className="p-4 text-sm text-amber-600">GSC 오류: {data.error}</CardContent></Card>;
+
+  const summary = data?.summary;
+  return (
+    <>
+      {summary && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard title="총 클릭" value={formatNumber(summary.totalClicks)} />
+          <KpiCard title="총 노출" value={formatNumber(summary.totalImpressions)} />
+          <KpiCard title="평균 CTR" value={formatPercent(summary.avgCtr * 100)} />
+          <KpiCard title="평균 순위" value={summary.avgPosition.toFixed(1)} />
+        </div>
+      )}
+      <Card>
+        <CardContent className="p-4 overflow-x-auto">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">검색 쿼리 성과 (ironpet.store)</h3>
+            <div className="flex items-center gap-1">
+              {(["clicks", "impressions", "ctr", "position"] as const).map(s => (
+                <button key={s} onClick={() => setSortBy(s)}
+                  className={cn("px-2 py-1 text-xs rounded", sortBy === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                  {s === "clicks" ? "클릭순" : s === "impressions" ? "노출순" : s === "ctr" ? "CTR순" : "순위순"}
+                </button>
+              ))}
+            </div>
+          </div>
+          {queries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">데이터가 없습니다. (GSC 서비스 계정 권한 또는 날짜 범위 확인)</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left border-b text-muted-foreground">
+                  <th className="pb-2 pr-4">#</th>
+                  <th className="pb-2 pr-4">검색어</th>
+                  <th className="pb-2 pr-4">기기</th>
+                  <th className="pb-2 pr-4 text-right">클릭</th>
+                  <th className="pb-2 pr-4 text-right">노출</th>
+                  <th className="pb-2 pr-4 text-right">CTR</th>
+                  <th className="pb-2 text-right">평균 순위</th>
+                </tr>
+              </thead>
+              <tbody>
+                {queries.map((q, i) => (
+                  <tr key={`${q.query}-${q.device}`} className="border-b border-border/50 hover:bg-muted/30">
+                    <td className="py-2 pr-4 text-muted-foreground">{i + 1}</td>
+                    <td className="py-2 pr-4 font-medium max-w-[240px] truncate">{q.query}</td>
+                    <td className="py-2 pr-4 text-muted-foreground text-xs">{q.device}</td>
+                    <td className="py-2 pr-4 text-right">{formatNumber(q.clicks)}</td>
+                    <td className="py-2 pr-4 text-right text-muted-foreground">{formatNumber(q.impressions)}</td>
+                    <td className="py-2 pr-4 text-right">{(q.ctr * 100).toFixed(2)}%</td>
+                    <td className="py-2 text-right">{q.position.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </>
   );
 }

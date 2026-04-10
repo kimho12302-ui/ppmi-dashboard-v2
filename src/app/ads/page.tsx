@@ -31,7 +31,7 @@ const GA4_LABEL: Record<string, string> = {
   "ga4_Search": "GA4 Search",
 };
 
-type ViewTab = "overview" | "channels" | "ga4" | "creatives";
+type ViewTab = "overview" | "channels" | "ga4" | "creatives" | "naver";
 
 export default function AdsPage() {
   return (
@@ -190,6 +190,7 @@ function AdsPageInner() {
           { key: "channels", label: "채널별 상세" },
           { key: "ga4", label: "GA4 UTM" },
           { key: "creatives", label: "Meta 소재" },
+          { key: "naver", label: "네이버 캠페인" },
         ] as { key: ViewTab; label: string }[]).map((t) => (
           <button
             key={t.key}
@@ -509,7 +510,103 @@ function AdsPageInner() {
       {tab === "creatives" && (
         <CreativesSection brand={brand} from={from} to={to} />
       )}
+
+      {tab === "naver" && (
+        <NaverCampaignsSection brand={brand} from={from} to={to} />
+      )}
     </PageShell>
+  );
+}
+
+/* ── 네이버 캠페인 섹션 (P10) ── */
+interface NaverCampaign {
+  campaignId: string; campaignName: string; type: string;
+  impressions: number; clicks: number; cost: number; conversions: number;
+  ctr: number; cpc: number; days: number;
+}
+interface NaverSummary {
+  totalImpressions: number; totalClicks: number; totalCost: number;
+  totalConversions: number; avgCtr: number; avgCpc: number;
+}
+
+function NaverCampaignsSection({ brand, from, to }: { brand: string; from: string; to: string }) {
+  const { data, loading } = useFetch<{ campaigns: NaverCampaign[]; summary: NaverSummary | null }>(
+    `/api/naver-campaigns?brand=${brand}&from=${from}&to=${to}`
+  );
+  const [sort, setSort] = useState<"cost" | "clicks" | "ctr" | "conversions">("cost");
+
+  const campaigns = useMemo(() => {
+    const list = data?.campaigns || [];
+    return [...list].sort((a, b) => {
+      if (sort === "clicks") return b.clicks - a.clicks;
+      if (sort === "ctr") return b.ctr - a.ctr;
+      if (sort === "conversions") return b.conversions - a.conversions;
+      return b.cost - a.cost;
+    });
+  }, [data, sort]);
+
+  const summary = data?.summary;
+
+  if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">네이버 캠페인 로딩 중...</CardContent></Card>;
+
+  return (
+    <>
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <KpiCard title="총 광고비" value={formatCurrency(summary.totalCost)} />
+          <KpiCard title="총 클릭" value={formatNumber(summary.totalClicks)} />
+          <KpiCard title="총 노출" value={formatNumber(summary.totalImpressions)} />
+          <KpiCard title="평균 CTR" value={formatPercent(summary.avgCtr)} />
+        </div>
+      )}
+      <Card>
+        <CardContent className="p-4 overflow-x-auto">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">캠페인별 성과</h3>
+            <div className="flex items-center gap-1">
+              {(["cost", "clicks", "ctr", "conversions"] as const).map(s => (
+                <button key={s} onClick={() => setSort(s)}
+                  className={cn("px-2 py-1 text-xs rounded", sort === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                  {s === "cost" ? "광고비순" : s === "clicks" ? "클릭순" : s === "ctr" ? "CTR순" : "전환순"}
+                </button>
+              ))}
+            </div>
+          </div>
+          {campaigns.length === 0 ? (
+            <p className="text-sm text-muted-foreground">데이터가 없습니다. (시트 연동 또는 날짜 범위 확인)</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left border-b text-muted-foreground">
+                  <th className="pb-2 pr-4">캠페인명</th>
+                  <th className="pb-2 pr-4">유형</th>
+                  <th className="pb-2 pr-4 text-right">광고비</th>
+                  <th className="pb-2 pr-4 text-right">노출</th>
+                  <th className="pb-2 pr-4 text-right">클릭</th>
+                  <th className="pb-2 pr-4 text-right">CTR</th>
+                  <th className="pb-2 pr-4 text-right">CPC</th>
+                  <th className="pb-2 text-right">전환</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.map((c, i) => (
+                  <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
+                    <td className="py-2 pr-4 max-w-[200px] truncate">{c.campaignName}</td>
+                    <td className="py-2 pr-4"><span className="text-xs px-1.5 py-0.5 rounded bg-muted">{c.type}</span></td>
+                    <td className="py-2 pr-4 text-right font-medium">{formatCurrency(c.cost)}</td>
+                    <td className="py-2 pr-4 text-right text-muted-foreground">{formatNumber(c.impressions)}</td>
+                    <td className="py-2 pr-4 text-right">{formatNumber(c.clicks)}</td>
+                    <td className="py-2 pr-4 text-right">{c.ctr.toFixed(2)}%</td>
+                    <td className="py-2 pr-4 text-right">{formatCurrency(c.cpc)}</td>
+                    <td className="py-2 text-right">{c.conversions}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </>
   );
 }
 
