@@ -61,6 +61,8 @@ status: active
 | v4.1 | 2026-04-06 | `d2ffd0b` | MissingDataAlert 임계값 수정 — days>=2 제거, 어제 미수집도 즉시 표시. 기획서 정합성 검토 반영 |
 | v4.2 | 2026-04-06 | `daf48d3` | ga4_* 채널 광고비 집계 중복 제거 (ads/insights/monthly-summary API + DB 317행 삭제) |
 | v4.3 | 2026-04-06 | `a97cb69` | 데이터 정합성 테스트 스크립트 추가 (scripts/integrity-test.mjs, 13개 항목) |
+| v4.4 | 2026-04-10 | `c34f3b6` | P7/P11/P8 구현 — DataStatusCard(설정), 채널효율 사분면(광고), 키워드 사분면, BrandDetailSection 강화 |
+| v4.5 | 2026-04-10 | `633fb46` | P10 — 광고에 네이버 캠페인 탭, 키워드에 GSC 탭 추가 |
 
 ---
 
