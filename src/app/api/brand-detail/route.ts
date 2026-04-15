@@ -34,9 +34,12 @@ export async function GET(req: NextRequest) {
         .eq("brand", brand).gte("date", from).lte("date", to)
     );
 
+    // "공구 합계" 집계 행 제외
+    const filteredProducts = products.filter(r => r.product !== "공구 합계");
+
     // ── Lineup/SubBrand breakdown ──
     const lineupMap = new Map<string, { revenue: number; quantity: number; orders: number }>();
-    for (const r of products) {
+    for (const r of filteredProducts) {
       let key: string;
       if (brand === "nutty") {
         key = r.lineup || "기타";
@@ -67,7 +70,7 @@ export async function GET(req: NextRequest) {
 
     // ── Top products ──
     const productMap = new Map<string, { revenue: number; quantity: number }>();
-    for (const r of products) {
+    for (const r of filteredProducts) {
       const e = productMap.get(r.product) || { revenue: 0, quantity: 0 };
       e.revenue += Number(r.revenue || 0);
       e.quantity += Number(r.quantity || 0);
@@ -80,7 +83,7 @@ export async function GET(req: NextRequest) {
 
     // ── Channel breakdown ──
     const channelMap = new Map<string, { revenue: number; orders: number }>();
-    for (const r of products) {
+    for (const r of filteredProducts) {
       const e = channelMap.get(r.channel) || { revenue: 0, orders: 0 };
       e.revenue += Number(r.revenue || 0);
       e.orders += Number(r.buyers || 0);
@@ -92,7 +95,7 @@ export async function GET(req: NextRequest) {
 
     // ── Daily trend ──
     const trendMap = new Map<string, number>();
-    for (const r of products) {
+    for (const r of filteredProducts) {
       trendMap.set(r.date, (trendMap.get(r.date) || 0) + Number(r.revenue || 0));
     }
     const dailyTrend = Array.from(trendMap.entries())
@@ -105,13 +108,12 @@ export async function GET(req: NextRequest) {
     let gongguSalesTotal = 0;
 
     if (brand === "balancelab") {
-      // product_sales에서 공구/자체 구분 (daily_sales와 단일 소스 통일)
+      // lineup 기반 공구/자체 구분 ("공구 합계" 행은 이미 filteredProducts에서 제외됨)
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
-      for (const r of products) {
-        // 공구: channel="공구_셀러명" — dashboard API와 동일 조건 (lineup 불일치 방지)
-        const isGonggu = r.channel && r.channel.startsWith("공구_");
-        const seller = r.channel?.startsWith("공구_") ? r.channel.replace("공구_", "") : (r.lineup || "기타");
+      for (const r of filteredProducts) {
+        const isGonggu = !!r.lineup;
         if (isGonggu) {
+          const seller = r.lineup;
           const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };
           e.revenue += Number(r.revenue);
           e.orders += Number(r.buyers || 0);
@@ -125,12 +127,11 @@ export async function GET(req: NextRequest) {
         .map(([seller, d]) => ({ seller, ...d }))
         .sort((a, b) => b.revenue - a.revenue);
 
-      // Self vs gonggu daily trend (product_sales 기반)
+      // Self vs gonggu daily trend
       const selfGongguMap = new Map<string, { self: number; gonggu: number }>();
-      for (const r of products) {
+      for (const r of filteredProducts) {
         const e = selfGongguMap.get(r.date) || { self: 0, gonggu: 0 };
-        const isGonggu = (r.channel && r.channel.startsWith("공구_")) || (r.lineup && r.lineup.trim() !== "");
-        if (isGonggu) {
+        if (r.lineup) {
           e.gonggu += Number(r.revenue);
         } else {
           e.self += Number(r.revenue);

@@ -374,17 +374,24 @@ function KeywordsInner() {
                   <ReferenceLine y={avgImp} stroke="#94a3b8" strokeDasharray="4 4"
                     label={{ value: `평균 노출 ${avgImp >= 10000 ? (avgImp / 10000).toFixed(0) + "만" : formatNumber(Math.round(avgImp))}`, position: "right", fontSize: 9, fill: "#94a3b8" }} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
-                    formatter={(val, name) => {
-                      const v = Number(val);
-                      if (name === "CTR") return [`${v}%`, name];
-                      if (name === "노출") return [formatNumber(v), name];
-                      if (name === "비용") return [formatCurrency(v), name];
-                      return [v, name];
+                    cursor={{ strokeDasharray: "3 3", stroke: "#94a3b8" }}
+                    wrapperStyle={{ zIndex: 100 }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload;
+                      return (
+                        <div className="bg-card border border-border rounded-lg shadow-lg px-3.5 py-2.5 text-xs">
+                          <p className="font-bold text-sm mb-1.5">{d.keyword}</p>
+                          <p>CTR: <b>{d.ctr}%</b></p>
+                          <p>노출: <b>{formatNumber(d.impressions)}</b></p>
+                          <p>클릭: <b>{formatNumber(d.clicks)}</b></p>
+                          <p>비용: <b>{formatCurrency(d.cost)}</b></p>
+                          {d.conversions > 0 && <p>전환: <b>{d.conversions}</b></p>}
+                        </div>
+                      );
                     }}
-                    labelFormatter={(_, payload) => payload?.[0]?.payload?.keyword || ""}
                   />
-                  <Scatter data={bubbleData} fill="#2563eb" fillOpacity={0.6} />
+                  <Scatter name="키워드" data={bubbleData} fill="#2563eb" fillOpacity={0.6} isAnimationActive={false} />
                 </ScatterChart>
               </ResponsiveContainer>
               <p className="text-xs text-muted-foreground mt-2">
@@ -412,16 +419,58 @@ function GscSection({ brand, from, to }: { brand: string; from: string; to: stri
     `/api/gsc?brand=${brand}&from=${from}&to=${to}`
   );
   const [sortBy, setSortBy] = useState<"clicks" | "impressions" | "ctr" | "position">("clicks");
+  const [view, setView] = useState<"bubble" | "table">("bubble");
+
+  const allQueries = useMemo(() => data?.queries || [], [data]);
 
   const queries = useMemo(() => {
-    const list = data?.queries || [];
-    return [...list].sort((a, b) => {
+    return [...allQueries].sort((a, b) => {
       if (sortBy === "impressions") return b.impressions - a.impressions;
       if (sortBy === "ctr") return b.ctr - a.ctr;
       if (sortBy === "position") return a.position - b.position;
       return b.clicks - a.clicks;
     }).slice(0, 100);
-  }, [data, sortBy]);
+  }, [allQueries, sortBy]);
+
+  /* 기기 통합 집계 → 버블 데이터 (노출 가중 평균 순위) */
+  const gscBubbleData = useMemo(() => {
+    const map: Record<string, { query: string; clicks: number; impressions: number; wPosTot: number }> = {};
+    for (const q of allQueries) {
+      if (!map[q.query]) map[q.query] = { query: q.query, clicks: 0, impressions: 0, wPosTot: 0 };
+      map[q.query].clicks += q.clicks;
+      map[q.query].impressions += q.impressions;
+      map[q.query].wPosTot += q.position * q.impressions;
+    }
+    return Object.values(map)
+      .filter(d => d.clicks > 0 && d.impressions > 0)
+      .map(d => ({
+        query: d.query,
+        clicks: d.clicks,
+        impressions: d.impressions,
+        ctr: (d.clicks / d.impressions) * 100,
+        position: d.wPosTot / d.impressions,
+      }))
+      .sort((a, b) => b.clicks - a.clicks)
+      .slice(0, 50);
+  }, [allQueries]);
+
+  /* 사분면 기준선 + 분류 */
+  const { avgCtr, avgImp, quadrants } = useMemo(() => {
+    type BubbleItem = (typeof gscBubbleData)[number];
+    const empty = { avgCtr: 0, avgImp: 0, quadrants: { star: [] as BubbleItem[], potential: [] as BubbleItem[], improve: [] as BubbleItem[], review: [] as BubbleItem[] } };
+    if (!gscBubbleData.length) return empty;
+    const avgCtr = gscBubbleData.reduce((s, d) => s + d.ctr, 0) / gscBubbleData.length;
+    const avgImp = gscBubbleData.reduce((s, d) => s + d.impressions, 0) / gscBubbleData.length;
+    return {
+      avgCtr, avgImp,
+      quadrants: {
+        star:      gscBubbleData.filter(d => d.ctr >= avgCtr && d.impressions >= avgImp),
+        potential: gscBubbleData.filter(d => d.ctr >= avgCtr && d.impressions < avgImp),
+        improve:   gscBubbleData.filter(d => d.ctr < avgCtr && d.impressions >= avgImp),
+        review:    gscBubbleData.filter(d => d.ctr < avgCtr && d.impressions < avgImp),
+      },
+    };
+  }, [gscBubbleData]);
 
   if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">GSC 로딩 중...</CardContent></Card>;
   if (data?.error) return <Card><CardContent className="p-4 text-sm text-amber-600">GSC 오류: {data.error}</CardContent></Card>;
@@ -437,51 +486,150 @@ function GscSection({ brand, from, to }: { brand: string; from: string; to: stri
           <KpiCard title="평균 순위" value={summary.avgPosition.toFixed(1)} />
         </div>
       )}
-      <Card>
-        <CardContent className="p-4 overflow-x-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold">검색 쿼리 성과 (ironpet.store)</h3>
-            <div className="flex items-center gap-1">
-              {(["clicks", "impressions", "ctr", "position"] as const).map(s => (
-                <button key={s} onClick={() => setSortBy(s)}
-                  className={cn("px-2 py-1 text-xs rounded", sortBy === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
-                  {s === "clicks" ? "클릭순" : s === "impressions" ? "노출순" : s === "ctr" ? "CTR순" : "순위순"}
-                </button>
-              ))}
+
+      {/* 뷰 토글 */}
+      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
+        {([
+          { key: "bubble", label: "버블 그래프" },
+          { key: "table", label: "검색어 테이블" },
+        ] as { key: "bubble" | "table"; label: string }[]).map(v => (
+          <button
+            key={v.key}
+            onClick={() => setView(v.key)}
+            className={cn(
+              "px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
+              view === v.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 버블 그래프 뷰 */}
+      {view === "bubble" && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold text-sm mb-1">구글 유입 검색어 사분면 — CTR vs 노출 (버블 크기 = 클릭수)</h3>
+            <div className="flex gap-4 text-xs mb-3 flex-wrap">
+              <span className="text-green-600 font-medium">● 스타: 고CTR + 고노출</span>
+              <span className="text-blue-600 font-medium">● 잠재력: 고CTR + 저노출</span>
+              <span className="text-amber-500 font-medium">● 개선필요: 저CTR + 고노출</span>
+              <span className="text-red-500 font-medium">● 재검토: 저CTR + 저노출</span>
             </div>
-          </div>
-          {queries.length === 0 ? (
-            <p className="text-sm text-muted-foreground">데이터가 없습니다. (GSC 서비스 계정 권한 또는 날짜 범위 확인)</p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left border-b text-muted-foreground">
-                  <th className="pb-2 pr-4">#</th>
-                  <th className="pb-2 pr-4">검색어</th>
-                  <th className="pb-2 pr-4">기기</th>
-                  <th className="pb-2 pr-4 text-right">클릭</th>
-                  <th className="pb-2 pr-4 text-right">노출</th>
-                  <th className="pb-2 pr-4 text-right">CTR</th>
-                  <th className="pb-2 text-right">평균 순위</th>
-                </tr>
-              </thead>
-              <tbody>
-                {queries.map((q, i) => (
-                  <tr key={`${q.query}-${q.device}`} className="border-b border-border/50 hover:bg-muted/30">
-                    <td className="py-2 pr-4 text-muted-foreground">{i + 1}</td>
-                    <td className="py-2 pr-4 font-medium max-w-[240px] truncate">{q.query}</td>
-                    <td className="py-2 pr-4 text-muted-foreground text-xs">{q.device}</td>
-                    <td className="py-2 pr-4 text-right">{formatNumber(q.clicks)}</td>
-                    <td className="py-2 pr-4 text-right text-muted-foreground">{formatNumber(q.impressions)}</td>
-                    <td className="py-2 pr-4 text-right">{(q.ctr * 100).toFixed(2)}%</td>
-                    <td className="py-2 text-right">{q.position.toFixed(1)}</td>
-                  </tr>
+            {gscBubbleData.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">데이터가 없습니다. (GSC 권한 또는 날짜 범위 확인)</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={420}>
+                <ScatterChart margin={{ top: 10, right: 60, bottom: 30, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis
+                    type="number" dataKey="ctr" name="CTR" domain={[0, "auto"]}
+                    tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
+                    tickFormatter={(v) => `${Number(v).toFixed(1)}%`}
+                    label={{ value: "CTR (%)", position: "insideBottom", offset: -10, fontSize: 11, fill: "var(--muted-foreground)" }}
+                  />
+                  <YAxis
+                    type="number" dataKey="impressions" name="노출"
+                    tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
+                    tickFormatter={(v) => v >= 10000 ? `${(v / 10000).toFixed(0)}만` : formatNumber(v)}
+                    label={{ value: "노출", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--muted-foreground)" }}
+                  />
+                  <ZAxis type="number" dataKey="clicks" range={[30, 600]} name="클릭" />
+                  <ReferenceLine x={avgCtr} stroke="#94a3b8" strokeDasharray="4 4"
+                    label={{ value: `평균 ${avgCtr.toFixed(1)}%`, position: "insideTopRight", fontSize: 9, fill: "#94a3b8" }} />
+                  <ReferenceLine y={avgImp} stroke="#94a3b8" strokeDasharray="4 4"
+                    label={{ value: `평균 ${avgImp >= 10000 ? (avgImp / 10000).toFixed(0) + "만" : formatNumber(Math.round(avgImp))}`, position: "right", fontSize: 9, fill: "#94a3b8" }} />
+                  <Tooltip
+                    cursor={{ strokeDasharray: "3 3", stroke: "#94a3b8" }}
+                    wrapperStyle={{ zIndex: 100 }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload;
+                      return (
+                        <div className="bg-card border border-border rounded-lg shadow-lg px-3.5 py-2.5 text-xs">
+                          <p className="font-bold text-sm mb-1.5">{d.query}</p>
+                          <p>CTR: <b>{d.ctr.toFixed(2)}%</b></p>
+                          <p>노출: <b>{formatNumber(d.impressions)}</b></p>
+                          <p>클릭: <b>{formatNumber(d.clicks)}</b></p>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Scatter name="스타" data={quadrants.star} fill="#16a34a" fillOpacity={0.75} isAnimationActive={false} />
+                  <Scatter name="잠재력" data={quadrants.potential} fill="#2563eb" fillOpacity={0.75} isAnimationActive={false} />
+                  <Scatter name="개선필요" data={quadrants.improve} fill="#d97706" fillOpacity={0.75} isAnimationActive={false} />
+                  <Scatter name="재검토" data={quadrants.review} fill="#dc2626" fillOpacity={0.75} isAnimationActive={false} />
+                </ScatterChart>
+              </ResponsiveContainer>
+            )}
+            {gscBubbleData.length > 0 && (
+              <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
+                {[
+                  { label: "스타", count: quadrants.star.length, color: "text-green-600", desc: "집중 투자" },
+                  { label: "잠재력", count: quadrants.potential.length, color: "text-blue-600", desc: "순위 상승 시 효과" },
+                  { label: "개선필요", count: quadrants.improve.length, color: "text-amber-500", desc: "제목/설명 최적화" },
+                  { label: "재검토", count: quadrants.review.length, color: "text-red-500", desc: "가치 낮음" },
+                ].map(q => (
+                  <div key={q.label} className="bg-muted/40 rounded p-2">
+                    <span className={`font-semibold ${q.color}`}>{q.label} ({q.count}개)</span>
+                    <p className="text-muted-foreground mt-0.5">{q.desc}</p>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          )}
-        </CardContent>
-      </Card>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 테이블 뷰 */}
+      {view === "table" && (
+        <Card>
+          <CardContent className="p-4 overflow-x-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">검색 쿼리 성과 (ironpet.store)</h3>
+              <div className="flex items-center gap-1">
+                {(["clicks", "impressions", "ctr", "position"] as const).map(s => (
+                  <button key={s} onClick={() => setSortBy(s)}
+                    className={cn("px-2 py-1 text-xs rounded", sortBy === s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
+                    {s === "clicks" ? "클릭순" : s === "impressions" ? "노출순" : s === "ctr" ? "CTR순" : "순위순"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {queries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">데이터가 없습니다. (GSC 서비스 계정 권한 또는 날짜 범위 확인)</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left border-b text-muted-foreground">
+                    <th className="pb-2 pr-4">#</th>
+                    <th className="pb-2 pr-4">검색어</th>
+                    <th className="pb-2 pr-4">기기</th>
+                    <th className="pb-2 pr-4 text-right">클릭</th>
+                    <th className="pb-2 pr-4 text-right">노출</th>
+                    <th className="pb-2 pr-4 text-right">CTR</th>
+                    <th className="pb-2 text-right">평균 순위</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {queries.map((q, i) => (
+                    <tr key={`${q.query}-${q.device}`} className="border-b border-border/50 hover:bg-muted/30">
+                      <td className="py-2 pr-4 text-muted-foreground">{i + 1}</td>
+                      <td className="py-2 pr-4 font-medium max-w-[240px] truncate">{q.query}</td>
+                      <td className="py-2 pr-4 text-muted-foreground text-xs">{q.device}</td>
+                      <td className="py-2 pr-4 text-right">{formatNumber(q.clicks)}</td>
+                      <td className="py-2 pr-4 text-right text-muted-foreground">{formatNumber(q.impressions)}</td>
+                      <td className="py-2 pr-4 text-right">{(q.ctr * 100).toFixed(2)}%</td>
+                      <td className="py-2 text-right">{q.position.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </>
   );
 }
