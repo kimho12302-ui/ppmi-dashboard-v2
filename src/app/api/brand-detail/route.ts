@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isGonggu, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchAll(baseQuery: any): Promise<any[]> {
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
     );
 
     // "공구 합계" 집계 행 제외
-    const filteredProducts = products.filter(r => r.product !== "공구 합계");
+    const filteredProducts = products.filter(r => !isGongguAggregate(r));
 
     // ── Lineup/SubBrand breakdown ──
     const lineupMap = new Map<string, { revenue: number; quantity: number; orders: number }>();
@@ -108,12 +109,11 @@ export async function GET(req: NextRequest) {
     let gongguSalesTotal = 0;
 
     if (brand === "balancelab") {
-      // lineup 기반 공구/자체 구분 ("공구 합계" 행은 이미 filteredProducts에서 제외됨)
+      // 공구/자체판매 구분 ("공구 합계" 행은 이미 filteredProducts에서 제외됨)
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
       for (const r of filteredProducts) {
-        const isGonggu = !!r.lineup;
-        if (isGonggu) {
-          const seller = r.lineup;
+        if (isGonggu(r)) {
+          const seller = gongguSeller(r) || "기타";
           const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };
           e.revenue += Number(r.revenue);
           e.orders += Number(r.buyers || 0);
@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
       const selfGongguMap = new Map<string, { self: number; gonggu: number }>();
       for (const r of filteredProducts) {
         const e = selfGongguMap.get(r.date) || { self: 0, gonggu: 0 };
-        if (r.lineup) {
+        if (isGonggu(r)) {
           e.gonggu += Number(r.revenue);
         } else {
           e.self += Number(r.revenue);

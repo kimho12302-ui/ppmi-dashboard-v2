@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
@@ -656,7 +657,14 @@ function CreativesSection({ brand, from, to }: { brand: string; from: string; to
             <CardContent className="p-3">
               <div className="flex gap-3">
                 {c.thumbnail_url && (
-                  <img src={c.thumbnail_url} alt="" className="w-16 h-16 rounded object-cover flex-shrink-0" />
+                  <Image
+                    src={c.thumbnail_url}
+                    alt=""
+                    width={64}
+                    height={64}
+                    className="w-16 h-16 rounded object-cover flex-shrink-0"
+                    unoptimized
+                  />
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate">{c.name}</p>

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isGonggu, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchAll(baseQuery: any): Promise<any[]> {
@@ -111,12 +112,10 @@ export async function GET(req: NextRequest) {
         .gte("date", from).lte("date", to).eq("brand", "balancelab"));
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
       for (const r of gongguData || []) {
-        // "공구 합계" 집계 행 → 모든 계산에서 제외
-        if (r.product === "공구 합계") continue;
-        // lineup이 있으면 공구 셀러 판매
-        const isGonggu = !!r.lineup;
-        if (isGonggu) {
-          const seller = r.lineup;
+        // "공구 합계" 집계 행은 isGonggu 가 false 반환 → 자체판매에도 가산되지 않음
+        if (isGongguAggregate(r)) continue;
+        if (isGonggu(r)) {
+          const seller = gongguSeller(r) || "기타";
           const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };
           e.revenue += Number(r.revenue); e.orders += Number(r.quantity || 0);
           sellerMap.set(seller, e);
@@ -265,7 +264,7 @@ export async function GET(req: NextRequest) {
     const prodData = await fetchAll(prodQ);
     const prodMap = new Map<string, { revenue: number; quantity: number; brand: string }>();
     for (const r of prodData || []) {
-      if (r.product === "공구 합계") continue; // 집계 행 제외
+      if (isGongguAggregate(r)) continue; // 집계 행 제외
       const e = prodMap.get(r.product) || { revenue: 0, quantity: 0, brand: r.brand };
       e.revenue += Number(r.revenue); e.quantity += Number(r.quantity);
       prodMap.set(r.product, e);

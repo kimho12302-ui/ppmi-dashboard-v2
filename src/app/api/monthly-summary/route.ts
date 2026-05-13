@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isGongguOutOfDailySales } from "@/lib/gonggu";
 
 // Supabase anon key has max-rows=1000 per request. Use pagination to fetch all rows.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,17 +47,19 @@ export async function GET(request: NextRequest) {
     const { data: miscData } = await miscQ;
 
     // Fetch shipping costs (dashboard API와 동일 테이블 사용: shipping_costs)
-    let shipQ = supabase.from("shipping_costs").select("month,brand,amount").gte("month", fromDate.slice(0, 7)).lte("month", toDate.slice(0, 7));
+    let shipQ = supabase.from("shipping_costs").select("month,brand,total_cost").gte("month", fromDate.slice(0, 7)).lte("month", toDate.slice(0, 7));
     if (brand !== "all") shipQ = shipQ.eq("brand", brand);
     const { data: shipData } = await shipQ;
 
-    // Fetch balancelab gonggu revenue from product_sales (공구채널은 daily_sales에 없음)
+    // Fetch balancelab gonggu revenue from product_sales.
+    // 가산 대상: daily_sales 에 미포함된 공구 row (channel="공구_*" 또는 channel="공구").
+    // channel="smartstore" + lineup="셀러" row 는 이미 daily_sales smartstore 합계에 포함되어 있어 가산하면 이중집계.
     const gongguMonthMap = new Map<string, number>(); // month → gonggu revenue
     if (brand === "balancelab" || brand === "all") {
-      const gongguData = await fetchAll(supabase.from("product_sales").select("date,channel,revenue")
+      const gongguData = await fetchAll(supabase.from("product_sales").select("date,channel,product,lineup,revenue")
         .gte("date", fromDate).lte("date", toDate).eq("brand", "balancelab"));
       for (const r of gongguData || []) {
-        if (r.channel && r.channel.startsWith("공구_")) {
+        if (isGongguOutOfDailySales(r)) {
           const m = r.date.slice(0, 7);
           gongguMonthMap.set(m, (gongguMonthMap.get(m) || 0) + Number(r.revenue));
         }
@@ -103,11 +106,11 @@ export async function GET(request: NextRequest) {
       if (existing) existing.miscCost += Number(r.amount || 0);
     }
 
-    // Add shipping costs by month (shipping_costs: month + amount)
+    // Add shipping costs by month (shipping_costs: month + total_cost)
     for (const r of shipData || []) {
       const m = (r.month || "").slice(0, 7);
       const existing = months.get(m);
-      if (existing) existing.shipCost += Number(r.amount || 0);
+      if (existing) existing.shipCost += Number(r.total_cost || 0);
     }
 
     // Add gonggu revenue by month (balancelab 공구 채널)

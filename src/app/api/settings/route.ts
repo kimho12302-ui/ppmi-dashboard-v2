@@ -1,5 +1,102 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { google } from "googleapis";
+
+const STATS_SHEET_ID = "1FzxDCyR9FyAIduf7Q0lfUIOzvSqVlod21eOFqaPrXio";
+
+function getAuth() {
+  const saKey = process.env.GOOGLE_SA_KEY;
+  if (!saKey) throw new Error("GOOGLE_SA_KEY not set");
+  const creds = JSON.parse(saKey);
+  return new google.auth.GoogleAuth({
+    credentials: creds,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+}
+
+const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
+function toSheetDateLabel(date: string) {
+  const dt = new Date(`${date}T00:00:00+09:00`);
+  return `${dt.getMonth() + 1}월 ${dt.getDate()}일 (${DAY_NAMES[dt.getDay()]})`;
+}
+
+async function findFunnelRowIndex(date: string) {
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: STATS_SHEET_ID,
+    range: "Funnel!A:A",
+  });
+  const values = res.data.values || [];
+  const target = toSheetDateLabel(date);
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i]?.[0] || "").includes(target)) return i + 1;
+  }
+  throw new Error(`Funnel row not found for ${date}`);
+}
+
+async function syncCafe24RowToSheet(date: string) {
+  const rowNum = await findFunnelRowIndex(date);
+  const { data } = await supabase.from("daily_funnel").select("*").eq("channel", "cafe24").eq("date", date);
+  const rows = data || [];
+  let sessions = 0, cartAdds = 0, newVisitors = 0, registrations = 0, repurchases = 0, avgDuration = 0, totalUsers = 0;
+  for (const r of rows) {
+    sessions = Math.max(sessions, Number(r.sessions || 0));
+    cartAdds = Math.max(cartAdds, Number(r.cart_adds || 0));
+    newVisitors = Math.max(newVisitors, Number(r.signups || 0));
+    registrations = Math.max(registrations, Number(r.purchases || 0));
+    repurchases = Math.max(repurchases, Number(r.repurchases || 0));
+    avgDuration = Math.max(avgDuration, Number(r.avg_duration || 0));
+    totalUsers = Math.max(totalUsers, Number(r.subscribers || 0));
+  }
+  const returning = Math.max(0, totalUsers - newVisitors);
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: STATS_SHEET_ID,
+    requestBody: {
+      valueInputOption: "USER_ENTERED",
+      data: [
+        { range: `Funnel!T${rowNum}`, values: [[sessions]] },
+        { range: `Funnel!U${rowNum}`, values: [[newVisitors]] },
+        { range: `Funnel!V${rowNum}`, values: [[returning]] },
+        { range: `Funnel!W${rowNum}`, values: [[totalUsers]] },
+        { range: `Funnel!X${rowNum}`, values: [[sessions]] },
+        { range: `Funnel!Y${rowNum}`, values: [[Math.round(avgDuration)]] },
+        { range: `Funnel!Z${rowNum}`, values: [[cartAdds]] },
+        { range: `Funnel!AA${rowNum}`, values: [[registrations]] },
+        { range: `Funnel!AC${rowNum}`, values: [[repurchases]] },
+      ],
+    },
+  });
+}
+
+async function syncSmartstoreRowToSheet(date: string) {
+  const rowNum = await findFunnelRowIndex(date);
+  const { data } = await supabase.from("daily_funnel").select("*").eq("channel", "smartstore").eq("date", date);
+  const rows = data || [];
+  let sessions = 0, subscribers = 0, repurchases = 0, avgDuration = 0;
+  for (const r of rows) {
+    sessions += Number(r.sessions || 0);
+    subscribers += Number(r.subscribers || 0);
+    repurchases += Number(r.repurchases || 0);
+    avgDuration = Math.max(avgDuration, Number(r.avg_duration || 0));
+  }
+  const auth = getAuth();
+  const sheets = google.sheets({ version: "v4", auth });
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: STATS_SHEET_ID,
+    requestBody: {
+      valueInputOption: "USER_ENTERED",
+      data: [
+        { range: `Funnel!AI${rowNum}`, values: [[sessions]] },
+        { range: `Funnel!AJ${rowNum}`, values: [[Math.round(avgDuration)]] },
+        { range: `Funnel!AK${rowNum}`, values: [[subscribers]] },
+        { range: `Funnel!AM${rowNum}`, values: [[repurchases]] },
+      ],
+    },
+  });
+}
 
 // ─── GET ─────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -104,7 +201,19 @@ export async function POST(req: NextRequest) {
           { onConflict: "date,brand,channel" }
         );
         if (error) throw error;
-        return NextResponse.json({ ok: true, message: `smartstore 퍼널 저장 완료 (${date})` });
+        // 시트 역동기화는 best-effort: 실패해도 DB 저장은 완료된 상태이므로 200 유지
+        let sheetWarning: string | null = null;
+        try {
+          await syncSmartstoreRowToSheet(date);
+        } catch (e) {
+          sheetWarning = e instanceof Error ? e.message : String(e);
+          console.warn("smartstore sheet sync failed:", sheetWarning);
+        }
+        return NextResponse.json({
+          ok: true,
+          message: `smartstore 퍼널 저장 완료 (${date})`,
+          ...(sheetWarning ? { sheetWarning } : {}),
+        });
       }
 
       // ── 카페24 퍼널 ──
@@ -124,7 +233,18 @@ export async function POST(req: NextRequest) {
           { onConflict: "date,brand,channel" }
         );
         if (error) throw error;
-        return NextResponse.json({ ok: true, message: `카페24 퍼널 저장 완료 (${date})` });
+        let sheetWarning: string | null = null;
+        try {
+          await syncCafe24RowToSheet(date);
+        } catch (e) {
+          sheetWarning = e instanceof Error ? e.message : String(e);
+          console.warn("cafe24 sheet sync failed:", sheetWarning);
+        }
+        return NextResponse.json({
+          ok: true,
+          message: `카페24 퍼널 저장 완료 (${date})`,
+          ...(sheetWarning ? { sheetWarning } : {}),
+        });
       }
 
       // ── 쿠팡 퍼널 (수기입력) ──

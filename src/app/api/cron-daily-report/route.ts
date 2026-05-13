@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isGongguOutOfDailySales } from "@/lib/gonggu";
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
@@ -44,11 +45,12 @@ export async function GET(req: NextRequest) {
     const { data: ads } = await supabase.from("daily_ad_spend").select("brand,channel,spend,conversion_value")
       .eq("date", yStr).neq("brand", "all");
     // 공구 (밸런스랩)
-    const { data: gonggu } = await supabase.from("product_sales").select("channel,revenue")
+    const { data: gonggu } = await supabase.from("product_sales").select("channel,product,lineup,revenue")
       .eq("date", yStr).eq("brand", "balancelab");
 
+    // daily_sales 에 미포함된 공구만 가산 (channel="공구_*" 또는 channel="공구").
     const totalRevenue = (sales || []).reduce((s, r) => s + Number(r.revenue), 0)
-      + (gonggu || []).filter(r => r.channel?.startsWith("공구_")).reduce((s, r) => s + Number(r.revenue), 0);
+      + (gonggu || []).filter(isGongguOutOfDailySales).reduce((s, r) => s + Number(r.revenue), 0);
     const totalAds = (ads || []).filter(r => !r.channel?.startsWith("ga4_")).reduce((s, r) => s + Number(r.spend), 0);
     const totalOrders = (sales || []).reduce((s, r) => s + Number(r.orders), 0);
     const roas = totalAds > 0 ? totalRevenue / totalAds : 0;
@@ -62,7 +64,7 @@ export async function GET(req: NextRequest) {
       brandMap.set(r.brand, e);
     }
     for (const r of gonggu || []) {
-      if (r.channel?.startsWith("공구_")) {
+      if (isGongguOutOfDailySales(r)) {
         const e = brandMap.get("balancelab") || { revenue: 0, orders: 0 };
         e.revenue += Number(r.revenue);
         brandMap.set("balancelab", e);
@@ -74,17 +76,17 @@ export async function GET(req: NextRequest) {
     dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
     const dbStr = dayBefore.toISOString().slice(0, 10);
     const { data: prevSales } = await supabase.from("daily_sales").select("revenue,orders").eq("date", dbStr).neq("brand", "all").neq("channel", "total");
-    const { data: prevGonggu } = await supabase.from("product_sales").select("channel,revenue").eq("date", dbStr).eq("brand", "balancelab");
+    const { data: prevGonggu } = await supabase.from("product_sales").select("channel,product,lineup,revenue").eq("date", dbStr).eq("brand", "balancelab");
     const prevRevenue = (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0)
-      + (prevGonggu || []).filter(r => r.channel?.startsWith("공구_")).reduce((s, r) => s + Number(r.revenue), 0);
+      + (prevGonggu || []).filter(isGongguOutOfDailySales).reduce((s, r) => s + Number(r.revenue), 0);
     const revChange = prevRevenue > 0 ? ((totalRevenue / prevRevenue) - 1) * 100 : 0;
 
     // 이달 누계 (월초~어제)
     const monthStart = yStr.slice(0, 7) + "-01";
     const { data: mtdSales } = await supabase.from("daily_sales").select("revenue").gte("date", monthStart).lte("date", yStr).neq("brand", "all").neq("channel", "total");
-    const { data: mtdGonggu } = await supabase.from("product_sales").select("channel,revenue").gte("date", monthStart).lte("date", yStr).eq("brand", "balancelab");
+    const { data: mtdGonggu } = await supabase.from("product_sales").select("channel,product,lineup,revenue").gte("date", monthStart).lte("date", yStr).eq("brand", "balancelab");
     const mtdRevenue = (mtdSales || []).reduce((s, r) => s + Number(r.revenue), 0)
-      + (mtdGonggu || []).filter(r => r.channel?.startsWith("공구_")).reduce((s, r) => s + Number(r.revenue), 0);
+      + (mtdGonggu || []).filter(isGongguOutOfDailySales).reduce((s, r) => s + Number(r.revenue), 0);
 
     const brandLines = Array.from(brandMap.entries())
       .filter(([, d]) => d.revenue > 0)

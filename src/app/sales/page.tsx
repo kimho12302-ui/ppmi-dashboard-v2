@@ -7,6 +7,7 @@ import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
+import { isGonggu as isGongguRow, gongguSeller } from "@/lib/gonggu";
 import { Suspense, useMemo, useState } from "react";
 import {
   BarChart, Bar, ScatterChart, Scatter, ZAxis,
@@ -93,8 +94,8 @@ function SalesPageInner() {
   };
   const totals = useMemo(() => {
     const base = calcSalesKpi(sales);
-    return { ...base, revenue: base.revenue + (data?.gongguSalesTotal || 0) };
-  }, [sales, data?.gongguSalesTotal]);
+    return base;
+  }, [sales]);
   const prevTotals = useMemo(() => calcSalesKpi(prevSales), [prevSales]);
 
   const pctChange = (cur: number, prev: number) => {
@@ -169,13 +170,13 @@ function SalesPageInner() {
 
   /* 공구별 (밸런스랩) */
   const gongguData = useMemo(() => {
-    const isGonggu = (r: { brand: string; channel?: string; lineup?: string }) =>
-      r.brand === "balancelab" && ((r.channel?.startsWith("공구_")) || (r.lineup && r.lineup.trim() !== ""));
-    const gongguProducts = products.filter(isGonggu);
-    const selfProducts = products.filter((r) => r.brand === "balancelab" && !isGonggu(r));
+    const isBalGonggu = (r: { brand: string; channel?: string; lineup?: string; product?: string }) =>
+      r.brand === "balancelab" && isGongguRow(r);
+    const gongguProducts = products.filter(isBalGonggu);
+    const selfProducts = products.filter((r) => r.brand === "balancelab" && !isBalGonggu(r));
     const sellerMap: Record<string, { revenue: number; quantity: number }> = {};
     for (const r of gongguProducts) {
-      const seller = r.channel?.startsWith("공구_") ? r.channel.replace("공구_", "") : (r.lineup || "기타");
+      const seller = gongguSeller(r) || "기타";
       if (!sellerMap[seller]) sellerMap[seller] = { revenue: 0, quantity: 0 };
       sellerMap[seller].revenue += r.revenue || 0;
       sellerMap[seller].quantity += r.quantity || 0;

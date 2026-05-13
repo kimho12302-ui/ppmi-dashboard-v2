@@ -113,7 +113,7 @@ function OverviewInner() {
   })), [data]);
 
   const funnelSummary = data?.funnelSummary || { sessions: 0, cartAdds: 0, purchases: 0, repurchases: 0, convRate: 0 };
-  const topProducts = data?.topProducts || [];
+  const topProducts = useMemo(() => data?.topProducts || [], [data]);
   const anomalies = data?.anomalies || [];
   const gongguSalesTotal = data?.gongguSalesTotal || 0;
   const selfSalesTotal = data?.selfSalesTotal || 0;
