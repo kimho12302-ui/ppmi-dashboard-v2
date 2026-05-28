@@ -168,6 +168,31 @@ function SalesPageInner() {
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([period, v]) => ({ period, ...v }));
   }, [sales, periodMode]);
 
+  /* 밸런스랩 자체 vs 공구 시간 추이 */
+  const [balanceTrendMode, setBalanceTrendMode] = useState<"daily" | "weekly" | "monthly">("weekly");
+  const balanceTrendData = useMemo(() => {
+    const map: Record<string, { self: number; gonggu: number }> = {};
+    for (const r of products) {
+      if (r.brand !== "balancelab") continue;
+      const isG = isGongguRow(r);
+      let key: string;
+      if (balanceTrendMode === "monthly") {
+        key = r.date.slice(0, 7);
+      } else if (balanceTrendMode === "weekly") {
+        const d = new Date(r.date);
+        const jan1 = new Date(d.getFullYear(), 0, 1);
+        const weekNum = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
+        key = `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+      } else {
+        key = r.date.slice(5);
+      }
+      if (!map[key]) map[key] = { self: 0, gonggu: 0 };
+      if (isG) map[key].gonggu += r.revenue || 0;
+      else map[key].self += r.revenue || 0;
+    }
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([period, v]) => ({ period, ...v }));
+  }, [products, balanceTrendMode]);
+
   /* 공구별 (밸런스랩) */
   const gongguData = useMemo(() => {
     const isBalGonggu = (r: { brand: string; channel?: string; lineup?: string; product?: string }) =>
@@ -423,6 +448,51 @@ function SalesPageInner() {
               </CardContent>
             </Card>
           </div>
+
+          {/* 자체 vs 공구 시간 추이 */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold">밸런스랩 자체 vs 공구 추이</h3>
+                <div className="flex gap-1 bg-muted rounded-md p-0.5">
+                  {(["daily", "weekly", "monthly"] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setBalanceTrendMode(m)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded",
+                        balanceTrendMode === m ? "bg-card shadow-sm font-medium" : "text-muted-foreground",
+                      )}
+                    >
+                      {m === "daily" ? "일별" : m === "weekly" ? "주별" : "월별"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {balanceTrendData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={balanceTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      stroke="var(--muted-foreground)"
+                      tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                      formatter={(val) => formatCurrency(Number(val))}
+                    />
+                    <Legend />
+                    <Bar dataKey="self" name="자체매출" stackId="bal" fill="#3b82f6" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="gonggu" name="공구매출" stackId="bal" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">밸런스랩 데이터가 없습니다.</p>
+              )}
+            </CardContent>
+          </Card>
 
           {/* 셀러별 테이블 */}
           <Card>
