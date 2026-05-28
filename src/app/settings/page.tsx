@@ -1389,8 +1389,15 @@ function UploadTab() {
     form.append("date", date);
     const res = await fetch("/api/upload-coupang-funnel", { method: "POST", body: form });
     const data = await res.json();
-    if (data.ok) return { ok: true, message: `✅ ${data.funnel}일 퍼널 반영` };
-    return { ok: false, error: data.error || "업로드 실패" };
+    if (data.ok) {
+      let msg = `✅ ${data.message || `${data.funnel}일 퍼널 반영`}`;
+      if (Array.isArray(data.warnings) && data.warnings.length > 0) msg += ` | ${data.warnings.join(" / ")}`;
+      return { ok: true, message: msg };
+    }
+    let err = data.error || "업로드 실패";
+    if (data.hint) err += ` — ${data.hint}`;
+    if (Array.isArray(data.detectedHeaders)) err += ` | 헤더 ${data.detectedHeaders.length}개: [${data.detectedHeaders.slice(0, 20).join(", ")}]`;
+    return { ok: false, error: err };
   };
 
   const uploadCoupangAds = async (file: File) => {
