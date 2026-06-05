@@ -77,8 +77,19 @@ export async function POST(request: NextRequest) {
     }
     const ws = wb.Sheets[sheetName];
 
-    const allData = XLSX.utils.sheet_to_json(ws, { header: 1, range: 1 }) as any[][];
-    const headers = allData[0] || [];
+    const allData = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+
+    // 헤더 행 자동 감지 — 위에서 6행까지 보고 "일자/날짜/결제일" + "품목코드/상품코드" 둘 다 있는 행
+    let headerRowIdx = 0;
+    for (let r = 0; r < Math.min(6, allData.length); r++) {
+      const row = allData[r] as any[];
+      if (!row) continue;
+      const cells = row.map((c: any) => String(c ?? "").trim());
+      const hasDate = cells.some((c: string) => c === "일자" || c === "날짜" || c === "결제일");
+      const hasCode = cells.some((c: string) => c === "품목코드" || c === "상품코드");
+      if (hasDate && hasCode) { headerRowIdx = r; break; }
+    }
+    const headers = allData[headerRowIdx] || [];
 
     const colMap: Record<string, number> = {};
     headers.forEach((h: any, i: number) => {
@@ -90,7 +101,7 @@ export async function POST(request: NextRequest) {
     const dateCol = colMap["일자"] ?? colMap["날짜"] ?? colMap["결제일"] ?? -1;
     const clientCol = colMap["거래처명"] ?? colMap["판매몰"] ?? -1;
     const productCodeCol = colMap["품목코드"] ?? colMap["상품코드"] ?? -1;
-    const productNameCol = colMap["품목명"] ?? colMap["상품명"] ?? -1;
+    const productNameCol = colMap["품목명"] ?? colMap["상품명"] ?? colMap["품명"] ?? colMap["상품 명"] ?? colMap["품 명"] ?? colMap["name"] ?? -1;
     const qtyCol = colMap["수량"] ?? -1;
     const unitPriceCol = colMap["단가"] ?? colMap["상품가"] ?? -1;
     const supplyCol = colMap["공급가액"] ?? -1;
@@ -139,9 +150,9 @@ export async function POST(request: NextRequest) {
     const rows: SalesRow[] = [];
     let skipped = 0;
     let dateFiltered = 0;
-    const unmatchedCodes = new Map<string, { name: string; count: number }>();
+    const unmatchedCodes = new Map<string, { name: string; count: number; firstRow: number; rowSample: string[] }>();
 
-    for (let i = 1; i < allData.length; i++) {
+    for (let i = headerRowIdx + 1; i < allData.length; i++) {
       const row = allData[i];
       if (!row || !row[dateCol]) continue;
 
@@ -188,10 +199,15 @@ export async function POST(request: NextRequest) {
       }
 
       if (!productListMap.has(productCode)) {
-        const prodName = productNameCol >= 0 ? String(row[productNameCol] || "").trim() : productCode;
+        const fromCol = productNameCol >= 0 ? String(row[productNameCol] || "").trim() : "";
+        const prodName = fromCol || productCode;
         const existing = unmatchedCodes.get(productCode);
         if (existing) { existing.count++; }
-        else { unmatchedCodes.set(productCode, { name: prodName, count: 1 }); }
+        else {
+          // 엑셀 row 번호: i 는 0-based 데이터 인덱스, 헤더 1행 + 1-based 표시 → i + 1 이 사용자 보는 행 번호
+          const sample = row.slice(0, Math.min(row.length, 8)).map((v: unknown) => String(v ?? "").slice(0, 25));
+          unmatchedCodes.set(productCode, { name: prodName, count: 1, firstRow: i + 1, rowSample: sample });
+        }
       }
 
       // 공급가액+부가세 있으면 합산, 없으면 실결제금액 사용
@@ -216,13 +232,18 @@ export async function POST(request: NextRequest) {
 
     if (unmatchedCodes.size > 0) {
       const unmatchedList = Array.from(unmatchedCodes.entries()).map(([code, info]) => ({
-        code, name: info.name, count: info.count,
+        code,
+        name: info.name,
+        count: info.count,
+        firstRow: info.firstRow,
+        rowSample: info.rowSample,
       }));
       return NextResponse.json({
         error: "\uBBF8\uB4F1\uB85D \uD488\uBAA9\uCF54\uB4DC\uAC00 \uC788\uC2B5\uB2C8\uB2E4. \uC0C1\uD488 \uBAA9\uB85D \uD0ED\uC5D0 \uBA3C\uC800 \uB4F1\uB85D\uD574\uC8FC\uC138\uC694.",
         unmatchedProducts: unmatchedList,
         totalUnmatched: unmatchedList.length,
         totalRows: rows.length,
+        detectedHeaders: headers,
       }, { status: 400 });
     }
 

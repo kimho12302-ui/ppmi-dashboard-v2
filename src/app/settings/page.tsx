@@ -1299,7 +1299,7 @@ function BatchUploadSection({
                   onChange={e => { const f = e.target.files?.[0]; if (f) update(row.id, { file: f }); e.target.value = ""; }} />
               </label>
             ) : (
-              <div className={cn("flex-1 text-xs px-3 py-1.5 rounded",
+              <div className={cn("flex-1 text-xs px-3 py-1.5 rounded whitespace-pre-line leading-relaxed",
                 row.status === "done" ? "bg-emerald-500/10 text-emerald-600" :
                 row.status === "uploading" ? "bg-blue-500/10 text-blue-500" :
                 "bg-red-500/10 text-red-500"
@@ -1358,6 +1358,14 @@ function UploadTab() {
     form.append("file", file);
     const res = await fetch("/api/upload-sales", { method: "POST", body: form });
     const data = await res.json();
+    const formatUnmatched = (items: { code: string; name?: string; count: number; firstRow?: number; rowSample?: string[] }[]) =>
+      items.map(p => {
+        const showName = p.name && p.name !== p.code;
+        const base = showName ? `${p.code}  ${p.name}  (${p.count}건)` : `${p.code}  (${p.count}건)`;
+        const where = p.firstRow ? ` — 엑셀 ${p.firstRow}행` : "";
+        const sample = p.rowSample && p.rowSample.length > 0 ? `\n    [row: ${p.rowSample.filter(Boolean).join(" | ")}]` : "";
+        return `  · ${base}${where}${sample}`;
+      }).join("\n");
     if (data.ok) {
       const brands = data.brandSummary
         ? Object.entries(data.brandSummary as Record<string, { count: number }>).map(([b, info]) =>
@@ -1366,19 +1374,16 @@ function UploadTab() {
         : "";
       let msg = `✅ ${data.parsed}건 파싱 | ${brands}`;
       if (data.unmatchedProducts?.length) {
-        const list = (data.unmatchedProducts as { code: string; name?: string; count: number }[])
-          .map(p => `${p.code}${p.name ? `(${p.name})` : ""} ${p.count}건`)
-          .join(", ");
-        msg += ` | ⚠️ 미등록 품목코드 ${data.totalUnmatched}개: ${list}`;
+        msg += `\n⚠️ 미등록 품목코드 ${data.totalUnmatched}개:\n${formatUnmatched(data.unmatchedProducts)}`;
       }
       return { ok: true, message: msg };
     }
     // 에러인 경우에도 미등록 코드가 있으면 표시
     if (data.unmatchedProducts?.length) {
-      const list = (data.unmatchedProducts as { code: string; name?: string; count: number }[])
-        .map(p => `${p.code}${p.name ? `(${p.name})` : ""} ${p.count}건`)
-        .join(", ");
-      return { ok: false, error: `${data.error} | 미등록 품목코드 ${data.totalUnmatched}개: ${list}` };
+      return {
+        ok: false,
+        error: `${data.error}\n미등록 품목코드 ${data.totalUnmatched}개:\n${formatUnmatched(data.unmatchedProducts)}`,
+      };
     }
     return { ok: false, error: data.error || "업로드 실패" };
   };
