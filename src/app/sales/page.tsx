@@ -7,7 +7,7 @@ import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
-import { isGonggu as isGongguRow, gongguSeller } from "@/lib/gonggu";
+import { isGonggu as isGongguRow, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
 import { Suspense, useMemo, useState } from "react";
 import {
   BarChart, Bar, ScatterChart, Scatter, ZAxis,
@@ -173,34 +173,42 @@ function SalesPageInner() {
   const balanceTrendData = useMemo(() => {
     const map: Record<string, { self: number; gonggu: number }> = {};
     for (const r of products) {
-      if (r.brand !== "balancelab") continue;
-      const isG = isGongguRow(r);
+      if (!r || r.brand !== "balancelab") continue;
+      const date = typeof r.date === "string" ? r.date : "";
+      if (!/^\d{4}-\d{2}-\d{2}/.test(date)) continue;
+      // 공구 분류: 셀러 row(A/B/D) + "공구 합계" 일별 row(C) 모두 공구로
+      const isG = isGongguRow(r) || isGongguAggregate(r);
       let key: string;
       if (balanceTrendMode === "monthly") {
-        key = r.date.slice(0, 7);
+        key = date.slice(0, 7);
       } else if (balanceTrendMode === "weekly") {
-        const d = new Date(r.date);
+        const d = new Date(date);
+        if (isNaN(d.getTime())) continue;
         const jan1 = new Date(d.getFullYear(), 0, 1);
         const weekNum = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
         key = `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
       } else {
-        key = r.date.slice(5);
+        key = date.slice(5);
       }
       if (!map[key]) map[key] = { self: 0, gonggu: 0 };
-      if (isG) map[key].gonggu += r.revenue || 0;
-      else map[key].self += r.revenue || 0;
+      const rev = Number(r.revenue) || 0;
+      if (isG) map[key].gonggu += rev;
+      else map[key].self += rev;
     }
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([period, v]) => ({ period, ...v }));
   }, [products, balanceTrendMode]);
 
   /* 공구별 (밸런스랩) */
   const gongguData = useMemo(() => {
+    // 공구 분류: 셀러 row(A/B/D) + "공구 합계" 일별 row(C) 모두 공구로
     const isBalGonggu = (r: { brand: string; channel?: string; lineup?: string; product?: string }) =>
-      r.brand === "balancelab" && isGongguRow(r);
+      r.brand === "balancelab" && (isGongguRow(r) || isGongguAggregate(r));
     const gongguProducts = products.filter(isBalGonggu);
     const selfProducts = products.filter((r) => r.brand === "balancelab" && !isBalGonggu(r));
+    // 셀러별 breakdown은 "공구 합계" 제외 (셀러 정보 없음) — isGongguRow 만 사용
+    const sellerProducts = products.filter((r) => r.brand === "balancelab" && isGongguRow(r));
     const sellerMap: Record<string, { revenue: number; quantity: number }> = {};
-    for (const r of gongguProducts) {
+    for (const r of sellerProducts) {
       const seller = gongguSeller(r) || "기타";
       if (!sellerMap[seller]) sellerMap[seller] = { revenue: 0, quantity: 0 };
       sellerMap[seller].revenue += r.revenue || 0;
