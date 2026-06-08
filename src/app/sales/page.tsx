@@ -584,8 +584,12 @@ function ChannelEfficiencySection({ brand, from, to }: { brand: string; from: st
 
   if (scatterData.length < 2) return null;
 
-  const avgCac = scatterData.reduce((s, d) => s + d.cac, 0) / scatterData.length;
-  const avgRoas = scatterData.reduce((s, d) => s + d.roas, 0) / scatterData.length;
+  // 가중평균(전체 합산 기준): 단순 채널 평균은 소액·고ROAS 채널에 기준선이 왜곡됨
+  const _totSpend = scatterData.reduce((s, d) => s + d.spend, 0);
+  const _totConv = scatterData.reduce((s, d) => s + d.conversions, 0);
+  const _totConvValue = scatterData.reduce((s, d) => s + d.roas * d.spend, 0);
+  const avgCac = _totConv > 0 ? _totSpend / _totConv : 0;
+  const avgRoas = _totSpend > 0 ? _totConvValue / _totSpend : 0;
 
   return (
     <Card>

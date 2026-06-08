@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
       .select("*")
       .gte("date", from)
       .lte("date", to)
-      .order("clicks", { ascending: false });
+      .order("clicks", { ascending: false })
+      .range(0, 99999); // Supabase 기본 1000행 캡 → 넓은 기간 과소집계 방지
 
     if (brand !== "all") {
       query = query.eq("brand", brand);

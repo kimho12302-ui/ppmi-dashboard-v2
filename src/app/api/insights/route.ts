@@ -32,13 +32,17 @@ export async function GET(request: NextRequest) {
     // Get sales data (with brand filter)
     let salesQ = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("brand", "all").neq("channel", "total");
     if (brand !== "all") salesQ = salesQ.eq("brand", brand);
-    const { data: sales } = await salesQ;
+    const { data: sales } = await salesQ.range(0, 99999);
 
     let adQ = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).neq("brand", "all").not("channel", "like", "ga4_%");
     if (brand !== "all") adQ = adQ.eq("brand", brand);
-    const { data: adSpend } = await adQ;
+    const { data: adSpend } = await adQ.range(0, 99999);
 
-    const { data: funnel } = await supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to);
+    // 퍼널: brand=all이면 전체(brand="all" 채널행 + balancelab) 합산이 곧 전체 퍼널.
+    // 특정 브랜드 선택 시 그 브랜드 퍼널만 → 타 브랜드 퍼널을 잘못 귀속하지 않음.
+    let funnelQ = supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to);
+    if (brand !== "all") funnelQ = funnelQ.eq("brand", brand);
+    const { data: funnel } = await funnelQ.range(0, 99999);
 
     let prodQ = supabase.from("product_sales").select("*").gte("date", from).lte("date", to).range(0, 9999);
     if (brand !== "all") prodQ = prodQ.eq("brand", brand);

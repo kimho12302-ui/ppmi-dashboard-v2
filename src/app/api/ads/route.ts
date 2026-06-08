@@ -42,6 +42,10 @@ export async function GET(req: NextRequest) {
     if (brand && brand !== "all") {
       query = query.eq("brand", brand);
       prevQuery = prevQuery.eq("brand", brand);
+    } else {
+      // brand="all"은 채널 합계 매직행 → 실브랜드와 합산 시 이중집계되므로 제외
+      query = query.neq("brand", "all");
+      prevQuery = prevQuery.neq("brand", "all");
     }
 
     const [ads, prevAds] = await Promise.all([fetchAll(query), fetchAll(prevQuery)]);

@@ -27,9 +27,11 @@ export async function GET(request: NextRequest) {
   const year = sp.get("year") || new Date().getFullYear().toString();
 
   try {
-    // Get all sales data for the year
+    // Get all sales data for the year (미래 날짜는 제외: 미래 시드/플레이스홀더가 YTD·월별 왜곡)
     const fromDate = `${year}-01-01`;
-    const toDate = `${year}-12-31`;
+    const yearEnd = `${year}-12-31`;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const toDate = yearEnd < todayStr ? yearEnd : todayStr;
 
     let salesQ = supabase.from("daily_sales").select("date,revenue,orders").gte("date", fromDate).lte("date", toDate).neq("channel", "total");
     if (brand !== "all") { salesQ = salesQ.eq("brand", brand); }

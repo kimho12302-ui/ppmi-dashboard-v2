@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
       d[bl] = (d[bl] || 0) + Number(r.revenue);
       trendMap.set(r.date, d);
     }
-    for (const r of adSpend || []) {
+    for (const r of nonGa4Ad) {
       const d = trendMap.get(r.date) || { revenue: 0, adSpend: 0 };
       d.adSpend += Number(r.spend);
       trendMap.set(r.date, d);
@@ -185,7 +185,7 @@ export async function GET(req: NextRequest) {
 
     // ── Channel breakdown ──
     const channelMap = new Map<string, { spend: number; revenue: number }>();
-    for (const r of adSpend || []) {
+    for (const r of nonGa4Ad) {
       const e = channelMap.get(r.channel) || { spend: 0, revenue: 0 };
       e.spend += Number(r.spend);
       e.revenue += Number(r.conversion_value || 0);
@@ -197,7 +197,7 @@ export async function GET(req: NextRequest) {
 
     // ── Channel ROAS trend ──
     const chRoasMap = new Map<string, Map<string, { spend: number; cv: number }>>();
-    for (const r of adSpend || []) {
+    for (const r of nonGa4Ad) {
       if (!chRoasMap.has(r.date)) chRoasMap.set(r.date, new Map());
       const dm = chRoasMap.get(r.date)!;
       const e = dm.get(r.channel) || { spend: 0, cv: 0 };
@@ -224,7 +224,7 @@ export async function GET(req: NextRequest) {
 
     // ── Brand profit ──
     const brandAdMap = new Map<string, number>();
-    for (const r of adSpend || []) brandAdMap.set(r.brand, (brandAdMap.get(r.brand) || 0) + Number(r.spend));
+    for (const r of nonGa4Ad) brandAdMap.set(r.brand, (brandAdMap.get(r.brand) || 0) + Number(r.spend));
     const brandCogsMap = new Map<string, number>();
     for (const ps of cogsProdData || []) {
       const costs = costMap.get(`${ps.product}__${ps.brand}`);
