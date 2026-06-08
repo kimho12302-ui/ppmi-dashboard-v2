@@ -29,24 +29,42 @@ export async function GET(request: NextRequest) {
   const brand = sp.get("brand") || "all";
 
   try {
-    // Get sales data (with brand filter)
+    // 이전 기간 (원인 분석용) 날짜 계산
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    const diff = toDate.getTime() - fromDate.getTime();
+    const prevFrom = new Date(fromDate.getTime() - diff - 86400000).toISOString().slice(0, 10);
+    const prevTo = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
+
+    // 쿼리 빌드 (모두 독립적 → 한 번에 병렬 실행)
     let salesQ = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("brand", "all").neq("channel", "total");
     if (brand !== "all") salesQ = salesQ.eq("brand", brand);
-    const { data: sales } = await salesQ.range(0, 99999);
 
     let adQ = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).neq("brand", "all").not("channel", "like", "ga4_%");
     if (brand !== "all") adQ = adQ.eq("brand", brand);
-    const { data: adSpend } = await adQ.range(0, 99999);
 
     // 퍼널: brand=all이면 전체(brand="all" 채널행 + balancelab) 합산이 곧 전체 퍼널.
     // 특정 브랜드 선택 시 그 브랜드 퍼널만 → 타 브랜드 퍼널을 잘못 귀속하지 않음.
     let funnelQ = supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to);
     if (brand !== "all") funnelQ = funnelQ.eq("brand", brand);
-    const { data: funnel } = await funnelQ.range(0, 99999);
 
-    let prodQ = supabase.from("product_sales").select("*").gte("date", from).lte("date", to).range(0, 9999);
+    let prodQ = supabase.from("product_sales").select("*").gte("date", from).lte("date", to);
     if (brand !== "all") prodQ = prodQ.eq("brand", brand);
-    const { data: products } = await prodQ;
+
+    const [salesRes, adRes, funnelRes, prodRes, prevSalesRes, prevAdsRes] = await Promise.all([
+      salesQ.range(0, 99999),
+      adQ.range(0, 99999),
+      funnelQ.range(0, 99999),
+      prodQ.range(0, 9999),
+      supabase.from("daily_sales").select("*").gte("date", prevFrom).lte("date", prevTo),
+      supabase.from("daily_ad_spend").select("*").gte("date", prevFrom).lte("date", prevTo).not("channel", "like", "ga4_%"),
+    ]);
+    const sales = salesRes.data;
+    const adSpend = adRes.data;
+    const funnel = funnelRes.data;
+    const products = prodRes.data;
+    const prevSales = prevSalesRes.data;
+    const prevAds = prevAdsRes.data;
 
     const salesRows = sales || [];
     const adRows = adSpend || [];
@@ -158,16 +176,7 @@ export async function GET(request: NextRequest) {
     }
 
     // ===== AUTO ROOT CAUSE ANALYSIS (Month 9) =====
-    // Compare with previous period
-    const fromDate = new Date(from);
-    const toDate = new Date(to);
-    const diff = toDate.getTime() - fromDate.getTime();
-    const prevFrom = new Date(fromDate.getTime() - diff - 86400000).toISOString().slice(0, 10);
-    const prevTo = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
-
-    const { data: prevSales } = await supabase.from("daily_sales").select("*").gte("date", prevFrom).lte("date", prevTo);
-    const { data: prevAds } = await supabase.from("daily_ad_spend").select("*").gte("date", prevFrom).lte("date", prevTo).not("channel", "like", "ga4_%");
-
+    // 이전 기간 비교 (prevSales/prevAds는 위에서 병렬로 이미 가져옴)
     const prevRevenue = (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0);
     void (prevAds || []).reduce((s, r) => s + Number(r.spend), 0); // prevTotalAdSpend - reserved for future use
 

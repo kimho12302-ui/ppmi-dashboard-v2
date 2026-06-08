@@ -34,21 +34,29 @@ export async function GET(req: NextRequest) {
       balancelab: ["smartstore"],
     };
 
-    // ── 1. Impressions from daily_ad_spend ──
+    // ── 모든 DB 호출을 1회 병렬 배치로 (이전: 순차 4회 왕복) ──
     let adQuery = supabase
       .from("daily_ad_spend")
       .select("date, brand, channel, impressions, clicks")
-      .gte("date", from)
-      .lte("date", to);
-    if (brand !== "all") {
-      adQuery = adQuery.eq("brand", brand);
-    }
-    const adRows = await fetchAll(adQuery);
+      .gte("date", from).lte("date", to);
+    if (brand !== "all") adQuery = adQuery.eq("brand", brand);
 
-    // ── 2. Sessions/cart from daily_funnel ──
-    const allFunnelRows = await fetchAll(
-      supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to).order("date", { ascending: true })
-    );
+    let salesQuery = supabase
+      .from("daily_sales")
+      .select("date, brand, channel, orders, revenue")
+      .gte("date", from).lte("date", to)
+      .neq("channel", "total"); // total 집계행 제외 (채널별 합산과 이중 계산 방지)
+    if (brand !== "all") salesQuery = salesQuery.eq("brand", brand);
+
+    const [adRows, allFunnelRows, salesRows, metaRes] = await Promise.all([
+      fetchAll(adQuery),
+      fetchAll(supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to).order("date", { ascending: true })),
+      fetchAll(salesQuery),
+      supabase.from("daily_ad_spend")
+        .select("date,brand,impressions,clicks,conversions,conversion_value,reach,spend")
+        .eq("channel", "meta").gte("date", from).lte("date", to).order("date"),
+    ]);
+    const metaData = metaRes.data;
 
     // Filter funnel rows by brand
     let funnelRows = allFunnelRows;
@@ -65,17 +73,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ── 3. Purchases from daily_sales ──
-    let salesQuery = supabase
-      .from("daily_sales")
-      .select("date, brand, channel, orders, revenue")
-      .gte("date", from)
-      .lte("date", to)
-      .neq("channel", "total"); // total 집계행 제외 (채널별 합산과 이중 계산 방지)
-    if (brand !== "all") {
-      salesQuery = salesQuery.eq("brand", brand);
-    }
-    const salesRows = await fetchAll(salesQuery);
+    // (salesRows는 위 병렬 배치에서 이미 가져옴)
 
     // ── Aggregate by date ──
     const dateMap = new Map<string, {
@@ -269,15 +267,7 @@ export async function GET(req: NextRequest) {
       convRate: d.sessions > 0 ? (d.purchases / d.sessions * 100) : 0,
     }));
 
-    // Meta ads (for Meta 광고 퍼널 section)
-    const { data: metaData } = await supabase
-      .from("daily_ad_spend")
-      .select("date,brand,impressions,clicks,conversions,conversion_value,reach,spend")
-      .eq("channel", "meta")
-      .gte("date", from)
-      .lte("date", to)
-      .order("date");
-
+    // (metaData는 위 병렬 배치에서 이미 가져옴)
     return NextResponse.json({ funnel, trend, channelFunnel, repurchase, metaAds: metaData || [] });
   } catch (error) {
     console.error("Funnel API error:", error);

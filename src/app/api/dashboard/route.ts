@@ -27,38 +27,68 @@ export async function GET(req: NextRequest) {
   const to = sp.get("to") || "";
 
   try {
-    // ── 1. Sales ──
-    // channel="total"은 Total 탭 집계값 — 채널별(cafe24/smartstore/coupang) 합과 중복이므로 제외
-    let salesQuery = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("channel", "total").order("date");
-    if (brand !== "all") salesQuery = salesQuery.eq("brand", brand);
-    else salesQuery = salesQuery.neq("brand", "all");
-    const sales = await fetchAll(salesQuery);
-
-    // ── 2. Ad Spend ──
-    let adQuery = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).order("date");
-    if (brand !== "all") adQuery = adQuery.eq("brand", brand);
-    else adQuery = adQuery.neq("brand", "all");
-    const adSpend = await fetchAll(adQuery);
-
-    // ── 3. Previous period ──
+    // ── 이전 기간 날짜 계산 (DB 호출 없음) ──
     const fromDate = new Date(from);
     const toDate = new Date(to);
     const diff = toDate.getTime() - fromDate.getTime();
     const prevFrom = new Date(fromDate.getTime() - diff - 86400000).toISOString().slice(0, 10);
     const prevTo = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
+    const currentMonth = to.slice(0, 7);
+
+    // ── 쿼리 빌드 (모두 독립적 → 아래에서 한 번에 병렬 실행) ──
+    // channel="total"은 Total 탭 집계값 — 채널별 합과 중복이므로 제외
+    let salesQuery = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("channel", "total").order("date");
+    if (brand !== "all") salesQuery = salesQuery.eq("brand", brand);
+    else salesQuery = salesQuery.neq("brand", "all");
+
+    let adQuery = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).order("date");
+    if (brand !== "all") adQuery = adQuery.eq("brand", brand);
+    else adQuery = adQuery.neq("brand", "all");
 
     let prevSalesQ = supabase.from("daily_sales").select("revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total");
     if (brand !== "all") prevSalesQ = prevSalesQ.eq("brand", brand);
     else prevSalesQ = prevSalesQ.neq("brand", "all");
-    const prevSales = await fetchAll(prevSalesQ);
 
     let prevAdQ = supabase.from("daily_ad_spend").select("channel, spend, conversion_value").gte("date", prevFrom).lte("date", prevTo);
     if (brand !== "all") prevAdQ = prevAdQ.eq("brand", brand);
     else prevAdQ = prevAdQ.neq("brand", "all");
-    const prevAd = await fetchAll(prevAdQ);
 
-    // ── 4. Product costs (COGS) ──
-    const { data: productCostsData } = await supabase.from("product_costs").select("product,brand,cost_price,manufacturing_cost,shipping_cost");
+    let cogsProdQ = supabase.from("product_sales").select("product,brand,quantity").gte("date", from).lte("date", to);
+    if (brand !== "all") cogsProdQ = cogsProdQ.eq("brand", brand);
+
+    let prodQ = supabase.from("product_sales").select("product,revenue,quantity,brand,channel,lineup").gte("date", from).lte("date", to);
+    if (brand !== "all") prodQ = prodQ.eq("brand", brand);
+
+    // 공구는 밸런스랩/전체일 때만 (lineup 기반 셀러 감지)
+    const gongguPromise = (brand === "balancelab" || brand === "all")
+      ? fetchAll(supabase.from("product_sales").select("date,channel,lineup,product,revenue,quantity").gte("date", from).lte("date", to).eq("brand", "balancelab"))
+      : Promise.resolve([] as unknown[]);
+
+    // ── 모든 DB 호출을 1회 병렬 배치로 실행 (이전: 순차 12회 왕복) ──
+    const [
+      sales, adSpend, prevSales, prevAd, cogsProdData, prodData, gongguData,
+      productCostsRes, shippingRes, miscRes, funnelRes, targetRes,
+    ] = await Promise.all([
+      fetchAll(salesQuery),
+      fetchAll(adQuery),
+      fetchAll(prevSalesQ),
+      fetchAll(prevAdQ),
+      fetchAll(cogsProdQ),
+      fetchAll(prodQ),
+      gongguPromise,
+      supabase.from("product_costs").select("product,brand,cost_price,manufacturing_cost,shipping_cost"),
+      supabase.from("shipping_costs").select("*").gte("month", from.slice(0, 7)).lte("month", to.slice(0, 7)),
+      supabase.from("misc_costs").select("*").gte("date", from).lte("date", to),
+      supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to),
+      supabase.from("monthly_targets").select("*").eq("month", currentMonth),
+    ]);
+    const productCostsData = productCostsRes.data;
+    const shippingData = shippingRes.data;
+    const miscData = miscRes.data;
+    const funnelData = funnelRes.data;
+    const targetData = targetRes.data;
+
+    // ── Product costs (COGS) 맵 ──
     const costMap = new Map<string, { manufacturing_cost: number; shipping_cost: number }>();
     for (const pc of productCostsData || []) {
       costMap.set(`${pc.product}__${pc.brand}`, {
@@ -66,10 +96,6 @@ export async function GET(req: NextRequest) {
         shipping_cost: Number(pc.shipping_cost || 0),
       });
     }
-
-    let cogsProdQ = supabase.from("product_sales").select("product,brand,quantity").gte("date", from).lte("date", to);
-    if (brand !== "all") cogsProdQ = cogsProdQ.eq("brand", brand);
-    const cogsProdData = await fetchAll(cogsProdQ);
 
     let totalCOGS = 0;
     let matchedProducts = 0;
@@ -83,16 +109,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ── 5. Shipping + Misc costs ──
-    const { data: shippingData } = await supabase.from("shipping_costs").select("*")
-      .gte("month", from.slice(0, 7)).lte("month", to.slice(0, 7));
+    // ── Shipping + Misc costs ──
     let totalShippingCost = 0;
     for (const r of (shippingData || []).filter(r => brand === "all" || r.brand === brand)) {
       totalShippingCost += Number(r.total_cost || 0);
     }
 
-    const { data: miscData } = await supabase.from("misc_costs").select("*")
-      .gte("date", from).lte("date", to);
     let totalMiscCost = 0;
     for (const r of (miscData || []).filter(r => brand === "all" || r.brand === brand)) {
       totalMiscCost += Number(r.amount || 0);
@@ -100,7 +122,6 @@ export async function GET(req: NextRequest) {
 
     // ── 공구 분석 (밸런스랩) — lineup 기반 셀러 감지 ──
     // "공구 합계" 행은 집계 행이므로 모든 계산에서 제외
-    // 공구 셀러는 product_sales의 lineup 필드로 식별 (channel="공구_" 방식은 데이터 불일치)
     // KPI에 gongguSalesTotal을 더하지 않음: 일부 날짜는 daily_sales에 이미 포함됨
     let gongguSales: { seller: string; revenue: number; orders: number }[] = [];
     let selfSalesTotal = 0;
@@ -108,8 +129,6 @@ export async function GET(req: NextRequest) {
     const gongguChannelMap = new Map<string, number>();
     const gongguByDate = new Map<string, number>();
     if (brand === "balancelab" || brand === "all") {
-      const gongguData = await fetchAll(supabase.from("product_sales").select("date,channel,lineup,product,revenue,quantity")
-        .gte("date", from).lte("date", to).eq("brand", "balancelab"));
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
       for (const r of gongguData || []) {
         // "공구 합계" 집계 행은 isGonggu 가 false 반환 → 자체판매에도 가산되지 않음
@@ -259,9 +278,6 @@ export async function GET(req: NextRequest) {
     const salesByChannel = Array.from(salesChMap.entries()).map(([channel, revenue]) => ({ channel, revenue })).sort((a, b) => b.revenue - a.revenue);
 
     // ── Top 5 products ──
-    let prodQ = supabase.from("product_sales").select("product,revenue,quantity,brand,channel,lineup").gte("date", from).lte("date", to);
-    if (brand !== "all") prodQ = prodQ.eq("brand", brand);
-    const prodData = await fetchAll(prodQ);
     const prodMap = new Map<string, { revenue: number; quantity: number; brand: string }>();
     for (const r of prodData || []) {
       if (isGongguAggregate(r)) continue; // 집계 행 제외
@@ -273,7 +289,6 @@ export async function GET(req: NextRequest) {
 
     // ── Funnel summary ──
     // purchases는 daily_sales의 orders와 동일 소스 사용 (daily_funnel.purchases는 brand="all" 혼합으로 부정확)
-    const { data: funnelData } = await supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to);
     const funnelRows = funnelData || [];
     const funnelSummary = {
       sessions: funnelRows.reduce((s, r) => s + Number(r.sessions || 0), 0),
@@ -284,8 +299,6 @@ export async function GET(req: NextRequest) {
     const convRate = funnelSummary.sessions > 0 ? (funnelSummary.purchases / funnelSummary.sessions) * 100 : 0;
 
     // ── Targets ──
-    const currentMonth = to.slice(0, 7);
-    const { data: targetData } = await supabase.from("monthly_targets").select("*").eq("month", currentMonth);
     const targets = (targetData || []).filter(r => brand === "all" || r.brand === brand);
 
     // ── Anomaly detection ──
