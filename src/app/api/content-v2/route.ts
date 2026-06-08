@@ -17,10 +17,12 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
     const rows = data || [];
+    // content_type이 '_'로 시작하는 행은 내부 메타(예: _followers 스냅샷) → 유형별/추이 차트에서 제외
+    const contentRows = rows.filter((r) => !String(r.content_type || "").startsWith("_"));
 
     // By content type
     const typeMap = new Map<string, { posts: number; impressions: number; clicks: number; ctrSum: number; engSum: number; count: number }>();
-    for (const r of rows) {
+    for (const r of contentRows) {
       const existing = typeMap.get(r.content_type) || { posts: 0, impressions: 0, clicks: 0, ctrSum: 0, engSum: 0, count: 0 };
       existing.posts += Number(r.posts);
       existing.impressions += Number(r.impressions);
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     // Posts trend by week
     const trendMap = new Map<string, Record<string, number>>();
-    for (const r of rows) {
+    for (const r of contentRows) {
       const weekKey = r.date.slice(0, 7) + "-W" + Math.ceil(Number(r.date.slice(8, 10)) / 7);
       const existing = trendMap.get(weekKey) || {};
       existing[r.content_type] = (existing[r.content_type] || 0) + Number(r.posts);
