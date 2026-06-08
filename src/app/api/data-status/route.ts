@@ -9,6 +9,9 @@ interface SourceStatus {
   type: "auto" | "manual";
   latestDate: string | null;
   ok: boolean;
+  // 하트비트 결합 상태: ok=정상 / no_activity=수집됐으나 데이터 없음(집행0) / disconnected=수집 끊김 / stale_manual=수기 미입력
+  status: "ok" | "no_activity" | "disconnected" | "stale_manual";
+  lastSync: string | null;
 }
 
 async function getLatestByChannel(channel: string): Promise<string | null> {
@@ -63,20 +66,29 @@ export async function GET() {
       { id: "cafe24_funnel", label: "\uCE74\uD39824 \uD37C\uB110", type: "manual", fetcher: () => getLatestFunnelByChannel("cafe24", undefined, true) },
     ];
 
+    // 하트비트: 소스별 마지막 수집 성공 시각 (집행0 vs 연결끊김 구분)
+    const { data: hbData } = await supabase.from("sync_heartbeat").select("source,last_success");
+    const hbMap = new Map((hbData || []).map((h) => [h.source as string, h]));
+    const HB_KEY: Record<string, string> = {
+      meta_ads: "meta", google_ads: "google_ads", naver_sa: "naver_sa",
+      naver_shopping: "naver_sa", ga4: "ga4_campaigns",
+    };
+    const recentThreshold = new Date(Date.now() + 32400000 - 2 * 86400000).toISOString().slice(0, 10);
+
     const sources: SourceStatus[] = await Promise.all(
       sourceDefs.map(async (def) => {
-        try {
-          const latestDate = await def.fetcher();
-          return {
-            id: def.id,
-            label: def.label,
-            type: def.type,
-            latestDate,
-            ok: !!latestDate && latestDate >= yesterday,
-          };
-        } catch {
-          return { id: def.id, label: def.label, type: def.type, latestDate: null, ok: false };
-        }
+        let latestDate: string | null = null;
+        try { latestDate = await def.fetcher(); } catch { latestDate = null; }
+        const ok = !!latestDate && latestDate >= yesterday;
+        const hb = hbMap.get(HB_KEY[def.id] || "");
+        const lastSync = hb?.last_success ? String(hb.last_success).slice(0, 10) : null;
+        const pipelineRan = !!lastSync && lastSync >= recentThreshold;
+        let status: SourceStatus["status"];
+        if (def.type === "manual") status = ok ? "ok" : "stale_manual";
+        else if (ok) status = "ok";
+        else if (pipelineRan) status = "no_activity"; // 수집은 됨 → 집행/활동 0
+        else status = "disconnected"; // 수집 자체가 끊김
+        return { id: def.id, label: def.label, type: def.type, latestDate, ok, status, lastSync };
       })
     );
 

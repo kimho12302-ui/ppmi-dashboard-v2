@@ -162,7 +162,16 @@ function ManualRowTable({
 }
 
 /* ── 데이터 수집 현황 ── */
-interface SourceStatus { id: string; label: string; type: "auto" | "manual"; latestDate: string | null; ok: boolean }
+interface SourceStatus { id: string; label: string; type: "auto" | "manual"; latestDate: string | null; ok: boolean; status?: string; lastSync?: string | null }
+
+// 하트비트 결합 3-상태: 🟢정상 / 🟡집행0(수집됨,활동없음) / 🔴연결끊김 / ⚪미입력
+const STATUS_BADGE: Record<string, { icon: string; label: string; text: string }> = {
+  ok: { icon: "🟢", label: "정상", text: "" },
+  no_activity: { icon: "🟡", label: "집행0 (수집됨)", text: "text-amber-600" },
+  disconnected: { icon: "🔴", label: "연결 끊김", text: "text-red-600 dark:text-red-400" },
+  stale_manual: { icon: "⚪", label: "미입력", text: "text-muted-foreground" },
+};
+const sBadge = (status?: string) => STATUS_BADGE[status || "ok"] || STATUS_BADGE.ok;
 
 function DataStatusPanel({ refreshKey }: { refreshKey?: number }) {
   const [sources, setSources] = useState<SourceStatus[]>([]);
@@ -200,8 +209,8 @@ function DataStatusPanel({ refreshKey }: { refreshKey?: number }) {
               {auto.map(s => (
                 <div key={s.id} className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5">
-                    <span>{s.ok ? "✅" : "⚠️"}</span>
-                    <span className={s.ok ? "" : "text-amber-600"}>{s.label}</span>
+                    <span title={sBadge(s.status).label}>{sBadge(s.status).icon}</span>
+                    <span className={sBadge(s.status).text}>{s.label}</span>
                   </span>
                   <span className="text-xs text-muted-foreground">{s.latestDate || "없음"}</span>
                 </div>
@@ -214,8 +223,8 @@ function DataStatusPanel({ refreshKey }: { refreshKey?: number }) {
               {manual.map(s => (
                 <div key={s.id} className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5">
-                    <span>{s.ok ? "✅" : "⚠️"}</span>
-                    <span className={s.ok ? "" : "text-amber-600"}>{s.label}</span>
+                    <span title={sBadge(s.status).label}>{sBadge(s.status).icon}</span>
+                    <span className={sBadge(s.status).text}>{s.label}</span>
                   </span>
                   <span className="text-xs text-muted-foreground">{s.latestDate || "없음"}</span>
                 </div>
@@ -231,7 +240,7 @@ function DataStatusPanel({ refreshKey }: { refreshKey?: number }) {
 /* ── 일일 입력 가이드 (5단계 체크리스트) ── */
 /* ── 데이터 수집 현황 카드 (P7 SyncButton 역할) ── */
 function DataStatusCard() {
-  const [data, setData] = useState<{ sources: { id: string; label: string; type: string; latestDate: string | null; ok: boolean }[]; referenceDate: string; summary: { total: number; ok: number; stale: number } } | null>(null);
+  const [data, setData] = useState<{ sources: { id: string; label: string; type: string; latestDate: string | null; ok: boolean; status?: string; lastSync?: string | null }[]; referenceDate: string; summary: { total: number; ok: number; stale: number } } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -261,16 +270,19 @@ function DataStatusCard() {
         {data && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {data.sources.map(s => (
-              <div key={s.id} className={cn("flex items-center justify-between px-3 py-2 rounded-lg text-sm",
-                s.ok ? "bg-emerald-500/5 border border-emerald-200 dark:border-emerald-800" : "bg-orange-500/5 border border-orange-200 dark:border-orange-800")}>
+              <div key={s.id} className={cn("flex items-center justify-between px-3 py-2 rounded-lg text-sm border",
+                s.status === "ok" ? "bg-emerald-500/5 border-emerald-200 dark:border-emerald-800" :
+                s.status === "disconnected" ? "bg-red-500/5 border-red-200 dark:border-red-800" :
+                s.status === "no_activity" ? "bg-amber-500/5 border-amber-200 dark:border-amber-800" :
+                "bg-muted/30 border-border")}>
                 <div className="flex items-center gap-2">
-                  <span>{s.ok ? "✅" : "⚠️"}</span>
-                  <span className={cn("font-medium", !s.ok && "text-orange-700 dark:text-orange-400")}>{s.label}</span>
+                  <span title={sBadge(s.status).label}>{sBadge(s.status).icon}</span>
+                  <span className={cn("font-medium", sBadge(s.status).text)}>{s.label}</span>
                   <span className={cn("text-[10px] px-1 rounded", s.type === "auto" ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30" : "bg-gray-100 text-gray-600 dark:bg-gray-800")}>
                     {s.type === "auto" ? "자동" : "수동"}
                   </span>
                 </div>
-                <span className={cn("text-xs", s.ok ? "text-muted-foreground" : "text-orange-600 dark:text-orange-400 font-medium")}>
+                <span className="text-xs text-muted-foreground" title={s.lastSync ? `마지막 수집: ${s.lastSync}` : ""}>
                   {s.latestDate || "없음"}
                 </span>
               </div>
