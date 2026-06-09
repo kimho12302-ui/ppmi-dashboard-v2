@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import Link from "next/link";
 import MissingDataAlert from "@/components/missing-data-alert";
+import { PacingSection } from "@/components/pacing-section";
 
 type KpiKey = "revenue" | "adSpend" | "roas" | "orders" | "profit" | "profitRate" | "ctr" | "aov" | null;
 
@@ -266,6 +267,9 @@ function OverviewInner() {
   return (
     <PageShell title="Overview" description="PPMI 마케팅 대시보드 전체 현황">
       <MissingDataAlert />
+
+      {/* 목표 대비 페이싱 — 의사결정 1순위 (통계시트 '광고 예산안' 재현) */}
+      <PacingSection brand={brand || "all"} />
 
       {anomalies.length > 0 && (
         <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
