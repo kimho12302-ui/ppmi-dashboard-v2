@@ -41,6 +41,8 @@ const TYPE_COLORS: Record<string, string> = {
   image: "#10b981",
   story: "#f59e0b",
   video: "#ef4444",
+  naver_blog: "#03c75a",
+  magazine: "#0ea5e9",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -49,6 +51,8 @@ const TYPE_LABELS: Record<string, string> = {
   image: "\uC774\uBBF8\uC9C0",
   story: "\uC2A4\uD1A0\uB9AC",
   video: "\uBE44\uB514\uC624",
+  naver_blog: "\uB124\uC774\uBC84\uBE14\uB85C\uADF8",
+  magazine: "\uB9E4\uAC70\uC9C4",
 };
 
 export default function ContentPage() {

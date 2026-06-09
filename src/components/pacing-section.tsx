@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
@@ -54,6 +55,7 @@ function ProgressBar({ value, marker, color }: { value: number; marker?: number;
 
 export function PacingSection({ brand }: { brand: string }) {
   const b = brand || "all";
+  const [open, setOpen] = useState(true);
   const { data, loading } = useFetch<PacingData>(`/api/pacing?brand=${b}`);
 
   if (loading) {
@@ -81,16 +83,19 @@ export function PacingSection({ brand }: { brand: string }) {
   return (
     <Card className="border-l-4" style={{ borderLeftColor: pace.dot }}>
       <CardContent className="p-5 space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
+        <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between flex-wrap gap-2 text-left">
           <div className="flex items-center gap-2">
+            <span className="text-muted-foreground text-xs">{open ? "▾" : "▸"}</span>
             <h3 className="font-semibold">목표 대비 페이싱 · {monthLabel}</h3>
             <span className={`text-xs px-2 py-0.5 rounded-full border ${pace.cls}`}>{pace.label}</span>
+            {!open && <span className="text-xs text-muted-foreground">매출 달성 {pct(achievement.revenue)}</span>}
           </div>
           <div className="text-xs text-muted-foreground">
             {monthLabel} {data.daysElapsed}/{data.daysInMonth}일 경과 ({pct(dateProgress)}) · 잔여 {data.daysRemaining}일
           </div>
-        </div>
+        </button>
 
+        {open && <>
         {/* 날짜 진행률 바 */}
         <ProgressBar value={dateProgress} color="#94a3b8" />
 
@@ -184,6 +189,7 @@ export function PacingSection({ brand }: { brand: string }) {
             ))}
           </div>
         )}
+        </>}
       </CardContent>
     </Card>
   );
