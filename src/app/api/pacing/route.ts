@@ -47,27 +47,27 @@ export async function GET(req: NextRequest) {
     const daysRemaining = Math.max(0, daysInMonth - daysElapsed);
     const dateProgress = daysInMonth > 0 ? daysElapsed / daysInMonth : 0;
 
-    // 목표 (monthly_targets)
+    // 쿼리 빌드 (목표/매출/광고 — 모두 독립 → 병렬)
     let tQ = supabase.from("monthly_targets").select("brand,revenue_target,ad_budget_target,roas_target").eq("month", month);
     if (brand !== "all") tQ = tQ.eq("brand", brand);
     else tQ = tQ.in("brand", BRANDS);
-    const { data: targetsData } = await tQ;
+
+    let salesQ = supabase.from("daily_sales").select("date,revenue,orders,brand").gte("date", monthStart).lte("date", monthEnd).neq("channel", "total");
+    if (brand !== "all") salesQ = salesQ.eq("brand", brand);
+    else salesQ = salesQ.in("brand", BRANDS);
+
+    let adQ = supabase.from("daily_ad_spend").select("date,spend,conversion_value,channel,brand").gte("date", monthStart).lte("date", monthEnd).not("channel", "like", "ga4_%");
+    if (brand !== "all") adQ = adQ.eq("brand", brand);
+    else adQ = adQ.in("brand", BRANDS);
+
+    // 1회 병렬 배치 (이전: 순차 3회)
+    const [targetsRes, sales, ads] = await Promise.all([tQ, fetchAll(salesQ), fetchAll(adQ)]);
+    const targetsData = targetsRes.data;
     const targetRevenue = (targetsData || []).reduce((s, r) => s + Number(r.revenue_target || 0), 0);
     const targetAd = (targetsData || []).reduce((s, r) => s + Number(r.ad_budget_target || 0), 0);
     // ROAS 목표: 가중(목표매출/목표광고비). 광고비비중 목표 = 목표광고비/목표매출.
     const targetRoas = targetAd > 0 ? targetRevenue / targetAd : 0;
     const targetAdRatio = targetRevenue > 0 ? targetAd / targetRevenue : 0;
-
-    // 실적 (이번 달 매출/광고비)
-    let salesQ = supabase.from("daily_sales").select("date,revenue,orders,brand").gte("date", monthStart).lte("date", monthEnd).neq("channel", "total");
-    if (brand !== "all") salesQ = salesQ.eq("brand", brand);
-    else salesQ = salesQ.in("brand", BRANDS);
-    const sales = await fetchAll(salesQ);
-
-    let adQ = supabase.from("daily_ad_spend").select("date,spend,conversion_value,channel,brand").gte("date", monthStart).lte("date", monthEnd).not("channel", "like", "ga4_%");
-    if (brand !== "all") adQ = adQ.eq("brand", brand);
-    else adQ = adQ.in("brand", BRANDS);
-    const ads = await fetchAll(adQ);
 
     const actualRevenue = sales.reduce((s, r) => s + Number(r.revenue || 0), 0);
     const actualOrders = sales.reduce((s, r) => s + Number(r.orders || 0), 0);
