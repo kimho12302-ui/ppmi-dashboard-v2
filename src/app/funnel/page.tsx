@@ -40,6 +40,11 @@ function FunnelInner() {
   const channelFunnel = data?.channelFunnel || [];
   const repurchase = data?.repurchase || { value: 0, rate: 0 };
 
+  // 너티/아이언펫/사입은 cafe24·스마트스토어 퍼널이 시트에서 3개 합산으로만 기록됨 → 브랜드별 분리 불가.
+  // 숫자를 쪼개 보여주면 과대귀속(왜곡)이므로, 합산 수치임을 정직하게 라벨한다.
+  const SHARED_STOREFRONT_BRANDS = ["nutty", "ironpet", "saip"];
+  const isSharedStorefront = !!brand && SHARED_STOREFRONT_BRANDS.includes(brand);
+
   const sessionsStep = funnel.find(s => s.name === "유입");
   const purchaseStep = funnel.find(s => s.name === "구매");
   const cartStep = funnel.find(s => s.name === "장바구니");
@@ -85,6 +90,17 @@ function FunnelInner() {
 
   return (
     <PageShell title="퍼널" description="전환 퍼널 분석">
+      {isSharedStorefront && (
+        <Card className="border-l-4 border-l-amber-500 bg-amber-500/5">
+          <CardContent className="p-3 flex items-start gap-2 text-sm">
+            <span>ⓘ</span>
+            <span>
+              cafe24·스마트스토어 퍼널은 <b>너티+아이언펫+사입 통합 수치</b>입니다. 자사몰 유입·장바구니 데이터가 소스(시트)에서 합산으로만 기록돼 브랜드별 분리가 불가능합니다. (쿠팡은 너티 전용) — 해당 브랜드 단독 수치가 아닌 점 참고하세요.
+            </span>
+          </CardContent>
+        </Card>
+      )}
+
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="총 세션" value={formatNumber(sessionsStep?.value || 0)} />
