@@ -150,11 +150,14 @@ export async function GET(request: NextRequest) {
           revenue: d.revenue,
           orders: d.orders,
           adSpend: adWithMisc,
+          cv: d.cv, // 전환가치 (ROAS·MER 일관 계산용)
           cogs: d.cogs,
           shippingCost: d.shipCost,
           profit,
           profitRate: d.revenue > 0 ? (profit / d.revenue) * 100 : 0,
-          roas: adWithMisc > 0 ? d.revenue / adWithMisc : 0,
+          // ★ROAS = 전환가치/광고비 (오버뷰·페이싱과 동일 정의). 기존 매출/광고비는 MER로 분리.
+          roas: adWithMisc > 0 ? d.cv / adWithMisc : 0,
+          mer: adWithMisc > 0 ? d.revenue / adWithMisc : 0,
           aov: d.orders > 0 ? d.revenue / d.orders : 0,
           adRatio: d.revenue > 0 ? (adWithMisc / d.revenue) * 100 : 0, // 광고비 비중%
           cac: d.orders > 0 ? adWithMisc / d.orders : 0, // 고객획득비용(주문당 광고비)
@@ -180,11 +183,14 @@ export async function GET(request: NextRequest) {
       cogs: summary.reduce((s, m) => s + m.cogs, 0),
       shippingCost: summary.reduce((s, m) => s + m.shippingCost, 0),
       profit: summary.reduce((s, m) => s + m.profit, 0),
+      cv: summary.reduce((s, m) => s + (m.cv || 0), 0),
       roas: 0 as number,
+      mer: 0 as number,
       aov: 0 as number,
       profitRate: 0 as number,
     };
-    ytd.roas = ytd.adSpend > 0 ? ytd.revenue / ytd.adSpend : 0;
+    ytd.roas = ytd.adSpend > 0 ? ytd.cv / ytd.adSpend : 0; // 전환 ROAS (오버뷰와 동일)
+    ytd.mer = ytd.adSpend > 0 ? ytd.revenue / ytd.adSpend : 0; // MER
     ytd.aov = ytd.orders > 0 ? ytd.revenue / ytd.orders : 0;
     ytd.profitRate = ytd.revenue > 0 ? (ytd.profit / ytd.revenue) * 100 : 0;
 

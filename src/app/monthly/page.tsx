@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch, useFilterParams } from "@/hooks/use-dashboard-data";
@@ -22,6 +22,8 @@ interface MonthlySummary {
   profit: number;
   profitRate: number;
   roas: number;
+  mer: number;
+  cv: number;
   aov: number;
   adRatio: number;
   cac: number;
@@ -62,6 +64,8 @@ function MonthlyInner() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
   const [brandFilter, setBrandFilter] = useState(brand);
+  // 글로벌 브랜드 필터 변경 시 동기화 (마운트 시 brand가 늦게 로드돼 '전체'로 리셋되던 버그)
+  useEffect(() => { setBrandFilter(brand || "all"); }, [brand]);
 
   const { data, loading } = useFetch<MonthlyData>(
     `/api/monthly-summary?year=${year}&brand=${brandFilter}`
@@ -252,6 +256,7 @@ function MonthlyInner() {
                 <th className="pb-2 pr-3 text-right">원가</th>
                 <th className="pb-2 pr-3 text-right">배송비</th>
                 <th className="pb-2 pr-3 text-right">ROAS</th>
+                <th className="pb-2 pr-3 text-right">MER</th>
                 <th className="pb-2 pr-3 text-right">이익</th>
                 <th className="pb-2 text-right">이익률</th>
               </tr>
@@ -280,6 +285,7 @@ function MonthlyInner() {
                   <td className={cn("py-2 pr-3 text-right", r.roas >= 3 ? "text-emerald-600" : r.roas >= 1 ? "text-yellow-600" : "text-red-500")}>
                     {r.roas.toFixed(2)}x
                   </td>
+                  <td className="py-2 pr-3 text-right text-muted-foreground">{(r.mer || 0).toFixed(2)}x</td>
                   <td className={cn("py-2 pr-3 text-right font-medium", r.profit >= 0 ? "text-emerald-600" : "text-red-500")}>
                     {formatCurrency(r.profit)}
                   </td>
@@ -290,7 +296,7 @@ function MonthlyInner() {
               ))}
               {reversed.length === 0 && (
                 <tr>
-                  <td colSpan={13} className="py-8 text-center text-muted-foreground">데이터 없음</td>
+                  <td colSpan={14} className="py-8 text-center text-muted-foreground">데이터 없음</td>
                 </tr>
               )}
             </tbody>

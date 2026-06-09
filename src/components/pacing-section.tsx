@@ -96,6 +96,12 @@ export function PacingSection({ brand }: { brand: string }) {
         </button>
 
         {open && <>
+        {/* 광고예산 초과 경고 (의사결정 즉시 신호) */}
+        {remaining.ad < 0 && (
+          <div className="rounded-lg border-l-4 border-red-500 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-600">
+            ⚠ 광고예산 초과: {formatCurrency(Math.abs(remaining.ad))} — 목표 {formatCurrency(target.ad)} 대비 {pct(target.ad > 0 ? actual.ad / target.ad : 0)} 소진 (날짜 진행 {pct(dateProgress)})
+          </div>
+        )}
         {/* 날짜 진행률 바 */}
         <ProgressBar value={dateProgress} color="#94a3b8" />
 
@@ -179,14 +185,20 @@ export function PacingSection({ brand }: { brand: string }) {
         {b === "all" && data.perBrand.length > 0 && (
           <div className="pt-2 border-t space-y-2">
             <p className="text-xs text-muted-foreground">브랜드별 매출 달성률 (마커=날짜진행률 {pct(dateProgress)})</p>
-            {data.perBrand.filter(pb => pb.targetRevenue > 0).map((pb) => (
+            {data.perBrand.filter(pb => pb.targetRevenue > 0).map((pb) => {
+              const roasOk = pb.targetRoas > 0 && pb.actualRoas >= pb.targetRoas * 0.9;
+              return (
               <div key={pb.brand} className="flex items-center gap-3 text-sm">
                 <span className="w-16 flex-shrink-0 text-xs">{BRAND_LABELS[pb.brand] || pb.brand}</span>
                 <div className="flex-1"><ProgressBar value={pb.revAchievement} marker={dateProgress} color={pb.revAchievement >= dateProgress * 0.9 ? "#10b981" : "#ef4444"} /></div>
                 <span className="w-12 text-right text-xs font-medium">{pct(pb.revAchievement)}</span>
+                {/* ROAS 목표 대비 (매출 달성했어도 ROAS 미달이면 크리에이티브 점검 신호) */}
+                <span className={`w-24 text-right text-[11px] ${pb.targetRoas > 0 ? (roasOk ? "text-emerald-600" : "text-red-500") : "text-muted-foreground"}`} title="실제 ROAS / 목표 ROAS">
+                  ROAS {pb.actualRoas.toFixed(1)}/{pb.targetRoas > 0 ? pb.targetRoas.toFixed(1) : "-"}x
+                </span>
                 <span className="w-28 text-right text-[11px] text-muted-foreground">{formatCurrency(pb.actualRevenue)}/{formatCurrency(pb.targetRevenue)}</span>
               </div>
-            ))}
+            );})}
           </div>
         )}
         </>}
