@@ -59,12 +59,12 @@ export async function GET(req: NextRequest) {
     const targetAdRatio = targetRevenue > 0 ? targetAd / targetRevenue : 0;
 
     // 실적 (이번 달 매출/광고비)
-    let salesQ = supabase.from("daily_sales").select("revenue,orders,brand").gte("date", monthStart).lte("date", monthEnd).neq("channel", "total");
+    let salesQ = supabase.from("daily_sales").select("date,revenue,orders,brand").gte("date", monthStart).lte("date", monthEnd).neq("channel", "total");
     if (brand !== "all") salesQ = salesQ.eq("brand", brand);
     else salesQ = salesQ.in("brand", BRANDS);
     const sales = await fetchAll(salesQ);
 
-    let adQ = supabase.from("daily_ad_spend").select("spend,conversion_value,channel,brand").gte("date", monthStart).lte("date", monthEnd).not("channel", "like", "ga4_%");
+    let adQ = supabase.from("daily_ad_spend").select("date,spend,conversion_value,channel,brand").gte("date", monthStart).lte("date", monthEnd).not("channel", "like", "ga4_%");
     if (brand !== "all") adQ = adQ.eq("brand", brand);
     else adQ = adQ.in("brand", BRANDS);
     const ads = await fetchAll(adQ);
@@ -130,9 +130,36 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // 주차별 목표 대비 실적 (광고예산안 주차 재현: w1=1~7, w2=8~14, ... w5=29~말일)
+    // 주차 목표 = 월 목표 × (주차 일수 / 월 일수)
+    const weekDefs = [
+      { w: "w1", s: 1, e: 7 }, { w: "w2", s: 8, e: 14 }, { w: "w3", s: 15, e: 21 },
+      { w: "w4", s: 22, e: 28 }, { w: "w5", s: 29, e: daysInMonth },
+    ].filter((d) => d.s <= daysInMonth);
+    const weekly = weekDefs.map(({ w, s, e }) => {
+      const end = Math.min(e, daysInMonth);
+      const wDays = end - s + 1;
+      const inWeek = (dateStr: string) => { const d = Number(dateStr.slice(8, 10)); return d >= s && d <= end; };
+      const wRev = sales.filter((r) => inWeek(r.date)).reduce((acc, r) => acc + Number(r.revenue || 0), 0);
+      const wAd = ads.filter((r) => inWeek(r.date)).reduce((acc, r) => acc + Number(r.spend || 0), 0);
+      const wTargetRev = targetRevenue * (wDays / daysInMonth);
+      const wTargetAd = targetAd * (wDays / daysInMonth);
+      const isPast = todayStr.slice(0, 7) > month || (todayStr.slice(0, 7) === month && Number(todayStr.slice(8, 10)) > end);
+      const isCurrent = todayStr.slice(0, 7) === month && Number(todayStr.slice(8, 10)) >= s && Number(todayStr.slice(8, 10)) <= end;
+      return {
+        week: w, days: wDays, startDay: s, endDay: end,
+        targetRevenue: Math.round(wTargetRev), actualRevenue: wRev,
+        revAchievement: wTargetRev > 0 ? wRev / wTargetRev : 0,
+        targetAd: Math.round(wTargetAd), actualAd: wAd,
+        adRatio: wRev > 0 ? wAd / wRev : 0,
+        state: isPast ? "past" : isCurrent ? "current" : "future",
+      };
+    });
+
     return NextResponse.json({
       month, brand,
       daysInMonth, daysElapsed, daysRemaining, dateProgress,
+      weekly,
       hasTarget: (targetsData || []).length > 0 && targetRevenue > 0,
       target: { revenue: targetRevenue, ad: targetAd, roas: targetRoas, adRatio: targetAdRatio },
       actual: { revenue: actualRevenue, orders: actualOrders, ad: actualAd, roas: actualRoas, adRatio: actualAdRatio },

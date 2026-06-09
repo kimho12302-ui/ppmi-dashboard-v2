@@ -1173,12 +1173,29 @@ function TargetsTab() {
 
   useEffect(() => { load(); }, [load]);
 
+  // 월/브랜드 선택 시 기존 목표 자동 채움 (추가가 아닌 편집)
+  useEffect(() => {
+    const t = targets[`${month}_${brand}`];
+    if (t) {
+      setRevenue(String(t.revenue_target || ""));
+      setAdBudget(String(t.ad_budget_target || ""));
+      setRoas(String(t.roas_target || ""));
+    } else {
+      setRevenue(""); setAdBudget(""); setRoas("");
+    }
+  }, [month, brand, targets]);
+
+  // ROAS 자동 계산 (매출/광고비). 직접 입력값 있으면 우선.
+  const autoRoas = revenue && adBudget && Number(adBudget) > 0 ? (Number(revenue) / Number(adBudget)) : 0;
+  const adRatio = revenue && adBudget && Number(revenue) > 0 ? (Number(adBudget) / Number(revenue) * 100) : 0;
+
   const save = async () => {
     setStatus(null);
+    const roasToSave = roas || (autoRoas ? autoRoas.toFixed(4) : "0");
     const res = await fetch("/api/targets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ month, brand, revenue_target: revenue, ad_budget_target: adBudget, roas_target: roas }),
+      body: JSON.stringify({ month, brand, revenue_target: revenue, ad_budget_target: adBudget, roas_target: roasToSave, note: "운영자 입력" }),
     });
     setStatus(res.ok ? "✅ 저장 완료" : "❌ 저장 실패");
     if (res.ok) load();
@@ -1207,12 +1224,13 @@ function TargetsTab() {
             <input type="number" value={revenue} onChange={(e) => setRevenue(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm bg-transparent mt-0.5" placeholder="0" /></div>
           <div><label className="text-xs text-muted-foreground">광고비 예산</label>
             <input type="number" value={adBudget} onChange={(e) => setAdBudget(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm bg-transparent mt-0.5" placeholder="0" /></div>
-          <div><label className="text-xs text-muted-foreground">ROAS 목표</label>
-            <input type="number" value={roas} onChange={(e) => setRoas(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm bg-transparent mt-0.5" placeholder="0" step="0.1" /></div>
+          <div><label className="text-xs text-muted-foreground">ROAS 목표 {autoRoas > 0 && !roas && <span className="text-primary">(자동 {autoRoas.toFixed(2)}x)</span>}</label>
+            <input type="number" value={roas} onChange={(e) => setRoas(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm bg-transparent mt-0.5" placeholder={autoRoas > 0 ? autoRoas.toFixed(2) : "0"} step="0.1" /></div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button onClick={save} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90">저장</button>
           <StatusBadge status={status} />
+          {adRatio > 0 && <span className="text-xs text-muted-foreground">광고비 비중 {adRatio.toFixed(1)}% · ROAS {autoRoas.toFixed(2)}x (매출/광고비 자동)</span>}
         </div>
 
         {Object.keys(targets).length > 0 && (

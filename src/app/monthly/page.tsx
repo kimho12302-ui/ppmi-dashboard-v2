@@ -23,6 +23,9 @@ interface MonthlySummary {
   profitRate: number;
   roas: number;
   aov: number;
+  adRatio: number;
+  cac: number;
+  channelCosts: Record<string, number>;
   revGrowth?: number;
   orderGrowth?: number;
 }
@@ -67,6 +70,12 @@ function MonthlyInner() {
   const summary = data?.summary || [];
   const ytd = data?.ytd;
   const reversed = [...summary].reverse(); // desc for table
+
+  // 채널별 광고비 ((M)Dash Board 재현)
+  const CH_LABEL: Record<string, string> = { meta: "메타", naver_search: "네이버검색", naver_shopping: "네이버쇼핑", google_pmax: "구글P-Max", google_search: "구글검색", google_ads: "구글", coupang_ads: "쿠팡", gfa: "GFA", gdn: "GDN", influencer: "인플루언서" };
+  const CH_COLOR: Record<string, string> = { meta: "#1877f2", naver_search: "#03c75a", naver_shopping: "#22c55e", google_pmax: "#eab308", google_search: "#f59e0b", google_ads: "#fbbf24", coupang_ads: "#ef4444", gfa: "#8b5cf6", gdn: "#a78bfa", influencer: "#ec4899" };
+  const channelKeys = Array.from(new Set(summary.flatMap((m) => Object.keys(m.channelCosts || {})))).filter(Boolean);
+  const channelData = summary.map((m) => ({ month: m.month, ...m.channelCosts }));
 
   // Brand list (hard-coded since we know brands)
   const brands = ["all", "nutty", "ironpet", "saip", "balancelab"];
@@ -202,6 +211,30 @@ function MonthlyInner() {
         </Card>
       </div>
 
+      {/* 채널별 광고비 (월별 스택) */}
+      {channelKeys.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold text-sm mb-3">채널별 광고비 추이</h3>
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart data={channelData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                  formatter={(val, name) => [formatCurrency(Number(val)), CH_LABEL[name as string] || name]}
+                />
+                <Legend formatter={(v) => CH_LABEL[v] || v} />
+                {channelKeys.map((ch) => (
+                  <Bar key={ch} dataKey={ch} name={ch} stackId="ch" fill={CH_COLOR[ch] || "#9ca3af"} />
+                ))}
+              </ComposedChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Table */}
       <Card>
         <CardContent className="p-4 overflow-x-auto">
@@ -214,6 +247,8 @@ function MonthlyInner() {
                 <th className="pb-2 pr-3 text-right">주문</th>
                 <th className="pb-2 pr-3 text-right">AOV</th>
                 <th className="pb-2 pr-3 text-right">광고비</th>
+                <th className="pb-2 pr-3 text-right">광고비중</th>
+                <th className="pb-2 pr-3 text-right">CAC</th>
                 <th className="pb-2 pr-3 text-right">원가</th>
                 <th className="pb-2 pr-3 text-right">배송비</th>
                 <th className="pb-2 pr-3 text-right">ROAS</th>
@@ -236,6 +271,10 @@ function MonthlyInner() {
                   <td className="py-2 pr-3 text-right">{formatNumber(r.orders)}</td>
                   <td className="py-2 pr-3 text-right">{formatCurrency(r.aov)}</td>
                   <td className="py-2 pr-3 text-right">{formatCurrency(r.adSpend)}</td>
+                  <td className={cn("py-2 pr-3 text-right", r.adRatio > 35 ? "text-red-500" : r.adRatio > 25 ? "text-yellow-600" : "text-foreground")}>
+                    {r.adRatio.toFixed(1)}%
+                  </td>
+                  <td className="py-2 pr-3 text-right">{r.cac > 0 ? formatCurrency(Math.round(r.cac)) : "-"}</td>
                   <td className="py-2 pr-3 text-right">{formatCurrency(r.cogs)}</td>
                   <td className="py-2 pr-3 text-right">{formatCurrency(r.shippingCost)}</td>
                   <td className={cn("py-2 pr-3 text-right", r.roas >= 3 ? "text-emerald-600" : r.roas >= 1 ? "text-yellow-600" : "text-red-500")}>
@@ -251,7 +290,7 @@ function MonthlyInner() {
               ))}
               {reversed.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="py-8 text-center text-muted-foreground">데이터 없음</td>
+                  <td colSpan={13} className="py-8 text-center text-muted-foreground">데이터 없음</td>
                 </tr>
               )}
             </tbody>

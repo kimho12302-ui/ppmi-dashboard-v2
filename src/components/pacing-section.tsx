@@ -18,6 +18,11 @@ interface PacingData {
   achievement: { revenue: number; ad: number; roas: number };
   remaining: { revenue: number; ad: number; reqDailyRevenue: number; reqDailyAd: number; dailyAvgRevenue: number; dailyAvgAd: number };
   paceStatus: "ahead" | "on_track" | "behind" | "n/a";
+  weekly: {
+    week: string; days: number; startDay: number; endDay: number;
+    targetRevenue: number; actualRevenue: number; revAchievement: number;
+    targetAd: number; actualAd: number; adRatio: number; state: string;
+  }[];
   perBrand: {
     brand: string; targetRevenue: number; actualRevenue: number; revAchievement: number;
     targetAd: number; actualAd: number; adConsumption: number;
@@ -131,6 +136,39 @@ export function PacingSection({ brand }: { brand: string }) {
             </p>
           </div>
         </div>
+
+        {/* 주차별 목표 대비 실적 */}
+        {data.weekly && data.weekly.length > 0 && (
+          <div className="pt-2 border-t">
+            <p className="text-xs text-muted-foreground mb-2">주차별 매출 (목표 대비)</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-muted-foreground border-b">
+                    <th className="text-left py-1 pr-2">주차</th>
+                    <th className="text-right py-1 px-2">목표</th>
+                    <th className="text-right py-1 px-2">실적</th>
+                    <th className="text-right py-1 px-2">달성</th>
+                    <th className="text-right py-1 pl-2">광고비중</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.weekly.map((wk) => (
+                    <tr key={wk.week} className={`border-b border-border/40 ${wk.state === "current" ? "bg-amber-500/5" : wk.state === "future" ? "opacity-50" : ""}`}>
+                      <td className="py-1 pr-2 font-medium">{wk.week} <span className="text-muted-foreground">({wk.startDay}~{wk.endDay}일)</span>{wk.state === "current" && <span className="ml-1 text-amber-600">●</span>}</td>
+                      <td className="text-right py-1 px-2 text-muted-foreground">{formatCurrency(wk.targetRevenue)}</td>
+                      <td className="text-right py-1 px-2 font-medium">{formatCurrency(wk.actualRevenue)}</td>
+                      <td className={`text-right py-1 px-2 font-semibold ${wk.state !== "future" && wk.revAchievement < 0.9 ? "text-red-500" : wk.revAchievement >= 1 ? "text-emerald-600" : ""}`}>
+                        {wk.state === "future" ? "-" : pct(wk.revAchievement)}
+                      </td>
+                      <td className="text-right py-1 pl-2 text-muted-foreground">{wk.actualRevenue > 0 ? pct(wk.adRatio) : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* 전체 보기일 때 브랜드별 미니 페이싱 */}
         {b === "all" && data.perBrand.length > 0 && (

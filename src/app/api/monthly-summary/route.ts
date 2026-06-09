@@ -83,6 +83,8 @@ export async function GET(request: NextRequest) {
 
     // Group by month
     const months = new Map<string, { revenue: number; orders: number; adSpend: number; cv: number; miscCost: number; shipCost: number; cogs: number }>();
+    // 월별 채널별 광고비 ((M)Dash Board 재현)
+    const monthChannels = new Map<string, Map<string, number>>();
 
     for (const r of sales || []) {
       const m = r.date.slice(0, 7);
@@ -99,6 +101,10 @@ export async function GET(request: NextRequest) {
       existing.adSpend += Number(r.spend);
       existing.cv += Number(r.conversion_value);
       months.set(m, existing);
+      // 채널별 비용
+      if (!monthChannels.has(m)) monthChannels.set(m, new Map());
+      const cm = monthChannels.get(m)!;
+      cm.set(r.channel, (cm.get(r.channel) || 0) + Number(r.spend));
     }
 
     // Add misc costs by month (misc_costs: date + amount)
@@ -137,17 +143,22 @@ export async function GET(request: NextRequest) {
       .map(([month, d]) => {
         const totalCost = d.adSpend + d.miscCost + d.shipCost + d.cogs;
         const profit = d.revenue - totalCost;
+        const adWithMisc = d.adSpend + d.miscCost;
+        const channelCosts = Object.fromEntries(monthChannels.get(month) || []);
         return {
           month,
           revenue: d.revenue,
           orders: d.orders,
-          adSpend: d.adSpend + d.miscCost,
+          adSpend: adWithMisc,
           cogs: d.cogs,
           shippingCost: d.shipCost,
           profit,
           profitRate: d.revenue > 0 ? (profit / d.revenue) * 100 : 0,
-          roas: (d.adSpend + d.miscCost) > 0 ? d.revenue / (d.adSpend + d.miscCost) : 0,
+          roas: adWithMisc > 0 ? d.revenue / adWithMisc : 0,
           aov: d.orders > 0 ? d.revenue / d.orders : 0,
+          adRatio: d.revenue > 0 ? (adWithMisc / d.revenue) * 100 : 0, // 광고비 비중%
+          cac: d.orders > 0 ? adWithMisc / d.orders : 0, // 고객획득비용(주문당 광고비)
+          channelCosts, // 채널별 광고비 분해
         };
       });
 
