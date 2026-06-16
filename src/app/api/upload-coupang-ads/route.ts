@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
+import { triggerSheetSync } from "@/lib/github-dispatch";
 
 function parseDate(val: unknown): string {
   if (val === null || val === undefined) return "";
@@ -144,16 +145,17 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const dbRows = Array.from(dailyAgg.entries()).map(([date, d]) => ({
-      date,
-      channel: "coupang_ads",
-      brand,
-      spend: Math.round(d.spend),
-      impressions: Math.round(d.impressions),
-      clicks: Math.round(d.clicks),
-      conversions: Math.round(d.conversions),
-      conversion_value: Math.round(d.conversion_value),
-    }));
+    // 엑셀에 없던 컬럼은 payload에서 제외 → 기존 값 보존(부분 업로드가 노출/클릭/전환을 0으로 덮는 사고 방지).
+    // spend는 필수 매칭 컬럼(위 검증)이라 항상 포함.
+    type AdRow = { date: string; channel: string; brand: string; spend: number; impressions?: number; clicks?: number; conversions?: number; conversion_value?: number };
+    const dbRows: AdRow[] = Array.from(dailyAgg.entries()).map(([date, d]) => {
+      const row: AdRow = { date, channel: "coupang_ads", brand, spend: Math.round(d.spend) };
+      if (impCol >= 0) row.impressions = Math.round(d.impressions);
+      if (clickCol >= 0) row.clicks = Math.round(d.clicks);
+      if (ordersCol >= 0) row.conversions = Math.round(d.conversions);
+      if (convCol >= 0) row.conversion_value = Math.round(d.conversion_value);
+      return row;
+    });
 
     const { error } = await supabase
       .from("daily_ad_spend")
@@ -170,9 +172,11 @@ export async function POST(req: NextRequest) {
     }
 
     const dates = dbRows.map(r => r.date).sort();
+    // 업로드 직후 통계시트 즉시 반영 (best-effort, 비차단)
+    const sheetSyncTriggered = await triggerSheetSync(dates[0], dates[dates.length - 1]);
     const totalSpend = dbRows.reduce((s, r) => s + r.spend, 0);
-    const totalImp = dbRows.reduce((s, r) => s + r.impressions, 0);
-    const totalClick = dbRows.reduce((s, r) => s + r.clicks, 0);
+    const totalImp = dbRows.reduce((s, r) => s + (r.impressions || 0), 0);
+    const totalClick = dbRows.reduce((s, r) => s + (r.clicks || 0), 0);
     const warnings: string[] = [];
     if (totalSpend === 0) warnings.push("⚠️ 광고비 합계가 0원입니다 (엑셀의 광고비 컬럼 값을 확인하세요)");
     if (dateParseFailRows > 0) warnings.push(`날짜 인식 실패 ${dateParseFailRows}행 스킵 (샘플: ${JSON.stringify(dateParseFailSamples)})`);
@@ -181,6 +185,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       message: `쿠팡 광고 ${dates[0]} ~ ${dates[dates.length - 1]} 저장 (${dbRows.length}일, brand=${brand}, 광고비합 ${totalSpend.toLocaleString()}원)`,
+      sheetSyncTriggered,
       dailyRows: dbRows.length,
       brand,
       totalSpend,

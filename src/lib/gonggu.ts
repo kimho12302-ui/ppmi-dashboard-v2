@@ -61,6 +61,22 @@ export function isGongguOutOfDailySales(row: GongguRow): boolean {
   return ch.startsWith("공구_") || ch === "공구";
 }
 
+/**
+ * daily_sales 에 일반 채널(smartstore 등)로 섞여 들어간 공구 (형식 A).
+ *
+ * channel="smartstore" + lineup="셀러명" 인 공구 row 는 daily_sales 에서 channel="smartstore"
+ * 로 집계되어 자체매출과 구분이 안 된다. daily_sales 기반 자체매출에서 이 금액만큼을
+ * 별도로 빼야 진짜 자체매출이 된다 (channel="공구_*"/"공구" 인 형식 B/C/D 는 channel 필터로
+ * 이미 제외되므로 여기서는 제외).
+ *
+ * 사용: product_sales 를 이 함수로 필터해 날짜별 합을 구한 뒤, 같은 브랜드의 daily_sales 매출에서 차감.
+ */
+export function isGongguInDailySales(row: GongguRow): boolean {
+  if (!isGonggu(row)) return false;
+  const ch = row.channel || "";
+  return !(ch.startsWith("공구_") || ch === "공구");
+}
+
 /** 공구 셀러명 추출. lineup 우선, 없으면 channel 접두사에서 파싱 */
 export function gongguSeller(row: GongguRow): string {
   if (row?.lineup) return row.lineup;

@@ -46,13 +46,13 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  reel: "\uB9B4\uC2A4",
-  carousel: "\uCE90\uB7EC\uC140",
-  image: "\uC774\uBBF8\uC9C0",
-  story: "\uC2A4\uD1A0\uB9AC",
-  video: "\uBE44\uB514\uC624",
-  naver_blog: "\uB124\uC774\uBC84\uBE14\uB85C\uADF8",
-  magazine: "\uB9E4\uAC70\uC9C4",
+  reel: "릴스",
+  carousel: "캐러셀",
+  image: "이미지",
+  story: "스토리",
+  video: "비디오",
+  naver_blog: "네이버블로그",
+  magazine: "매거진",
 };
 
 export default function ContentPage() {
@@ -80,12 +80,18 @@ function ContentInner() {
   const avgCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
   const latestFollowers = followerTrend.length > 0 ? followerTrend[followerTrend.length - 1].followers : 0;
 
-  // Content types found in data
-  const contentTypes = byType.map((r) => r.content_type);
+  // 트렌드 스택바 시리즈 = postsTrend에 실제 등장한 유형까지 합집합으로.
+  // byType만 쓰면 특정 주 트렌드에만 있는 유형이 막대에서 누락되어 게시량이 과소표시됨.
+  const contentTypes = Array.from(
+    new Set([
+      ...byType.map((r) => r.content_type),
+      ...postsTrend.flatMap((row) => Object.keys(row).filter((k) => k !== "date")),
+    ])
+  );
 
   if (loading) {
     return (
-      <PageShell title="\uCF58\uD150\uCE20/SNS" description="\uCF58\uD150\uCE20 \uC720\uD615\uBCC4 \uC131\uACFC \xB7 \uD314\uB85C\uC6CC \uCD94\uC774 \xB7 \uAC8C\uC2DC \uD2B8\uB80C\uB4DC">
+      <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i} className="animate-pulse"><CardContent className="p-4"><div className="h-8 bg-muted rounded" /></CardContent></Card>
@@ -97,7 +103,7 @@ function ContentInner() {
 
   if (byType.length === 0) {
     return (
-      <PageShell title="\uCF58\uD150\uCE20/SNS" description="\uCF58\uD150\uCE20 \uC720\uD615\uBCC4 \uC131\uACFC \xB7 \uD314\uB85C\uC6CC \uCD94\uC774 \xB7 \uAC8C\uC2DC \uD2B8\uB80C\uB4DC">
+      <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             선택한 기간에 콘텐츠 데이터가 없습니다.
@@ -108,7 +114,7 @@ function ContentInner() {
   }
 
   return (
-    <PageShell title="\uCF58\uD150\uCE20/SNS" description="\uCF58\uD150\uCE20 \uC720\uD615\uBCC4 \uC131\uACFC \xB7 \uD314\uB85C\uC6CC \uCD94\uC774 \xB7 \uAC8C\uC2DC \uD2B8\uB80C\uB4DC">
+    <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Card>
@@ -146,8 +152,8 @@ function ContentInner() {
       {/* Tabs */}
       <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
         {([
-          { key: "overview", label: "\uC720\uD615\uBCC4 \uC131\uACFC" },
-          { key: "trend", label: "\uD2B8\uB80C\uB4DC" },
+          { key: "overview", label: "유형별 성과" },
+          { key: "trend", label: "트렌드" },
         ] as const).map((t) => (
           <button
             key={t.key}
@@ -183,7 +189,7 @@ function ContentInner() {
                       contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
                       labelFormatter={(v) => TYPE_LABELS[v] || v}
                     />
-                    <Bar dataKey="posts" name="\uAC8C\uC2DC \uC218" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="posts" name="게시 수" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -209,7 +215,7 @@ function ContentInner() {
                     />
                     <Legend />
                     <Bar dataKey="ctr" name="CTR" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="engagement" name="\uC778\uAC8C\uC774\uC9C0\uBA3C\uD2B8" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="engagement" name="인게이지먼트" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -294,7 +300,7 @@ function ContentInner() {
                       contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
                       formatter={(val) => formatNumber(Number(val))}
                     />
-                    <Line type="monotone" dataKey="followers" name="\uD314\uB85C\uC6CC" stroke="#8b5cf6" strokeWidth={2} dot />
+                    <Line type="monotone" dataKey="followers" name="팔로워" stroke="#8b5cf6" strokeWidth={2} dot />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>

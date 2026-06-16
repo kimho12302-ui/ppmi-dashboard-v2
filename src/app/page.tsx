@@ -17,7 +17,6 @@ import {
   ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend,
 } from "recharts";
 import Link from "next/link";
-import MissingDataAlert from "@/components/missing-data-alert";
 import { PacingSection } from "@/components/pacing-section";
 
 type KpiKey = "revenue" | "adSpend" | "roas" | "orders" | "profit" | "profitRate" | "ctr" | "aov" | null;
@@ -40,6 +39,8 @@ interface DashboardData {
   gongguSales: { seller: string; revenue: number; orders: number }[];
   gongguSalesTotal: number;
   selfSalesTotal: number;
+  dailyGongguTotal: number;
+  dailyGonggu?: Record<string, number>;
   anomalies: { brand: string; metric: string; change: number; current: number; previous: number }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   targets: any[];
@@ -119,6 +120,7 @@ function OverviewInner() {
   const gongguSalesTotal = data?.gongguSalesTotal || 0;
   const selfSalesTotal = data?.selfSalesTotal || 0;
   const gongguSales = data?.gongguSales || [];
+  const dailyGongguTotal = data?.dailyGongguTotal || 0;
 
   // 브랜드/제품 비중 파이차트
   const shareData = useMemo(() => {
@@ -163,8 +165,18 @@ function OverviewInner() {
     for (const b of brandBreakdown) {
       if (b.roas > 0 && b.roas < 1) results.push(`${b.label} ROAS ${b.roas.toFixed(2)}x — 광고비 대비 전환 부족`);
     }
+    // 추세 조기경보: 매출 7일 이동평균 모멘텀 (마지막 MA vs 7일 전 MA)
+    const trend = data?.trend || [];
+    if (trend.length >= 14) {
+      const last = trend[trend.length - 1]?.maRevenue || 0;
+      const prev = trend[trend.length - 8]?.maRevenue || 0; // 7일 전 이동평균
+      if (prev > 0) {
+        const chg = (last - prev) / prev;
+        if (chg <= -0.15) results.push(`매출 7일 추세 ${(chg * 100).toFixed(0)}% 하락 — 모멘텀 둔화 (이동평균 ${formatCurrency(Math.round(prev))} → ${formatCurrency(Math.round(last))})`);
+      }
+    }
     return results;
-  }, [brandBreakdown]);
+  }, [brandBreakdown, data]);
 
   const pctChange = (cur: number, prev: number) => {
     if (prev === 0) return cur > 0 ? 100 : undefined;
@@ -266,8 +278,6 @@ function OverviewInner() {
 
   return (
     <PageShell title="Overview" description="PPMI 마케팅 대시보드 전체 현황">
-      <MissingDataAlert />
-
       {/* 목표 대비 페이싱 — 의사결정 1순위 (통계시트 '광고 예산안' 재현) */}
       <PacingSection brand={brand || "all"} />
 
@@ -573,23 +583,29 @@ function OverviewInner() {
       {brand && brand !== "all" && <BrandDetailSection brand={brand} from={from} to={to} />}
 
       {/* 밸런스랩 공구 매출 */}
-      {(gongguSalesTotal > 0 || selfSalesTotal > 0) && (
+      {(gongguSalesTotal > 0 || selfSalesTotal > 0 || dailyGongguTotal > 0) && (
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">밸런스랩 공구 매출</h3>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold">밸런스랩 공구 매출 <span className="text-xs font-normal text-muted-foreground">(헤드라인 매출엔 미포함 · 별도 집계)</span></h3>
               <Link href="/sales" className="text-xs text-primary hover:underline">상세 →</Link>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
               <div className="text-center">
-                <p className="text-xs text-muted-foreground">자체매출</p>
+                <p className="text-xs text-muted-foreground">자체매출 (헤드라인 포함)</p>
                 <p className="text-lg font-bold text-blue-500">{formatCurrency(selfSalesTotal)}</p>
               </div>
               <div className="text-center">
-                <p className="text-xs text-muted-foreground">공구매출</p>
+                <p className="text-xs text-muted-foreground">공구매출 (product_sales)</p>
                 <p className="text-lg font-bold text-purple-500">{formatCurrency(gongguSalesTotal)}</p>
               </div>
-              {gongguSales.slice(0, 2).map((s) => (
+              {dailyGongguTotal > 0 && (
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground">스마트스토어 공구 채널</p>
+                  <p className="text-lg font-bold text-purple-400">{formatCurrency(dailyGongguTotal)}</p>
+                </div>
+              )}
+              {gongguSales.slice(0, 1).map((s) => (
                 <div key={s.seller} className="text-center">
                   <p className="text-xs text-muted-foreground">공구_{s.seller}</p>
                   <p className="text-lg font-bold">{formatCurrency(s.revenue)}</p>

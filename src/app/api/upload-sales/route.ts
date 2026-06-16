@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import { triggerSheetSync } from "@/lib/github-dispatch";
 
 export const maxDuration = 60;
 
@@ -29,22 +30,25 @@ const CHANNEL_MAP: Record<string, string> = {
   "PPMI_쿠팡 로켓그로스": "coupang",
 };
 
-// Brand detection: YSIET* = balancelab, rest from product list
+// Brand detection: YSIET* = balancelab, rest from product list.
+// \uC0AC\uC785(saip)\uC740 \uC7AC\uACE0\uB9E4\uC785 \uC7AC\uD310\uB9E4 \uC804 \uBE0C\uB79C\uB4DC\uC758 \uCE90\uCE58\uC62C \uBC84\uD0B7(\uD30C\uBBF8\uB098/\uD14C\uB77C\uCE74\uB2C8\uC2A4/\uB2E5\uD130\uB808\uC774/\uACE0\uB124\uC774\uD2F0\uBE0C/... ).
+// \uCF54\uB4DC\uAC00 \uC0C1\uD488\uBAA9\uB85D\uC5D0 \uC5C6\uC744 \uB54C\uB9CC "unknown"(\u2192 \uC0C1\uC704\uC5D0\uC11C \uBE14\uB85C\uD0B9). \uBAA9\uB85D\uC5D0 \uC788\uC73C\uBA74 \uD56D\uC0C1 4\uAC1C \uBE0C\uB79C\uB4DC \uC911 \uD558\uB098\uB85C \uADC0\uC18D.
 function detectBrand(productCode: string, productListMap: Map<string, any>): string {
   if (productCode.toUpperCase().startsWith("YSIET")) return "balancelab";
   const info = productListMap.get(productCode);
-  if (!info) return "unknown";
+  if (!info) return "unknown"; // \uC0C1\uD488\uBAA9\uB85D \uBBF8\uB4F1\uB85D \uCF54\uB4DC \u2192 \uBE14\uB85C\uD0B9
   const brandName = (info.brand || "").trim();
-  const BRAND_MAP: Record<string, string> = {
-    "\uB108\uD2F0": "nutty",
-    "\uC544\uC774\uC5B8\uD3AB": "ironpet",
-    "\uC0AC\uC785": "saip",
-    "\uB2E5\uD130\uB808\uC774": "saip",
-    "\uACE0\uB124\uC774\uD2F0\uBE0C": "saip",
-    "\uD30C\uB77C\uCE74\uB2C8": "saip",
-    "\uACF5\uB3D9\uAD6C\uB9E4": "balancelab",
-  };
-  return BRAND_MAP[brandName] || "saip";
+  if (brandName === "\uB108\uD2F0") return "nutty"; // \uB108\uD2F0
+  if (brandName === "\uC544\uC774\uC5B8\uD3AB") return "ironpet"; // \uC544\uC774\uC5B8\uD3AB
+  // \uBC38\uB7F0\uC2A4\uB7A9 \uBA85\uCE6D \uBCC0\uD615(\uBC38\uB7F0\uC2A4\uB7A9 / \uD050* \uAC80\uC0AC \uB77C\uC778 / \uD558\uB8E8\uAC00\uAFC8 / \uACF5\uB3D9\uAD6C\uB9E4)\uC744 \uC0AC\uC785\uC73C\uB85C \uD758\uB9AC\uC9C0 \uC54A\uACE0 balancelab \uB85C \uADC0\uC18D
+  if (
+    brandName.includes("\uBC38\uB7F0\uC2A4") || // \uBC38\uB7F0\uC2A4
+    brandName.startsWith("\uD050") ||           // \uD050\uBAA8\uBC1C/\uD050\uD0C0\uC561/\uD050\uC9C0\uC5F0...
+    brandName.includes("\uD558\uB8E8\uAC00\uAFC8") || // \uD558\uB8E8\uAC00\uAFC8
+    brandName === "\uACF5\uB3D9\uAD6C\uB9E4"      // \uACF5\uB3D9\uAD6C\uB9E4
+  ) return "balancelab";
+  // \uADF8 \uC678(\uB108\uD2F0/\uC544\uC774\uC5B8\uD3AB/\uBC38\uB7F0\uC2A4\uB7A9\uC774 \uC544\uB2CC \uBAA8\uB4E0 \uBE0C\uB79C\uB4DC) = \uC0AC\uC785 (\uBE44\uC988\uB2C8\uC2A4 \uADDC\uCE59: \uC7AC\uD310\uB9E4 \uBC84\uD0B7)
+  return "saip";
 }
 
 export async function POST(request: NextRequest) {
@@ -101,7 +105,20 @@ export async function POST(request: NextRequest) {
     const dateCol = colMap["일자"] ?? colMap["날짜"] ?? colMap["결제일"] ?? -1;
     const clientCol = colMap["거래처명"] ?? colMap["판매몰"] ?? -1;
     const productCodeCol = colMap["품목코드"] ?? colMap["상품코드"] ?? -1;
-    const productNameCol = colMap["품목명"] ?? colMap["상품명"] ?? colMap["품명"] ?? colMap["상품 명"] ?? colMap["품 명"] ?? colMap["name"] ?? -1;
+    // 품목명/상품명 컬럼 탐지: ① 정확 매칭 → ② 헤더에 품목명/상품명/품명/제품명 포함 열 → ③ 품목코드 바로 옆 열(이카운트 관례, 숫자성 필드 제외)
+    let productNameCol = colMap["품목명"] ?? colMap["상품명"] ?? colMap["품명"] ?? colMap["상품 명"] ?? colMap["품 명"] ?? colMap["제품명"] ?? colMap["name"] ?? -1;
+    if (productNameCol < 0) {
+      for (let ci = 0; ci < headers.length; ci++) {
+        const h = String(headers[ci] ?? "").trim();
+        if (/(품목명|상품명|품명|제품명)/.test(h) && ci !== productCodeCol) { productNameCol = ci; break; }
+      }
+    }
+    if (productNameCol < 0 && productCodeCol >= 0) {
+      const nextH = String(headers[productCodeCol + 1] ?? "").trim();
+      if (nextH && !/(수량|단가|금액|공급가|부가세|가액|할인|합계|코드|일자|날짜|결제)/.test(nextH)) {
+        productNameCol = productCodeCol + 1;
+      }
+    }
     const qtyCol = colMap["수량"] ?? -1;
     const unitPriceCol = colMap["단가"] ?? colMap["상품가"] ?? -1;
     const supplyCol = colMap["공급가액"] ?? -1;
@@ -504,6 +521,10 @@ export async function POST(request: NextRequest) {
       brandSummary[r.brand].revenue += r.revenue;
     }
 
+    // 업로드 직후 통계시트 즉시 반영 (best-effort, 비차단)
+    const allDates = [...new Set(rows.map(r => r.date))].sort();
+    const sheetSyncTriggered = allDates.length > 0 ? await triggerSheetSync(allDates[0], allDates[allDates.length - 1]) : false;
+
     return NextResponse.json({
       ok: true,
       parsed: rows.length,
@@ -514,6 +535,7 @@ export async function POST(request: NextRequest) {
       dailySales: dailySalesRows.length,
       sheetAppended: dbResults.sheetAppended || 0,
       brandSummary,
+      sheetSyncTriggered,
       dates: rows.length > 0 ? { from: rows[0].date, to: rows[rows.length - 1].date } : null,
       ...dbResults,
     });

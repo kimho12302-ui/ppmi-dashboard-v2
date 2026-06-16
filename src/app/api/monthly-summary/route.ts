@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { isGongguOutOfDailySales } from "@/lib/gonggu";
+import { isGongguInDailySales } from "@/lib/gonggu";
 
 // Supabase anon key has max-rows=1000 per request. Use pagination to fetch all rows.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,7 +33,8 @@ export async function GET(request: NextRequest) {
     const todayStr = new Date().toISOString().slice(0, 10);
     const toDate = yearEnd < todayStr ? yearEnd : todayStr;
 
-    let salesQ = supabase.from("daily_sales").select("date,revenue,orders").gte("date", fromDate).lte("date", toDate).neq("channel", "total");
+    // 자체매출만 집계: 공구(공동구매) 채널 제외. 공구는 별도 섹션에서만 표시.
+    let salesQ = supabase.from("daily_sales").select("date,revenue,orders").gte("date", fromDate).lte("date", toDate).neq("channel", "total").not("channel", "like", "공구%");
     if (brand !== "all") { salesQ = salesQ.eq("brand", brand); }
     else { salesQ = salesQ.neq("brand", "all"); }
     const sales = await fetchAll(salesQ);
@@ -53,17 +54,17 @@ export async function GET(request: NextRequest) {
     if (brand !== "all") shipQ = shipQ.eq("brand", brand);
     const { data: shipData } = await shipQ;
 
-    // Fetch balancelab gonggu revenue from product_sales.
-    // 가산 대상: daily_sales 에 미포함된 공구 row (channel="공구_*" 또는 channel="공구").
-    // channel="smartstore" + lineup="셀러" row 는 이미 daily_sales smartstore 합계에 포함되어 있어 가산하면 이중집계.
-    const gongguMonthMap = new Map<string, number>(); // month → gonggu revenue
-    if (brand === "balancelab" || brand === "all") {
-      const gongguData = await fetchAll(supabase.from("product_sales").select("date,channel,product,lineup,revenue")
-        .gte("date", fromDate).lte("date", toDate).eq("brand", "balancelab"));
-      for (const r of gongguData || []) {
-        if (isGongguOutOfDailySales(r)) {
+    // 공구 매출은 자체매출 집계에서 제외 (사용자 결정 2026-06-10: 자체만 합산, 공구 별도 표시).
+    // 형식-A 공구(셀러가 smartstore로 판 공구)는 daily_sales에 smartstore로 섞여 channel 필터로 못 걸러짐
+    // → product_sales(lineup 보유)에서 월별로 구해 차감.
+    const needGonggu = brand === "balancelab" || brand === "all";
+    const formAByMonth = new Map<string, number>();
+    if (needGonggu) {
+      const ps = await fetchAll(supabase.from("product_sales").select("date,channel,lineup,product,revenue").gte("date", fromDate).lte("date", toDate).eq("brand", "balancelab"));
+      for (const r of ps as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
+        if (isGongguInDailySales(r)) {
           const m = r.date.slice(0, 7);
-          gongguMonthMap.set(m, (gongguMonthMap.get(m) || 0) + Number(r.revenue));
+          formAByMonth.set(m, (formAByMonth.get(m) || 0) + Number(r.revenue || 0));
         }
       }
     }
@@ -94,6 +95,12 @@ export async function GET(request: NextRequest) {
       months.set(m, existing);
     }
 
+    // 형식-A 공구 차감 (밸런스랩 자체매출 정정)
+    for (const [m, amt] of formAByMonth.entries()) {
+      const ex = months.get(m);
+      if (ex) ex.revenue = Math.max(0, ex.revenue - amt);
+    }
+
     for (const r of ads || []) {
       if (r.channel && r.channel.startsWith("ga4_")) continue; // GA4 중복 제외
       const m = r.date.slice(0, 7);
@@ -121,13 +128,6 @@ export async function GET(request: NextRequest) {
       if (existing) existing.shipCost += Number(r.total_cost || 0);
     }
 
-    // Add gonggu revenue by month (balancelab 공구 채널)
-    for (const [m, rev] of gongguMonthMap.entries()) {
-      const existing = months.get(m) || { revenue: 0, orders: 0, adSpend: 0, cv: 0, miscCost: 0, shipCost: 0, cogs: 0 };
-      existing.revenue += rev;
-      months.set(m, existing);
-    }
-
     // Add COGS by month
     for (const ps of cogsProdData || []) {
       const m = ps.date.slice(0, 7);
@@ -143,24 +143,26 @@ export async function GET(request: NextRequest) {
       .map(([month, d]) => {
         const totalCost = d.adSpend + d.miscCost + d.shipCost + d.cogs;
         const profit = d.revenue - totalCost;
-        const adWithMisc = d.adSpend + d.miscCost;
+        const marketingCost = d.adSpend + d.miscCost; // 총 마케팅비 (매체+잡비) — 이익·MER용
         const channelCosts = Object.fromEntries(monthChannels.get(month) || []);
         return {
           month,
           revenue: d.revenue,
           orders: d.orders,
-          adSpend: adWithMisc,
-          cv: d.cv, // 전환가치 (ROAS·MER 일관 계산용)
+          // 매체비/잡비 분리: 광고비·ROAS·광고비비중·CAC는 매체비 기준(목표가 매체비라 일치). 잡비는 별도.
+          adSpend: d.adSpend, // 매체비 (오버뷰·페이싱과 동일 분모)
+          miscCost: d.miscCost, // 잡비 (별도 노출, 이익·MER에만 반영)
+          cv: d.cv, // 전환가치 (ROAS 계산용)
           cogs: d.cogs,
           shippingCost: d.shipCost,
           profit,
           profitRate: d.revenue > 0 ? (profit / d.revenue) * 100 : 0,
-          // ★ROAS = 전환가치/광고비 (오버뷰·페이싱과 동일 정의). 기존 매출/광고비는 MER로 분리.
-          roas: adWithMisc > 0 ? d.cv / adWithMisc : 0,
-          mer: adWithMisc > 0 ? d.revenue / adWithMisc : 0,
+          // ★ROAS = 전환가치/매체비 (오버뷰·페이싱과 동일 정의). 매출/총마케팅비는 MER로 분리.
+          roas: d.adSpend > 0 ? d.cv / d.adSpend : 0,
+          mer: marketingCost > 0 ? d.revenue / marketingCost : 0,
           aov: d.orders > 0 ? d.revenue / d.orders : 0,
-          adRatio: d.revenue > 0 ? (adWithMisc / d.revenue) * 100 : 0, // 광고비 비중%
-          cac: d.orders > 0 ? adWithMisc / d.orders : 0, // 고객획득비용(주문당 광고비)
+          adRatio: d.revenue > 0 ? (d.adSpend / d.revenue) * 100 : 0, // 광고비 비중% (매체비/매출)
+          cac: d.orders > 0 ? d.adSpend / d.orders : 0, // 고객획득비용(주문당 매체비)
           channelCosts, // 채널별 광고비 분해
         };
       });
@@ -179,7 +181,8 @@ export async function GET(request: NextRequest) {
     const ytd = {
       revenue: summary.reduce((s, m) => s + m.revenue, 0),
       orders: summary.reduce((s, m) => s + m.orders, 0),
-      adSpend: summary.reduce((s, m) => s + m.adSpend, 0),
+      adSpend: summary.reduce((s, m) => s + m.adSpend, 0), // 매체비 합
+      miscCost: summary.reduce((s, m) => s + (m.miscCost || 0), 0), // 잡비 합
       cogs: summary.reduce((s, m) => s + m.cogs, 0),
       shippingCost: summary.reduce((s, m) => s + m.shippingCost, 0),
       profit: summary.reduce((s, m) => s + m.profit, 0),
@@ -189,8 +192,8 @@ export async function GET(request: NextRequest) {
       aov: 0 as number,
       profitRate: 0 as number,
     };
-    ytd.roas = ytd.adSpend > 0 ? ytd.cv / ytd.adSpend : 0; // 전환 ROAS (오버뷰와 동일)
-    ytd.mer = ytd.adSpend > 0 ? ytd.revenue / ytd.adSpend : 0; // MER
+    ytd.roas = ytd.adSpend > 0 ? ytd.cv / ytd.adSpend : 0; // 전환 ROAS = 전환가치/매체비 (오버뷰와 동일)
+    ytd.mer = (ytd.adSpend + ytd.miscCost) > 0 ? ytd.revenue / (ytd.adSpend + ytd.miscCost) : 0; // MER = 매출/총마케팅비
     ytd.aov = ytd.orders > 0 ? ytd.revenue / ytd.orders : 0;
     ytd.profitRate = ytd.revenue > 0 ? (ytd.profit / ytd.revenue) * 100 : 0;
 

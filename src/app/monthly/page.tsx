@@ -86,14 +86,14 @@ function MonthlyInner() {
 
   if (loading) {
     return (
-      <PageShell title="\uC6D4\uBCC4 \uC694\uC57D" description="\uC6D4\uBCC4 \uC131\uACFC \uC694\uC57D \xB7 \uC6D0\uAC00/\uBC30\uC1A1\uBE44/\uC774\uC775 \uBD84\uC11D" hideFilters>
+      <PageShell title="월별 요약" description="월별 성과 요약 · 원가/배송비/이익 분석" hideFilters>
         <div className="h-64 bg-muted rounded-lg animate-pulse" />
       </PageShell>
     );
   }
 
   return (
-    <PageShell title="\uC6D4\uBCC4 \uC694\uC57D" description="\uC6D4\uBCC4 \uC131\uACFC \uC694\uC57D \xB7 \uC6D0\uAC00/\uBC30\uC1A1\uBE44/\uC774\uC775 \uBD84\uC11D" hideFilters>
+    <PageShell title="월별 요약" description="월별 성과 요약 · 원가/배송비/이익 분석" hideFilters>
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-4">
         {/* Year selector */}
@@ -123,7 +123,7 @@ function MonthlyInner() {
                 brandFilter === b ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {b === "all" ? "\uC804\uCCB4" : (brandMap[b]?.label || BRAND_LABELS[b] || b)}
+              {b === "all" ? "전체" : (brandMap[b]?.label || BRAND_LABELS[b] || b)}
             </button>
           ))}
         </div>
@@ -178,16 +178,16 @@ function MonthlyInner() {
               <ComposedChart data={summary}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}\uB9CC`} />
+                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
                   formatter={(val) => formatCurrency(Number(val))}
                 />
                 <Legend />
-                <Bar dataKey="revenue" name="\uB9E4\uCD9C" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="adSpend" name="\uAD11\uACE0\uBE44" fill="#dc2626" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="cogs" name="\uC6D0\uAC00" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="shippingCost" name="\uBC30\uC1A1\uBE44" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="revenue" name="매출" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="adSpend" name="광고비" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="cogs" name="원가" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="shippingCost" name="배송비" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
               </ComposedChart>
             </ResponsiveContainer>
           </CardContent>
@@ -207,7 +207,7 @@ function MonthlyInner() {
                   contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
                 />
                 <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="profitRate" name="\uC774\uC775\uB960(%)" stroke="#10b981" strokeWidth={2} dot />
+                <Line yAxisId="left" type="monotone" dataKey="profitRate" name="이익률(%)" stroke="#10b981" strokeWidth={2} dot />
                 <Line yAxisId="right" type="monotone" dataKey="roas" name="ROAS" stroke="#3b82f6" strokeWidth={2} dot />
               </LineChart>
             </ResponsiveContainer>
@@ -269,7 +269,7 @@ function MonthlyInner() {
                   <td className="py-2 pr-3 text-right">
                     {r.revGrowth !== undefined ? (
                       <span className={cn("text-xs", r.revGrowth >= 0 ? "text-emerald-500" : "text-red-500")}>
-                        {r.revGrowth >= 0 ? "\u25B2" : "\u25BC"}{Math.abs(r.revGrowth).toFixed(0)}%
+                        {r.revGrowth >= 0 ? "▲" : "▼"}{Math.abs(r.revGrowth).toFixed(0)}%
                       </span>
                     ) : <span className="text-xs text-muted-foreground">-</span>}
                   </td>

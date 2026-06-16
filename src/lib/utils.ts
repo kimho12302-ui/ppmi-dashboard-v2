@@ -18,6 +18,11 @@ export function formatPercent(n: number): string {
   return n.toFixed(1) + "%";
 }
 
+/** 축약 없이 원 단위 전체 표시 (예: 14,858,470원) */
+export function formatWon(n: number): string {
+  return Math.round(n).toLocaleString("ko-KR") + "원";
+}
+
 export function cn(...classes: (string | false | null | undefined)[]): string {
   return classes.filter(Boolean).join(" ");
 }

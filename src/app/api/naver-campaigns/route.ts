@@ -55,7 +55,10 @@ export async function GET(request: NextRequest) {
       const impressions = parseInt(r[4]) || 0;
       const clicks = parseInt(r[5]) || 0;
       const cpc = parseFloat(r[7]) || 0;
-      const cost = clicks * cpc;
+      // 총비용(r[8]) 직접 사용. clicks×CPC 역산은 행마다 반올림 오차가 누적돼 실제 집행비와 어긋남.
+      // 총비용 셀이 비면 역산으로 폴백.
+      const totalCost = parseFloat(String(r[8] ?? "").replace(/[,₩\s]/g, "")) || 0;
+      const cost = totalCost > 0 ? totalCost : clicks * cpc;
       const conversions = parseInt(r[9]) || 0;
 
       if (!agg[campaignName]) {

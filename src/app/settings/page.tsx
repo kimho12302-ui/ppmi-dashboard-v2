@@ -5,6 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { EventManagerPanel } from "@/components/event-markers";
+import { SalesCoverage } from "@/components/sales-coverage";
 
 const API = "/api/settings";
 
@@ -1153,12 +1154,13 @@ function CostTab() {
 
 /* ── 목표 설정 탭 (monthly_targets가 없으면 안내 표시) ── */
 function TargetsTab() {
-  const [targets, setTargets] = useState<Record<string, { revenue_target: number; ad_budget_target: number; roas_target: number }>>({});
+  const [targets, setTargets] = useState<Record<string, { revenue_target: number; ad_budget_target: number; roas_target: number; cac_target?: number }>>({});
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [brand, setBrand] = useState("all");
   const [revenue, setRevenue] = useState("");
   const [adBudget, setAdBudget] = useState("");
   const [roas, setRoas] = useState("");
+  const [cac, setCac] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [tableExists, setTableExists] = useState(true);
 
@@ -1180,8 +1182,9 @@ function TargetsTab() {
       setRevenue(String(t.revenue_target || ""));
       setAdBudget(String(t.ad_budget_target || ""));
       setRoas(String(t.roas_target || ""));
+      setCac(String(t.cac_target || ""));
     } else {
-      setRevenue(""); setAdBudget(""); setRoas("");
+      setRevenue(""); setAdBudget(""); setRoas(""); setCac("");
     }
   }, [month, brand, targets]);
 
@@ -1195,7 +1198,7 @@ function TargetsTab() {
     const res = await fetch("/api/targets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ month, brand, revenue_target: revenue, ad_budget_target: adBudget, roas_target: roasToSave, note: "운영자 입력" }),
+      body: JSON.stringify({ month, brand, revenue_target: revenue, ad_budget_target: adBudget, roas_target: roasToSave, cac_target: cac, note: "운영자 입력" }),
     });
     setStatus(res.ok ? "✅ 저장 완료" : "❌ 저장 실패");
     if (res.ok) load();
@@ -1213,7 +1216,7 @@ function TargetsTab() {
     <Card>
       <CardContent className="p-4 space-y-4">
         <h3 className="font-semibold">월별 목표 설정</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           <div><label className="text-xs text-muted-foreground">월</label>
             <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm bg-transparent mt-0.5" /></div>
           <div><label className="text-xs text-muted-foreground">브랜드</label>
@@ -1226,6 +1229,8 @@ function TargetsTab() {
             <input type="number" value={adBudget} onChange={(e) => setAdBudget(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm bg-transparent mt-0.5" placeholder="0" /></div>
           <div><label className="text-xs text-muted-foreground">ROAS 목표 {autoRoas > 0 && !roas && <span className="text-primary">(자동 {autoRoas.toFixed(2)}x)</span>}</label>
             <input type="number" value={roas} onChange={(e) => setRoas(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm bg-transparent mt-0.5" placeholder={autoRoas > 0 ? autoRoas.toFixed(2) : "0"} step="0.1" /></div>
+          <div><label className="text-xs text-muted-foreground">CAC 목표 <span className="text-muted-foreground/60">(주문당 광고비)</span></label>
+            <input type="number" value={cac} onChange={(e) => setCac(e.target.value)} className="w-full border rounded px-2 py-1.5 text-sm bg-transparent mt-0.5" placeholder="0" /></div>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <button onClick={save} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90">저장</button>
@@ -1239,7 +1244,7 @@ function TargetsTab() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="border-b text-left">
-                  <th className="py-2 px-2">월</th><th className="py-2 px-2">브랜드</th><th className="py-2 px-2 text-right">매출 목표</th><th className="py-2 px-2 text-right">광고비 예산</th><th className="py-2 px-2 text-right">ROAS 목표</th>
+                  <th className="py-2 px-2">월</th><th className="py-2 px-2">브랜드</th><th className="py-2 px-2 text-right">매출 목표</th><th className="py-2 px-2 text-right">광고비 예산</th><th className="py-2 px-2 text-right">ROAS 목표</th><th className="py-2 px-2 text-right">CAC 목표</th>
                 </tr></thead>
                 <tbody>
                   {Object.entries(targets).map(([key, t]) => {
@@ -1251,6 +1256,7 @@ function TargetsTab() {
                         <td className="py-1.5 px-2 text-right">{t.revenue_target?.toLocaleString()}원</td>
                         <td className="py-1.5 px-2 text-right">{t.ad_budget_target?.toLocaleString()}원</td>
                         <td className="py-1.5 px-2 text-right">{t.roas_target}x</td>
+                        <td className="py-1.5 px-2 text-right">{t.cac_target ? `${t.cac_target.toLocaleString()}원` : "-"}</td>
                       </tr>
                     );
                   })}
@@ -1383,6 +1389,20 @@ function UploadTab() {
 
   useEffect(() => { refreshMissing(); }, [refreshMissing]);
 
+  // 업로드 성공 후 DB를 다시 읽어 실제 반영을 증명 (응답 메시지가 아니라 재조회한 값).
+  // + 대시보드/통계시트 반영 시점 안내로 "안 들어갔다" 착시 제거.
+  const verifyUpload = async (sourceId: string): Promise<string> => {
+    try {
+      const r = await fetch("/api/data-status");
+      if (!r.ok) return "";
+      const d = await r.json();
+      const s = (d.sources || []).find((x: { id: string }) => x.id === sourceId);
+      const tail = " · 새로고침 시 대시보드 즉시 반영, 통계시트는 다음 싱크";
+      if (!s) return tail;
+      return `\n🔎 DB 재확인: ${s.label} 최신 ${s.latestDate ? s.latestDate.slice(5) : "없음"}${tail}`;
+    } catch { return ""; }
+  };
+
   const uploadSales = async (_date: string, file: File) => {
     const form = new FormData();
     form.append("file", file);
@@ -1390,11 +1410,14 @@ function UploadTab() {
     const data = await res.json();
     const formatUnmatched = (items: { code: string; name?: string; count: number; firstRow?: number; rowSample?: string[] }[]) =>
       items.map(p => {
-        const showName = p.name && p.name !== p.code;
-        const base = showName ? `${p.code}  ${p.name}  (${p.count}건)` : `${p.code}  (${p.count}건)`;
-        const where = p.firstRow ? ` — 엑셀 ${p.firstRow}행` : "";
-        const sample = p.rowSample && p.rowSample.length > 0 ? `\n    [row: ${p.rowSample.filter(Boolean).join(" | ")}]` : "";
-        return `  · ${base}${where}${sample}`;
+        const hasName = p.name && p.name !== p.code;
+        // 상품명을 앞세움 → '상품 목록' 탭에 이 이름으로 등록하면 됨. 행번호로 때우지 않는다.
+        if (hasName) return `  · ${p.name}  (코드 ${p.code}, ${p.count}건)`;
+        // 파일에 상품명 컬럼이 정말 없을 때만 행 내용을 보여 식별을 돕는다 (행번호 X)
+        const rowContent = p.rowSample && p.rowSample.filter(Boolean).length > 0
+          ? ` — 행 내용: ${p.rowSample.filter(Boolean).join(" | ")}`
+          : "";
+        return `  · 코드 ${p.code}  (${p.count}건)${rowContent}`;
       }).join("\n");
     if (data.ok) {
       const brands = data.brandSummary
@@ -1406,6 +1429,7 @@ function UploadTab() {
       if (data.unmatchedProducts?.length) {
         msg += `\n⚠️ 미등록 품목코드 ${data.totalUnmatched}개:\n${formatUnmatched(data.unmatchedProducts)}`;
       }
+      msg += await verifyUpload("sales");
       return { ok: true, message: msg };
     }
     // 에러인 경우에도 미등록 코드가 있으면 표시
@@ -1427,6 +1451,7 @@ function UploadTab() {
     if (data.ok) {
       let msg = `✅ ${data.message || `${data.funnel}일 퍼널 반영`}`;
       if (Array.isArray(data.warnings) && data.warnings.length > 0) msg += ` | ${data.warnings.join(" / ")}`;
+      msg += await verifyUpload("coupang_funnel");
       return { ok: true, message: msg };
     }
     let err = data.error || "업로드 실패";
@@ -1443,13 +1468,19 @@ function UploadTab() {
     form.append("date", coupangAdsDate);
     const res = await fetch("/api/upload-coupang-ads", { method: "POST", body: form });
     const data = await res.json();
-    setCoupangAdsStatus(data.ok ? `✅ ${data.message}` : `❌ ${data.error || "업로드 실패"}`);
-    if (data.ok) refreshMissing();
+    if (data.ok) {
+      const v = await verifyUpload("coupang_ads");
+      setCoupangAdsStatus(`✅ ${data.message}${v}`);
+      refreshMissing();
+    } else {
+      setCoupangAdsStatus(`❌ ${data.error || "업로드 실패"}`);
+    }
     setCoupangAdsUploading(false);
   };
 
   return (
     <div className="space-y-4">
+      <SalesCoverage />
       <Card>
         <CardContent className="p-4 space-y-4">
           <h3 className="text-lg font-semibold">📤 엑셀 업로드</h3>

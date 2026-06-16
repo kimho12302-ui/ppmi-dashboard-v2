@@ -32,10 +32,10 @@ function InsightsInner() {
   const insights = data?.insights || [];
 
   const levelConfig: Record<InsightType, { icon: string; border: string; badge: string; badgeLabel: string }> = {
-    critical: { icon: "\uD83D\uDD34", border: "border-l-red-500 bg-red-500/5", badge: "bg-red-500/10 text-red-600", badgeLabel: "\uC989\uC2DC \uB300\uC751" },
-    warning: { icon: "\uD83D\uDFE1", border: "border-l-amber-500 bg-amber-500/5", badge: "bg-amber-500/10 text-amber-600", badgeLabel: "\uC8FC\uC758" },
-    opportunity: { icon: "\uD83D\uDFE2", border: "border-l-emerald-500 bg-emerald-500/5", badge: "bg-emerald-500/10 text-emerald-600", badgeLabel: "\uAE30\uD68C" },
-    info: { icon: "\uD83D\uDD35", border: "border-l-blue-500 bg-blue-500/5", badge: "bg-blue-500/10 text-blue-600", badgeLabel: "\uCC38\uACE0" },
+    critical: { icon: "🔴", border: "border-l-red-500 bg-red-500/5", badge: "bg-red-500/10 text-red-600", badgeLabel: "즉시 대응" },
+    warning: { icon: "🟡", border: "border-l-amber-500 bg-amber-500/5", badge: "bg-amber-500/10 text-amber-600", badgeLabel: "주의" },
+    opportunity: { icon: "🟢", border: "border-l-emerald-500 bg-emerald-500/5", badge: "bg-emerald-500/10 text-emerald-600", badgeLabel: "기회" },
+    info: { icon: "🔵", border: "border-l-blue-500 bg-blue-500/5", badge: "bg-blue-500/10 text-blue-600", badgeLabel: "참고" },
   };
 
   const countByLevel = insights.reduce((acc, i) => {
@@ -45,7 +45,7 @@ function InsightsInner() {
 
   if (loading) {
     return (
-      <PageShell title="\uC778\uC0AC\uC774\uD2B8" description="\uC790\uB3D9 \uC774\uC0C1\uCE58 \uAC10\uC9C0 \xB7 \uD2B8\uB80C\uB4DC \uBD84\uC11D \xB7 \uD6A8\uC728 \uACBD\uACE0 \xB7 \uC6D0\uC778 \uBD84\uC11D">
+      <PageShell title="인사이트" description="자동 이상치 감지 · 트렌드 분석 · 효율 경고 · 원인 분석">
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <Card key={i} className="p-4 animate-pulse">
@@ -61,7 +61,7 @@ function InsightsInner() {
   }
 
   return (
-    <PageShell title="\uC778\uC0AC\uC774\uD2B8" description="\uC790\uB3D9 \uC774\uC0C1\uCE58 \uAC10\uC9C0 \xB7 \uD2B8\uB80C\uB4DC \uBD84\uC11D \xB7 \uD6A8\uC728 \uACBD\uACE0 \xB7 \uC6D0\uC778 \uBD84\uC11D">
+    <PageShell title="인사이트" description="자동 이상치 감지 · 트렌드 분석 · 효율 경고 · 원인 분석">
       {/* Summary badges */}
       <div className="flex flex-wrap gap-2">
         {(["critical", "warning", "opportunity", "info"] as InsightType[]).map((level) => {

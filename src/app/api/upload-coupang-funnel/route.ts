@@ -3,6 +3,7 @@ export const maxDuration = 60;
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
+import { triggerSheetSync } from "@/lib/github-dispatch";
 
 function safeNum(val: unknown): number {
   if (val === null || val === undefined || val === "") return 0;
@@ -128,18 +129,14 @@ export async function POST(req: NextRequest) {
     const perDate: Array<{ date: string; sessions: number; impressions: number; cart_adds: number; purchases: number; rows: number }> = [];
 
     for (const [d, vals] of byDate.entries()) {
-      const { error } = await supabase.from("daily_funnel").upsert(
-        {
-          date: d,
-          brand: "all",
-          channel: "coupang",
-          impressions: Math.round(vals.impressions),
-          sessions: Math.round(vals.sessions),
-          cart_adds: Math.round(vals.cart_adds),
-          purchases: Math.round(vals.purchases),
-        },
-        { onConflict: "date,brand,channel" }
-      );
+      // 엑셀에 없던 컬럼은 upsert payload에서 제외 → 기존(수기 입력) 값 보존.
+      // 조회/방문 등 수기 관리 컬럼을 부분 업로드가 0으로 덮어쓰는 사고 방지.
+      const payload: Record<string, unknown> = { date: d, brand: "all", channel: "coupang" };
+      if (impCol >= 0) payload.impressions = Math.round(vals.impressions);
+      if (sessionCol >= 0) payload.sessions = Math.round(vals.sessions);
+      if (cartCol >= 0) payload.cart_adds = Math.round(vals.cart_adds);
+      if (orderCol >= 0) payload.purchases = Math.round(vals.purchases);
+      const { error } = await supabase.from("daily_funnel").upsert(payload, { onConflict: "date,brand,channel" });
       if (error) errors.push(`${d}: ${error.message}`);
       else funnelDays++;
       perDate.push({ date: d, sessions: vals.sessions, impressions: vals.impressions, cart_adds: vals.cart_adds, purchases: vals.purchases, rows: vals.rowCount });
@@ -151,10 +148,15 @@ export async function POST(req: NextRequest) {
     if (nanRows > 0) warnings.push(`숫자 인식 실패 ${nanRows}행 스킵`);
     if (errors.length > 0) warnings.push(...errors);
 
+    // 업로드 직후 통계시트 즉시 반영 (best-effort, 비차단)
+    const funnelDates = [...byDate.keys()].sort();
+    const sheetSyncTriggered = funnelDates.length > 0 ? await triggerSheetSync(funnelDates[0], funnelDates[funnelDates.length - 1]) : false;
+
     return NextResponse.json({
       ok: true,
       funnel: funnelDays,
       message: `쿠팡 퍼널 ${funnelDays}일 반영 (방문 ${Math.round(perDate.reduce((s,x)=>s+x.sessions,0))} / 조회 ${Math.round(perDate.reduce((s,x)=>s+x.impressions,0))} / 장바구니 ${Math.round(perDate.reduce((s,x)=>s+x.cart_adds,0))} / 주문 ${Math.round(perDate.reduce((s,x)=>s+x.purchases,0))})`,
+      sheetSyncTriggered,
       sheetName,
       matched,
       detectedHeaders: headers,

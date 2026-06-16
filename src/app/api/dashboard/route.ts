@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { isGonggu, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
+import { isGonggu, isGongguAggregate, gongguSeller, isGongguInDailySales } from "@/lib/gonggu";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchAll(baseQuery: any): Promise<any[]> {
@@ -30,6 +30,10 @@ export async function GET(req: NextRequest) {
     // ── 이전 기간 날짜 계산 (DB 호출 없음) ──
     const fromDate = new Date(from);
     const toDate = new Date(to);
+    // 방어: 잘못된 날짜는 Invalid Date → toISOString 크래시(500) 대신 명확한 400
+    if (!from || !to || isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+      return NextResponse.json({ error: "유효한 from/to 날짜가 필요합니다 (YYYY-MM-DD)" }, { status: 400 });
+    }
     const diff = toDate.getTime() - fromDate.getTime();
     const prevFrom = new Date(fromDate.getTime() - diff - 86400000).toISOString().slice(0, 10);
     const prevTo = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
@@ -37,7 +41,8 @@ export async function GET(req: NextRequest) {
 
     // ── 쿼리 빌드 (모두 독립적 → 아래에서 한 번에 병렬 실행) ──
     // channel="total"은 Total 탭 집계값 — 채널별 합과 중복이므로 제외
-    let salesQuery = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("channel", "total").order("date");
+    // 자체매출만 집계: daily_sales 의 공구(공동구매) 채널 제외. 공구는 별도 섹션(product_sales 기반)에서만 표시.
+    let salesQuery = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("channel", "total").not("channel", "like", "공구%").order("date");
     if (brand !== "all") salesQuery = salesQuery.eq("brand", brand);
     else salesQuery = salesQuery.neq("brand", "all");
 
@@ -45,7 +50,7 @@ export async function GET(req: NextRequest) {
     if (brand !== "all") adQuery = adQuery.eq("brand", brand);
     else adQuery = adQuery.neq("brand", "all");
 
-    let prevSalesQ = supabase.from("daily_sales").select("revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total");
+    let prevSalesQ = supabase.from("daily_sales").select("revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total").not("channel", "like", "공구%");
     if (brand !== "all") prevSalesQ = prevSalesQ.eq("brand", brand);
     else prevSalesQ = prevSalesQ.neq("brand", "all");
 
@@ -149,16 +154,47 @@ export async function GET(req: NextRequest) {
       gongguSales = Array.from(sellerMap.entries()).map(([seller, d]) => ({ seller, ...d })).sort((a, b) => b.revenue - a.revenue);
     }
 
+    // ── P2-2: daily_sales 공구 채널(공구_*) — 헤드라인에선 제외되지만 어디에도 안 보이면 숨겨짐 → 공구 섹션에 별도 노출 ──
+    let dailyGongguTotal = 0;
+    const dailyGongguByCh = new Map<string, number>();
+    if (brand === "balancelab" || brand === "all") {
+      const dg = await fetchAll(supabase.from("daily_sales").select("channel,revenue").gte("date", from).lte("date", to).eq("brand", "balancelab").like("channel", "공구%"));
+      for (const r of dg) {
+        const rev = Number(r.revenue || 0);
+        dailyGongguTotal += rev;
+        dailyGongguByCh.set(r.channel, (dailyGongguByCh.get(r.channel) || 0) + rev);
+      }
+    }
+
+    // ── 형식-A 공구 차감: 밸런스랩 daily_sales smartstore 에 셀러 공구가 섞여 자체매출 부풀림 ──
+    // product_sales(gongguData)의 형식-A(채널이 공구*가 아닌 공구)를 날짜별로 구해 balancelab 매출에서 차감.
+    const formAByDate = new Map<string, number>();
+    for (const r of gongguData || []) {
+      if (isGongguInDailySales(r)) formAByDate.set((r as { date: string }).date, (formAByDate.get((r as { date: string }).date) || 0) + Number((r as { revenue: number }).revenue || 0));
+    }
+    // 헤드라인/트렌드/브랜드 집계에 쓰는 자체매출 보정본 (raw sales 반환값은 그대로 유지)
+    const adjSales = (sales || []).map((r) => {
+      if (r.brand === "balancelab") {
+        const g = formAByDate.get(r.date) || 0;
+        if (g > 0) return { ...r, revenue: Math.max(0, Number(r.revenue) - g) };
+      }
+      return r;
+    });
+
     // ── KPI 계산 ──
     // gongguSalesTotal은 더하지 않음: lineup 기반 공구 매출은 daily_sales smartstore에 이미 포함
-    const totalRevenue = (sales || []).reduce((s, r) => s + Number(r.revenue), 0);
+    const totalRevenue = adjSales.reduce((s, r) => s + Number(r.revenue), 0);
     const totalOrders = (sales || []).reduce((s, r) => s + Number(r.orders), 0);
     const nonGa4Ad = (adSpend || []).filter(r => !r.channel.startsWith("ga4_"));
-    const totalAdSpend = nonGa4Ad.reduce((s, r) => s + Number(r.spend), 0) + totalMiscCost;
+    // 매체비(media)와 잡비(misc) 분리:
+    //  - ROAS·KPI 광고비는 매체비 기준 (목표 ad_budget_target가 매체비 기준이라 비교 일치, 전기간 비교도 매체비라 동일 분모)
+    //  - 잡비는 별도 비용 → 이익·MER에만 반영 (kpi.miscCost로 별도 노출)
+    const totalMediaSpend = nonGa4Ad.reduce((s, r) => s + Number(r.spend), 0);
+    const totalMarketingCost = totalMediaSpend + totalMiscCost; // 총 마케팅비 (이익·MER용)
     const totalConvValue = nonGa4Ad.reduce((s, r) => s + Number(r.conversion_value || 0), 0);
-    const roas = totalAdSpend > 0 ? totalConvValue / totalAdSpend : 0;
-    const profit = totalRevenue - totalAdSpend - totalCOGS - totalShippingCost;
-    const mer = totalAdSpend > 0 ? totalRevenue / totalAdSpend : 0;
+    const roas = totalMediaSpend > 0 ? totalConvValue / totalMediaSpend : 0; // 매체 ROAS (목표·페이싱과 동일 분모)
+    const profit = totalRevenue - totalMarketingCost - totalCOGS - totalShippingCost;
+    const mer = totalMarketingCost > 0 ? totalRevenue / totalMarketingCost : 0; // MER = 매출/총마케팅비(매체+잡비)
     const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
     const prevRevenue = (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0);
@@ -175,7 +211,7 @@ export async function GET(req: NextRequest) {
     // ── Trend (일별) ──
     const trendMap = new Map<string, { revenue: number; adSpend: number; [k: string]: number }>();
     const brandLabels: Record<string, string> = { nutty: "너티", ironpet: "아이언펫", saip: "사입", balancelab: "밸런스랩" };
-    for (const r of sales || []) {
+    for (const r of adjSales) {
       const d = trendMap.get(r.date) || { revenue: 0, adSpend: 0 };
       d.revenue += Number(r.revenue);
       const bl = brandLabels[r.brand] || r.brand;
@@ -232,7 +268,7 @@ export async function GET(req: NextRequest) {
 
     // ── Brand breakdown ──
     const brandRevMap = new Map<string, { revenue: number; orders: number }>();
-    for (const r of sales || []) {
+    for (const r of adjSales) {
       if (r.brand === "all") continue;
       const e = brandRevMap.get(r.brand) || { revenue: 0, orders: 0 };
       e.revenue += Number(r.revenue); e.orders += Number(r.orders);
@@ -260,7 +296,7 @@ export async function GET(req: NextRequest) {
 
     // ── Brand revenue trend ──
     const brandTrendMap = new Map<string, Record<string, number>>();
-    for (const r of sales || []) {
+    for (const r of adjSales) {
       if (r.brand === "all") continue;
       const e = brandTrendMap.get(r.date) || {};
       const bl = brandLabels[r.brand] || r.brand;
@@ -273,7 +309,7 @@ export async function GET(req: NextRequest) {
 
     // ── Sales by channel ──
     const salesChMap = new Map<string, number>();
-    for (const r of sales || []) salesChMap.set(r.channel, (salesChMap.get(r.channel) || 0) + Number(r.revenue));
+    for (const r of adjSales) salesChMap.set(r.channel, (salesChMap.get(r.channel) || 0) + Number(r.revenue));
     // 공구 채널은 별도 추가하지 않음: daily_sales에 이미 포함
     const salesByChannel = Array.from(salesChMap.entries()).map(([channel, revenue]) => ({ channel, revenue })).sort((a, b) => b.revenue - a.revenue);
 
@@ -309,12 +345,12 @@ export async function GET(req: NextRequest) {
       const prevDate = sortedDates[sortedDates.length - 2];
       const dayRevMap = new Map<string, Map<string, number>>();
       const dayAdMap = new Map<string, Map<string, number>>();
-      for (const r of sales || []) {
+      for (const r of adjSales) {
         if (r.date !== lastDate && r.date !== prevDate) continue;
         if (!dayRevMap.has(r.date)) dayRevMap.set(r.date, new Map());
         dayRevMap.get(r.date)!.set(r.brand, (dayRevMap.get(r.date)!.get(r.brand) || 0) + Number(r.revenue));
       }
-      for (const r of adSpend || []) {
+      for (const r of nonGa4Ad) {
         if (r.date !== lastDate && r.date !== prevDate) continue;
         if (!dayAdMap.has(r.date)) dayAdMap.set(r.date, new Map());
         dayAdMap.get(r.date)!.set(r.brand, (dayAdMap.get(r.date)!.get(r.brand) || 0) + Number(r.spend));
@@ -334,8 +370,9 @@ export async function GET(req: NextRequest) {
     const prevSalesRaw = (prevSales || []).map(r => ({ ...r, date: "", brand: "", channel: "" }));
 
     return NextResponse.json({
-      // Raw data (for sales/ads pages)
-      sales: sales || [],
+      // Raw data (for sales/ads pages) — sales는 form-A 공구 차감본(adjSales)으로 반환해
+      // /sales 페이지가 재집계해도 오버뷰 헤드라인과 동일한 자체매출이 되도록 함.
+      sales: adjSales,
       ads: adSpend || [],
       products: (prodData || []),
       prevSales: prevSalesRaw,
@@ -343,7 +380,7 @@ export async function GET(req: NextRequest) {
       // Computed KPI
       kpi: {
         revenue: totalRevenue, revenuePrev: prevRevenue,
-        adSpend: totalAdSpend, adSpendPrev: prevAdSpendTotal,
+        adSpend: totalMediaSpend, adSpendPrev: prevAdSpendTotal,
         roas, roasPrev: prevRoas,
         orders: totalOrders, ordersPrev: prevOrders,
         profit, profitPrev: prevProfit,
@@ -358,6 +395,7 @@ export async function GET(req: NextRequest) {
       funnelSummary: { ...funnelSummary, convRate },
       targets,
       gongguSales, gongguSalesTotal, selfSalesTotal,
+      dailyGongguTotal, dailyGonggu: Object.fromEntries(dailyGongguByCh),
       anomalies,
     });
   } catch (error) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { google } from "googleapis";
+import { triggerSheetSync } from "@/lib/github-dispatch";
 
 const STATS_SHEET_ID = "1FzxDCyR9FyAIduf7Q0lfUIOzvSqVlod21eOFqaPrXio";
 
@@ -308,7 +309,9 @@ export async function POST(req: NextRequest) {
           .from("daily_ad_spend")
           .upsert(row, { onConflict: "date,channel,brand" });
         if (error) throw error;
-        return NextResponse.json({ ok: true, message: `${channel} ${date} 저장 완료` });
+        // GFA 등 수동 광고비는 정규 DB→시트 싱크가 GFA를 건너뛰므로, 저장 직후 해당 날짜 sheet-sync를 직접 트리거 → ~1분 내 시트 반영.
+        const sheetSyncTriggered = await triggerSheetSync(date, date);
+        return NextResponse.json({ ok: true, message: `${channel} ${date} 저장 완료`, sheetSyncTriggered });
       }
 
       // ── 제품 원가 ──

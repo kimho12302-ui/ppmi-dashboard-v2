@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { isGongguInDailySales } from "@/lib/gonggu";
 
 // 목표 대비 페이싱 (통계시트 "광고 예산안" 재현)
 // 현재 월에 대해 엔티티별: 날짜진행률 vs 매출/광고비/ROAS/광고비비중 목표·현황·달성률 + 잔여 + 필요 일런레이트
@@ -52,7 +53,8 @@ export async function GET(req: NextRequest) {
     if (brand !== "all") tQ = tQ.eq("brand", brand);
     else tQ = tQ.in("brand", BRANDS);
 
-    let salesQ = supabase.from("daily_sales").select("date,revenue,orders,brand").gte("date", monthStart).lte("date", monthEnd).neq("channel", "total");
+    // 자체매출만 집계: 공구 채널 제외 (목표 스코프와 일치). 공구는 별도 표시.
+    let salesQ = supabase.from("daily_sales").select("date,revenue,orders,brand").gte("date", monthStart).lte("date", monthEnd).neq("channel", "total").not("channel", "like", "공구%");
     if (brand !== "all") salesQ = salesQ.eq("brand", brand);
     else salesQ = salesQ.in("brand", BRANDS);
 
@@ -60,16 +62,31 @@ export async function GET(req: NextRequest) {
     if (brand !== "all") adQ = adQ.eq("brand", brand);
     else adQ = adQ.in("brand", BRANDS);
 
+    // 밸런스랩: daily_sales smartstore 에 형식-A 공구(셀러가 스마트스토어로 판 공구)가 섞여 있어
+    // 자체매출이 부풀려진다. product_sales 에서 형식-A 공구를 날짜별로 구해 차감.
+    const needGonggu = brand === "balancelab" || brand === "all";
+    const psQ = supabase.from("product_sales").select("date,channel,lineup,product,revenue").gte("date", monthStart).lte("date", monthEnd).eq("brand", "balancelab");
+
     // 1회 병렬 배치 (이전: 순차 3회)
-    const [targetsRes, sales, ads] = await Promise.all([tQ, fetchAll(salesQ), fetchAll(adQ)]);
+    const [targetsRes, sales, ads, psRows] = await Promise.all([
+      tQ, fetchAll(salesQ), fetchAll(adQ),
+      needGonggu ? fetchAll(psQ) : Promise.resolve([] as unknown[]),
+    ]);
     const targetsData = targetsRes.data;
+
+    // 형식-A 공구 날짜별 차감액 (밸런스랩)
+    const formAByDate = new Map<string, number>();
+    for (const r of psRows as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
+      if (isGongguInDailySales(r)) formAByDate.set(r.date, (formAByDate.get(r.date) || 0) + Number(r.revenue || 0));
+    }
+    const totalFormA = [...formAByDate.values()].reduce((s, v) => s + v, 0);
     const targetRevenue = (targetsData || []).reduce((s, r) => s + Number(r.revenue_target || 0), 0);
     const targetAd = (targetsData || []).reduce((s, r) => s + Number(r.ad_budget_target || 0), 0);
     // ROAS 목표: 가중(목표매출/목표광고비). 광고비비중 목표 = 목표광고비/목표매출.
     const targetRoas = targetAd > 0 ? targetRevenue / targetAd : 0;
     const targetAdRatio = targetRevenue > 0 ? targetAd / targetRevenue : 0;
 
-    const actualRevenue = sales.reduce((s, r) => s + Number(r.revenue || 0), 0);
+    const actualRevenue = sales.reduce((s, r) => s + Number(r.revenue || 0), 0) - totalFormA;
     const actualOrders = sales.reduce((s, r) => s + Number(r.orders || 0), 0);
     const actualAd = ads.reduce((s, r) => s + Number(r.spend || 0), 0);
     const actualConvValue = ads.reduce((s, r) => s + Number(r.conversion_value || 0), 0);
@@ -113,7 +130,8 @@ export async function GET(req: NextRequest) {
         const t = tByBrand.get(b);
         const tRev = Number(t?.revenue_target || 0);
         const tAd = Number(t?.ad_budget_target || 0);
-        const aRev = revByBrand.get(b) || 0;
+        const aRev = (revByBrand.get(b) || 0) - (b === "balancelab" ? totalFormA : 0); // 형식-A 공구 차감
+
         const aAd = adByBrand.get(b) || 0;
         const aCv = cvByBrand.get(b) || 0;
         return {
@@ -140,7 +158,8 @@ export async function GET(req: NextRequest) {
       const end = Math.min(e, daysInMonth);
       const wDays = end - s + 1;
       const inWeek = (dateStr: string) => { const d = Number(dateStr.slice(8, 10)); return d >= s && d <= end; };
-      const wRev = sales.filter((r) => inWeek(r.date)).reduce((acc, r) => acc + Number(r.revenue || 0), 0);
+      let wFormA = 0; formAByDate.forEach((v, d) => { if (inWeek(d)) wFormA += v; });
+      const wRev = sales.filter((r) => inWeek(r.date)).reduce((acc, r) => acc + Number(r.revenue || 0), 0) - wFormA;
       const wAd = ads.filter((r) => inWeek(r.date)).reduce((acc, r) => acc + Number(r.spend || 0), 0);
       const wTargetRev = targetRevenue * (wDays / daysInMonth);
       const wTargetAd = targetAd * (wDays / daysInMonth);

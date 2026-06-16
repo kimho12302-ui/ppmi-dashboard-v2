@@ -37,7 +37,8 @@ export async function GET(request: NextRequest) {
     const prevTo = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
 
     // 쿼리 빌드 (모두 독립적 → 한 번에 병렬 실행)
-    let salesQ = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("brand", "all").neq("channel", "total");
+    // 자체매출만: 공구 채널 제외 (공구 별도 표시)
+    let salesQ = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("brand", "all").neq("channel", "total").not("channel", "like", "공구%");
     if (brand !== "all") salesQ = salesQ.eq("brand", brand);
 
     let adQ = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).neq("brand", "all").not("channel", "like", "ga4_%");
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
       adQ.range(0, 99999),
       funnelQ.range(0, 99999),
       prodQ.range(0, 9999),
-      supabase.from("daily_sales").select("*").gte("date", prevFrom).lte("date", prevTo),
+      supabase.from("daily_sales").select("*").gte("date", prevFrom).lte("date", prevTo).neq("brand", "all").neq("channel", "total").not("channel", "like", "공구%"),
       supabase.from("daily_ad_spend").select("*").gte("date", prevFrom).lte("date", prevTo).not("channel", "like", "ga4_%"),
     ]);
     const sales = salesRes.data;
