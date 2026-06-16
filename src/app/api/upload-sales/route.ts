@@ -51,6 +51,36 @@ function detectBrand(productCode: string, productListMap: Map<string, any>): str
   return "saip";
 }
 
+// 미등록 상품을 사람이 바로 알아볼 수 있게 이름 추출.
+// 헤더(품목명/상품명)로 못 찾으면 → 상품코드 인접 셀 → 행 전체에서 '상품명다운' 셀(숫자·날짜·채널·코드 제외, 한글/영문 포함, 가장 긴 것) 순으로 자동 선택.
+function pickProductName(row: unknown[], productNameCol: number, productCodeCol: number, productCode: string, client: string): string {
+  if (productNameCol >= 0) {
+    const v = String(row[productNameCol] ?? "").trim();
+    if (v && v !== productCode) return v;
+  }
+  const isName = (s: string): boolean =>
+    !!s && s !== productCode && s !== client &&
+    !/^[\d,.\s]+$/.test(s) &&                              // 순수 숫자/콤마
+    !/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(s) &&           // 날짜 YYYY-MM-DD 등
+    !(/\b\d{1,2}:\d{2}\b/.test(s) && /\d{4}/.test(s)) &&   // JS Date 문자열(요일·시각 포함)
+    /[가-힣A-Za-z]/.test(s) &&                             // 한글/영문 포함
+    !/(_스마트스토어|_쿠팡|_카페24|_로켓그로스)/.test(s) && !/^(PPMI_|YS_)/.test(s); // 채널/거래처 잔재
+  // 1) 이카운트는 상품명이 상품코드 바로 옆 칸인 경우가 많음 → 인접 셀 우선
+  for (const idx of [productCodeCol + 1, productCodeCol - 1]) {
+    if (idx >= 0 && idx < row.length) {
+      const s = String(row[idx] ?? "").trim();
+      if (isName(s)) return s;
+    }
+  }
+  // 2) 행 전체에서 가장 긴 상품명다운 셀
+  let best = "";
+  for (const cell of row) {
+    const s = String(cell ?? "").trim();
+    if (isName(s) && s.length > best.length) best = s;
+  }
+  return best || productCode;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -216,8 +246,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (!productListMap.has(productCode)) {
-        const fromCol = productNameCol >= 0 ? String(row[productNameCol] || "").trim() : "";
-        const prodName = fromCol || productCode;
+        const prodName = pickProductName(row, productNameCol, productCodeCol, productCode, client);
         const existing = unmatchedCodes.get(productCode);
         if (existing) { existing.count++; }
         else {
