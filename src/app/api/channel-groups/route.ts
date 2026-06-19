@@ -35,40 +35,53 @@ async function fetchAll(q: any): Promise<any[]> {
   return all;
 }
 
+type DayAgg = { rev: Record<string, number>; ad: Record<string, number> };
+
 async function periodData(from: string, to: string, brand: string) {
   // 매출: daily_sales 채널별 (공구 채널 제외). 브랜드 필터 시 해당 브랜드만.
-  let salesQ = supabase.from("daily_sales").select("brand,channel,revenue")
+  let salesQ = supabase.from("daily_sales").select("date,brand,channel,revenue")
     .gte("date", from).lte("date", to).neq("channel", "total").not("channel", "like", "공구%");
   if (brand !== "all") salesQ = salesQ.eq("brand", brand);
   const sales = await fetchAll(salesQ);
   // 광고비: daily_ad_spend 채널별 (ga4 제외). all이면 매직행(brand=all) 제외, 특정 브랜드면 그 브랜드만.
-  let adsQ = supabase.from("daily_ad_spend").select("channel,spend")
+  let adsQ = supabase.from("daily_ad_spend").select("date,channel,spend")
     .gte("date", from).lte("date", to).not("channel", "like", "ga4_%");
   adsQ = brand !== "all" ? adsQ.eq("brand", brand) : adsQ.neq("brand", "all");
   const ads = await fetchAll(adsQ);
-  // 밸런스랩 형식-A 공구(스마트스토어로 섞인 공구) → smartstore 매출에서 차감. 밸런스랩 전용이라 all/balancelab일 때만.
+  // 밸런스랩 형식-A 공구 → smartstore 매출에서 차감 (날짜별 + 합계). all/balancelab일 때만.
   let formA = 0;
+  const formAByDate: Record<string, number> = {};
   if (brand === "all" || brand === "balancelab") {
     const ps = await fetchAll(
       supabase.from("product_sales").select("date,channel,lineup,product,revenue")
         .gte("date", from).lte("date", to).eq("brand", "balancelab")
     );
-    for (const r of ps as { channel: string; lineup: string | null; product: string; revenue: number }[]) {
-      if (isGongguInDailySales(r)) formA += Number(r.revenue || 0);
+    for (const r of ps as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
+      if (isGongguInDailySales(r)) { const v = Number(r.revenue || 0); formA += v; formAByDate[r.date] = (formAByDate[r.date] || 0) + v; }
     }
   }
 
+  const byDate: Record<string, DayAgg> = {};
+  const day = (d: string): DayAgg => (byDate[d] ||= { rev: {}, ad: {} });
+
   const revByCh: Record<string, number> = {};
-  for (const r of sales as { channel: string; revenue: number }[]) {
-    revByCh[r.channel] = (revByCh[r.channel] || 0) + Number(r.revenue || 0);
+  for (const r of sales as { date: string; channel: string; revenue: number }[]) {
+    const v = Number(r.revenue || 0);
+    revByCh[r.channel] = (revByCh[r.channel] || 0) + v;
+    const dd = day(r.date); dd.rev[r.channel] = (dd.rev[r.channel] || 0) + v;
   }
   revByCh["smartstore"] = Math.max(0, (revByCh["smartstore"] || 0) - formA);
+  for (const d in formAByDate) {
+    if (byDate[d]) byDate[d].rev["smartstore"] = Math.max(0, (byDate[d].rev["smartstore"] || 0) - formAByDate[d]);
+  }
 
   const adByCh: Record<string, number> = {};
-  for (const r of ads as { channel: string; spend: number }[]) {
-    adByCh[r.channel] = (adByCh[r.channel] || 0) + Number(r.spend || 0);
+  for (const r of ads as { date: string; channel: string; spend: number }[]) {
+    const v = Number(r.spend || 0);
+    adByCh[r.channel] = (adByCh[r.channel] || 0) + v;
+    const dd = day(r.date); dd.ad[r.channel] = (dd.ad[r.channel] || 0) + v;
   }
-  return { revByCh, adByCh };
+  return { revByCh, adByCh, byDate };
 }
 
 export async function GET(req: NextRequest) {
@@ -113,10 +126,24 @@ export async function GET(req: NextRequest) {
     const totalRev = groups.reduce((s, g) => s + g.revenue, 0);
     const totalAd = groups.reduce((s, g) => s + g.adSpend, 0);
 
+    // 일별 시계열 (페이지에서 일/주/월로 롤업) — 채널그룹별 매출/광고비
+    const series = Object.keys(cur.byDate).sort().map((date) => {
+      const d = cur.byDate[date];
+      const row: Record<string, unknown> = { date };
+      for (const g of GROUPS) {
+        row[g.key] = {
+          revenue: g.salesCh.reduce((s, c) => s + (d.rev[c] || 0), 0),
+          adSpend: g.adCh.reduce((s, c) => s + (d.ad[c] || 0), 0),
+        };
+      }
+      return row;
+    });
+
     return NextResponse.json({
       from, to, prevFrom, prevTo,
       groups,
       total: { revenue: totalRev, adSpend: totalAd, roas: totalAd > 0 ? totalRev / totalAd : 0, adRatio: totalRev > 0 ? (totalAd / totalRev) * 100 : 0 },
+      series,
     });
   } catch (error) {
     console.error("channel-groups error:", error);
