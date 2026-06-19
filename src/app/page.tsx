@@ -12,7 +12,7 @@ import {
 } from "@/lib/types";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import {
-  AreaChart, Area, LineChart, Line, ReferenceLine, BarChart, Bar,
+  Area, ComposedChart, LineChart, Line, ReferenceLine, BarChart, Bar,
   XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend,
 } from "recharts";
@@ -29,7 +29,7 @@ interface DashboardData {
     aov: number; aovPrev: number; cogs: number; shippingCost: number;
     miscCost: number; matchedRate: number;
   };
-  trend: { date: string; revenue: number; adSpend: number; maRevenue: number; maAdSpend: number; [k: string]: string | number }[];
+  trend: { date: string; revenue: number; adSpend: number; maRevenue: number; maAdSpend: number; roas: number; [k: string]: string | number }[];
   channels: { channel: string; spend: number; roas: number }[];
   brandRevenue: { brand: string; revenue: number; orders: number }[];
   brandProfit: { brand: string; revenue: number; orders: number; adSpend: number; cogs: number; profit: number; margin: number }[];
@@ -111,7 +111,7 @@ function OverviewInner() {
   }, [data, channelMap]);
 
   const dailyTrend = useMemo(() => (data?.trend || []).map((t) => ({
-    date: t.date.slice(5), revenue: t.revenue, adSpend: t.adSpend, maRevenue: t.maRevenue, maAdSpend: t.maAdSpend,
+    date: t.date.slice(5), revenue: t.revenue, adSpend: t.adSpend, maRevenue: t.maRevenue, maAdSpend: t.maAdSpend, roas: Number(t.roas) || 0,
   })), [data]);
 
   const funnelSummary = data?.funnelSummary || { sessions: 0, cartAdds: 0, purchases: 0, repurchases: 0, convRate: 0 };
@@ -371,16 +371,18 @@ function OverviewInner() {
               )}
             </div>
             <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={dailyTrend} margin={{ top: 24, right: 8, bottom: 0, left: 0 }}>
+              <ComposedChart data={dailyTrend} margin={{ top: 24, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
+                <YAxis yAxisId="won" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+                <YAxis yAxisId="roas" orientation="right" tick={{ fontSize: 11 }} stroke="#10b981" tickFormatter={(v) => `${v}x`} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val, name) => (name === "ROAS" ? `${Number(val).toFixed(2)}x` : formatCurrency(Number(val)))} />
                 <Legend />
-                <Area type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} />
-                <Area type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} />
+                <Area yAxisId="won" type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} />
+                <Area yAxisId="won" type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} />
+                <Line yAxisId="roas" type="monotone" dataKey="roas" name="ROAS" stroke="#10b981" strokeWidth={2} dot={false} />
                 {events.map(e => (
-                  <ReferenceLine key={e.id} x={e.date} stroke={e.color} strokeDasharray="4 4" strokeWidth={2}
+                  <ReferenceLine key={e.id} yAxisId="won" x={e.date} stroke={e.color} strokeDasharray="4 4" strokeWidth={2}
                     label={(props: { viewBox?: { x: number; y: number; width: number; height: number } }) => {
                       const vb = props.viewBox;
                       if (!vb) return <g />;
@@ -394,7 +396,7 @@ function OverviewInner() {
                       );
                     }} />
                 ))}
-              </AreaChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>

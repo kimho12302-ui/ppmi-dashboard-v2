@@ -235,7 +235,8 @@ export async function GET(req: NextRequest) {
         const window = arr.slice(Math.max(0, i - 6), i + 1);
         const maRevenue = window.reduce((s, [, w]) => s + (w.revenue || 0), 0) / window.length;
         const maAdSpend = window.reduce((s, [, w]) => s + (w.adSpend || 0), 0) / window.length;
-        return { date, ...data, maRevenue: Math.round(maRevenue), maAdSpend: Math.round(maAdSpend) };
+        const roas = (data.adSpend || 0) > 0 ? Math.round((data.revenue / data.adSpend) * 100) / 100 : 0; // 매출/광고비 (채널 성과 ROAS와 동일 정의, 차트의 두 선 비율)
+        return { date, ...data, maRevenue: Math.round(maRevenue), maAdSpend: Math.round(maAdSpend), roas };
       });
 
     // ── Channel breakdown ──
