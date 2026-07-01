@@ -101,7 +101,7 @@ function ChannelInner() {
 
   const chartData = useMemo(() => buckets.map((b) => ({
     label: b.label,
-    네이버: b.naver.a > 0 ? +(b.naver.r / b.naver.a).toFixed(2) : 0,
+    스마트스토어: b.naver.a > 0 ? +(b.naver.r / b.naver.a).toFixed(2) : 0,
     자사몰: b.jasamol.a > 0 ? +(b.jasamol.r / b.jasamol.a).toFixed(2) : 0,
     쿠팡: b.coupang.a > 0 ? +(b.coupang.r / b.coupang.a).toFixed(2) : 0,
     전체: +b.totalRoas.toFixed(2),
@@ -203,7 +203,7 @@ function ChannelInner() {
                     formatter={(v) => `${Number(v).toFixed(2)}x`}
                   />
                   <Legend />
-                  <Line type="monotone" dataKey="네이버" stroke="#10b981" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="스마트스토어" stroke="#10b981" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="자사몰" stroke="#f59e0b" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="쿠팡" stroke="#3b82f6" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="전체" stroke="#6b7280" strokeWidth={2} strokeDasharray="4 2" dot={false} />
@@ -216,7 +216,7 @@ function ChannelInner() {
                   <thead>
                     <tr className="text-left border-b text-muted-foreground">
                       <th className="pb-2 pr-3">기간</th>
-                      <th className="pb-2 px-3 text-right">네이버<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
+                      <th className="pb-2 px-3 text-right">스마트스토어<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
                       <th className="pb-2 px-3 text-right">자사몰<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
                       <th className="pb-2 px-3 text-right">쿠팡<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
                       <th className="pb-2 pl-3 text-right">전체<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
@@ -241,7 +241,7 @@ function ChannelInner() {
             </>
           )}
           <p className="text-[11px] text-muted-foreground/70">
-            네이버=스마트스토어 매출÷(네이버검색+쇼핑+GFA) · 자사몰=카페24÷(메타+구글) · 쿠팡=쿠팡÷쿠팡광고. 매출은 공구 제외 자체매출. 주별=월요일 기준.
+            스마트스토어=스마트스토어 매출÷(네이버검색+쇼핑+GFA+밸런스랩메타) · 자사몰=카페24÷(메타·구글, 밸런스랩 제외) · 쿠팡=쿠팡÷쿠팡광고. 밸런스랩은 스마트스토어 전용이라 메타도 여기 포함. 매출은 공구 제외 자체매출. 주별=월요일 기준.
           </p>
         </CardContent>
       </Card>

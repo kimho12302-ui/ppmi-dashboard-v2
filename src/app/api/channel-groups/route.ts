@@ -4,20 +4,39 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { isGongguInDailySales } from "@/lib/gonggu";
 
-// 채널 성과 = 판매처별 매출 vs 그 판매처를 끌어온 광고비 (사용자 정의 매핑, 2026-06-11).
-//  - 네이버(스마트스토어): 매출=smartstore, 광고비=네이버검색+네이버쇼핑+GFA
-//  - 자사몰(카페24): 매출=cafe24, 광고비=메타+구글
-//  - 쿠팡: 매출=coupang, 광고비=쿠팡광고
+// 채널(판매처) 성과 — 판매처별 매출 vs 그 판매처를 끌어온 광고비.
+// ★ 브랜드 판매처 구조 반영(2026-06 수정):
+//   - 밸런스랩: 스마트스토어 전용 → 밸런스랩 메타/구글도 '스마트스토어'로 귀속(자사몰 아님).
+//   - 너티/사입/아이언펫: 스마트스토어(네이버검색+쇼핑+GFA) + 자사몰(메타+구글) 별개.
+//   즉 메타를 통째로 자사몰에 넣지 않고, 밸런스랩 메타/구글(blMG)만 스마트스토어로 이동.
 const GROUPS = [
-  { key: "naver", label: "네이버 (스마트스토어)", salesCh: ["smartstore"], adCh: ["naver_search", "naver_shopping", "gfa"] },
-  { key: "jasamol", label: "자사몰 (카페24)", salesCh: ["cafe24"], adCh: ["meta", "google_pmax"] },
-  { key: "coupang", label: "쿠팡", salesCh: ["coupang"], adCh: ["coupang_ads"] },
+  { key: "naver", label: "스마트스토어 (네이버·GFA + 밸런스랩 메타)", salesCh: ["smartstore"] },
+  { key: "jasamol", label: "자사몰 (카페24)", salesCh: ["cafe24"] },
+  { key: "coupang", label: "쿠팡", salesCh: ["coupang"] },
 ];
 
-const AD_LABELS: Record<string, string> = {
-  naver_search: "네이버 검색", naver_shopping: "네이버 쇼핑", gfa: "GFA",
-  meta: "메타", google_pmax: "구글", coupang_ads: "쿠팡 광고",
-};
+// 판매처(그룹)별 광고비 — blMG = 밸런스랩 메타+구글(스마트스토어 귀속분)
+function storeAd(key: string, ad: Record<string, number>, blMG: number): number {
+  const g = (c: string) => ad[c] || 0;
+  if (key === "naver") return g("naver_search") + g("naver_shopping") + g("gfa") + blMG;
+  if (key === "jasamol") return Math.max(0, g("meta") + g("google_pmax") - blMG);
+  if (key === "coupang") return g("coupang_ads");
+  return 0;
+}
+function storeSubAds(key: string, ad: Record<string, number>, blMG: number) {
+  const g = (c: string) => ad[c] || 0;
+  if (key === "naver") return [
+    { channel: "naver_search", label: "네이버 검색", spend: g("naver_search") },
+    { channel: "naver_shopping", label: "네이버 쇼핑", spend: g("naver_shopping") },
+    { channel: "gfa", label: "GFA", spend: g("gfa") },
+    { channel: "bl_meta", label: "밸런스랩 메타/구글", spend: blMG },
+  ];
+  if (key === "jasamol") return [
+    { channel: "meta", label: "메타/구글(밸런스랩 제외)", spend: Math.max(0, g("meta") + g("google_pmax") - blMG) },
+  ];
+  if (key === "coupang") return [{ channel: "coupang_ads", label: "쿠팡 광고", spend: g("coupang_ads") }];
+  return [];
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchAll(q: any): Promise<any[]> {
@@ -35,20 +54,19 @@ async function fetchAll(q: any): Promise<any[]> {
   return all;
 }
 
-type DayAgg = { rev: Record<string, number>; ad: Record<string, number> };
+type DayAgg = { rev: Record<string, number>; ad: Record<string, number>; blMG: number };
 
 async function periodData(from: string, to: string, brand: string) {
-  // 매출: daily_sales 채널별 (공구 채널 제외). 브랜드 필터 시 해당 브랜드만.
   let salesQ = supabase.from("daily_sales").select("date,brand,channel,revenue")
     .gte("date", from).lte("date", to).neq("channel", "total").not("channel", "like", "공구%");
   if (brand !== "all") salesQ = salesQ.eq("brand", brand);
   const sales = await fetchAll(salesQ);
-  // 광고비: daily_ad_spend 채널별 (ga4 제외). all이면 매직행(brand=all) 제외, 특정 브랜드면 그 브랜드만.
-  let adsQ = supabase.from("daily_ad_spend").select("date,channel,spend")
+  // 광고비: brand도 가져와 밸런스랩 메타/구글 분리. ga4 제외.
+  let adsQ = supabase.from("daily_ad_spend").select("date,brand,channel,spend")
     .gte("date", from).lte("date", to).not("channel", "like", "ga4_%");
   adsQ = brand !== "all" ? adsQ.eq("brand", brand) : adsQ.neq("brand", "all");
   const ads = await fetchAll(adsQ);
-  // 밸런스랩 형식-A 공구 → smartstore 매출에서 차감 (날짜별 + 합계). all/balancelab일 때만.
+  // 밸런스랩 형식-A 공구 → smartstore 매출에서 차감.
   let formA = 0;
   const formAByDate: Record<string, number> = {};
   if (brand === "all" || brand === "balancelab") {
@@ -62,7 +80,7 @@ async function periodData(from: string, to: string, brand: string) {
   }
 
   const byDate: Record<string, DayAgg> = {};
-  const day = (d: string): DayAgg => (byDate[d] ||= { rev: {}, ad: {} });
+  const day = (d: string): DayAgg => (byDate[d] ||= { rev: {}, ad: {}, blMG: 0 });
 
   const revByCh: Record<string, number> = {};
   for (const r of sales as { date: string; channel: string; revenue: number }[]) {
@@ -76,12 +94,16 @@ async function periodData(from: string, to: string, brand: string) {
   }
 
   const adByCh: Record<string, number> = {};
-  for (const r of ads as { date: string; channel: string; spend: number }[]) {
+  let blMG = 0; // 밸런스랩 메타+구글
+  for (const r of ads as { date: string; brand: string; channel: string; spend: number }[]) {
     const v = Number(r.spend || 0);
     adByCh[r.channel] = (adByCh[r.channel] || 0) + v;
     const dd = day(r.date); dd.ad[r.channel] = (dd.ad[r.channel] || 0) + v;
+    if (r.brand === "balancelab" && (r.channel === "meta" || r.channel === "google_pmax")) {
+      blMG += v; dd.blMG += v;
+    }
   }
-  return { revByCh, adByCh, byDate };
+  return { revByCh, adByCh, blMG, byDate };
 }
 
 export async function GET(req: NextRequest) {
@@ -94,7 +116,6 @@ export async function GET(req: NextRequest) {
     if (!from || !to || isNaN(new Date(from).getTime()) || isNaN(new Date(to).getTime())) {
       return NextResponse.json({ error: "유효한 from/to 날짜가 필요합니다" }, { status: 400 });
     }
-    // 직전 동일 길이 기간 (전주/전기간 대비)
     const fromD = new Date(from), toD = new Date(to);
     const diff = toD.getTime() - fromD.getTime();
     const prevTo = new Date(fromD.getTime() - 86400000).toISOString().slice(0, 10);
@@ -104,9 +125,9 @@ export async function GET(req: NextRequest) {
 
     const groups = GROUPS.map((g) => {
       const revenue = g.salesCh.reduce((s, c) => s + (cur.revByCh[c] || 0), 0);
-      const adSpend = g.adCh.reduce((s, c) => s + (cur.adByCh[c] || 0), 0);
+      const adSpend = storeAd(g.key, cur.adByCh, cur.blMG);
       const prevRev = g.salesCh.reduce((s, c) => s + (prev.revByCh[c] || 0), 0);
-      const prevAd = g.adCh.reduce((s, c) => s + (prev.adByCh[c] || 0), 0);
+      const prevAd = storeAd(g.key, prev.adByCh, prev.blMG);
       const roas = adSpend > 0 ? revenue / adSpend : 0;
       const prevRoas = prevAd > 0 ? prevRev / prevAd : 0;
       return {
@@ -116,7 +137,7 @@ export async function GET(req: NextRequest) {
         adSpend,
         roas,
         adRatio: revenue > 0 ? (adSpend / revenue) * 100 : 0,
-        subAds: g.adCh.map((c) => ({ channel: c, label: AD_LABELS[c] || c, spend: cur.adByCh[c] || 0 })),
+        subAds: storeSubAds(g.key, cur.adByCh, cur.blMG),
         revDelta: prevRev > 0 ? ((revenue / prevRev) - 1) * 100 : null,
         adDelta: prevAd > 0 ? ((adSpend / prevAd) - 1) * 100 : null,
         roasDelta: prevRoas > 0 ? ((roas / prevRoas) - 1) * 100 : null,
@@ -126,14 +147,13 @@ export async function GET(req: NextRequest) {
     const totalRev = groups.reduce((s, g) => s + g.revenue, 0);
     const totalAd = groups.reduce((s, g) => s + g.adSpend, 0);
 
-    // 일별 시계열 (페이지에서 일/주/월로 롤업) — 채널그룹별 매출/광고비
     const series = Object.keys(cur.byDate).sort().map((date) => {
       const d = cur.byDate[date];
       const row: Record<string, unknown> = { date };
       for (const g of GROUPS) {
         row[g.key] = {
           revenue: g.salesCh.reduce((s, c) => s + (d.rev[c] || 0), 0),
-          adSpend: g.adCh.reduce((s, c) => s + (d.ad[c] || 0), 0),
+          adSpend: storeAd(g.key, d.ad, d.blMG),
         };
       }
       return row;
