@@ -309,8 +309,15 @@ export async function POST(req: NextRequest) {
           .from("daily_ad_spend")
           .upsert(row, { onConflict: "date,channel,brand" });
         if (error) throw error;
-        // GFA 등 수동 광고비는 정규 DB→시트 싱크가 GFA를 건너뛰므로, 저장 직후 해당 날짜 sheet-sync를 직접 트리거 → ~1분 내 시트 반영.
-        const sheetSyncTriggered = await triggerSheetSync(date, date);
+        // GFA 등 수동 광고비는 정규 DB→시트 싱크가 GFA를 건너뛰므로, 저장 직후 sheet-sync를 직접 트리거 → ~1분 내 시트 반영.
+        // ★ 단일 날짜(date,date)로 쏘면, 여러 날짜를 연속 입력할 때 GitHub Actions 동시성이 중간 run들을 취소해
+        //   첫날·마지막날만 시트에 반영되던 버그(2026-07 사고). → 입력일 기준 최근 범위로 넓게 트리거해서
+        //   살아남는 run 하나가 배치 전체를 커버하게 함. (DB→시트는 GFA 0-가드가 있어 넓게 돌려도 수기값 안전)
+        const dMs = new Date(date + "T00:00:00Z").getTime();
+        const kstToday = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+        const syncStart = new Date(dMs - 7 * 86400000).toISOString().slice(0, 10);
+        const syncEnd = kstToday > date ? kstToday : date;
+        const sheetSyncTriggered = await triggerSheetSync(syncStart, syncEnd);
         return NextResponse.json({ ok: true, message: `${channel} ${date} 저장 완료`, sheetSyncTriggered });
       }
 
