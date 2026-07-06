@@ -4,10 +4,27 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { readFileSync } from "node:fs";
 
-const SUPABASE_URL = "https://phcfydxgwkmjiogerqmm.supabase.co";
-const SUPABASE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBoY2Z5ZHhnd2ttamlvZ2VycW1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1Njg4NjQsImV4cCI6MjA4OTE0NDg2NH0.M0ThTSK0kBvN71rccvzQpr3dQuL52oRs_Tj9MT7VWRg";
+// 크리덴셜 하드코딩 제거 — .env.local 또는 프로세스 환경변수에서 로드.
+function loadEnv() {
+  const env = { ...process.env };
+  try {
+    const txt = readFileSync(new URL("../.env.local", import.meta.url), "utf8");
+    for (const line of txt.split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (m && !env[m[1]]) env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    }
+  } catch { /* .env.local 없으면 프로세스 환경변수만 사용 */ }
+  return env;
+}
+const ENV = loadEnv();
+const SUPABASE_URL = ENV.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = ENV.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error("환경변수 필요: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY (.env.local 또는 export)");
+  process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 

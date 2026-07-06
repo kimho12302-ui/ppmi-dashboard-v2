@@ -332,15 +332,21 @@ export async function POST(request: NextRequest) {
     let dbResults: Record<string, any> = {};
 
     // product_sales: 날짜별 delete → insert (unique: date,brand,product,channel,lineup)
+    // ★ delete 실패 시 insert 하지 않음 — 옛 행이 남은 채 새 행이 추가돼 매출이 중복 집계되던 사고 방지
     const uploadDates = [...new Set(productSalesRows.map(r => r.date))];
+    let productDeleteFailed = false;
     for (const d of uploadDates) {
       const { error: delErr } = await supabase.from("product_sales").delete().eq("date", d);
-      if (delErr) dbResults.productSalesError = delErr.message;
+      if (delErr) { dbResults.productSalesError = delErr.message; productDeleteFailed = true; break; }
     }
-    for (let i = 0; i < productSalesRows.length; i += 500) {
-      const chunk = productSalesRows.slice(i, i + 500);
-      const { error } = await supabase.from("product_sales").insert(chunk);
-      if (error) dbResults.productSalesError = error.message;
+    if (productDeleteFailed) {
+      dbResults.productSalesSkippedInsert = true;
+    } else {
+      for (let i = 0; i < productSalesRows.length; i += 500) {
+        const chunk = productSalesRows.slice(i, i + 500);
+        const { error } = await supabase.from("product_sales").insert(chunk);
+        if (error) { dbResults.productSalesError = error.message; break; }
+      }
     }
 
     for (let i = 0; i < dailySalesRows.length; i += 500) {
@@ -392,18 +398,22 @@ export async function POST(request: NextRequest) {
         const rowCount = salesSheetRows.length;
 
         // Delete existing rows for the same date
+        // \u2605 \uC5F0\uC6D4(A\uC5F4)+\uC77C(B\uC5F4 \uC811\uB450) \uC815\uD655 \uB9E4\uCE6D \u2014 \uAE30\uC874 .includes()\uB294 "2\uC6D4 3\uC77C"\uC774 "12\uC6D4 3\uC77C"\uC5D0 \uBD80\uBD84\uC77C\uCE58\uD574
+        //   \uC5C9\uB6B1\uD55C \uB2EC(\uBC0F \uB2E4\uB978 \uC5F0\uB3C4) \uD589\uAE4C\uC9C0 \uC0AD\uC81C\uD558\uB358 \uBC84\uADF8. A\uC5F4 \uC5F0\uC6D4 \uC77C\uCE58 + B\uC5F4 startsWith \uB85C \uAD50\uC815.
         const existingRes = await sheets.spreadsheets.values.get({
           spreadsheetId: STATS_SHEET_ID,
-          range: "Sales!B:B",
+          range: "Sales!A:B",
         });
         const existingVals = existingRes.data.values || [];
         const uploadDate = new Date(rows[0].date + "T00:00:00");
+        const targetYearMonth = `${String(uploadDate.getFullYear()).slice(2)}\uB144${uploadDate.getMonth() + 1}\uC6D4`;
         const targetDateText = `${uploadDate.getMonth() + 1}\uC6D4 ${uploadDate.getDate()}\uC77C`;
 
         const deleteRequests: any[] = [];
         for (let ri = existingVals.length - 1; ri >= 2; ri--) {
-          const cellVal = String(existingVals[ri]?.[0] || "");
-          if (cellVal.includes(targetDateText)) {
+          const aVal = String(existingVals[ri]?.[0] || "");
+          const bVal = String(existingVals[ri]?.[1] || "");
+          if (aVal === targetYearMonth && bVal.startsWith(targetDateText)) {
             deleteRequests.push({
               deleteDimension: {
                 range: {
