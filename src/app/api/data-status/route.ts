@@ -14,13 +14,13 @@ interface SourceStatus {
   lastSync: string | null;
 }
 
-async function getLatestByChannel(channel: string): Promise<string | null> {
-  const { data } = await supabase
+async function getLatestByChannel(channel: string, brand?: string): Promise<string | null> {
+  let q = supabase
     .from("daily_ad_spend")
     .select("date")
-    .eq("channel", channel)
-    .order("date", { ascending: false })
-    .limit(1);
+    .eq("channel", channel);
+  if (brand) q = q.eq("brand", brand);
+  const { data } = await q.order("date", { ascending: false }).limit(1);
   return data?.[0]?.date || null;
 }
 
@@ -58,7 +58,10 @@ export async function GET() {
       { id: "naver_shopping", label: "\uB124\uC774\uBC84 \uC1FC\uD551\uAD11\uACE0", type: "auto", fetcher: () => getLatestByChannel("naver_shopping") },
       // Manual
       { id: "coupang_ads", label: "\uCFE0\uD321 \uAD11\uACE0\uBE44", type: "manual", fetcher: () => getLatestByChannel("coupang_ads") },
-      { id: "gfa", label: "GFA \uAD11\uACE0\uBE44", type: "manual", fetcher: () => getLatestByChannel("gfa") },
+      // GFA \uB294 \uBE0C\uB79C\uB4DC\uBCC4 \uC785\uB825 \uC8FC\uAE30\uAC00 \uB2EC\uB77C \uD1B5\uD569 \uCD5C\uC2E0\uC77C\uC774 \uACB0\uCE21\uC744 \uAC00\uB9BC (2026-07 \uC0AC\uC6A9\uC131 \uB9AC\uBDF0) \u2192 \uBE0C\uB79C\uB4DC\uBCC4 \uBD84\uB9AC
+      { id: "gfa_saip", label: "GFA (\uC0AC\uC785)", type: "manual", fetcher: () => getLatestByChannel("gfa", "saip") },
+      { id: "gfa_nutty", label: "GFA (\uB108\uD2F0)", type: "manual", fetcher: () => getLatestByChannel("gfa", "nutty") },
+      { id: "gfa_balancelab", label: "GFA (\uBC38\uB7F0\uC2A4\uB7A9)", type: "manual", fetcher: () => getLatestByChannel("gfa", "balancelab") },
       { id: "sales", label: "\uD310\uB9E4\uC2E4\uC801", type: "manual", fetcher: () => getLatestFromTable("daily_sales") },
       { id: "coupang_funnel", label: "\uCFE0\uD321 \uD37C\uB110", type: "manual", fetcher: () => getLatestFunnelByChannel("coupang") },
       { id: "smartstore_ironpet", label: "\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4 (\uC544\uC774\uC5B8\uD3AB)", type: "manual", fetcher: () => getLatestFunnelByChannel("smartstore", "all") },

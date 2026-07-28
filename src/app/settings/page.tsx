@@ -68,11 +68,13 @@ function ManualRowTable({
 }: {
   title: string;
   fields: FieldDef[];
-  onSave: (row: { date: string } & Record<string, string>) => Promise<{ ok?: boolean; message?: string; error?: string }>;
+  onSave: (row: { date: string } & Record<string, string>) => Promise<{ ok?: boolean; message?: string; error?: string; sheetSyncTriggered?: boolean }>;
   today: string;
   onSaved?: () => void;
 }) {
   const [rows, setRows] = useState<ManualRow[]>([makeRow(today)]);
+  // 저장 후 요약: 시트 자동반영 여부까지 표시 ("넣었는데 시트에 왜 없어?" 혼란 방지, 2026-07 사용성 리뷰)
+  const [summary, setSummary] = useState<{ tone: "ok" | "warn" | "error"; text: string } | null>(null);
 
   const update = (id: number, patch: Partial<ManualRow>) =>
     setRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
@@ -83,7 +85,9 @@ function ManualRowTable({
   const removeRow = (id: number) => setRows(prev => prev.filter(r => r.id !== id));
 
   const saveAll = async () => {
-    let anySaved = false;
+    setSummary(null);
+    let saved = 0, failed = 0;
+    let syncTrue = 0, syncFalse = 0; // sheetSyncTriggered 값이 온 응답만 집계 (GFA 등 시트연동 폼)
     for (const row of rows) {
       if (row.status !== "pending") continue;
       update(row.id, { status: "saving" });
@@ -93,15 +97,33 @@ function ManualRowTable({
         const res = await onSave(payload as { date: string } & Record<string, string>);
         if (res.error) {
           update(row.id, { status: "error", message: res.error });
+          failed++;
         } else {
           update(row.id, { status: "done", message: res.message || "저장 완료" });
-          anySaved = true;
+          saved++;
+          if (res.sheetSyncTriggered === true) syncTrue++;
+          else if (res.sheetSyncTriggered === false) syncFalse++;
         }
       } catch {
         update(row.id, { status: "error", message: "네트워크 오류" });
+        failed++;
       }
     }
-    if (anySaved) onSaved?.();
+    if (saved > 0) {
+      if (syncFalse > 0) {
+        setSummary({
+          tone: "warn",
+          text: `${saved}건 저장 완료 (대시보드 즉시 반영). ⚠️ 통계시트 즉시반영은 실패 — 다음 자동싱크(매일 09시·21시)에 반영됩니다.`,
+        });
+      } else if (syncTrue > 0) {
+        setSummary({ tone: "ok", text: `${saved}건 저장 완료 · 통계시트 자동반영 시작됨 (~1분 내)` });
+      } else {
+        setSummary({ tone: "ok", text: `${saved}건 저장 완료` });
+      }
+    } else if (failed > 0) {
+      setSummary({ tone: "error", text: `저장 실패 ${failed}건 — 각 행의 ❌에 마우스를 올리면 사유가 보입니다.` });
+    }
+    if (saved > 0) onSaved?.();
   };
 
   const pendingCount = rows.filter(r => r.status === "pending").length;
@@ -148,6 +170,14 @@ function ManualRowTable({
           </div>
         );
       })}
+      {summary && (
+        <div className={cn("text-xs px-3 py-2 rounded-md border",
+          summary.tone === "ok" ? "border-emerald-300 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 dark:border-emerald-800" :
+          summary.tone === "warn" ? "border-amber-300 bg-amber-500/10 text-amber-700 dark:text-amber-400 dark:border-amber-800" :
+          "border-red-300 bg-red-500/10 text-red-700 dark:text-red-400 dark:border-red-800")}>
+          {summary.text}
+        </div>
+      )}
       <div className="flex items-center justify-between pt-1">
         <button onClick={() => setRows(prev => [...prev, makeRow(today)])}
           className="text-xs text-primary hover:underline">+ 날짜 추가</button>
