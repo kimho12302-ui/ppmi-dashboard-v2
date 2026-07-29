@@ -2,12 +2,22 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getSourceStatuses } from "@/lib/data-sources";
 
 // 데이터 동기화 watchdog.
 // 오늘(KST) 수집 heartbeat가 없으면(=스케줄 누락) GitHub API로 daily-sync 워크플로를 재실행.
 // Vercel cron(12:00·15:00 KST)에서 호출. ?dry=1 은 인증 없이 진단만(트리거 안 함).
+//
+// 자동수집(광고비)과 별개로 수기 입력 지연도 감시한다. 수기 입력은 워크플로 재실행으로
+// 해결되지 않으므로 트리거 없이 텔레그램 알림만 보낸다.
+// (2026-07: 카페24·스마트스토어 퍼널이 21일 비었는데 알림이 0건이었음)
 
 const REPO = "kimho12302-ui/marketing-dashboard";
+
+// 수기 입력이 며칠 밀리면 알릴지. 주말 2일 공백은 넘기고 실제 방치만 잡는다.
+const MANUAL_STALE_DAYS = 3;
+// 알림 발송 기록용 의사 소스명. 하루 1회만 보내기 위한 상태 저장소로 sync_heartbeat를 재사용한다.
+const ALERT_SOURCE = "watchdog_manual_alert";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
 
@@ -56,8 +66,15 @@ export async function GET(req: NextRequest) {
     // 수집 소스 heartbeat (행수 포함 — '돌았지만 0행' 실패를 잡기 위함)
     const { data: hb } = await supabase.from("sync_heartbeat").select("source,last_success,rows_written");
     let maxLast: string | null = null;
+    let lastManualAlertDay: string | null = null;
     for (const h of hb || []) {
       const d = h.last_success ? String(h.last_success).slice(0, 10) : null;
+      // ALERT_SOURCE는 watchdog이 스스로 쓰는 행이라 '수집이 돌았는지' 판정에서 제외해야 한다.
+      // 포함하면 maxLast가 항상 오늘이 되어 ranToday가 늘 true가 된다.
+      if (h.source === ALERT_SOURCE) {
+        lastManualAlertDay = d;
+        continue;
+      }
       if (d && (!maxLast || d > maxLast)) maxLast = d;
     }
     const ranToday = !!maxLast && maxLast >= todayKST;
@@ -92,12 +109,49 @@ export async function GET(req: NextRequest) {
     const backfillYesterday = staleChannels.length > 0;
     const wouldTrigger = !ranToday || backfillYesterday;
 
+    // 수기 입력 지연 — 워크플로 재실행으로 해결되지 않으므로 알림만. 크론이 하루 3회라 1회로 제한.
+    const { sources } = await getSourceStatuses();
+    const staleManual = sources.filter(
+      (s) => s.type === "manual" && (s.staleDays === null || s.staleDays >= MANUAL_STALE_DAYS)
+    );
+    const manualAlertPending = staleManual.length > 0 && lastManualAlertDay !== todayKST;
+    const staleManualLabels = staleManual.map(
+      (s) => `${s.label}(${s.latestDate ?? "없음"}, ${s.staleDays ?? "-"}일)`
+    );
+
     if (dry) {
-      return NextResponse.json({ ok: true, dry: true, todayKST, yesterdayKST, maxLast, ranToday, staleChannels, wouldTrigger });
+      return NextResponse.json({
+        ok: true, dry: true, todayKST, yesterdayKST, maxLast, ranToday, staleChannels, wouldTrigger,
+        staleManual: staleManualLabels, lastManualAlertDay, manualAlertPending,
+      });
+    }
+
+    if (manualAlertPending) {
+      const lines = staleManual
+        .map((s) => `· ${s.label}: 최종 ${s.latestDate ?? "없음"} (${s.staleDays ?? "-"}일 지연)`)
+        .join("\n");
+      await sendTelegram(
+        `📝 <b>수기 입력 지연</b>\n${staleManual.length}개 소스가 ${MANUAL_STALE_DAYS}일 이상 비어 있습니다.\n${lines}\n\n대시보드 설정 &gt; 일일 입력에서 채워주세요.`
+      );
+      // 오늘 보냈다는 표시. 다음 크론(같은 날)에서는 재발송하지 않는다.
+      await supabase.from("sync_heartbeat").upsert(
+        {
+          source: ALERT_SOURCE,
+          last_run: new Date().toISOString(),
+          last_success: new Date().toISOString(),
+          ok: true,
+          rows_written: staleManual.length,
+          note: staleManual.map((s) => s.id).join(","),
+        },
+        { onConflict: "source" }
+      );
     }
 
     if (!wouldTrigger) {
-      return NextResponse.json({ ok: true, ranToday: true, maxLast, staleChannels: [] });
+      return NextResponse.json({
+        ok: true, ranToday: true, maxLast, staleChannels: [],
+        staleManual: staleManualLabels, manualAlerted: manualAlertPending,
+      });
     }
 
     const status = backfillYesterday
@@ -110,7 +164,10 @@ export async function GET(req: NextRequest) {
     await sendTelegram(
       `⚠️ <b>데이터 동기화 watchdog</b>\n${reason}\n→ daily-sync ${ok ? "✅ 트리거됨" : `❌ 실패(HTTP ${status})`}`
     );
-    return NextResponse.json({ ok, ranToday, maxLast, staleChannels, backfillYesterday, triggered: ok, dispatchStatus: status });
+    return NextResponse.json({
+      ok, ranToday, maxLast, staleChannels, backfillYesterday, triggered: ok, dispatchStatus: status,
+      staleManual: staleManualLabels, manualAlerted: manualAlertPending,
+    });
   } catch (error) {
     console.error("watchdog error:", error);
     return NextResponse.json({ error: "watchdog failed" }, { status: 500 });
