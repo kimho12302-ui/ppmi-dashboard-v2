@@ -122,11 +122,9 @@ export async function GET(req: NextRequest) {
       const tByBrand = new Map((targetsData || []).map((r) => [r.brand as string, r]));
       const revByBrand = new Map<string, number>();
       const adByBrand = new Map<string, number>();
-      const cvByBrand = new Map<string, number>();
       for (const r of sales) revByBrand.set(r.brand, (revByBrand.get(r.brand) || 0) + Number(r.revenue || 0));
       for (const r of ads) {
         adByBrand.set(r.brand, (adByBrand.get(r.brand) || 0) + Number(r.spend || 0));
-        cvByBrand.set(r.brand, (cvByBrand.get(r.brand) || 0) + Number(r.conversion_value || 0));
       }
       perBrand = BRANDS.map((b) => {
         const t = tByBrand.get(b);
@@ -135,7 +133,6 @@ export async function GET(req: NextRequest) {
         const aRev = (revByBrand.get(b) || 0) - (b === "balancelab" ? totalFormA : 0); // 형식-A 공구 차감
 
         const aAd = adByBrand.get(b) || 0;
-        const aCv = cvByBrand.get(b) || 0;
         return {
           brand: b,
           targetRevenue: tRev, actualRevenue: aRev,
