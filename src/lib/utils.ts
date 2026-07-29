@@ -18,6 +18,20 @@ export function formatPercent(n: number): string {
   return n.toFixed(1) + "%";
 }
 
+/** 전환 추적이 붙지 않은 채널인지. 광고비를 썼는데 전환값이 0이면 '성과 0'이 아니라 '미측정'이다. */
+export function isRoasUntracked(roas: number, spend: number): boolean {
+  return spend > 0 && !(roas > 0);
+}
+
+/**
+ * 채널 ROAS 표시. 전환 추적이 없는 채널을 0.00x로 찍으면 "돈 쓰고 성과 없음"으로 읽혀
+ * 예산 판단을 왜곡한다(2026-07: GFA·Meta가 이 상태였다). 그런 채널은 '미연동'으로 구분한다.
+ */
+export function formatRoas(roas: number, spend: number): string {
+  if (isRoasUntracked(roas, spend)) return "미연동";
+  return `${(roas || 0).toFixed(2)}x`;
+}
+
 /** 축약 없이 원 단위 전체 표시 (예: 14,858,470원) */
 export function formatWon(n: number): string {
   return Math.round(n).toLocaleString("ko-KR") + "원";

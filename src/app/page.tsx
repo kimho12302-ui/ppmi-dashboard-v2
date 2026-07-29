@@ -10,7 +10,7 @@ import {
   BRAND_LABELS, BRAND_COLORS, CHANNEL_LABELS, CHANNEL_COLORS,
   SALES_CHANNEL_COLORS,
 } from "@/lib/types";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatPercent, formatRoas, isRoasUntracked } from "@/lib/utils";
 import {
   Area, ComposedChart, LineChart, Line, ReferenceLine, BarChart, Bar,
   XAxis, YAxis, Tooltip,
@@ -100,6 +100,17 @@ function OverviewInner() {
       roas: c.roas,
     })).sort((a, b) => b.spend - a.spend);
   }, [data, channelMap]);
+
+  // 전환 추적이 없는 채널은 ROAS 차트에서 빼고 이름만 밝힌다.
+  // 0 막대로 그리면 '성과가 나쁜 채널'로 읽혀 예산 판단을 왜곡한다.
+  const trackedChannelAds = useMemo(
+    () => channelAds.filter((c) => !isRoasUntracked(c.roas, c.spend)),
+    [channelAds]
+  );
+  const untrackedChannels = useMemo(
+    () => channelAds.filter((c) => isRoasUntracked(c.roas, c.spend)),
+    [channelAds]
+  );
 
   const channelSales = useMemo(() => {
     return (data?.salesByChannel || []).map((c) => ({
@@ -248,7 +259,7 @@ function OverviewInner() {
       revenue: { title: "브랜드별 매출", type: "brand", valueKey: "revenue", format: formatCurrency },
       orders: { title: "브랜드별 주문 수", type: "brand", valueKey: "orders", format: formatNumber },
       adSpend: { title: "채널별 광고비", type: "channel", valueKey: "spend", format: formatCurrency },
-      roas: { title: "채널별 ROAS", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
+      roas: { title: "채널별 ROAS (플랫폼 신고 기준)", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
       profit: { title: "브랜드별 통상이익", type: "brand", valueKey: "profit", format: formatCurrency },
       profitRate: { title: "브랜드별 이익률", type: "brand", valueKey: "profitRate", format: (v) => formatPercent(v) },
       ctr: { title: "채널별 ROAS", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
@@ -441,7 +452,9 @@ function OverviewInner() {
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
                   <span className="flex-1">{c.label}</span>
                   <span className="font-medium">{formatCurrency(c.spend)}</span>
-                  <span className="text-muted-foreground w-16 text-right">{c.roas.toFixed(2)}x</span>
+                  <span className={`w-16 text-right ${isRoasUntracked(c.roas, c.spend) ? "text-muted-foreground/60 italic" : "text-muted-foreground"}`}>
+                    {formatRoas(c.roas, c.spend)}
+                  </span>
                 </div>
               ))}
               {channelAds.length === 0 && <div className="text-sm text-muted-foreground">데이터 없음</div>}
@@ -568,11 +581,20 @@ function OverviewInner() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">채널별 ROAS</h3>
+              <div className="flex items-baseline gap-2">
+                <h3 className="font-semibold">채널별 ROAS</h3>
+                {/* 각 플랫폼이 자기 기여로 신고한 값이라 채널 간 합산은 실매출을 넘는다. 비교용으로만 쓴다. */}
+                <span className="text-xs text-muted-foreground">플랫폼 신고 기준 · 합산 불가</span>
+              </div>
               <Link href="/ads" className="text-xs text-primary hover:underline">상세 →</Link>
             </div>
+            {untrackedChannels.length > 0 && (
+              <p className="text-xs text-muted-foreground mb-2">
+                전환 미연동 제외: {untrackedChannels.map((c) => c.label).join(", ")}
+              </p>
+            )}
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={channelAds.slice(0, 8).map(c => ({ label: c.label, roas: c.roas, color: c.color }))} layout="vertical">
+              <BarChart data={trackedChannelAds.slice(0, 8).map(c => ({ label: c.label, roas: c.roas, color: c.color }))} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis type="number" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v.toFixed(1)}x`} />
                 <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={80} />
