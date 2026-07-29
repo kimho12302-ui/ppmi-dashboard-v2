@@ -53,7 +53,9 @@ function ProgressBar({ value, marker, color }: { value: number; marker?: number;
   );
 }
 
-export function PacingSection({ brand }: { brand: string }) {
+// from/to는 페이지에서 선택한 기간. 이 섹션은 월 목표 기준이라 달력 월에 고정되는데,
+// 선택 기간이 그와 다르면 아래 KPI 카드와 숫자가 어긋나 보이므로 그 사실을 명시한다.
+export function PacingSection({ brand, from, to }: { brand: string; from?: string; to?: string }) {
   const b = brand || "all";
   const [open, setOpen] = useState(true);
   const { data, loading } = useFetch<PacingData>(`/api/pacing?brand=${b}`);
@@ -72,6 +74,9 @@ export function PacingSection({ brand }: { brand: string }) {
   const pace = PACE[data.paceStatus];
   const { target, actual, achievement, remaining, dateProgress } = data;
   const monthLabel = `${Number(data.month.slice(5))}월`;
+  const monthStart = `${data.month}-01`;
+  // 선택 기간이 이 달 시작과 다르면 아래 KPI와 스코프가 다르다는 뜻.
+  const scopeDiffers = !!from && from !== monthStart;
 
   const rows = [
     { key: "매출", target: target.revenue, actual: actual.revenue, ach: achievement.revenue, marker: dateProgress, fmt: formatCurrency, color: "#2563eb" },
@@ -86,7 +91,8 @@ export function PacingSection({ brand }: { brand: string }) {
         <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between flex-wrap gap-2 text-left">
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground text-xs">{open ? "▾" : "▸"}</span>
-            <h3 className="font-semibold">목표 대비 페이싱 · {monthLabel}</h3>
+            <h3 className="font-semibold">목표 대비 페이싱 · {monthLabel} 누적</h3>
+            <span className="text-xs text-muted-foreground">{monthStart} ~ {data.month}-{String(data.daysElapsed).padStart(2, "0")}</span>
             <span className={`text-xs px-2 py-0.5 rounded-full border ${pace.cls}`}>{pace.label}</span>
             {!open && <span className="text-xs text-muted-foreground">매출 달성 {pct(achievement.revenue)}</span>}
           </div>
@@ -94,6 +100,12 @@ export function PacingSection({ brand }: { brand: string }) {
             {monthLabel} {data.daysElapsed}/{data.daysInMonth}일 경과 ({pct(dateProgress)}) · 잔여 {data.daysRemaining}일
           </div>
         </button>
+
+        {scopeDiffers && (
+          <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-500">
+            이 섹션은 <b>{monthLabel} 누적</b> 기준입니다. 선택하신 기간({from} ~ {to})과 달라 아래 &ldquo;선택 기간 실적&rdquo;의 숫자와 일치하지 않습니다.
+          </div>
+        )}
 
         {open && <>
         {/* 광고예산 초과 경고 (의사결정 즉시 신호) */}

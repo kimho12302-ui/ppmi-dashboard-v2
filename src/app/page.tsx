@@ -279,7 +279,7 @@ function OverviewInner() {
   return (
     <PageShell title="Overview" description="PPMI 마케팅 대시보드 전체 현황">
       {/* 목표 대비 페이싱 — 의사결정 1순위 (통계시트 '광고 예산안' 재현) */}
-      <PacingSection brand={brand || "all"} />
+      <PacingSection brand={brand || "all"} from={from} to={to} />
 
       {anomalies.length > 0 && (
         <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
@@ -294,8 +294,12 @@ function OverviewInner() {
         </Card>
       )}
 
-      {/* KPI 8개 */}
-      <div className="flex justify-end">
+      {/* KPI 8개 — 위 페이싱(달력 월 고정)과 기간이 다를 수 있어 스코프를 명시한다 */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-baseline gap-2">
+          <h3 className="font-semibold">선택 기간 실적</h3>
+          <span className="text-xs text-muted-foreground">{from} ~ {to}</span>
+        </div>
         <button onClick={exportCSV}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md text-muted-foreground transition-colors">
           ⬇ CSV 내보내기

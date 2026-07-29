@@ -12,7 +12,9 @@ export function useFilterParams() {
   const pathname = usePathname();
 
   const brand = searchParams.get("brand") || "all";
-  const preset = (searchParams.get("preset") || "30d") as DatePreset;
+  // 기본 기간 = 이번 달. 목표/페이싱이 달력 월 기준이라 30d를 기본으로 두면
+  // 진입 화면에서 페이싱의 매출과 KPI 카드의 매출이 서로 다른 값으로 보였다.
+  const preset = (searchParams.get("preset") || "this_month") as DatePreset;
   const from = searchParams.get("from") || "";
   const to = searchParams.get("to") || "";
 
@@ -24,8 +26,8 @@ export function useFilterParams() {
   const setParam = useCallback(
     (key: string, value: string) => {
       const params = new URLSearchParams(searchParams.toString());
-      // 기본값(brand=all, preset=30d)은 URL에서 제거, 나머지는 유지
-      const isDefault = (key === "brand" && value === "all") || (key === "preset" && value === "30d");
+      // 기본값(brand=all, preset=this_month)은 URL에서 제거, 나머지는 유지
+      const isDefault = (key === "brand" && value === "all") || (key === "preset" && value === "this_month");
       if (value && !isDefault) {
         params.set(key, value);
       } else {
