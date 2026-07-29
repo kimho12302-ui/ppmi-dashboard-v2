@@ -15,7 +15,7 @@ interface PacingData {
   dateProgress: number;
   hasTarget: boolean;
   target: { revenue: number; ad: number; roas: number; adRatio: number };
-  actual: { revenue: number; orders: number; ad: number; roas: number; adRatio: number };
+  actual: { revenue: number; revenueOwn: number; gonggu: number; orders: number; ad: number; roas: number; adRatio: number };
   achievement: { revenue: number; ad: number; roas: number };
   remaining: { revenue: number; ad: number; reqDailyRevenue: number; reqDailyAd: number; dailyAvgRevenue: number; dailyAvgAd: number };
   paceStatus: "ahead" | "on_track" | "behind" | "n/a";
@@ -25,7 +25,8 @@ interface PacingData {
     targetAd: number; actualAd: number; adRatio: number; state: string;
   }[];
   perBrand: {
-    brand: string; targetRevenue: number; actualRevenue: number; revAchievement: number;
+    brand: string; targetRevenue: number; actualRevenue: number; actualRevenueOwn: number; gonggu: number;
+    revAchievement: number;
     targetAd: number; actualAd: number; adConsumption: number;
     actualRoas: number; targetRoas: number; actualAdRatio: number; targetAdRatio: number;
   }[];
@@ -104,6 +105,13 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
         {scopeDiffers && (
           <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-500">
             이 섹션은 <b>{monthLabel} 누적</b> 기준입니다. 선택하신 기간({from} ~ {to})과 달라 아래 &ldquo;선택 기간 실적&rdquo;의 숫자와 일치하지 않습니다.
+          </div>
+        )}
+
+        {data.actual.gonggu > 0 && (
+          <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            매출은 <b>공구 포함</b> 기준입니다 (목표가 공구 포함으로 설정됨).
+            자체 {formatCurrency(data.actual.revenueOwn)} + 공구 {formatCurrency(data.actual.gonggu)} = {formatCurrency(data.actual.revenue)}
           </div>
         )}
 
@@ -196,7 +204,9 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
         {/* 전체 보기일 때 브랜드별 미니 페이싱 */}
         {b === "all" && data.perBrand.length > 0 && (
           <div className="pt-2 border-t space-y-2">
-            <p className="text-xs text-muted-foreground">브랜드별 매출 달성률 (마커=날짜진행률 {pct(dateProgress)})</p>
+            <p className="text-xs text-muted-foreground">
+              브랜드별 매출 달성률 (마커=날짜진행률 {pct(dateProgress)}) · 목표는 <b>공구 포함</b> 기준
+            </p>
             {data.perBrand.filter(pb => pb.targetRevenue > 0).map((pb) => {
               const roasOk = pb.targetRoas > 0 && pb.actualRoas >= pb.targetRoas * 0.9;
               return (
@@ -209,6 +219,13 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
                   ROAS {pb.actualRoas.toFixed(1)}/{pb.targetRoas > 0 ? pb.targetRoas.toFixed(1) : "-"}x
                 </span>
                 <span className="w-28 text-right text-[11px] text-muted-foreground">{formatCurrency(pb.actualRevenue)}/{formatCurrency(pb.targetRevenue)}</span>
+                {/* 공구가 있는 브랜드는 자체매출을 병기한다. 밸런스랩은 매출의 66~97%가 공구라
+                    자체매출만 보면 브랜드 성과를 심하게 과소 표시한다. */}
+                <span className="w-32 text-right text-[11px] text-muted-foreground">
+                  {pb.gonggu > 0
+                    ? `자체 ${formatCurrency(pb.actualRevenueOwn)} + 공구 ${formatCurrency(pb.gonggu)}`
+                    : ""}
+                </span>
               </div>
             );})}
           </div>

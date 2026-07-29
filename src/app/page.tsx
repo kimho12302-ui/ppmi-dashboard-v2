@@ -307,9 +307,16 @@ function OverviewInner() {
 
       {/* KPI 8개 — 위 페이싱(달력 월 고정)과 기간이 다를 수 있어 스코프를 명시한다 */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-baseline gap-2 flex-wrap">
           <h3 className="font-semibold">선택 기간 실적</h3>
           <span className="text-xs text-muted-foreground">{from} ~ {to}</span>
+          {/* 위 페이싱은 목표 스코프에 맞춰 공구를 포함한다. 여기 매출은 자체매출이라
+              두 값이 다르게 보이므로 그 차이를 명시한다. */}
+          {gongguSalesTotal > 0 && (
+            <span className="text-xs text-muted-foreground">
+              · 매출은 <b>자체매출</b> 기준 (공구 {formatCurrency(gongguSalesTotal)} 별도, 위 페이싱은 공구 포함)
+            </span>
+          )}
         </div>
         <button onClick={exportCSV}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md text-muted-foreground transition-colors">

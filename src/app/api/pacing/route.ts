@@ -86,7 +86,14 @@ export async function GET(req: NextRequest) {
     const targetRoas = targetAd > 0 ? targetRevenue / targetAd : 0;
     const targetAdRatio = targetRevenue > 0 ? targetAd / targetRevenue : 0;
 
-    const actualRevenue = sales.reduce((s, r) => s + Number(r.revenue || 0), 0) - totalFormA;
+    // ★ 목표(monthly_targets)는 공구 포함 기준으로 세워져 있다.
+    //   근거: 공구가 0이던 2026-02는 목표 6,327,000 = 실적 6,327,000 으로 1원까지 일치.
+    //   3월부터 공구가 매출의 66~97%를 차지하는데 실적에서만 공구를 빼서 비교하는 바람에
+    //   밸런스랩 달성률이 6월 3%, 7월 7%로 표시됐다(공구 포함 시 13%, 51%).
+    //   → 달성률은 공구 포함(Gross) 기준으로 계산하고, 자체매출은 함께 병기한다.
+    const grossRevenue = sales.reduce((s, r) => s + Number(r.revenue || 0), 0);
+    const actualRevenueOwn = grossRevenue - totalFormA;  // 자체매출 (공구 제외)
+    const actualRevenue = grossRevenue;                   // 목표 비교용 = 공구 포함
     const actualOrders = sales.reduce((s, r) => s + Number(r.orders || 0), 0);
     const actualAd = ads.reduce((s, r) => s + Number(r.spend || 0), 0);
     // ROAS는 실매출 ÷ 광고비 기준. 목표(targetRoas = 목표매출/목표광고비)와 같은 정의여야 비교가 성립한다.
@@ -130,12 +137,16 @@ export async function GET(req: NextRequest) {
         const t = tByBrand.get(b);
         const tRev = Number(t?.revenue_target || 0);
         const tAd = Number(t?.ad_budget_target || 0);
-        const aRev = (revByBrand.get(b) || 0) - (b === "balancelab" ? totalFormA : 0); // 형식-A 공구 차감
+        // 목표가 공구 포함 기준이므로 달성률·ROAS는 공구 포함(aRev)으로 비교하고,
+        // 자체매출(aRevOwn)은 병기한다.
+        const aRev = revByBrand.get(b) || 0;
+        const gonggu = b === "balancelab" ? totalFormA : 0;
+        const aRevOwn = aRev - gonggu;
 
         const aAd = adByBrand.get(b) || 0;
         return {
           brand: b,
-          targetRevenue: tRev, actualRevenue: aRev,
+          targetRevenue: tRev, actualRevenue: aRev, actualRevenueOwn: aRevOwn, gonggu,
           revAchievement: tRev > 0 ? aRev / tRev : 0,
           targetAd: tAd, actualAd: aAd,
           adConsumption: tAd > 0 ? aAd / tAd : 0,
@@ -180,7 +191,7 @@ export async function GET(req: NextRequest) {
       weekly,
       hasTarget: (targetsData || []).length > 0 && targetRevenue > 0,
       target: { revenue: targetRevenue, ad: targetAd, roas: targetRoas, adRatio: targetAdRatio },
-      actual: { revenue: actualRevenue, orders: actualOrders, ad: actualAd, roas: actualRoas, adRatio: actualAdRatio },
+      actual: { revenue: actualRevenue, revenueOwn: actualRevenueOwn, gonggu: totalFormA, orders: actualOrders, ad: actualAd, roas: actualRoas, adRatio: actualAdRatio },
       achievement: { revenue: revAchievement, ad: adConsumption, roas: roasAchievement },
       remaining: { revenue: remainingRevenue, ad: remainingAd, reqDailyRevenue, reqDailyAd, dailyAvgRevenue, dailyAvgAd },
       paceStatus,
