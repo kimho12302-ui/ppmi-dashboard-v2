@@ -191,8 +191,10 @@ export async function GET(req: NextRequest) {
     //  - 잡비는 별도 비용 → 이익·MER에만 반영 (kpi.miscCost로 별도 노출)
     const totalMediaSpend = nonGa4Ad.reduce((s, r) => s + Number(r.spend), 0);
     const totalMarketingCost = totalMediaSpend + totalMiscCost; // 총 마케팅비 (이익·MER용)
-    const totalConvValue = nonGa4Ad.reduce((s, r) => s + Number(r.conversion_value || 0), 0);
-    const roas = totalMediaSpend > 0 ? totalConvValue / totalMediaSpend : 0; // 매체 ROAS (목표·페이싱과 동일 분모)
+    // ROAS = 실매출 ÷ 매체비. 목표(roas_target)가 목표매출/목표광고비로 잡히므로 같은 정의여야 한다.
+    // 채널 conversion_value 합계를 쓰면 플랫폼별 기여 중복 계상으로 실매출을 넘어 과대 표시된다
+    // (2026-07 실측: 합계 5,705만 vs 실매출 4,464만). 채널별 ROAS는 여전히 플랫폼 신고 기준.
+    const roas = totalMediaSpend > 0 ? totalRevenue / totalMediaSpend : 0;
     const profit = totalRevenue - totalMarketingCost - totalCOGS - totalShippingCost;
     const mer = totalMarketingCost > 0 ? totalRevenue / totalMarketingCost : 0; // MER = 매출/총마케팅비(매체+잡비)
     const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
@@ -201,8 +203,7 @@ export async function GET(req: NextRequest) {
     const prevOrders = (prevSales || []).reduce((s, r) => s + Number(r.orders), 0);
     const prevNonGa4Ad = (prevAd || []).filter(r => !r.channel.startsWith("ga4_"));
     const prevAdSpendTotal = prevNonGa4Ad.reduce((s, r) => s + Number(r.spend), 0);
-    const prevConvValue = prevNonGa4Ad.reduce((s, r) => s + Number(r.conversion_value || 0), 0);
-    const prevRoas = prevAdSpendTotal > 0 ? prevConvValue / prevAdSpendTotal : 0;
+    const prevRoas = prevAdSpendTotal > 0 ? prevRevenue / prevAdSpendTotal : 0;
     const cogsRate = totalRevenue > 0 ? totalCOGS / totalRevenue : 0;
     const prevProfit = prevRevenue - prevAdSpendTotal - (prevRevenue * cogsRate);
     const prevMer = prevAdSpendTotal > 0 ? prevRevenue / prevAdSpendTotal : 0;

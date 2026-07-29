@@ -89,8 +89,10 @@ export async function GET(req: NextRequest) {
     const actualRevenue = sales.reduce((s, r) => s + Number(r.revenue || 0), 0) - totalFormA;
     const actualOrders = sales.reduce((s, r) => s + Number(r.orders || 0), 0);
     const actualAd = ads.reduce((s, r) => s + Number(r.spend || 0), 0);
-    const actualConvValue = ads.reduce((s, r) => s + Number(r.conversion_value || 0), 0);
-    const actualRoas = actualAd > 0 ? actualConvValue / actualAd : 0;
+    // ROAS는 실매출 ÷ 광고비 기준. 목표(targetRoas = 목표매출/목표광고비)와 같은 정의여야 비교가 성립한다.
+    // 채널 conversion_value 합계는 플랫폼마다 같은 주문을 자기 기여로 신고해 실매출을 넘기 때문에
+    // 통합 지표로 쓰면 과대 표시된다(2026-07 실측: 합계 5,705만 vs 실매출 4,464만).
+    const actualRoas = actualAd > 0 ? actualRevenue / actualAd : 0;
     const actualAdRatio = actualRevenue > 0 ? actualAd / actualRevenue : 0;
 
     // 잔여 + 필요 일런레이트
@@ -140,7 +142,7 @@ export async function GET(req: NextRequest) {
           revAchievement: tRev > 0 ? aRev / tRev : 0,
           targetAd: tAd, actualAd: aAd,
           adConsumption: tAd > 0 ? aAd / tAd : 0,
-          actualRoas: aAd > 0 ? aCv / aAd : 0,
+          actualRoas: aAd > 0 ? aRev / aAd : 0,   // 실매출 기준 (targetRoas와 동일 정의)
           targetRoas: tAd > 0 ? tRev / tAd : 0,
           actualAdRatio: aRev > 0 ? aAd / aRev : 0,
           targetAdRatio: tRev > 0 ? tAd / tRev : 0,
