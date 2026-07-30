@@ -14,8 +14,11 @@ import { getSourceStatuses } from "@/lib/data-sources";
 
 const REPO = "kimho12302-ui/marketing-dashboard";
 
-// 수기 입력이 며칠 밀리면 알릴지. 주말 2일 공백은 넘기고 실제 방치만 잡는다.
-const MANUAL_STALE_DAYS = 3;
+// 수기 입력은 매일이 아니라 주/월 단위로 몰아서 넣는 운영 방식이다(2026-07-29 확인).
+// 따라서 "며칠 밀렸나"로 알리면 정상 리듬에도 계속 울린다.
+// 기준은 "지난달 입력이 아직 안 끝났나" — 이번 달은 진행 중이므로 채근하지 않는다.
+// 매달 이 날짜가 지나면 지난달 미완료를 알린다(월초 정리 기간을 준다).
+const MANUAL_GRACE_DAY_OF_MONTH = 5;
 // 알림 발송 기록용 의사 소스명. 하루 1회만 보내기 위한 상태 저장소로 sync_heartbeat를 재사용한다.
 const ALERT_SOURCE = "watchdog_manual_alert";
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
@@ -110,28 +113,33 @@ export async function GET(req: NextRequest) {
     const wouldTrigger = !ranToday || backfillYesterday;
 
     // 수기 입력 지연 — 워크플로 재실행으로 해결되지 않으므로 알림만. 크론이 하루 3회라 1회로 제한.
+    // 판정: 지난달 마지막 날까지 채워졌는지. 이번 달은 진행 중이라 보지 않는다.
+    const [y, mo, dayOfMonth] = todayKST.split("-").map(Number);
+    const prevMonthEnd = new Date(Date.UTC(y, mo - 1, 0)).toISOString().slice(0, 10); // 전월 말일
+    const pastGrace = dayOfMonth >= MANUAL_GRACE_DAY_OF_MONTH;
+
     const { sources } = await getSourceStatuses();
     const staleManual = sources.filter(
-      (s) => s.type === "manual" && (s.staleDays === null || s.staleDays >= MANUAL_STALE_DAYS)
+      (s) => s.type === "manual" && (s.latestDate === null || s.latestDate < prevMonthEnd)
     );
-    const manualAlertPending = staleManual.length > 0 && lastManualAlertDay !== todayKST;
+    const manualAlertPending = pastGrace && staleManual.length > 0 && lastManualAlertDay !== todayKST;
     const staleManualLabels = staleManual.map(
-      (s) => `${s.label}(${s.latestDate ?? "없음"}, ${s.staleDays ?? "-"}일)`
+      (s) => `${s.label}(최종 ${s.latestDate ?? "없음"})`
     );
 
     if (dry) {
       return NextResponse.json({
         ok: true, dry: true, todayKST, yesterdayKST, maxLast, ranToday, staleChannels, wouldTrigger,
-        staleManual: staleManualLabels, lastManualAlertDay, manualAlertPending,
+        prevMonthEnd, pastGrace, staleManual: staleManualLabels, lastManualAlertDay, manualAlertPending,
       });
     }
 
     if (manualAlertPending) {
       const lines = staleManual
-        .map((s) => `· ${s.label}: 최종 ${s.latestDate ?? "없음"} (${s.staleDays ?? "-"}일 지연)`)
+        .map((s) => `· ${s.label}: 최종 ${s.latestDate ?? "없음"}`)
         .join("\n");
       await sendTelegram(
-        `📝 <b>수기 입력 지연</b>\n${staleManual.length}개 소스가 ${MANUAL_STALE_DAYS}일 이상 비어 있습니다.\n${lines}\n\n대시보드 설정 &gt; 일일 입력에서 채워주세요.`
+        `📝 <b>지난달 수기 입력 미완료</b>\n${prevMonthEnd}까지 채워져 있어야 하는데 ${staleManual.length}개 소스가 비어 있습니다.\n${lines}\n\n대시보드 설정 &gt; 일일 입력에서 채워주세요.`
       );
       // 오늘 보냈다는 표시. 다음 크론(같은 날)에서는 재발송하지 않는다.
       await supabase.from("sync_heartbeat").upsert(

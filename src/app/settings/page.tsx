@@ -64,13 +64,15 @@ function makeRow(date: string): ManualRow {
 }
 
 function ManualRowTable({
-  title, fields, onSave, today, onSaved,
+  title, fields, onSave, today, onSaved, missingDates,
 }: {
   title: string;
   fields: FieldDef[];
   onSave: (row: { date: string } & Record<string, string>) => Promise<{ ok?: boolean; message?: string; error?: string; sheetSyncTriggered?: boolean }>;
   today: string;
   onSaved?: () => void;
+  /** 이 항목의 미입력 날짜. 주/월 단위로 몰아서 입력하는 운영 방식이라 한 번에 행을 깔 수 있게 한다. */
+  missingDates?: string[];
 }) {
   const [rows, setRows] = useState<ManualRow[]>([makeRow(today)]);
   // 저장 후 요약: 시트 자동반영 여부까지 표시 ("넣었는데 시트에 왜 없어?" 혼란 방지, 2026-07 사용성 리뷰)
@@ -179,8 +181,25 @@ function ManualRowTable({
         </div>
       )}
       <div className="flex items-center justify-between pt-1">
-        <button onClick={() => setRows(prev => [...prev, makeRow(today)])}
-          className="text-xs text-primary hover:underline">+ 날짜 추가</button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setRows(prev => [...prev, makeRow(today)])}
+            className="text-xs text-primary hover:underline">+ 날짜 추가</button>
+          {/* 몰아서 입력할 때 23~30개 행을 손으로 추가하고 날짜를 하나하나 고치는 게 실제 마찰 지점이었다. */}
+          {missingDates && missingDates.length > 0 && (
+            <button
+              onClick={() => {
+                const have = new Set(rows.map(r => r.date));
+                const add = missingDates.filter(d => !have.has(d)).sort();
+                if (add.length === 0) return;
+                // 비어있는 기본 행(오늘, 값 미입력)만 있으면 치우고 누락 날짜로 대체
+                const keep = rows.filter(r => r.status !== "pending" || Object.keys(r.values).length > 0);
+                setRows([...keep, ...add.map(makeRow)]);
+              }}
+              className="text-xs text-orange-600 dark:text-orange-400 hover:underline">
+              ⚡ 미입력 {missingDates.length}일 한 번에 채우기
+            </button>
+          )}
+        </div>
         {pendingCount > 0 && (
           <button onClick={saveAll}
             className="text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded-md font-medium hover:opacity-90">
@@ -450,6 +469,16 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
     setTimeout(() => setSavedMsg(null), 4000);
   }, []);
 
+  // 항목별 미입력 날짜 — 폼에서 '한 번에 채우기'로 쓴다.
+  const [missing, setMissing] = useState<{ cafe24: string[]; smartstore: string[]; coupang_funnel: string[] }>(
+    { cafe24: [], smartstore: [], coupang_funnel: [] }
+  );
+  useEffect(() => {
+    fetch("/api/missing-dates").then(r => r.json()).then(d => setMissing({
+      cafe24: d.cafe24 || [], smartstore: d.smartstore || [], coupang_funnel: d.coupang_funnel || [],
+    })).catch(() => {});
+  }, [refreshKey]);
+
   const saveCafe24 = async (row: { date: string } & Record<string, string>) => {
     const res = await fetch(API, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -488,6 +517,7 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
             today={today}
             onSave={saveCafe24}
             onSaved={handleSaved}
+            missingDates={missing.cafe24}
             fields={[
               { key: "cart_adds", label: "장바구니" },
               { key: "purchases", label: "회원가입" },
@@ -505,6 +535,7 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
             today={today}
             onSave={saveSmartstore}
             onSaved={handleSaved}
+            missingDates={missing.smartstore}
             fields={[
               { key: "brand", label: "브랜드", type: "select", options: [{ key: "nutty", label: "일반 (너티/아이언펫/사입)" }, { key: "balancelab", label: "밸런스랩" }] },
               { key: "sessions", label: "세션" },
