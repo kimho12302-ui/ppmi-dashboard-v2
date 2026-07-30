@@ -19,9 +19,6 @@ const SHORT: Record<string, string> = {
   cafe24_funnel: "카페24",
 };
 
-// 스트립에 항상 노출하는 핵심 소스(순서). 나머지는 비정상일 때만 노출.
-const KEY_SOURCES = ["sales", "naver_sa", "naver_shopping", "meta_ads", "coupang_ads", "coupang_funnel"];
-
 // status → 표시 규칙. 운영중지(no_activity)는 장애 아님(회색), 연결끊김(disconnected)만 빨강.
 const STATUS_META: Record<string, { dot: string; text: string; tag: string | null }> = {
   ok: { dot: "#10b981", text: "text-muted-foreground", tag: null },
@@ -63,16 +60,17 @@ export function FreshnessStrip() {
 
   if (!sources || sources.length === 0) return null;
 
-  const byId = new Map(sources.map((s) => [s.id, s]));
-  const keyShown = KEY_SOURCES.map((id) => byId.get(id)).filter((s): s is Source => !!s);
-  // 비핵심이라도 비정상(운영중지/연결끊김/수기미입력)이면 항상 노출
-  const extraAbnormal = sources.filter((s) => !KEY_SOURCES.includes(s.id) && s.status !== "ok");
-  const shown = expanded ? sources : [...keyShown, ...extraAbnormal];
-
   // 카테고리별 집계 (장애와 운영중지를 분리해서 보여줌)
-  const disconnected = sources.filter((s) => s.status === "disconnected").length;
+  const disconnectedList = sources.filter((s) => s.status === "disconnected");
+  const disconnected = disconnectedList.length;
   const staleManual = sources.filter((s) => s.status === "stale_manual").length;
   const noActivity = sources.filter((s) => s.status === "no_activity").length;
+  const okCount = sources.filter((s) => s.status === "ok").length;
+
+  // ★ 기본은 요약 한 줄. 이전에는 핵심 6개 + 비정상 전부를 칩으로 뿌려 12개가 깔렸고,
+  //   대시보드를 열 때마다 사업 숫자보다 정비 상태가 먼저 보였다(2026-07 사용성 리뷰).
+  //   실제 장애(연결끊김)만 접힌 상태에서도 칩으로 노출한다. 수기미입력은 카운트로 충분하다.
+  const shown = expanded ? sources : disconnectedList;
 
   const Chip = ({ s }: { s: Source }) => {
     const m = meta(s);
@@ -94,11 +92,12 @@ export function FreshnessStrip() {
         {shown.map((s) => <Chip key={s.id} s={s} />)}
       </div>
       <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+        {okCount > 0 && <span className="text-muted-foreground/70">정상 {okCount}</span>}
         {disconnected > 0 && <span className="text-red-600 dark:text-red-400 font-medium">연결끊김 {disconnected}</span>}
         {staleManual > 0 && <span className="text-amber-600 dark:text-amber-400 font-medium">수기미입력 {staleManual}</span>}
         {noActivity > 0 && <span className="text-muted-foreground/70">운영중지 {noActivity}</span>}
         <button onClick={() => setExpanded((v) => !v)} className="text-muted-foreground/60 hover:text-foreground">
-          {expanded ? "접기" : "전체"}
+          {expanded ? "접기" : "펼치기"}
         </button>
         <Link href="/settings" className="text-primary/70 hover:text-primary hover:underline">상세 →</Link>
       </div>

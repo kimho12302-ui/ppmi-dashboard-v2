@@ -76,6 +76,36 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
   const { target, actual, achievement, remaining, dateProgress } = data;
   const monthLabel = `${Number(data.month.slice(5))}월`;
   const monthStart = `${data.month}-01`;
+
+  // 판정 문장: "달성 가능한가"를 필요 런레이트 대비 현재 페이스로 답한다.
+  const verdict = (() => {
+    const { reqDailyRevenue: req, dailyAvgRevenue: avg } = data.remaining;
+    const short = formatCurrency(Math.max(0, target.revenue - actual.revenue));
+    if (achievement.revenue >= 1) {
+      return { cls: "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+        text: `${monthLabel} 목표 달성. 매출 ${formatCurrency(actual.revenue)} (목표 ${pct(achievement.revenue)}).` };
+    }
+    if (data.daysRemaining <= 0) {
+      return { cls: "border-red-500 bg-red-500/10 text-red-600",
+        text: `${monthLabel} 종료. 목표 ${pct(achievement.revenue)}로 마감, ${short} 미달.` };
+    }
+    if (avg <= 0) {
+      return { cls: "border-muted bg-muted/50 text-muted-foreground",
+        text: `${monthLabel} 잔여 ${data.daysRemaining}일. 목표까지 ${short} 남았습니다.` };
+    }
+    const mult = req / avg;
+    const base = `${monthLabel} 잔여 ${data.daysRemaining}일 · 목표까지 ${short} · 필요 일매출 ${formatCurrency(req)} (현재 일평균 ${formatCurrency(avg)})`;
+    if (mult <= 1.1) {
+      return { cls: "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+        text: `${base}. 현재 페이스로 달성 가능합니다.` };
+    }
+    if (mult <= 3) {
+      return { cls: "border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-500",
+        text: `${base}. 일매출을 ${mult.toFixed(1)}배로 올려야 달성합니다.` };
+    }
+    return { cls: "border-red-500 bg-red-500/10 text-red-600",
+      text: `${base}. 필요 페이스가 현재의 ${mult.toFixed(0)}배로 사실상 달성 불가입니다. 남은 예산을 다음 달로 넘길지 판단이 필요합니다.` };
+  })();
   // 선택 기간이 이 달 시작과 다르면 아래 KPI와 스코프가 다르다는 뜻.
   const scopeDiffers = !!from && from !== monthStart;
 
@@ -101,6 +131,13 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
             {monthLabel} {data.daysElapsed}/{data.daysInMonth}일 경과 ({pct(dateProgress)}) · 잔여 {data.daysRemaining}일
           </div>
         </button>
+
+        {/* ★ 판정 한 줄. 대시보드는 이미 "필요 일매출 vs 현재 일평균"을 계산해 놓고도
+            중간 크기 타일 하나로 다른 20개 숫자와 나란히 두어 결론이 묻혔다(2026-07 사용성 리뷰).
+            열었을 때 가장 먼저 읽히는 자리에 문장으로 올린다. */}
+        <div className={`rounded-lg px-3 py-2.5 text-sm font-medium border-l-4 ${verdict.cls}`}>
+          {verdict.text}
+        </div>
 
         {scopeDiffers && (
           <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-500">

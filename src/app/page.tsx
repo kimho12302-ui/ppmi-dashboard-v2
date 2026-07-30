@@ -330,7 +330,11 @@ function OverviewInner() {
         <KpiCard title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, kpi.ordersPrev)} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
         <KpiCard title="이익" value={formatCurrency(kpi.profit)} change={pctChange(kpi.profit, kpi.profitPrev)} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
         <KpiCard title="이익률" value={kpi.revenue > 0 ? formatPercent((kpi.profit / kpi.revenue) * 100) : "—"} onClick={() => toggleKpi("profitRate")} active={selectedKpi === "profitRate"} />
-        <KpiCard title="MER" value={`${(kpi.mer || 0).toFixed(2)}x`} change={pctChange(kpi.mer, kpi.merPrev)} onClick={() => toggleKpi("ctr")} active={selectedKpi === "ctr"} />
+        {/* MER은 매출/(매체비+잡비), ROAS는 매출/매체비. 잡비가 0인 달에는 두 값이 완전히 같아
+            카드 두 개가 같은 숫자를 보여준다. 잡비가 있을 때만 별도 카드로 낸다. */}
+        {(kpi.miscCost || 0) > 0 && (
+          <KpiCard title="MER" value={`${(kpi.mer || 0).toFixed(2)}x`} change={pctChange(kpi.mer, kpi.merPrev)} onClick={() => toggleKpi("ctr")} active={selectedKpi === "ctr"} />
+        )}
         <KpiCard title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "—"} change={pctChange(kpi.aov, kpi.aovPrev)} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
       </div>
 
@@ -554,9 +558,13 @@ function OverviewInner() {
                 </div>
               ))}
             </div>
-            {funnelSummary.convRate > 0 && (
-              <p className="text-xs text-muted-foreground mt-2 text-center">전환율: {funnelSummary.convRate.toFixed(2)}%</p>
-            )}
+            {/* 단일 전환율을 찍지 않는다. 분모(세션)는 세션이 잡히는 채널만이고
+                분자(구매)는 daily_sales의 전 채널 주문이라 서로 다른 모집단이다.
+                매출 78%를 차지하는 스마트스토어는 세션이 수기라 대개 비어 있어,
+                합산 전환율이 21%처럼 성립 불가능한 값으로 나왔다(2026-07 확인). */}
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              단계별 모집단이 달라 합산 전환율은 표시하지 않습니다. 채널별은 <Link href="/funnel" className="text-primary hover:underline">퍼널</Link>에서 보세요.
+            </p>
           </CardContent>
         </Card>
 
