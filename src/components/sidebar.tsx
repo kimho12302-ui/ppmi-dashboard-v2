@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -44,10 +44,22 @@ const MORE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
   !["/", "/sales", "/ads", "/funnel"].includes(item.href)
 );
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  // 브랜드 링크: 현재 보던 기간(preset/from/to)을 유지한 채 brand만 교체.
+  // 정적 href 로 이동하면 기간이 기본값(이번 달)으로 리셋돼 "데이터가 사라진 것처럼" 보였음 (2026-08 버그).
+  const goBrand = useCallback((e: React.MouseEvent, href: string) => {
+    const brand = new URL(href, window.location.origin).searchParams.get("brand");
+    if (!brand) return; // 일반 링크는 Link 기본 동작
+    e.preventDefault();
+    const params = new URLSearchParams(window.location.search);
+    params.set("brand", brand);
+    router.push(`/?${params.toString()}`);
+  }, [router]);
   const [moreOpen, setMoreOpen] = useState(false);
 
   return (
@@ -83,6 +95,7 @@ export function Sidebar() {
                 )}
                 <Link
                   href={item.href}
+                  onClick={(e) => goBrand(e, item.href)}
                   className={cn(
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                     isActive
@@ -177,7 +190,7 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={() => setMoreOpen(false)}
+                onClick={(e) => { goBrand(e, item.href); setMoreOpen(false); }}
                 className={cn(
                   "flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-lg text-xs transition-colors",
                   isActive
