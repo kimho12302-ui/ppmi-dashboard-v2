@@ -10,6 +10,8 @@ interface NavItem {
   label: string;
   icon: string;
   separator?: boolean;
+  emoji?: string;   // emoji 가 있으면 svg 대신 emoji 아이콘 렌더
+  section?: string; // separator 위에 표시할 섹션 라벨
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -18,6 +20,12 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/ads", label: "광고 분석", icon: "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" },
   { href: "/channel", label: "채널 성과", icon: "M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" },
   { href: "/funnel", label: "퍼널", icon: "M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" },
+  // ── 브랜드별 뷰 (2026-08): 클릭 = 오버뷰를 해당 브랜드로 필터 ──
+  { href: "/?brand=pet", label: "펫 통합", icon: "", emoji: "🐾", separator: true, section: "브랜드" },
+  { href: "/?brand=nutty", label: "너티", icon: "", emoji: "🐶" },
+  { href: "/?brand=ironpet", label: "아이언펫", icon: "", emoji: "🦴" },
+  { href: "/?brand=saip", label: "사입", icon: "", emoji: "📦" },
+  { href: "/?brand=balancelab", label: "밸런스랩", icon: "", emoji: "🧬" },
   { href: "/content", label: "콘텐츠/SNS", icon: "M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-5 6v4m-2-2h4M5 8h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8a2 2 0 012-2z" },
   { href: "/keywords", label: "키워드", icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" },
   { href: "/monthly", label: "월별 요약", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
@@ -70,6 +78,9 @@ export function Sidebar() {
                 {item.separator && (
                   <div className="my-3 border-t" style={{ borderColor: "var(--sidebar-border)" }} />
                 )}
+                {item.section && (
+                  <p className="px-3 pb-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">{item.section}</p>
+                )}
                 <Link
                   href={item.href}
                   className={cn(
@@ -80,15 +91,19 @@ export function Sidebar() {
                   )}
                   style={isActive ? { backgroundColor: "var(--sidebar-active)" } : undefined}
                 >
-                  <svg
-                    className="w-5 h-5 flex-shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
-                  </svg>
+                  {item.emoji ? (
+                    <span className="w-5 h-5 flex-shrink-0 flex items-center justify-center text-base leading-none">{item.emoji}</span>
+                  ) : (
+                    <svg
+                      className="w-5 h-5 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                    </svg>
+                  )}
                   {item.label}
                 </Link>
               </div>
@@ -170,9 +185,13 @@ export function Sidebar() {
                     : "text-[var(--muted-foreground)] hover:bg-[var(--sidebar-hover)]"
                 )}
               >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
-                </svg>
+                {item.emoji ? (
+                  <span className="w-5 h-5 flex items-center justify-center text-base leading-none">{item.emoji}</span>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
+                  </svg>
+                )}
                 {item.label}
               </Link>
             );
