@@ -1,3 +1,4 @@
+import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { isGonggu, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
     // Product sales for this brand
     const products = await fetchAll(
       supabase.from("product_sales").select("date,product,channel,lineup,category,revenue,quantity,buyers")
-        .eq("brand", brand).gte("date", from).lte("date", to)
+        .in("brand", expandBrands(brand)).gte("date", from).lte("date", to)
     );
 
     // "공구 합계" 집계 행 제외

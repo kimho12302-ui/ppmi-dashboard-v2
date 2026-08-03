@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { isGongguInDailySales } from "@/lib/gonggu";
@@ -35,23 +36,23 @@ export async function GET(request: NextRequest) {
 
     // 자체매출만 집계: 공구(공동구매) 채널 제외. 공구는 별도 섹션에서만 표시.
     let salesQ = supabase.from("daily_sales").select("date,revenue,orders").gte("date", fromDate).lte("date", toDate).neq("channel", "total").not("channel", "like", "공구%");
-    if (brand !== "all") { salesQ = salesQ.eq("brand", brand); }
+    if (brand !== "all") { salesQ = salesQ.in("brand", expandBrands(brand)); }
     else { salesQ = salesQ.neq("brand", "all"); }
     const sales = await fetchAll(salesQ);
 
     let adQ = supabase.from("daily_ad_spend").select("date,channel,spend,conversion_value").gte("date", fromDate).lte("date", toDate).not("channel", "like", "ga4_%");
-    if (brand !== "all") { adQ = adQ.eq("brand", brand); }
+    if (brand !== "all") { adQ = adQ.in("brand", expandBrands(brand)); }
     else { adQ = adQ.neq("brand", "all"); }
     const ads = await fetchAll(adQ);
 
     // Fetch misc costs (dashboard API와 동일 테이블 사용: misc_costs)
     let miscQ = supabase.from("misc_costs").select("date,brand,amount").gte("date", fromDate).lte("date", toDate);
-    if (brand !== "all") miscQ = miscQ.eq("brand", brand);
+    if (brand !== "all") miscQ = miscQ.in("brand", expandBrands(brand));
     const { data: miscData } = await miscQ;
 
     // Fetch shipping costs (dashboard API와 동일 테이블 사용: shipping_costs)
     let shipQ = supabase.from("shipping_costs").select("month,brand,total_cost").gte("month", fromDate.slice(0, 7)).lte("month", toDate.slice(0, 7));
-    if (brand !== "all") shipQ = shipQ.eq("brand", brand);
+    if (brand !== "all") shipQ = shipQ.in("brand", expandBrands(brand));
     const { data: shipData } = await shipQ;
 
     // 공구 매출은 자체매출 집계에서 제외 (사용자 결정 2026-06-10: 자체만 합산, 공구 별도 표시).
@@ -79,7 +80,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch product_sales for COGS matching
     let cogsProdQ = supabase.from("product_sales").select("date,product,brand,quantity").gte("date", fromDate).lte("date", toDate);
-    if (brand !== "all") cogsProdQ = cogsProdQ.eq("brand", brand);
+    if (brand !== "all") cogsProdQ = cogsProdQ.in("brand", expandBrands(brand));
     const cogsProdData = await fetchAll(cogsProdQ);
 
     // Group by month

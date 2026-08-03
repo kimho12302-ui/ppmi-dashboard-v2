@@ -1,3 +1,4 @@
+import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
       .range(0, 99999); // Supabase 기본 1000행 캡 → 넓은 기간 과소집계 방지
 
     if (brand !== "all") {
-      query = query.eq("brand", brand);
+      query = query.in("brand", expandBrands(brand));
     }
 
     const { data, error } = await query;

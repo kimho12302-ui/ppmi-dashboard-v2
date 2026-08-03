@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { isGongguInDailySales } from "@/lib/gonggu";
@@ -59,12 +60,12 @@ type DayAgg = { rev: Record<string, number>; ad: Record<string, number>; blMG: n
 async function periodData(from: string, to: string, brand: string) {
   let salesQ = supabase.from("daily_sales").select("date,brand,channel,revenue")
     .gte("date", from).lte("date", to).neq("channel", "total").not("channel", "like", "공구%");
-  if (brand !== "all") salesQ = salesQ.eq("brand", brand);
+  if (brand !== "all") salesQ = salesQ.in("brand", expandBrands(brand));
   const sales = await fetchAll(salesQ);
   // 광고비: brand도 가져와 밸런스랩 메타/구글 분리. ga4 제외.
   let adsQ = supabase.from("daily_ad_spend").select("date,brand,channel,spend")
     .gte("date", from).lte("date", to).not("channel", "like", "ga4_%");
-  adsQ = brand !== "all" ? adsQ.eq("brand", brand) : adsQ.neq("brand", "all");
+  adsQ = brand !== "all" ? adsQ.in("brand", expandBrands(brand)) : adsQ.neq("brand", "all");
   const ads = await fetchAll(adsQ);
   // 밸런스랩 형식-A 공구 → smartstore 매출에서 차감.
   let formA = 0;

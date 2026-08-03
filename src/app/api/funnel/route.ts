@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
   try {
     // Brand → funnel channels mapping
     const brandFunnelChannels: Record<string, string[]> = {
+      pet: ["cafe24", "smartstore", "coupang"], // 너티+아이언펫+사입 통합 (퍼널 원천은 brand='all' 공용)
       nutty: ["cafe24", "smartstore", "coupang"],
       ironpet: ["cafe24", "smartstore"],
       saip: ["cafe24", "smartstore"],
@@ -39,14 +41,14 @@ export async function GET(req: NextRequest) {
       .from("daily_ad_spend")
       .select("date, brand, channel, impressions, clicks")
       .gte("date", from).lte("date", to);
-    if (brand !== "all") adQuery = adQuery.eq("brand", brand);
+    if (brand !== "all") adQuery = adQuery.in("brand", expandBrands(brand));
 
     let salesQuery = supabase
       .from("daily_sales")
       .select("date, brand, channel, orders, revenue")
       .gte("date", from).lte("date", to)
       .neq("channel", "total"); // total 집계행 제외 (채널별 합산과 이중 계산 방지)
-    if (brand !== "all") salesQuery = salesQuery.eq("brand", brand);
+    if (brand !== "all") salesQuery = salesQuery.in("brand", expandBrands(brand));
 
     const [adRows, allFunnelRows, salesRows, metaRes] = await Promise.all([
       fetchAll(adQuery),

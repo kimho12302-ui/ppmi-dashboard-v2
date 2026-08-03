@@ -36,6 +36,8 @@ interface DashboardData {
   salesByChannel: { channel: string; revenue: number }[];
   topProducts: { product: string; revenue: number; quantity: number; brand: string }[];
   funnelSummary: { sessions: number; cartAdds: number; purchases: number; repurchases: number; convRate: number };
+  groupRevenue?: { group: string; label: string; revenue: number; orders: number }[];
+  blTestLines?: { key: string; label: string; preLaunch: boolean; revenue: number; quantity: number }[];
   gongguSales: { seller: string; revenue: number; orders: number }[];
   gongguSalesTotal: number;
   selfSalesTotal: number;
@@ -337,6 +339,65 @@ function OverviewInner() {
         )}
         <KpiCard title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "—"} change={pctChange(kpi.aov, kpi.aovPrev)} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
       </div>
+
+      {/* 사업 그룹 뷰: 펫(너티+아이언펫+사입) vs 밸런스랩(검사 라인별) */}
+      {(brand === "all" || !brand) && (data?.groupRevenue || []).length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {(data?.groupRevenue || []).map(g => {
+            const total = (data?.groupRevenue || []).reduce((s, x) => s + x.revenue, 0);
+            const share = total > 0 ? (g.revenue / total) * 100 : 0;
+            return (
+              <Card key={g.group}>
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-sm">{g.group === "pet" ? "🐾 " : "🧬 "}{g.label}</h3>
+                    <span className="text-xs text-muted-foreground">비중 {share.toFixed(0)}%</span>
+                  </div>
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-xl font-bold">{formatCurrency(g.revenue)}</span>
+                    <span className="text-xs text-muted-foreground">주문 {formatNumber(g.orders)}</span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${share}%`, backgroundColor: g.group === "pet" ? "#ea580c" : "#2563eb" }} />
+                  </div>
+                  {/* 밸런스랩은 검사 라인별 분해 (타액·음식물과민증은 런칭 전 → 0이어도 항상 표시) */}
+                  {g.group === "balancelab" && (data?.blTestLines || []).length > 0 && (
+                    <div className="pt-1 space-y-1">
+                      {(data?.blTestLines || []).map(l => (
+                        <div key={l.key} className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">
+                            {l.label}
+                            {l.preLaunch && l.revenue === 0 && <span className="ml-1 px-1 py-0.5 rounded bg-muted text-[10px]">런칭 전</span>}
+                          </span>
+                          <span className={l.revenue > 0 ? "font-medium" : "text-muted-foreground"}>{formatCurrency(l.revenue)}{l.quantity > 0 ? ` · ${formatNumber(l.quantity)}건` : ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 밸런스랩 단독 선택 시 검사 라인별 카드 */}
+      {brand === "balancelab" && (data?.blTestLines || []).length > 0 && (
+        <Card>
+          <CardContent className="p-4 space-y-2">
+            <h3 className="font-semibold text-sm">🧬 검사 라인별 매출 <span className="text-xs text-muted-foreground font-normal">(자체매출 기준, 공구 제외)</span></h3>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {(data?.blTestLines || []).map(l => (
+                <div key={l.key} className="p-3 rounded-lg border">
+                  <p className="text-xs text-muted-foreground">{l.label}{l.preLaunch && l.revenue === 0 && <span className="ml-1 px-1 py-0.5 rounded bg-muted text-[10px]">런칭 전</span>}</p>
+                  <p className={`text-lg font-bold mt-0.5 ${l.revenue === 0 ? "text-muted-foreground" : ""}`}>{formatCurrency(l.revenue)}</p>
+                  <p className="text-xs text-muted-foreground">{formatNumber(l.quantity)}건</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 드릴다운 */}
       {drilldownData && (

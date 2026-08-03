@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
@@ -40,8 +41,8 @@ export async function GET(req: NextRequest) {
     let prevQuery = supabase.from("daily_ad_spend").select("date,brand,channel,spend,clicks,impressions,conversion_value").gte("date", prevFromStr).lte("date", prevToStr).not("channel", "like", "ga4_%");
 
     if (brand && brand !== "all") {
-      query = query.eq("brand", brand);
-      prevQuery = prevQuery.eq("brand", brand);
+      query = query.in("brand", expandBrands(brand));
+      prevQuery = prevQuery.in("brand", expandBrands(brand));
     } else {
       // brand="all"은 채널 합계 매직행 → 실브랜드와 합산 시 이중집계되므로 제외
       query = query.neq("brand", "all");

@@ -42,7 +42,7 @@ function FunnelInner() {
 
   // 너티/아이언펫/사입은 cafe24·스마트스토어 퍼널이 시트에서 3개 합산으로만 기록됨 → 브랜드별 분리 불가.
   // 숫자를 쪼개 보여주면 과대귀속(왜곡)이므로, 합산 수치임을 정직하게 라벨한다.
-  const SHARED_STOREFRONT_BRANDS = ["nutty", "ironpet", "saip"];
+  const SHARED_STOREFRONT_BRANDS = ["pet", "nutty", "ironpet", "saip"];
   const isSharedStorefront = !!brand && SHARED_STOREFRONT_BRANDS.includes(brand);
 
   const sessionsStep = funnel.find(s => s.name === "유입");

@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
@@ -39,18 +40,18 @@ export async function GET(request: NextRequest) {
     // 쿼리 빌드 (모두 독립적 → 한 번에 병렬 실행)
     // 자체매출만: 공구 채널 제외 (공구 별도 표시)
     let salesQ = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("brand", "all").neq("channel", "total").not("channel", "like", "공구%");
-    if (brand !== "all") salesQ = salesQ.eq("brand", brand);
+    if (brand !== "all") salesQ = salesQ.in("brand", expandBrands(brand));
 
     let adQ = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).neq("brand", "all").not("channel", "like", "ga4_%");
-    if (brand !== "all") adQ = adQ.eq("brand", brand);
+    if (brand !== "all") adQ = adQ.in("brand", expandBrands(brand));
 
     // 퍼널: brand=all이면 전체(brand="all" 채널행 + balancelab) 합산이 곧 전체 퍼널.
     // 특정 브랜드 선택 시 그 브랜드 퍼널만 → 타 브랜드 퍼널을 잘못 귀속하지 않음.
     let funnelQ = supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to);
-    if (brand !== "all") funnelQ = funnelQ.eq("brand", brand);
+    if (brand !== "all") funnelQ = funnelQ.in("brand", expandBrands(brand));
 
     let prodQ = supabase.from("product_sales").select("*").gte("date", from).lte("date", to);
-    if (brand !== "all") prodQ = prodQ.eq("brand", brand);
+    if (brand !== "all") prodQ = prodQ.in("brand", expandBrands(brand));
 
     const [salesRes, adRes, funnelRes, prodRes, prevSalesRes, prevAdsRes] = await Promise.all([
       salesQ.range(0, 99999),

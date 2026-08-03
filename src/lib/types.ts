@@ -136,6 +136,7 @@ export interface ChannelConfig {
    ──────────────────────────────────────────── */
 
 export const BRAND_COLORS: Record<string, string> = {
+  pet: "#ea580c",
   nutty: "#dc2626",
   ironpet: "#ea580c",
   saip: "#92400e",
@@ -143,6 +144,7 @@ export const BRAND_COLORS: Record<string, string> = {
 };
 
 export const BRAND_LABELS: Record<string, string> = {
+  pet: "펫 (너티·아이언펫·사입)",
   nutty: "너티",
   ironpet: "아이언펫",
   saip: "사입",
@@ -189,5 +191,6 @@ export const CHANNEL_COLORS: Record<string, string> = {
 };
 
 /** 브랜드 키 배열 */
-export const BRANDS = ["all", "nutty", "ironpet", "saip", "balancelab"] as const;
+// UI 필터용 (2026-07-29 그룹 뷰): 펫 3사는 "pet" 하나로 묶어서 본다. API는 expandBrands 로 해석.
+export const BRANDS = ["all", "pet", "balancelab"] as const;
 export type BrandKey = (typeof BRANDS)[number];

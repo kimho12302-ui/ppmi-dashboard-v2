@@ -1,3 +1,4 @@
+import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 type Brand = string;
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     const today = new Date().toISOString().slice(0, 10);
     const effectiveTo = to && to < today ? to : today;
     let query = supabase.from("content_performance").select("*").gte("date", from).lte("date", effectiveTo).order("date");
-    if (brand !== "all") query = query.eq("brand", brand);
+    if (brand !== "all") query = query.in("brand", expandBrands(brand));
     const { data, error } = await query;
     if (error) throw error;
     const rows = data || [];

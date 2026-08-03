@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { isGongguInDailySales } from "@/lib/gonggu";
@@ -50,16 +51,16 @@ export async function GET(req: NextRequest) {
 
     // 쿼리 빌드 (목표/매출/광고 — 모두 독립 → 병렬)
     let tQ = supabase.from("monthly_targets").select("brand,revenue_target,ad_budget_target,roas_target").eq("month", month);
-    if (brand !== "all") tQ = tQ.eq("brand", brand);
+    if (brand !== "all") tQ = tQ.in("brand", expandBrands(brand));
     else tQ = tQ.in("brand", BRANDS);
 
     // 자체매출만 집계: 공구 채널 제외 (목표 스코프와 일치). 공구는 별도 표시.
     let salesQ = supabase.from("daily_sales").select("date,revenue,orders,brand").gte("date", monthStart).lte("date", monthEnd).neq("channel", "total").not("channel", "like", "공구%");
-    if (brand !== "all") salesQ = salesQ.eq("brand", brand);
+    if (brand !== "all") salesQ = salesQ.in("brand", expandBrands(brand));
     else salesQ = salesQ.in("brand", BRANDS);
 
     let adQ = supabase.from("daily_ad_spend").select("date,spend,conversion_value,channel,brand").gte("date", monthStart).lte("date", monthEnd).not("channel", "like", "ga4_%");
-    if (brand !== "all") adQ = adQ.eq("brand", brand);
+    if (brand !== "all") adQ = adQ.in("brand", expandBrands(brand));
     else adQ = adQ.in("brand", BRANDS);
 
     // 밸런스랩: daily_sales smartstore 에 형식-A 공구(셀러가 스마트스토어로 판 공구)가 섞여 있어

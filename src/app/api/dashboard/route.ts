@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { expandBrands, PET_BRANDS, GROUP_LABELS, BL_TEST_LINES, classifyBlProduct } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { isGonggu, isGongguAggregate, gongguSeller, isGongguInDailySales } from "@/lib/gonggu";
@@ -43,26 +44,26 @@ export async function GET(req: NextRequest) {
     // channel="total"은 Total 탭 집계값 — 채널별 합과 중복이므로 제외
     // 자체매출만 집계: daily_sales 의 공구(공동구매) 채널 제외. 공구는 별도 섹션(product_sales 기반)에서만 표시.
     let salesQuery = supabase.from("daily_sales").select("*").gte("date", from).lte("date", to).neq("channel", "total").not("channel", "like", "공구%").order("date");
-    if (brand !== "all") salesQuery = salesQuery.eq("brand", brand);
+    if (brand !== "all") salesQuery = salesQuery.in("brand", expandBrands(brand));
     else salesQuery = salesQuery.neq("brand", "all");
 
     let adQuery = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).order("date");
-    if (brand !== "all") adQuery = adQuery.eq("brand", brand);
+    if (brand !== "all") adQuery = adQuery.in("brand", expandBrands(brand));
     else adQuery = adQuery.neq("brand", "all");
 
     let prevSalesQ = supabase.from("daily_sales").select("revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total").not("channel", "like", "공구%");
-    if (brand !== "all") prevSalesQ = prevSalesQ.eq("brand", brand);
+    if (brand !== "all") prevSalesQ = prevSalesQ.in("brand", expandBrands(brand));
     else prevSalesQ = prevSalesQ.neq("brand", "all");
 
     let prevAdQ = supabase.from("daily_ad_spend").select("channel, spend, conversion_value").gte("date", prevFrom).lte("date", prevTo);
-    if (brand !== "all") prevAdQ = prevAdQ.eq("brand", brand);
+    if (brand !== "all") prevAdQ = prevAdQ.in("brand", expandBrands(brand));
     else prevAdQ = prevAdQ.neq("brand", "all");
 
     let cogsProdQ = supabase.from("product_sales").select("product,brand,quantity").gte("date", from).lte("date", to);
-    if (brand !== "all") cogsProdQ = cogsProdQ.eq("brand", brand);
+    if (brand !== "all") cogsProdQ = cogsProdQ.in("brand", expandBrands(brand));
 
     let prodQ = supabase.from("product_sales").select("product,revenue,quantity,brand,channel,lineup").gte("date", from).lte("date", to);
-    if (brand !== "all") prodQ = prodQ.eq("brand", brand);
+    if (brand !== "all") prodQ = prodQ.in("brand", expandBrands(brand));
 
     // 공구는 밸런스랩/전체일 때만 (lineup 기반 셀러 감지)
     const gongguPromise = (brand === "balancelab" || brand === "all")
@@ -279,6 +280,30 @@ export async function GET(req: NextRequest) {
     // 공구 매출 brandRev 반영 생략: daily_sales에 이미 포함
     const brandRevenue = Array.from(brandRevMap.entries()).map(([b, d]) => ({ brand: b, ...d }));
 
+    // ── 그룹 뷰 (2026-07-29): 펫(너티+아이언펫+사입) vs 밸런스랩 ──
+    const groupRevenue = ["pet", "balancelab"].map(g => {
+      const members = g === "pet" ? PET_BRANDS : ["balancelab"];
+      let revenue = 0, orders = 0;
+      for (const m of members) { const e = brandRevMap.get(m); if (e) { revenue += e.revenue; orders += e.orders; } }
+      return { group: g, label: GROUP_LABELS[g], revenue, orders };
+    });
+
+    // ── 밸런스랩 검사 라인별 매출 (product_sales 기반, 공구 제외 = 헤드라인 스코프 동일) ──
+    // 타액·음식물과민증은 런칭 전이어도 항상 0으로 표시 (런칭 후 자동 분류).
+    const blLineAgg = new Map<string, { revenue: number; quantity: number }>();
+    for (const ps of prodData || []) {
+      if (ps.brand !== "balancelab") continue;
+      if (isGongguInDailySales(ps as { channel: string; lineup: string | null; product: string })) continue;
+      const key = classifyBlProduct(ps.product);
+      const e = blLineAgg.get(key) || { revenue: 0, quantity: 0 };
+      e.revenue += Number(ps.revenue || 0); e.quantity += Number(ps.quantity || 0);
+      blLineAgg.set(key, e);
+    }
+    const blTestLines = [
+      ...BL_TEST_LINES.map(l => ({ key: l.key, label: l.label, preLaunch: !!l.preLaunch, ...(blLineAgg.get(l.key) || { revenue: 0, quantity: 0 }) })),
+      { key: "etc", label: "기타 (영양제 등)", preLaunch: false, ...(blLineAgg.get("etc") || { revenue: 0, quantity: 0 }) },
+    ];
+
     // ── Brand profit ──
     const brandAdMap = new Map<string, number>();
     for (const r of nonGa4Ad) brandAdMap.set(r.brand, (brandAdMap.get(r.brand) || 0) + Number(r.spend));
@@ -392,7 +417,7 @@ export async function GET(req: NextRequest) {
         matchedRate: totalProducts > 0 ? matchedProducts / totalProducts : 0,
       },
       trend, channels, channelRoasTrend,
-      brandRevenue, brandRevenueTrend, brandProfit,
+      brandRevenue, brandRevenueTrend, brandProfit, groupRevenue, blTestLines,
       salesByChannel, topProducts,
       funnelSummary: { ...funnelSummary, convRate },
       targets,
