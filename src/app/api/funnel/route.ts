@@ -35,15 +35,15 @@ export async function GET(req: NextRequest) {
       .neq("channel", "total"); // total 집계행 제외 (채널별 합산과 이중 계산 방지)
     if (brand !== "all") salesQuery = salesQuery.in("brand", expandBrands(brand));
 
-    const [adRows, allFunnelRows, salesRows, metaRes] = await Promise.all([
-      fetchAll(adQuery),
+    const [adRows, allFunnelRows, salesRows, metaData] = await Promise.all([
+      fetchAll(adQuery.order("date")),
       fetchAll(supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to).order("date", { ascending: true })),
-      fetchAll(salesQuery),
-      supabase.from("daily_ad_spend")
+      fetchAll(salesQuery.order("date")),
+      // meta 도 fetchAll 로 — 여기만 raw 쿼리라 1000행 캡에 그대로 걸려 있었다(2026-08 리뷰).
+      fetchAll(supabase.from("daily_ad_spend")
         .select("date,brand,impressions,clicks,conversions,conversion_value,reach,spend")
-        .eq("channel", "meta").gte("date", from).lte("date", to).order("date"),
+        .eq("channel", "meta").gte("date", from).lte("date", to).order("date")),
     ]);
-    const metaData = metaRes.data;
 
     // Filter funnel rows by brand
     let funnelRows = allFunnelRows;
@@ -178,8 +178,12 @@ export async function GET(req: NextRequest) {
 
     // brand 필터 시: 노출/유입은 광고 데이터(브랜드별)를 우선 사용
     // GA4 funnel sessions은 brand="all" 합산이라 브랜드별 분리 불가
+    // ★ 이 대체가 일어나면 유입(브랜드별 클릭)과 장바구니/회원가입(전사 공용 행)의 모집단이 달라져
+    //   그 사이 전환율이 성립하지 않는다(실측: 아이언펫 5월 유입 5 vs 장바구니 385 → 7700%).
+    let sessionsSubstituted = false;
     if (brand !== "all" && totals.clicks > 0) {
       totals.sessions = totals.clicks;
+      sessionsSubstituted = true;
       for (const [, d] of dates) {
         d.sessions = d.clicks;
       }
@@ -191,6 +195,8 @@ export async function GET(req: NextRequest) {
         d.sessions = d.clicks;
       }
     }
+
+    const sharedFunnelNote = "유입은 이 브랜드의 광고 클릭인데 장바구니·회원가입은 전사 공용 퍼널 수치라 모집단이 달라 전환율을 산출하지 않습니다";
 
     // 6-step funnel
     // 장바구니가 실제로 수집되는 채널만 골라, 그 채널의 구매만 분자로 쓴다(커버리지 정합).
@@ -217,11 +223,15 @@ export async function GET(req: NextRequest) {
       { name: "유입", value: totals.sessions,
         rate: totals.impressions > 0 ? (totals.sessions / totals.impressions) * 100 : 0,
         channels: { 카페24: channelTotals.sess_cafe24, 스마트스토어: channelTotals.sess_smartstore, 쿠팡: channelTotals.sess_coupang } },
+      // 유입이 브랜드별 클릭으로 대체된 경우, 아래 두 단계는 전사 공용 퍼널 행이라 모집단이 달라
+      // 비율이 성립하지 않는다 → 숫자 대신 사유를 낸다.
       { name: "장바구니", value: totals.cart_adds,
-        rate: totals.sessions > 0 ? (totals.cart_adds / totals.sessions) * 100 : 0,
+        rate: sessionsSubstituted ? null : (totals.sessions > 0 ? (totals.cart_adds / totals.sessions) * 100 : 0),
+        rateNote: sessionsSubstituted ? sharedFunnelNote : null,
         channels: { 카페24: channelTotals.cart_cafe24, 스마트스토어: channelTotals.cart_smartstore, 쿠팡: channelTotals.cart_coupang } },
       { name: "회원가입", value: totals.signups,
-        rate: totals.sessions > 0 ? (totals.signups / totals.sessions) * 100 : 0,
+        rate: sessionsSubstituted ? null : (totals.sessions > 0 ? (totals.signups / totals.sessions) * 100 : 0),
+        rateNote: sessionsSubstituted ? sharedFunnelNote : null,
         channels: { 카페24: channelTotals.signups_cafe24, "스마트스토어(알림)": channelTotals.signups_smartstore } },
       { name: "구매", value: totals.purchases,
         // ★ 장바구니→구매 전환율은 "두 단계 모두 데이터가 있는 채널"로만 계산한다.

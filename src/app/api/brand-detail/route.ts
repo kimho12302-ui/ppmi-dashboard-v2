@@ -28,7 +28,11 @@ export async function GET(req: NextRequest) {
     //   라인업·제품·채널 카드만 공구를 포함해, 같은 페이지에서 밸런스랩 매출이 5.3배 어긋났다
     //   (KPI 267만 vs 라인업 1,411만). → 분해 카드도 자체매출 기준으로 통일하고,
     //   공구는 아래 gongguSales 섹션에서만 별도로 보여준다.
-    const filteredProducts = allRows.filter(r => !isGonggu(r));
+    //
+    //   ⚠ 공구 제외는 **밸런스랩에만** 적용한다. `isGonggu` 는 `lineup` 유무로 판정하는데
+    //   lineup 은 모든 브랜드의 정규 라인업 컬럼이기도 하다(너티 "하루루틴" 등).
+    //   전 브랜드에 걸면 너티 168행이 전부 탈락해 제품 매출이 0이 된다(실측 12,029,450 → 0).
+    const filteredProducts = brand === "balancelab" ? allRows.filter(r => !isGonggu(r)) : allRows;
 
     // ── Lineup/SubBrand breakdown ──
     const lineupMap = new Map<string, { revenue: number; quantity: number; orders: number }>();

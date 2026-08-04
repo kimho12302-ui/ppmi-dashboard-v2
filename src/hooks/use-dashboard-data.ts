@@ -108,11 +108,12 @@ export function useFetch<T>(url: string) {
         } catch { /* JSON 아님 → 상태코드만 */ }
         throw new Error(msg);
       }
+      // ★ 200 + body.error 를 실패로 취급하지 않는다.
+      //   일부 라우트(creatives / creative-trend / video-source)는 "META_ADS_TOKEN 미설정" 같은
+      //   **안내**를 의도적으로 200 + { data: [], error } 로 내리고, 화면이 그 문구를 배너로 띄운다.
+      //   이를 throw 하면 안내가 "소재 데이터가 없습니다"로 둔갑한다(2026-08 회귀).
+      //   실제 장애는 위에서 4xx/5xx 로 걸러진다(감시 라우트는 fail-closed 로 500 반환).
       const json = await res.json();
-      // 200 이어도 body 에 error 가 있으면 실패로 취급 (부분 응답을 정상으로 오독하지 않도록)
-      if (json && typeof json === "object" && "error" in json && json.error) {
-        throw new Error(String(json.error));
-      }
       setData(json);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");

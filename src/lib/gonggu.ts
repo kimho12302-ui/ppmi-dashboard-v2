@@ -34,6 +34,11 @@ export function isGongguAggregate(row: GongguRow): boolean {
  *
  * 셀러별 매출 breakdown, gongguSalesTotal 계산, 공구 vs 자체판매 분리 등에 사용.
  * "공구 합계" 집계 행은 false.
+ *
+ * ⚠ **밸런스랩 전용이다.** 형식 (A) 판정이 `lineup` 유무만 보는데, lineup 은 다른 브랜드에서
+ *   정규 라인업 컬럼이다(너티 "하루루틴"/"사운드", 사입 "파미나" 등). 브랜드 구분 없이 호출하면
+ *   그 브랜드의 정상 매출이 통째로 공구로 분류된다. 호출 전에 brand === "balancelab" 인지 확인할 것.
+ *   (2026-08 사고: brand-detail 이 전 브랜드에 적용해 너티 제품 매출 12,029,450원이 0이 됐다.)
  */
 export function isGonggu(row: GongguRow): boolean {
   if (!row) return false;

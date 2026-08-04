@@ -4,7 +4,7 @@ import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
-import { isGongguInDailySales } from "@/lib/gonggu";
+import { isGonggu, isGongguAggregate, isGongguInDailySales } from "@/lib/gonggu";
 
 // Channel name mapping (English → Korean)
 const CHANNEL_LABELS: Record<string, string> = {
@@ -61,18 +61,14 @@ export async function GET(request: NextRequest) {
     let prevSalesQ = supabase.from("daily_sales").select("*").gte("date", prevFrom).lte("date", prevTo).neq("brand", "all").neq("channel", "total").not("channel", "like", "공구%");
     if (brand !== "all") prevSalesQ = prevSalesQ.in("brand", expandBrands(brand));
 
-    let prevAdsQ = supabase.from("daily_ad_spend").select("*").gte("date", prevFrom).lte("date", prevTo).neq("brand", "all").not("channel", "like", "ga4_%");
-    if (brand !== "all") prevAdsQ = prevAdsQ.in("brand", expandBrands(brand));
-
     // .range(0, 99999) 는 PostgREST db-max-rows(1000)에 막혀 무력했다 → fetchAll 로 전량 조회.
     // 정렬이 없으면 어느 1000행이 올지 비결정적이었으므로 date 정렬도 명시한다.
-    const [salesRows, adRows, funnelRows, prodRows, prevSales, prevAds] = await Promise.all([
+    const [salesRows, adRows, funnelRows, prodRows, prevSales] = await Promise.all([
       fetchAll(salesQ.order("date")),
       fetchAll(adQ.order("date")),
       fetchAll(funnelQ.order("date")),
       fetchAll(prodQ.order("date")),
       fetchAll(prevSalesQ.order("date")),
-      fetchAll(prevAdsQ.order("date")),
     ]);
 
     const insights: { type: "critical" | "warning" | "opportunity" | "info"; text: string; detail?: string; actions?: string[] }[] = [];
@@ -82,16 +78,17 @@ export async function GET(request: NextRequest) {
     //   `공구%` 채널은 쿼리에서 제외되지만, 밸런스랩 형식-A 공구는 smartstore 채널로 들어와
     //   그 필터에 걸리지 않는다. 차감하지 않으면 매출이 부풀고 헤드라인 ROAS가 과대해져
     //   ("전체 ROAS 8.07x — 예산 증액 검토") 잘못된 증액 권고가 나갔다(2026-08 리뷰).
-    let formA = 0;
-    if (brand === "all" || brand === "balancelab") {
-      const psRows = await fetchAll(
-        supabase.from("product_sales").select("channel,lineup,product,revenue")
-          .eq("brand", "balancelab").gte("date", from).lte("date", to)
-      );
-      for (const r of psRows as { channel: string; lineup: string | null; product: string; revenue: number }[]) {
-        if (isGongguInDailySales(r)) formA += Number(r.revenue || 0);
-      }
-    }
+    //   추가 쿼리 없이 이미 가져온 prodRows/prevProducts 에서 계산한다.
+    const sumFormA = (rows: { brand?: string; channel: string; lineup: string | null; product: string; revenue: number }[]) =>
+      rows.reduce((s, r) => (r.brand === "balancelab" && isGongguInDailySales(r) ? s + Number(r.revenue || 0) : s), 0);
+    const formA = sumFormA(prodRows);
+
+    // 공구를 제외한 제품 행. 제품 비중의 분자는 이걸 써야 분모(totalRevenue)와 스코프가 맞는다.
+    // (분자만 공구 포함이면 '큐모발검사 매출 비중 499% — 히어로 상품' 같은 값이 나온다.)
+    const selfProdRows = prodRows.filter(
+      (r) => !isGongguAggregate(r) && !(r.brand === "balancelab" && isGonggu(r))
+    );
+
     const totalRevenue = Math.max(0, salesRows.reduce((s, r) => s + Number(r.revenue), 0) - formA);
     const _totalOrders = salesRows.reduce((s, r) => s + Number(r.orders), 0); // eslint-disable-line @typescript-eslint/no-unused-vars
     const totalAdSpend = adRows.reduce((s, r) => s + Number(r.spend), 0);
@@ -180,7 +177,7 @@ export async function GET(request: NextRequest) {
 
     // ===== TOP PRODUCTS =====
     const prodMap = new Map<string, { revenue: number; quantity: number }>();
-    for (const r of prodRows) {
+    for (const r of selfProdRows) {
       const existing = prodMap.get(r.product) || { revenue: 0, quantity: 0 };
       existing.revenue += Number(r.revenue);
       existing.quantity += Number(r.quantity);
@@ -214,18 +211,29 @@ export async function GET(request: NextRequest) {
     }
 
     // ===== AUTO ROOT CAUSE ANALYSIS (Month 9) =====
-    // 이전 기간 비교 (prevSales/prevAds는 위에서 병렬로 이미 가져옴)
-    const prevRevenue = (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0);
-    void (prevAds || []).reduce((s, r) => s + Number(r.spend), 0); // prevTotalAdSpend - reserved for future use
+    // 이전 기간 비교 (prevSales 는 위에서 병렬로 이미 가져옴)
+    // ★ 이전 기간에도 현재와 똑같이 형식-A 공구를 빼야 비교가 성립한다.
+    //   한쪽만 차감하면 밸런스랩이 항상 "매출 59% 하락"으로 잡혔다(실제로는 +76% 성장, 2026-08 리뷰).
+    const prevProdRows = await fetchAll(
+      (brand !== "all"
+        ? supabase.from("product_sales").select("brand,product,channel,lineup,revenue").gte("date", prevFrom).lte("date", prevTo).in("brand", expandBrands(brand))
+        : supabase.from("product_sales").select("brand,product,channel,lineup,revenue").gte("date", prevFrom).lte("date", prevTo)
+      ).order("date")
+    );
+    const prevFormA = sumFormA(prevProdRows);
+    const prevRevenue = Math.max(0, (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0) - prevFormA);
 
     if (prevRevenue > 0 && totalRevenue < prevRevenue * 0.85) {
       // Revenue dropped 15%+ → find root cause
       const revenueDropPct = ((1 - totalRevenue / prevRevenue) * 100).toFixed(0);
 
-      // Brand-level drill
+      // Brand-level drill (밸런스랩은 이전 기간도 형식-A 공구 차감)
       const prevBrandSales = new Map<string, number>();
       for (const r of prevSales || []) {
         prevBrandSales.set(r.brand, (prevBrandSales.get(r.brand) || 0) + Number(r.revenue));
+      }
+      if (prevFormA > 0 && prevBrandSales.has("balancelab")) {
+        prevBrandSales.set("balancelab", Math.max(0, (prevBrandSales.get("balancelab") || 0) - prevFormA));
       }
 
       const brandChanges: string[] = [];
@@ -239,10 +247,13 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Channel-level drill
+      // Channel-level drill (smartstore 도 이전 기간 형식-A 공구 차감)
       const prevChannelSales = new Map<string, number>();
       for (const r of prevSales || []) {
         prevChannelSales.set(r.channel, (prevChannelSales.get(r.channel) || 0) + Number(r.revenue));
+      }
+      if (prevFormA > 0) {
+        prevChannelSales.set("smartstore", Math.max(0, (prevChannelSales.get("smartstore") || 0) - prevFormA));
       }
       const channelChanges: string[] = [];
       for (const [ch, rev] of Array.from(salesChannelMap.entries())) {
@@ -256,12 +267,12 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Product-level drill — 현재 기간(prodRows)과 같은 브랜드 스코프로 조회해야 비교가 성립한다.
+      // Product-level drill — 현재(selfProdRows)와 같이 공구를 제외해야 비교가 성립한다.
+      // prevProdRows 는 위에서 이미 조회했으므로 추가 왕복 없이 재사용한다.
       const prevProdMap = new Map<string, number>();
-      let prevProdQ = supabase.from("product_sales").select("product,revenue").gte("date", prevFrom).lte("date", prevTo);
-      if (brand !== "all") prevProdQ = prevProdQ.in("brand", expandBrands(brand));
-      const prevProducts = await fetchAll(prevProdQ.order("date"));
-      for (const r of prevProducts) {
+      for (const r of prevProdRows) {
+        if (isGongguAggregate(r)) continue;
+        if (r.brand === "balancelab" && isGonggu(r)) continue;
         prevProdMap.set(r.product, (prevProdMap.get(r.product) || 0) + Number(r.revenue));
       }
       const prodChanges: string[] = [];
