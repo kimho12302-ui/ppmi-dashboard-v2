@@ -77,8 +77,8 @@ function BrandInner({ brand }: { brand: string }) {
   }
 
   return (
-    <PageShell title={label} description={`${label} 종합 성과 — 채널·라인업·제품·광고비`}>
-      {/* 기간 선택만 — 브랜드는 경로 고정 (개요의 브랜드 탭과 혼동 방지) */}
+    <PageShell title={label} description={`${label} 종합 성과 — 채널·라인업·제품·광고비`} hideFilters>
+      {/* 기간 선택만 — 브랜드는 경로 고정, 전역 필터(전체/펫/밸런스랩 탭) 숨김 (혼동 방지) */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <span className="text-sm text-muted-foreground">{from} ~ {to}</span>
         <DateRangeSelector preset={preset} onChange={setPreset} onCustomRange={setCustomRange} from={from} to={to} isCustom={isCustom} />
