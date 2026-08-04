@@ -135,6 +135,11 @@ export async function GET(request: NextRequest) {
       existing.orders += Number(r.orders);
       brandSales.set(r.brand, existing);
     }
+    // 밸런스랩 매출에서도 형식-A 공구를 빼 헤드라인(totalRevenue)과 스코프를 맞춘다.
+    if (formA > 0 && brandSales.has("balancelab")) {
+      const bl = brandSales.get("balancelab")!;
+      brandSales.set("balancelab", { ...bl, revenue: Math.max(0, bl.revenue - formA) });
+    }
 
     const brandLabels: Record<string, string> = { nutty: "너티", ironpet: "아이언펫", saip: "사입", balancelab: "밸런스랩" };
     for (const [brand, d] of Array.from(brandSales.entries())) {
@@ -191,9 +196,14 @@ export async function GET(request: NextRequest) {
     }
 
     // ===== CHANNEL CONCENTRATION =====
+    // 채널별 매출도 헤드라인과 같은 스코프여야 한다. 형식-A 공구는 smartstore 채널로 들어오므로
+    // 그만큼 빼주지 않으면 비중이 101% 처럼 100을 넘는다(2026-08 수정).
     const salesChannelMap = new Map<string, number>();
     for (const r of salesRows) {
       salesChannelMap.set(r.channel, (salesChannelMap.get(r.channel) || 0) + Number(r.revenue));
+    }
+    if (formA > 0) {
+      salesChannelMap.set("smartstore", Math.max(0, (salesChannelMap.get("smartstore") || 0) - formA));
     }
     for (const [ch, rev] of Array.from(salesChannelMap.entries())) {
       const share = totalRevenue > 0 ? (rev / totalRevenue) * 100 : 0;
