@@ -201,11 +201,14 @@ export async function GET(req: NextRequest) {
         { key: "쿠팡", cart: channelTotals.cart_coupang, purch: channelTotals.purch_coupang },
       ];
       const withCart = defs.filter(d => d.cart > 0);
+      const cart = withCart.reduce((s, d) => s + d.cart, 0);
+      const purch = withCart.reduce((s, d) => s + d.purch, 0);
       return {
-        cart: withCart.reduce((s, d) => s + d.cart, 0),
-        purch: withCart.reduce((s, d) => s + d.purch, 0),
+        cart, purch,
         channels: withCart.map(d => d.key),
         partial: withCart.length > 0 && withCart.length < defs.length,
+        // 구매가 장바구니보다 많으면 두 단계의 소스 커버리지가 어긋난 것 → 비율 산출 불가
+        valid: cart > 0 && purch <= cart,
       };
     })();
 
@@ -224,10 +227,12 @@ export async function GET(req: NextRequest) {
         // ★ 장바구니→구매 전환율은 "두 단계 모두 데이터가 있는 채널"로만 계산한다.
         //   장바구니는 일부 채널만 수집되는데 구매는 전 채널 합산이라, 그대로 나누면
         //   548% 같은 값이 나와 퍼널 전체의 신뢰를 깼다(2026-08 리뷰).
-        rate: cartCoverage.cart > 0 ? (cartCoverage.purch / cartCoverage.cart) * 100 : 0,
-        rateNote: cartCoverage.partial
-          ? `장바구니 수집 채널(${cartCoverage.channels.join("·") || "없음"}) 기준 — 다른 채널은 장바구니 미수집이라 제외`
-          : null,
+        //   커버리지를 맞춰도 100%를 넘으면(장바구니=수기/GA4, 구매=주문DB 라 소스가 다름)
+        //   그 비율은 물리적으로 성립하지 않으므로 숫자를 내지 않고 사유만 밝힌다.
+        rate: cartCoverage.valid ? (cartCoverage.purch / cartCoverage.cart) * 100 : null,
+        rateNote: cartCoverage.valid
+          ? (cartCoverage.partial ? `장바구니 수집 채널(${cartCoverage.channels.join("·")}) 기준 — 다른 채널은 장바구니 미수집이라 제외` : null)
+          : "장바구니 수집이 구매보다 적어 전환율을 산출하지 않습니다 (장바구니=수기·GA4, 구매=주문 데이터로 소스가 달라 커버리지가 어긋남)",
         rateBase: cartCoverage.cart, rateNum: cartCoverage.purch },
     ];
     const repurchase = { value: totals.repurchases, rate: totals.purchases > 0 ? (totals.repurchases / totals.purchases * 100) : 0 };

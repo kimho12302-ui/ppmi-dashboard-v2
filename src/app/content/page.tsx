@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
-import { formatNumber, cn } from "@/lib/utils";
+import { formatNumber, formatCurrency, cn } from "@/lib/utils";
 import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -306,8 +306,84 @@ function ContentInner() {
               </CardContent>
             </Card>
           )}
+
+          {/* 콘텐츠 → 유입 → 전환. utm_analytics 는 수집되고 있었으나 어느 화면에도
+              배선돼 있지 않아 "내 콘텐츠가 매출로 이어졌나"에 답할 수 없었다(2026-08 리뷰). */}
+          <UtmSection from={from} to={to} />
         </>
       )}
     </PageShell>
+  );
+}
+
+interface UtmCampaign {
+  source: string; medium: string; campaign: string;
+  sessions: number; conversions: number; revenue: number; bounce_rate: number; avg_duration: number;
+}
+
+function UtmSection({ from, to }: { from: string; to: string }) {
+  const { data, loading } = useFetch<{ data: { source: string; medium: string; sessions: number }[]; campaigns: UtmCampaign[]; scopeNote?: string }>(
+    `/api/utm?from=${from}&to=${to}`
+  );
+  const sources = (data?.data || []).slice(0, 8);
+  const campaigns = data?.campaigns || [];
+  if (loading) return null;
+  if (sources.length === 0 && campaigns.length === 0) return null;
+
+  return (
+    <Card>
+      <CardContent className="p-4 space-y-4">
+        <div className="flex items-baseline justify-between flex-wrap gap-2">
+          <h3 className="font-semibold text-sm">유입 경로 · 캠페인 성과 (UTM)</h3>
+          {data?.scopeNote && <span className="text-xs text-muted-foreground">{data.scopeNote}</span>}
+        </div>
+
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">소스/매체별 세션</p>
+          <div className="space-y-1.5">
+            {sources.map((s) => {
+              const max = Math.max(...sources.map((x) => x.sessions));
+              return (
+                <div key={`${s.source}/${s.medium}`} className="flex items-center gap-3 text-sm">
+                  <span className="w-40 shrink-0 truncate" title={`${s.source} / ${s.medium}`}>{s.source} <span className="text-muted-foreground">/ {s.medium}</span></span>
+                  <div className="flex-1 h-3.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-indigo-500" style={{ width: `${max > 0 ? (s.sessions / max) * 100 : 0}%` }} />
+                  </div>
+                  <span className="w-16 text-right text-xs font-medium">{formatNumber(s.sessions)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {campaigns.length > 0 && (
+          <div className="overflow-x-auto">
+            <p className="text-xs text-muted-foreground mb-2">캠페인별 (utm_campaign 이 붙은 유입만)</p>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-muted-foreground border-b">
+                  <th className="text-left py-2 font-medium">캠페인</th>
+                  <th className="text-left py-2 font-medium">소스/매체</th>
+                  <th className="text-right py-2 font-medium">세션</th>
+                  <th className="text-right py-2 font-medium">전환</th>
+                  <th className="text-right py-2 font-medium">매출</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.slice(0, 12).map((c) => (
+                  <tr key={`${c.source}/${c.medium}/${c.campaign}`} className="border-b last:border-0">
+                    <td className="py-2 truncate max-w-[220px]" title={c.campaign}>{c.campaign}</td>
+                    <td className="py-2 text-muted-foreground text-xs">{c.source}/{c.medium}</td>
+                    <td className="py-2 text-right">{formatNumber(c.sessions)}</td>
+                    <td className="py-2 text-right">{formatNumber(c.conversions)}</td>
+                    <td className="py-2 text-right font-medium">{formatCurrency(c.revenue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -11,7 +11,7 @@ import {
   BarChart, Bar, Cell, Legend,
 } from "recharts";
 
-interface FunnelStep { name: string; value: number; rate?: number; channels?: Record<string, number>; rateNote?: string | null; rateBase?: number; rateNum?: number; }
+interface FunnelStep { name: string; value: number; rate?: number | null; channels?: Record<string, number>; rateNote?: string | null; rateBase?: number; rateNum?: number; }
 interface TrendPoint { date: string; sessions: number; cart_adds: number; purchases: number; impressions: number; [key: string]: string | number; }
 interface ChannelFunnel { channel: string; sessions: number; cart_adds: number; purchases: number; repurchases: number; convRate: number; }
 interface MetaAdRow { date: string; brand: string; impressions: number; clicks: number; conversions: number; conversion_value: number; reach: number; spend: number; }
@@ -56,7 +56,9 @@ function FunnelInner() {
   //   전 채널 구매 ÷ 일부 채널 장바구니로 계산하면 이탈률이 음수가 되어 0%로 뭉개졌다(2026-08 리뷰).
   const abCart = purchaseStep?.rateBase ?? cartVal;
   const abPurch = purchaseStep?.rateNum ?? purchaseVal;
-  const abandonRate = abCart > 0 ? Math.max(0, ((abCart - abPurch) / abCart) * 100) : 0;
+  // rate 가 null 이면 API가 "커버리지 불일치로 산출 불가"로 판정한 것 → 화면도 숫자를 만들지 않는다.
+  const abandonComputable = purchaseStep?.rate != null && abCart > 0;
+  const abandonRate = abandonComputable ? Math.max(0, ((abCart - abPurch) / abCart) * 100) : 0;
   const cartNote = purchaseStep?.rateNote || null;
 
   /* Meta 광고 퍼널 */
@@ -110,12 +112,12 @@ function FunnelInner() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="총 세션" value={formatNumber(sessionsStep?.value || 0)} />
         <KpiCard title="구매 전환율" value={`${overallConvRate.toFixed(2)}%`} />
-        <KpiCard title="장바구니 이탈률" value={abCart > 0 ? `${abandonRate.toFixed(1)}%` : "—"} />
+        <KpiCard title="장바구니 이탈률" value={abandonComputable ? `${abandonRate.toFixed(1)}%` : "산출 불가"} />
         <KpiCard title="총 구매" value={formatNumber(purchaseVal)} />
       </div>
       {cartNote && (
         <p className="text-xs text-muted-foreground -mt-2">
-          ⓘ 장바구니 이탈률은 {cartNote}
+          ⓘ {abandonComputable ? `장바구니 이탈률은 ${cartNote}` : cartNote}
         </p>
       )}
 

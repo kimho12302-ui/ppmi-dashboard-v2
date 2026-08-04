@@ -66,7 +66,14 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.sessions - a.sessions)
       .slice(0, 30);
 
-    return NextResponse.json({ data: result, campaigns });
+    // ★ utm_analytics 에는 brand 컬럼이 없다(단일 GA4 속성 = 자사몰 카페24 기준).
+    //   브랜드를 선택해도 같은 데이터가 나오므로, 필터를 흉내내지 말고 스코프를 명시한다.
+    //   브랜드별로 나누려면 GA4 속성 분리 또는 utm_analytics 에 brand 수집이 선행돼야 한다.
+    return NextResponse.json({
+      data: result,
+      campaigns,
+      scopeNote: "자사몰(카페24) GA4 기준 · 브랜드별 분리 미지원",
+    });
   } catch (error: unknown) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Failed" }, { status: 500 });
   }
