@@ -88,7 +88,7 @@ function BudgetInner() {
     <PageShell title="예산 현황" description={`${now.getFullYear()}년 ${now.getMonth() + 1}월 광고 예산 집행 (${t?.daysElapsed ?? 0}/${t?.daysInMonth ?? 0}일, 매체비 기준)`} hideFilters>
       {!hasTarget && (
         <Card><CardContent className="p-4 text-sm text-muted-foreground">
-          이번 달 광고예산 목표가 없습니다. <a href="/settings" className="text-primary hover:underline">설정 &gt; 목표설정</a>에서 등록하면 목표 대비 소진율이 표시됩니다.
+          이번 달 광고예산 목표가 없습니다. <a href="/settings?tab=targets" className="text-primary hover:underline">설정 &gt; 목표설정</a>에서 등록하면 목표 대비 소진율이 표시됩니다.
         </CardContent></Card>
       )}
 

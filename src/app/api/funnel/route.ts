@@ -152,6 +152,7 @@ export async function GET(req: NextRequest) {
       cart_smartstore: 0, cart_cafe24: 0, cart_coupang: 0,
       sess_smartstore: 0, sess_cafe24: 0, sess_coupang: 0,
       signups_cafe24: 0, signups_smartstore: 0,
+      purch_smartstore: 0, purch_cafe24: 0, purch_coupang: 0,
     };
     for (const [, d] of dates) {
       totals.impressions += d.impressions;
@@ -170,6 +171,9 @@ export async function GET(req: NextRequest) {
       channelTotals.sess_coupang += d.sess_coupang;
       channelTotals.signups_cafe24 += d.signups_cafe24;
       channelTotals.signups_smartstore += d.signups_smartstore;
+      channelTotals.purch_smartstore += d.purch_smartstore;
+      channelTotals.purch_cafe24 += d.purch_cafe24;
+      channelTotals.purch_coupang += d.purch_coupang;
     }
 
     // brand 필터 시: 노출/유입은 광고 데이터(브랜드별)를 우선 사용
@@ -189,6 +193,22 @@ export async function GET(req: NextRequest) {
     }
 
     // 6-step funnel
+    // 장바구니가 실제로 수집되는 채널만 골라, 그 채널의 구매만 분자로 쓴다(커버리지 정합).
+    const cartCoverage = (() => {
+      const defs = [
+        { key: "카페24", cart: channelTotals.cart_cafe24, purch: channelTotals.purch_cafe24 },
+        { key: "스마트스토어", cart: channelTotals.cart_smartstore, purch: channelTotals.purch_smartstore },
+        { key: "쿠팡", cart: channelTotals.cart_coupang, purch: channelTotals.purch_coupang },
+      ];
+      const withCart = defs.filter(d => d.cart > 0);
+      return {
+        cart: withCart.reduce((s, d) => s + d.cart, 0),
+        purch: withCart.reduce((s, d) => s + d.purch, 0),
+        channels: withCart.map(d => d.key),
+        partial: withCart.length > 0 && withCart.length < defs.length,
+      };
+    })();
+
     const funnel = [
       { name: "노출", value: totals.impressions },
       { name: "유입", value: totals.sessions,
@@ -201,7 +221,14 @@ export async function GET(req: NextRequest) {
         rate: totals.sessions > 0 ? (totals.signups / totals.sessions) * 100 : 0,
         channels: { 카페24: channelTotals.signups_cafe24, "스마트스토어(알림)": channelTotals.signups_smartstore } },
       { name: "구매", value: totals.purchases,
-        rate: totals.cart_adds > 0 ? (totals.purchases / totals.cart_adds) * 100 : 0 },
+        // ★ 장바구니→구매 전환율은 "두 단계 모두 데이터가 있는 채널"로만 계산한다.
+        //   장바구니는 일부 채널만 수집되는데 구매는 전 채널 합산이라, 그대로 나누면
+        //   548% 같은 값이 나와 퍼널 전체의 신뢰를 깼다(2026-08 리뷰).
+        rate: cartCoverage.cart > 0 ? (cartCoverage.purch / cartCoverage.cart) * 100 : 0,
+        rateNote: cartCoverage.partial
+          ? `장바구니 수집 채널(${cartCoverage.channels.join("·") || "없음"}) 기준 — 다른 채널은 장바구니 미수집이라 제외`
+          : null,
+        rateBase: cartCoverage.cart, rateNum: cartCoverage.purch },
     ];
     const repurchase = { value: totals.repurchases, rate: totals.purchases > 0 ? (totals.repurchases / totals.purchases * 100) : 0 };
 

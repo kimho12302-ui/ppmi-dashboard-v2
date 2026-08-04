@@ -25,7 +25,12 @@ export async function GET(req: NextRequest) {
     // .range(0, 99999) 로는 캡을 넘을 수 없다 → 페이지네이션으로 전량 조회.
     const data = await fetchAll(query);
 
-    return NextResponse.json({ keywords: data });
+    // 이 테이블의 마지막 수집일. 화면이 "빈 결과"와 "수집 중단"을 구분할 수 있게 함께 내려준다
+    // (keyword_performance 는 2026-05-04 이후 유입이 끊겼는데 경고가 없어 빈 화면만 보였다).
+    const { data: latestRow } = await supabase
+      .from("keyword_performance").select("date").order("date", { ascending: false }).limit(1);
+
+    return NextResponse.json({ keywords: data, latestCollected: latestRow?.[0]?.date || null });
   } catch (error) {
     console.error("Keywords API error:", error);
     return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,26 @@ const TABS = [
 type Tab = (typeof TABS)[number]["key"];
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>("daily");
+  return (
+    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
+      <SettingsInner />
+    </Suspense>
+  );
+}
+
+// 탭 상태를 URL(?tab=)에 둔다. 이전에는 로컬 state 라서 "설정 > 목표설정에서 등록" 같은
+// 안내 링크를 눌러도 항상 일일 입력 탭이 열렸고, 특정 탭을 북마크/공유할 수 없었다(2026-08 리뷰).
+function SettingsInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get("tab") as Tab | null;
+  const tab: Tab = TABS.some(t => t.key === urlTab) ? (urlTab as Tab) : "daily";
+  const setTab = (key: Tab) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (key === "daily") params.delete("tab"); else params.set("tab", key);
+    const qs = params.toString();
+    router.replace(qs ? `/settings?${qs}` : "/settings", { scroll: false });
+  };
 
   return (
     <PageShell title="설정" hideFilters>

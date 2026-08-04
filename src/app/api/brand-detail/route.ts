@@ -22,7 +22,13 @@ export async function GET(req: NextRequest) {
     );
 
     // "공구 합계" 집계 행 제외
-    const filteredProducts = products.filter(r => !isGongguAggregate(r));
+    const allRows = products.filter(r => !isGongguAggregate(r));
+
+    // ★ 스코프 정합(2026-08 리뷰): KPI(매출/주문/객단가)는 자체매출 기준인데
+    //   라인업·제품·채널 카드만 공구를 포함해, 같은 페이지에서 밸런스랩 매출이 5.3배 어긋났다
+    //   (KPI 267만 vs 라인업 1,411만). → 분해 카드도 자체매출 기준으로 통일하고,
+    //   공구는 아래 gongguSales 섹션에서만 별도로 보여준다.
+    const filteredProducts = allRows.filter(r => !isGonggu(r));
 
     // ── Lineup/SubBrand breakdown ──
     const lineupMap = new Map<string, { revenue: number; quantity: number; orders: number }>();
@@ -100,9 +106,9 @@ export async function GET(req: NextRequest) {
     let gongguSalesTotal = 0;
 
     if (brand === "balancelab") {
-      // 공구/자체판매 구분 ("공구 합계" 행은 이미 filteredProducts에서 제외됨)
+      // 공구/자체판매 구분 ("공구 합계" 행은 이미 allRows에서 제외됨)
       const sellerMap = new Map<string, { revenue: number; orders: number }>();
-      for (const r of filteredProducts) {
+      for (const r of allRows) {
         if (isGonggu(r)) {
           const seller = gongguSeller(r) || "기타";
           const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };
@@ -120,7 +126,7 @@ export async function GET(req: NextRequest) {
 
       // Self vs gonggu daily trend
       const selfGongguMap = new Map<string, { self: number; gonggu: number }>();
-      for (const r of filteredProducts) {
+      for (const r of allRows) {
         const e = selfGongguMap.get(r.date) || { self: 0, gonggu: 0 };
         if (isGonggu(r)) {
           e.gonggu += Number(r.revenue);

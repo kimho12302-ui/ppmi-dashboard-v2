@@ -39,7 +39,7 @@ export default function KeywordsPage() {
 
 function KeywordsInner() {
   const { from, to, brand } = useFilterParams();
-  const { data, loading } = useFetch<{ keywords: KeywordPerformance[] }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
+  const { data, loading } = useFetch<{ keywords: KeywordPerformance[]; latestCollected?: string | null }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
   const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [tab, setTab] = useState<"keywords" | "gsc">("keywords");
@@ -181,6 +181,15 @@ function KeywordsInner() {
       </div>
 
       {tab === "gsc" && <GscSection brand={brand} from={from} to={to} />}
+
+      {/* 수집 중단을 빈 화면으로 오독하지 않도록 최종 수집일을 명시한다(2026-08 리뷰).
+          조회 기간보다 마지막 수집일이 앞서면 "이 기간엔 애초에 데이터가 없다"는 뜻. */}
+      {tab === "keywords" && !loading && data?.latestCollected && data.latestCollected < from && (
+        <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-500">
+          키워드 수집이 <b>{data.latestCollected}</b> 이후 중단돼 선택하신 기간({from} ~ {to})에는 데이터가 없습니다.
+          아래가 비어 있는 것은 성과가 0이어서가 아니라 <b>수집이 멈춘 것</b>입니다.
+        </div>
+      )}
 
       {tab === "keywords" && <>
       {/* KPI */}
@@ -415,7 +424,7 @@ interface GscSummary {
 }
 
 function GscSection({ brand, from, to }: { brand: string; from: string; to: string }) {
-  const { data, loading } = useFetch<{ queries: GscQuery[]; summary: GscSummary; error?: string }>(
+  const { data, loading } = useFetch<{ queries: GscQuery[]; summary: GscSummary; error?: string; notice?: string | null; siteUrl?: string }>(
     `/api/gsc?brand=${brand}&from=${from}&to=${to}`
   );
   const [sortBy, setSortBy] = useState<"clicks" | "impressions" | "ctr" | "position">("clicks");
@@ -474,6 +483,15 @@ function GscSection({ brand, from, to }: { brand: string; from: string; to: stri
 
   if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">GSC 로딩 중...</CardContent></Card>;
   if (data?.error) return <Card><CardContent className="p-4 text-sm text-amber-600">GSC 오류: {data.error}</CardContent></Card>;
+  {/* 이 속성에 없는 브랜드를 골랐을 때, 빈 결과가 "검색 성과 0"으로 오독되지 않도록 사유를 명시 */}
+  if (data?.notice) return (
+    <Card className="border-amber-300 dark:border-amber-800 bg-amber-500/5">
+      <CardContent className="p-4 text-sm text-muted-foreground">
+        <p className="font-medium text-amber-700 dark:text-amber-500 mb-1">이 브랜드의 GSC 데이터가 없습니다</p>
+        <p>{data.notice}</p>
+      </CardContent>
+    </Card>
+  );
 
   const summary = data?.summary;
   return (

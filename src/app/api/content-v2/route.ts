@@ -60,17 +60,28 @@ export async function GET(request: NextRequest) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, d]) => ({ date, ...d }));
 
-    // Follower trend (주별 최대 스냅샷)
-    const followerMap = new Map<string, number>();
+    // Follower trend — 주별로 "브랜드(계정)별 최신 스냅샷"을 합산한다.
+    // 이전에는 전체 행의 최댓값 하나만 취해서, brand=all 뷰의 팔로워가 가장 큰 계정 수치와 같았고
+    // 다른 계정의 감소(예: 아이언펫 1,034→995)가 전체 뷰에서 완전히 가려졌다(2026-08 리뷰).
+    const weekBrandLatest = new Map<string, Map<string, { date: string; followers: number }>>();
     for (const r of rows) {
-      const weekKey = weekStart(r.date);
-      const current = followerMap.get(weekKey) || 0;
       const f = Number(r.followers) || 0;
-      if (f > current) followerMap.set(weekKey, f);
+      if (!f) continue;
+      const weekKey = weekStart(r.date);
+      const perBrand = weekBrandLatest.get(weekKey) || new Map<string, { date: string; followers: number }>();
+      const b = String(r.brand || "unknown");
+      const prev = perBrand.get(b);
+      // 같은 주 안에서는 가장 나중 날짜의 스냅샷을 그 계정의 값으로 본다.
+      if (!prev || r.date >= prev.date) perBrand.set(b, { date: r.date, followers: f });
+      weekBrandLatest.set(weekKey, perBrand);
     }
-    const followerTrend = Array.from(followerMap.entries())
+    const followerTrend = Array.from(weekBrandLatest.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, followers]) => ({ date, followers }));
+      .map(([date, perBrand]) => ({
+        date,
+        followers: Array.from(perBrand.values()).reduce((s, v) => s + v.followers, 0),
+        byBrand: Object.fromEntries(Array.from(perBrand.entries()).map(([b, v]) => [b, v.followers])),
+      }));
 
     return NextResponse.json({ byType, postsTrend, followerTrend });
   } catch (error) {
