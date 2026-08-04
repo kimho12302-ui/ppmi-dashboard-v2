@@ -109,7 +109,7 @@ function ChannelInner() {
 
   if (loading) {
     return (
-      <PageShell title="채널 성과" description="판매처별 매출 vs 그 판매처를 끌어온 광고비 (전기간 대비)">
+      <PageShell title="판매처 성과" description="판매처별 매출 vs 그 판매처를 끌어온 광고비 (전기간 대비)">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => <Card key={i} className="p-6 animate-pulse"><CardContent className="p-0"><div className="h-32 bg-muted rounded" /></CardContent></Card>)}
         </div>
@@ -121,7 +121,7 @@ function ChannelInner() {
   const total = data?.total;
 
   return (
-    <PageShell title="채널 성과" description="판매처별 매출 vs 그 판매처를 끌어온 광고비 · 원 단위 · 전기간 대비">
+    <PageShell title="판매처 성과" description="판매처별 매출 vs 그 판매처를 끌어온 광고비 · 원 단위 · 전기간 대비">
       {/* 통합 요약 */}
       {total && (
         <Card>

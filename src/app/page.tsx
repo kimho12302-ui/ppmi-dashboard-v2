@@ -520,12 +520,12 @@ function OverviewInner() {
         </Card>
       </div>
 
-      {/* 채널별 광고비 + 채널별 매출 */}
+      {/* 매체별 광고비 + 판매처별 매출 — 두 축은 조인되지 않는다(매체=메타/네이버, 판매처=스마트스토어/자사몰) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">채널별 광고비</h3>
+              <h3 className="font-semibold">매체별 광고비 <span className="text-xs text-muted-foreground font-normal">광고 집행 기준</span></h3>
               <Link href="/ads" className="text-xs text-primary hover:underline">상세 →</Link>
             </div>
             <div className="space-y-2">
@@ -547,7 +547,7 @@ function OverviewInner() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">채널별 매출</h3>
+              <h3 className="font-semibold">판매처별 매출 <span className="text-xs text-muted-foreground font-normal">주문 기준</span></h3>
               <Link href="/sales" className="text-xs text-primary hover:underline">상세 →</Link>
             </div>
             <div className="space-y-2">

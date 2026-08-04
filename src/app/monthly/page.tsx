@@ -215,7 +215,7 @@ function MonthlyInner() {
         </Card>
       </div>
 
-      {/* 채널별 광고비 (월별 스택) */}
+      {/* 매체별 광고비 (월별 스택) */}
       {channelKeys.length > 0 && (
         <Card>
           <CardContent className="p-4">

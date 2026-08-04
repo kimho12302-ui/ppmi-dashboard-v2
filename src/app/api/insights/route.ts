@@ -149,18 +149,23 @@ export async function GET(request: NextRequest) {
     }
 
     // ===== FUNNEL ANALYSIS =====
+    // ★ daily_funnel.purchases 는 실제로는 "카페24 회원가입 수"를 담는 수기입력 칸이다
+    //   (설정 > 일일 입력의 '회원가입' 필드 → api/settings 가 이 컬럼에 저장).
+    //   이걸 구매로 집계해 전환율·이탈률을 계산하던 것을 실제 주문(daily_sales.orders)으로 바꾼다(2026-08 리뷰).
     const totalSessions = funnelRows.reduce((s, r) => s + Number(r.sessions), 0);
     const totalCartAdds = funnelRows.reduce((s, r) => s + Number(r.cart_adds), 0);
-    const totalPurchases = funnelRows.reduce((s, r) => s + Number(r.purchases), 0);
+    const totalPurchases = salesRows.reduce((s, r) => s + Number(r.orders || 0), 0);
 
-    if (totalSessions > 0 && totalCartAdds > 0) {
+    if (totalSessions > 0 && totalPurchases > 0) {
       const convRate = (totalPurchases / totalSessions) * 100;
-      const cartToOrder = (totalPurchases / totalCartAdds) * 100;
-      const abandonRate = 100 - cartToOrder;
-
       if (convRate < 1.0) {
-        insights.push({ type: "warning", text: `전환율 ${convRate.toFixed(2)}% — 업계 평균(2-3%) 미달`, detail: `세션 ${totalSessions} 중 ${totalPurchases}건만 구매. 랜딩페이지 및 상품페이지 최적화 필요` });
+        insights.push({ type: "warning", text: `전환율 ${convRate.toFixed(2)}% — 업계 평균(2-3%) 미달`, detail: `세션 ${totalSessions} 중 ${totalPurchases}건 구매. 랜딩페이지 및 상품페이지 최적화 필요` });
       }
+    }
+    // 이탈률은 장바구니가 구매보다 클 때만 성립한다. 장바구니는 일부 채널만 수집되는데
+    // 구매는 전 채널 주문이라, 그대로 나누면 음수 이탈률이 나온다 → 성립할 때만 낸다.
+    if (totalCartAdds > 0 && totalPurchases <= totalCartAdds) {
+      const abandonRate = 100 - (totalPurchases / totalCartAdds) * 100;
       if (abandonRate > 70) {
         insights.push({ type: "critical", text: `장바구니 이탈률 ${abandonRate.toFixed(0)}% — 심각`, detail: `간편결제 추가, 무료배송 기준 조정, 장바구니 리마인더 설정 권장` });
       } else if (abandonRate > 50) {

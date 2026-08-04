@@ -322,10 +322,10 @@ function AdsPageInner() {
             </CardContent>
           </Card>
 
-          {/* 5.3-1: 채널별 광고비 트렌드 */}
+          {/* 5.3-1: 매체별 광고비 트렌드 */}
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-semibold mb-4">채널별 광고비 트렌드</h3>
+              <h3 className="font-semibold mb-4">매체별 광고비 트렌드</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <AreaChart data={dailyTrend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -366,7 +366,7 @@ function AdsPageInner() {
           {byChannel.filter(c => !c.channel.startsWith("ga4_") && c.spend > 0).length > 1 && (
             <Card>
               <CardContent className="p-4">
-                <h3 className="font-semibold mb-1">채널 효율 사분면 — ROAS vs 광고비</h3>
+                <h3 className="font-semibold mb-1">매체 효율 사분면 — ROAS vs 광고비</h3>
                 <p className="text-xs text-muted-foreground mb-4">우상단(고ROAS·저광고비) = 효율 우수. 버블 크기 = 광고비</p>
                 <ResponsiveContainer width="100%" height={320}>
                   <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>

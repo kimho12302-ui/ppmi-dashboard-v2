@@ -148,14 +148,14 @@ function MediaBudgetInner() {
 
   if (loading) {
     return (
-      <PageShell title="매체예산 분배" description="채널별 광고비 일별 내역">
+      <PageShell title="매체예산 분배" description="매체별 광고비 일별 내역">
         <div className="h-64 flex items-center justify-center text-muted-foreground">로딩 중...</div>
       </PageShell>
     );
   }
 
   return (
-    <PageShell title="매체예산 분배" description={`채널별 광고비 일별 내역 (${rows.length}일)`}>
+    <PageShell title="매체예산 분배" description={`매체별 광고비 일별 내역 (${rows.length}일)`}>
       {/* 요약 KPI */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-card border rounded-lg p-3">
@@ -312,11 +312,11 @@ function MediaBudgetInner() {
         </CardContent>
       </Card>
 
-      {/* 채널별 비중 */}
+      {/* 매체별 비중 */}
       {rows.length > 0 && viewMode === "spend" && (
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-semibold text-sm mb-3">채널별 비중</h3>
+            <h3 className="font-semibold text-sm mb-3">매체별 비중</h3>
             <div className="space-y-2">
               {channels
                 .map((ch) => ({ ch, spend: totals[ch]?.spend || 0 }))
