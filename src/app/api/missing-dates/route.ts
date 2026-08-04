@@ -83,6 +83,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Missing dates error:", error);
-    return NextResponse.json({ gaps: [], coupang_item: [], gfa: [], sales: [], cafe24: [], smartstore: [] });
+    // fail-closed: 빈 gap 배열을 200으로 주면 "결측 없음"으로 읽힌다(2026-08 수정).
+    return NextResponse.json({ error: "미입력 날짜를 불러오지 못했습니다" }, { status: 500 });
   }
 }

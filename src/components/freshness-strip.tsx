@@ -48,15 +48,26 @@ export function FreshnessStrip() {
   const [sources, setSources] = useState<Source[] | null>(null);
   const [refDate, setRefDate] = useState<string>("");
   const [expanded, setExpanded] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
     fetch("/api/data-status")
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((d) => { if (alive && d) { setSources(d.sources || []); setRefDate(d.referenceDate || ""); } })
-      .catch(() => {});
+      .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
   }, []);
+
+  // 조회 자체가 실패하면 조용히 사라지면 안 된다 — 사라진 스트립은 "이상 없음"으로 오독된다.
+  if (failed) {
+    return (
+      <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg border border-red-300 bg-red-500/10 text-red-700 dark:text-red-400 dark:border-red-800">
+        <span>⚠️</span>
+        <span>데이터 최신성 확인 실패 — 아래 숫자의 신선도를 보증할 수 없습니다</span>
+      </div>
+    );
+  }
 
   if (!sources || sources.length === 0) return null;
 

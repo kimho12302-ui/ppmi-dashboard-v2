@@ -54,6 +54,7 @@ export async function GET() {
     return NextResponse.json({ days, brands: BRANDS, rows, notUploaded });
   } catch (error) {
     console.error("sales-coverage error:", error);
-    return NextResponse.json({ days: [], brands: BRANDS, rows: [], notUploaded: [] });
+    // fail-closed: notUploaded: [] 를 200으로 주면 "미업로드 없음"으로 읽힌다(2026-08 수정).
+    return NextResponse.json({ error: "판매 업로드 현황을 불러오지 못했습니다" }, { status: 500 });
   }
 }

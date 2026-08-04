@@ -3,22 +3,7 @@ export const dynamic = "force-dynamic";
 import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAll(baseQuery: any): Promise<any[]> {
-  const PAGE = 1000;
-  let from = 0;
-  const all: unknown[] = [];
-  while (true) {
-    const { data, error } = await baseQuery.range(from, from + PAGE - 1);
-    if (error) break;
-    if (!data || data.length === 0) break;
-    all.push(...data);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return all;
-}
+import { fetchAll } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;

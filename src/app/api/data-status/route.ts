@@ -21,6 +21,8 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Data status error:", error);
-    return NextResponse.json({ sources: [], summary: { total: 0, ok: 0, stale: 0 } });
+    // fail-closed: 빈 목록을 200으로 주면 "stale 0건"으로 표시돼 감시 장치가 고장난 것을
+    // 정상으로 오독하게 된다(2026-08 수정). 실패는 500으로 드러낸다.
+    return NextResponse.json({ error: "데이터 수집 현황을 불러오지 못했습니다" }, { status: 500 });
   }
 }

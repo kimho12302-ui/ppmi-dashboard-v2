@@ -99,8 +99,20 @@ export function useFetch<T>(url: string) {
     setError(null);
     try {
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // 라우트가 { error } 를 실어 보내면 그 문구를 그대로 노출 (HTTP 500 보다 원인이 보인다)
+        let msg = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.error) msg = String(body.error);
+        } catch { /* JSON 아님 → 상태코드만 */ }
+        throw new Error(msg);
+      }
       const json = await res.json();
+      // 200 이어도 body 에 error 가 있으면 실패로 취급 (부분 응답을 정상으로 오독하지 않도록)
+      if (json && typeof json === "object" && "error" in json && json.error) {
+        throw new Error(String(json.error));
+      }
       setData(json);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");

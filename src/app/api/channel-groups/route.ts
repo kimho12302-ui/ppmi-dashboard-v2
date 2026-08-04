@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { fetchAll } from "@/lib/db";
 import { isGongguInDailySales } from "@/lib/gonggu";
 
 // 채널(판매처) 성과 — 판매처별 매출 vs 그 판매처를 끌어온 광고비.
@@ -37,22 +38,6 @@ function storeSubAds(key: string, ad: Record<string, number>, blMG: number) {
   ];
   if (key === "coupang") return [{ channel: "coupang_ads", label: "쿠팡 광고", spend: g("coupang_ads") }];
   return [];
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAll(q: any): Promise<any[]> {
-  const PAGE = 1000;
-  let from = 0;
-  const all: unknown[] = [];
-  while (true) {
-    const { data, error } = await q.range(from, from + PAGE - 1);
-    if (error) break;
-    if (!data || data.length === 0) break;
-    all.push(...data);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return all;
 }
 
 type DayAgg = { rev: Record<string, number>; ad: Record<string, number>; blMG: number };

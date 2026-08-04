@@ -196,18 +196,28 @@ function OverviewInner() {
     return ((cur - prev) / Math.abs(prev)) * 100;
   };
 
-  const targets = useMemo(() => {
+  // 목표는 "달" 단위로 등록된다. 이전에는 조회 기간과 무관하게 항상 오늘이 속한 달의 목표를 써서
+  // 7월을 조회해도 8월 목표와 비교됐고, 브랜드 목표가 없으면 조용히 전사(_all) 목표로 폴백해
+  // 펫 실적을 전사 목표와 비교했다(2026-08 수정).
+  //  (a) 선택 기간의 from 이 속한 달의 목표를 쓴다
+  //  (b) 기간이 두 달 이상 걸치면 비교 자체가 성립하지 않으므로 배지를 숨긴다
+  //  (c) 브랜드 목표가 없어 전사로 폴백하면 라벨에 그 사실을 표시한다
+  const { targets, targetIsCompanyWide } = useMemo(() => {
     const t = targetsData?.targets || {};
-    const curMonth = new Date().toISOString().slice(0, 7);
+    if (!from || !to || from.slice(0, 7) !== to.slice(0, 7)) {
+      return { targets: null, targetIsCompanyWide: false };
+    }
+    const month = from.slice(0, 7);
     const b = brand && brand !== "all" ? brand : "all";
-    const key = `${curMonth}_${b}`;
-    const fallback = `${curMonth}_all`;
-    return t[key] || t[fallback] || null;
-  }, [targetsData, brand]);
+    const own = t[`${month}_${b}`];
+    if (own) return { targets: own, targetIsCompanyWide: false };
+    const fallback = t[`${month}_all`];
+    return { targets: fallback || null, targetIsCompanyWide: !!fallback && b !== "all" };
+  }, [targetsData, brand, from, to]);
 
   const targetProp = (current: number, targetVal: number | undefined, label: string) => {
     if (!targetVal || targetVal <= 0) return undefined;
-    return { label, percent: (current / targetVal) * 100 };
+    return { label: targetIsCompanyWide ? `${label}(전사)` : label, percent: (current / targetVal) * 100 };
   };
 
   const toggleKpi = (key: KpiKey) => setSelectedKpi((prev) => (prev === key ? null : key));

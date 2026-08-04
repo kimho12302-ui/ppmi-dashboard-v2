@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { fetchAll } from "@/lib/db";
 
 // Channel name mapping (English → Korean)
 const CHANNEL_LABELS: Record<string, string> = {
@@ -53,25 +54,25 @@ export async function GET(request: NextRequest) {
     let prodQ = supabase.from("product_sales").select("*").gte("date", from).lte("date", to);
     if (brand !== "all") prodQ = prodQ.in("brand", expandBrands(brand));
 
-    const [salesRes, adRes, funnelRes, prodRes, prevSalesRes, prevAdsRes] = await Promise.all([
-      salesQ.range(0, 99999),
-      adQ.range(0, 99999),
-      funnelQ.range(0, 99999),
-      prodQ.range(0, 9999),
-      supabase.from("daily_sales").select("*").gte("date", prevFrom).lte("date", prevTo).neq("brand", "all").neq("channel", "total").not("channel", "like", "공구%"),
-      supabase.from("daily_ad_spend").select("*").gte("date", prevFrom).lte("date", prevTo).not("channel", "like", "ga4_%"),
-    ]);
-    const sales = salesRes.data;
-    const adSpend = adRes.data;
-    const funnel = funnelRes.data;
-    const products = prodRes.data;
-    const prevSales = prevSalesRes.data;
-    const prevAds = prevAdsRes.data;
+    // ── 이전 기간 쿼리: 현재 기간과 "같은 스코프"여야 비교가 성립한다 ──
+    // 이전에는 브랜드 필터가 빠져 있어 '현재=선택 브랜드 vs 이전=전 브랜드 합계'로 비교됐고,
+    // 그 결과 브랜드를 고르면 거의 항상 "매출 급락" 오탐이 발생했다(2026-08 수정).
+    let prevSalesQ = supabase.from("daily_sales").select("*").gte("date", prevFrom).lte("date", prevTo).neq("brand", "all").neq("channel", "total").not("channel", "like", "공구%");
+    if (brand !== "all") prevSalesQ = prevSalesQ.in("brand", expandBrands(brand));
 
-    const salesRows = sales || [];
-    const adRows = adSpend || [];
-    const funnelRows = funnel || [];
-    const prodRows = products || [];
+    let prevAdsQ = supabase.from("daily_ad_spend").select("*").gte("date", prevFrom).lte("date", prevTo).neq("brand", "all").not("channel", "like", "ga4_%");
+    if (brand !== "all") prevAdsQ = prevAdsQ.in("brand", expandBrands(brand));
+
+    // .range(0, 99999) 는 PostgREST db-max-rows(1000)에 막혀 무력했다 → fetchAll 로 전량 조회.
+    // 정렬이 없으면 어느 1000행이 올지 비결정적이었으므로 date 정렬도 명시한다.
+    const [salesRows, adRows, funnelRows, prodRows, prevSales, prevAds] = await Promise.all([
+      fetchAll(salesQ.order("date")),
+      fetchAll(adQ.order("date")),
+      fetchAll(funnelQ.order("date")),
+      fetchAll(prodQ.order("date")),
+      fetchAll(prevSalesQ.order("date")),
+      fetchAll(prevAdsQ.order("date")),
+    ]);
 
     const insights: { type: "critical" | "warning" | "opportunity" | "info"; text: string; detail?: string; actions?: string[] }[] = [];
 
@@ -220,10 +221,12 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Product-level drill
+      // Product-level drill — 현재 기간(prodRows)과 같은 브랜드 스코프로 조회해야 비교가 성립한다.
       const prevProdMap = new Map<string, number>();
-      const { data: prevProducts } = await supabase.from("product_sales").select("product,revenue").gte("date", prevFrom).lte("date", prevTo).range(0, 9999);
-      for (const r of prevProducts || []) {
+      let prevProdQ = supabase.from("product_sales").select("product,revenue").gte("date", prevFrom).lte("date", prevTo);
+      if (brand !== "all") prevProdQ = prevProdQ.in("brand", expandBrands(brand));
+      const prevProducts = await fetchAll(prevProdQ.order("date"));
+      for (const r of prevProducts) {
         prevProdMap.set(r.product, (prevProdMap.get(r.product) || 0) + Number(r.revenue));
       }
       const prodChanges: string[] = [];

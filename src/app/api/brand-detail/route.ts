@@ -1,23 +1,8 @@
-import { expandBrands } from "@/lib/brand-groups";
+import { expandBrands, BL_TEST_LINES, classifyBlProduct } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { fetchAll } from "@/lib/db";
 import { isGonggu, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAll(baseQuery: any): Promise<any[]> {
-  const PAGE = 1000;
-  let from = 0;
-  const all: unknown[] = [];
-  while (true) {
-    const { data, error } = await baseQuery.range(from, from + PAGE - 1);
-    if (error) break;
-    if (!data || data.length === 0) break;
-    all.push(...data);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return all;
-}
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -53,8 +38,13 @@ export async function GET(req: NextRequest) {
           r.product.includes("고네이티브") ? "고네이티브" : "기타"
         );
       } else if (brand === "balancelab") {
-        key = r.product.includes("검사") ? "큐모발검사" :
-              r.product.includes("영양제") ? "맞춤 영양제" : "기타";
+        // 검사 라인은 brand-groups 의 단일 분류기를 쓴다.
+        // 이전에는 `includes("검사") → 큐모발검사` 하드코딩이라, 런칭 예정인
+        // 타액검사·음식물과민증검사 매출이 전부 모발검사로 합산될 상태였다(2026-08 수정).
+        const lineKey = classifyBlProduct(r.product);
+        const lineDef = BL_TEST_LINES.find(l => l.key === lineKey);
+        key = lineDef ? lineDef.label
+            : r.product.includes("영양제") ? "맞춤 영양제" : "기타";
       } else if (brand === "ironpet") {
         key = r.product.includes("키트") || r.product.includes("검사") ? "검사 키트" : "기타";
       } else {

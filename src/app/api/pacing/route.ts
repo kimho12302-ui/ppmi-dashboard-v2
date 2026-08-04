@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { fetchAll } from "@/lib/db";
 import { isGongguInDailySales } from "@/lib/gonggu";
 
 // 목표 대비 페이싱 (통계시트 "광고 예산안" 재현)
@@ -10,22 +11,6 @@ import { isGongguInDailySales } from "@/lib/gonggu";
 // brand=all 이면 4개 브랜드 목표 합산 + 실적 합산. 특정 brand면 그 브랜드만.
 
 const BRANDS = ["nutty", "ironpet", "saip", "balancelab"];
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAll(q: any): Promise<any[]> {
-  const PAGE = 1000;
-  let from = 0;
-  const all: unknown[] = [];
-  while (true) {
-    const { data, error } = await q.range(from, from + PAGE - 1);
-    if (error) break;
-    if (!data || data.length === 0) break;
-    all.push(...data);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return all;
-}
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
