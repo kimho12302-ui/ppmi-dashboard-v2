@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { CHANNEL_LABELS, CHANNEL_COLORS, type DailyAdSpend } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
-import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatPercent, formatRoas, isRoasUntracked, cn } from "@/lib/utils";
 import { Suspense, useMemo, useState } from "react";
 import {
   AreaChart,
@@ -239,8 +239,11 @@ function AdsPageInner() {
                     <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 text-xs text-muted-foreground">
                       <div>
                         <p>ROAS</p>
-                        <p className={`font-medium ${c.roas >= 3 ? "text-green-600" : c.roas >= 1 ? "text-yellow-600" : "text-red-500"}`}>
-                          {c.roas.toFixed(2)}x
+                        {/* 전환 미연동 채널을 0.00x 빨강으로 찍으면 "돈만 태우는 채널"로 오독된다.
+                            '미연동'으로 구분해야 예산 삭감 판단이 왜곡되지 않는다(2026-08 리뷰). */}
+                        <p className={`font-medium ${isRoasUntracked(c.roas, c.spend) ? "text-muted-foreground/70 italic" : c.roas >= 3 ? "text-green-600" : c.roas >= 1 ? "text-yellow-600" : "text-red-500"}`}
+                          title={isRoasUntracked(c.roas, c.spend) ? "전환 추적 미연동 — 성과 0이 아니라 측정 불가" : undefined}>
+                          {formatRoas(c.roas, c.spend)}
                         </p>
                       </div>
                       <div>
@@ -454,7 +457,8 @@ function AdsPageInner() {
                       <td className="py-2 pr-4 text-right">{formatNumber(c.conversions)}</td>
                       <td className="py-2 pr-4 text-right">{formatCurrency(c.convValue)}</td>
                       <td className="py-2 pr-4 text-right">{c.conversions > 0 ? formatCurrency(Math.round(c.spend / c.conversions)) : "—"}</td>
-                      <td className={`py-2 text-right font-medium ${c.roas >= 3 ? "text-green-600" : c.roas >= 1 ? "text-yellow-600" : "text-red-500"}`}>{c.roas.toFixed(2)}x</td>
+                      <td className={`py-2 text-right font-medium ${isRoasUntracked(c.roas, c.spend) ? "text-muted-foreground/70 italic" : c.roas >= 3 ? "text-green-600" : c.roas >= 1 ? "text-yellow-600" : "text-red-500"}`}
+                        title={isRoasUntracked(c.roas, c.spend) ? "전환 추적 미연동 — 성과 0이 아니라 측정 불가" : undefined}>{formatRoas(c.roas, c.spend)}</td>
                     </tr>
                   ))}
               </tbody>

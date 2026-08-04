@@ -4,6 +4,7 @@ import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
+import { isGongguInDailySales } from "@/lib/gonggu";
 
 // Channel name mapping (English → Korean)
 const CHANNEL_LABELS: Record<string, string> = {
@@ -77,7 +78,21 @@ export async function GET(request: NextRequest) {
     const insights: { type: "critical" | "warning" | "opportunity" | "info"; text: string; detail?: string; actions?: string[] }[] = [];
 
     // ===== REVENUE ANALYSIS =====
-    const totalRevenue = salesRows.reduce((s, r) => s + Number(r.revenue), 0);
+    // ★ 공구 스코프를 dashboard 와 일치시킨다.
+    //   `공구%` 채널은 쿼리에서 제외되지만, 밸런스랩 형식-A 공구는 smartstore 채널로 들어와
+    //   그 필터에 걸리지 않는다. 차감하지 않으면 매출이 부풀고 헤드라인 ROAS가 과대해져
+    //   ("전체 ROAS 8.07x — 예산 증액 검토") 잘못된 증액 권고가 나갔다(2026-08 리뷰).
+    let formA = 0;
+    if (brand === "all" || brand === "balancelab") {
+      const psRows = await fetchAll(
+        supabase.from("product_sales").select("channel,lineup,product,revenue")
+          .eq("brand", "balancelab").gte("date", from).lte("date", to)
+      );
+      for (const r of psRows as { channel: string; lineup: string | null; product: string; revenue: number }[]) {
+        if (isGongguInDailySales(r)) formA += Number(r.revenue || 0);
+      }
+    }
+    const totalRevenue = Math.max(0, salesRows.reduce((s, r) => s + Number(r.revenue), 0) - formA);
     const _totalOrders = salesRows.reduce((s, r) => s + Number(r.orders), 0); // eslint-disable-line @typescript-eslint/no-unused-vars
     const totalAdSpend = adRows.reduce((s, r) => s + Number(r.spend), 0);
     const roas = totalAdSpend > 0 ? totalRevenue / totalAdSpend : 0;
@@ -100,8 +115,13 @@ export async function GET(request: NextRequest) {
     for (const [channel, d] of Array.from(channelSpend.entries())) {
       const chRoas = d.spend > 0 ? d.convValue / d.spend : 0;
       const chLabel = CHANNEL_LABELS[channel] || channel;
-      if (d.spend > 100000 && chRoas < 1.0) {
-        insights.push({ type: "critical", text: `${chLabel} ROAS ${chRoas.toFixed(2)}x — 적자 채널`, detail: `광고비 ₩${(d.spend/10000).toFixed(0)}만 투입 대비 전환매출 ₩${(d.convValue/10000).toFixed(0)}만`, actions: [`${chLabel} 일 예산 50% 감축`, "전환 추적 코드 재확인 (conversion_value=0이면 추적 문제)", "2주간 모니터링 후 중단 여부 결정"] });
+      // ★ 전환값이 아예 0이면 "성과 없음"이 아니라 "측정 불가"다. 이걸 적자 채널로 단정해
+      //    "예산 50% 감축"을 권고하면 멀쩡한 채널을 끄게 된다(2026-08 리뷰: 메타가 이 상태였다).
+      //    → 데이터 품질 이슈로 분리한다.
+      if (d.spend > 100000 && d.convValue <= 0) {
+        insights.push({ type: "warning", text: `${chLabel} 전환 추적 미연동 — 성과 판단 불가`, detail: `광고비 ₩${(d.spend/10000).toFixed(0)}만을 집행했으나 전환값이 0으로 수집됩니다. 실제 성과가 0이라는 뜻이 아니라 측정이 안 되는 상태이므로, 이 채널은 예산 판단에서 제외하고 추적부터 붙여야 합니다.`, actions: ["픽셀/전환 API 연동 상태 확인", "판매처(스마트스토어 등) 전환이 플랫폼에 안 잡히는 구조인지 확인", "추적 복구 전까지 ROAS 기준 증감 판단 보류"] });
+      } else if (d.spend > 100000 && chRoas < 1.0) {
+        insights.push({ type: "critical", text: `${chLabel} ROAS ${chRoas.toFixed(2)}x — 적자 채널`, detail: `광고비 ₩${(d.spend/10000).toFixed(0)}만 투입 대비 전환매출 ₩${(d.convValue/10000).toFixed(0)}만`, actions: [`${chLabel} 일 예산 50% 감축`, "하위 소재 OFF 후 2주 모니터링", "2주간 모니터링 후 중단 여부 결정"] });
       } else if (d.spend > 100000 && chRoas < 2.0) {
         insights.push({ type: "warning", text: `${chLabel} ROAS ${chRoas.toFixed(2)}x — 효율 저조`, detail: `크리에이티브 교체 또는 타겟팅 재설정 권장`, actions: ["하위 20% 소재 OFF", "새 크리에이티브 2-3개 테스트", "타겟 연령/관심사 재설정"] });
       }

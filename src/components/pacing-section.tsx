@@ -28,7 +28,7 @@ interface PacingData {
     brand: string; targetRevenue: number; actualRevenue: number; actualRevenueOwn: number; gonggu: number;
     revAchievement: number;
     targetAd: number; actualAd: number; adConsumption: number;
-    actualRoas: number; targetRoas: number; actualAdRatio: number; targetAdRatio: number;
+    actualRoas: number; actualRoasOwn?: number; targetRoas: number; actualAdRatio: number; targetAdRatio: number;
   }[];
 }
 
@@ -251,9 +251,13 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
                 <span className="w-16 flex-shrink-0 text-xs">{BRAND_LABELS[pb.brand] || pb.brand}</span>
                 <div className="flex-1"><ProgressBar value={pb.revAchievement} marker={dateProgress} color={pb.revAchievement >= dateProgress * 0.9 ? "#10b981" : "#ef4444"} /></div>
                 <span className="w-12 text-right text-xs font-medium">{pct(pb.revAchievement)}</span>
-                {/* ROAS 목표 대비 (매출 달성했어도 ROAS 미달이면 크리에이티브 점검 신호) */}
-                <span className={`w-24 text-right text-[11px] ${pb.targetRoas > 0 ? (roasOk ? "text-emerald-600" : "text-red-500") : "text-muted-foreground"}`} title="실제 ROAS / 목표 ROAS">
+                {/* ROAS 목표 대비 (매출 달성했어도 ROAS 미달이면 크리에이티브 점검 신호)
+                    공구가 있는 브랜드는 자체매출 기준 ROAS를 괄호로 병기한다 — 공구는 광고와 무관해
+                    포함 기준만 보면 광고 성과를 과대평가하게 된다(밸런스랩 7월: 9.6x vs 자체 1.8x). */}
+                <span className={`w-32 text-right text-[11px] ${pb.targetRoas > 0 ? (roasOk ? "text-emerald-600" : "text-red-500") : "text-muted-foreground"}`}
+                  title={pb.gonggu > 0 ? "실제 ROAS(공구 포함) / 목표 ROAS · 괄호=자체매출 기준(광고 성과)" : "실제 ROAS / 목표 ROAS"}>
                   ROAS {pb.actualRoas.toFixed(1)}/{pb.targetRoas > 0 ? pb.targetRoas.toFixed(1) : "-"}x
+                  {pb.gonggu > 0 && <span className="text-muted-foreground"> (자체 {(pb.actualRoasOwn ?? 0).toFixed(1)}x)</span>}
                 </span>
                 <span className="w-28 text-right text-[11px] text-muted-foreground">{formatCurrency(pb.actualRevenue)}/{formatCurrency(pb.targetRevenue)}</span>
                 {/* 공구가 있는 브랜드는 자체매출을 병기한다. 밸런스랩은 매출의 66~97%가 공구라

@@ -5,18 +5,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { isGongguInDailySales } from "@/lib/gonggu";
+import { kstDate, kstNow } from "@/lib/date";
 
 // Supabase anon key has max-rows=1000 per request. Use pagination to fetch all rows.
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
-  const year = sp.get("year") || new Date().getFullYear().toString();
+  const year = sp.get("year") || kstNow().getUTCFullYear().toString();
 
   try {
     // Get all sales data for the year (미래 날짜는 제외: 미래 시드/플레이스홀더가 YTD·월별 왜곡)
     const fromDate = `${year}-01-01`;
     const yearEnd = `${year}-12-31`;
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // ★ KST 기준. UTC 로 계산하면 KST 00:00~09:00 사이에 "오늘"이 전날이 되어
+    //   오늘 데이터가 잘리고, 같은 시간대 pacing(KST 적용)과 이번 달 매출이 어긋났다.
+    const todayStr = kstDate();
     const toDate = yearEnd < todayStr ? yearEnd : todayStr;
 
     // 자체매출만 집계: 공구(공동구매) 채널 제외. 공구는 별도 섹션에서만 표시.

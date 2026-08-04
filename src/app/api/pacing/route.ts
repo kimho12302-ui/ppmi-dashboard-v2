@@ -137,6 +137,10 @@ export async function GET(req: NextRequest) {
           targetAd: tAd, actualAd: aAd,
           adConsumption: tAd > 0 ? aAd / tAd : 0,
           actualRoas: aAd > 0 ? aRev / aAd : 0,   // 실매출 기준 (targetRoas와 동일 정의)
+          // ★ 광고 성과 판단용: 공구는 광고와 무관하므로 자체매출 기준 ROAS를 병기한다.
+          //   밸런스랩 2026-07 실측 — 공구 포함 9.62x(목표 초과)이지만 자체 기준은 1.82x(목표 미달)로
+          //   예산 증감 판단이 정반대로 갈린다(2026-08 리뷰).
+          actualRoasOwn: aAd > 0 ? aRevOwn / aAd : 0,
           targetRoas: tAd > 0 ? tRev / tAd : 0,
           actualAdRatio: aRev > 0 ? aAd / aRev : 0,
           targetAdRatio: tRev > 0 ? tAd / tRev : 0,

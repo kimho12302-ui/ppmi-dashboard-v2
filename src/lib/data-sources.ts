@@ -1,4 +1,7 @@
 import { supabase } from "@/lib/supabase";
+import { kstDate } from "@/lib/date";
+
+const DAY_MS = 86400000;
 
 // 수집 소스별 신선도 판정. /api/data-status(화면 배너)와 /api/watchdog(텔레그램 알림)이
 // 같은 기준을 쓰도록 여기 한 곳에만 정의한다.
@@ -84,13 +87,6 @@ const HB_KEY: Record<string, string> = {
   naver_shopping: "naver_sa",
   ga4: "ga4_campaigns",
 };
-
-const DAY_MS = 86400000;
-const KST_OFFSET = 32400000;
-
-function kstDate(offsetDays = 0): string {
-  return new Date(Date.now() + KST_OFFSET + offsetDays * DAY_MS).toISOString().slice(0, 10);
-}
 
 export async function getSourceStatuses(): Promise<{ sources: SourceStatus[]; referenceDate: string }> {
   const yesterday = kstDate(-1);
