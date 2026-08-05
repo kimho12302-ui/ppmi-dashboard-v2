@@ -16,7 +16,7 @@ interface Group {
   revDelta: number | null; adDelta: number | null; roasDelta: number | null;
 }
 interface GroupCell { revenue: number; adSpend: number; }
-interface SeriesRow { date: string; naver: GroupCell; jasamol: GroupCell; coupang: GroupCell; }
+interface SeriesRow { date: string; naver: GroupCell; jasamol: GroupCell; coupang: GroupCell; other?: GroupCell; }
 interface ChannelGroupsData {
   from: string; to: string;
   groups: Group[];
@@ -83,18 +83,20 @@ function ChannelInner() {
 
   const series = useMemo(() => data?.series || [], [data]);
   const buckets = useMemo(() => {
-    const m: Record<string, { naver: { r: number; a: number }; jasamol: { r: number; a: number }; coupang: { r: number; a: number } }> = {};
+    const m: Record<string, { naver: { r: number; a: number }; jasamol: { r: number; a: number }; coupang: { r: number; a: number }; other: { r: number; a: number } }> = {};
     for (const row of series) {
       const key = bucketKey(row.date, gran);
-      if (!m[key]) m[key] = { naver: { r: 0, a: 0 }, jasamol: { r: 0, a: 0 }, coupang: { r: 0, a: 0 } };
+      if (!m[key]) m[key] = { naver: { r: 0, a: 0 }, jasamol: { r: 0, a: 0 }, coupang: { r: 0, a: 0 }, other: { r: 0, a: 0 } };
       m[key].naver.r += row.naver?.revenue || 0; m[key].naver.a += row.naver?.adSpend || 0;
       m[key].jasamol.r += row.jasamol?.revenue || 0; m[key].jasamol.a += row.jasamol?.adSpend || 0;
       m[key].coupang.r += row.coupang?.revenue || 0; m[key].coupang.a += row.coupang?.adSpend || 0;
+      // 기타(피피·에이블리 등)도 합산해야 전체 매출이 헤드라인과 맞는다.
+      m[key].other.r += row.other?.revenue || 0; m[key].other.a += row.other?.adSpend || 0;
     }
     return Object.keys(m).sort().map((key) => {
       const b = m[key];
-      const totalRev = b.naver.r + b.jasamol.r + b.coupang.r;
-      const totalAd = b.naver.a + b.jasamol.a + b.coupang.a;
+      const totalRev = b.naver.r + b.jasamol.r + b.coupang.r + b.other.r;
+      const totalAd = b.naver.a + b.jasamol.a + b.coupang.a + b.other.a;
       return { key, label: bucketLabel(key, gran), ...b, totalRev, totalAd, totalRoas: totalAd > 0 ? totalRev / totalAd : 0 };
     });
   }, [series, gran]);

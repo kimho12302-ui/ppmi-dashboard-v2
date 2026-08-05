@@ -11,10 +11,16 @@ import { isGongguInDailySales } from "@/lib/gonggu";
 //   - 밸런스랩: 스마트스토어 전용 → 밸런스랩 메타/구글도 '스마트스토어'로 귀속(자사몰 아님).
 //   - 너티/사입/아이언펫: 스마트스토어(네이버검색+쇼핑+GFA) + 자사몰(메타+구글) 별개.
 //   즉 메타를 통째로 자사몰에 넣지 않고, 밸런스랩 메타/구글(blMG)만 스마트스토어로 이동.
+// ★ 그룹 3개(smartstore/cafe24/coupang)에 안 잡히는 채널(other·pp·ably·petfriends 등)이 있어
+//   채널 탭 합계가 헤드라인 매출보다 조용히 작았다(2026-07 -198,600 / 2026 누적 -728,870).
+//   "기타"를 명시적으로 두어 합계가 항상 맞도록 한다. OTHER_SALES_CH 는 아래 periodData 에서
+//   "위 3개에 속하지 않는 모든 채널"로 동적으로 채운다.
+const KNOWN_SALES_CH = ["smartstore", "cafe24", "coupang"];
 const GROUPS = [
   { key: "naver", label: "스마트스토어 (네이버·GFA + 밸런스랩 메타)", salesCh: ["smartstore"] },
   { key: "jasamol", label: "자사몰 (카페24)", salesCh: ["cafe24"] },
   { key: "coupang", label: "쿠팡", salesCh: ["coupang"] },
+  { key: "other", label: "기타 (피피·에이블리 등)", salesCh: [] as string[] },
 ];
 
 // 판매처(그룹)별 광고비 — blMG = 밸런스랩 메타+구글(스마트스토어 귀속분)
@@ -110,9 +116,13 @@ export async function GET(req: NextRequest) {
     const [cur, prev] = await Promise.all([periodData(from, to, brand), periodData(prevFrom, prevTo, brand)]);
 
     const groups = GROUPS.map((g) => {
-      const revenue = g.salesCh.reduce((s, c) => s + (cur.revByCh[c] || 0), 0);
+      // "기타"는 고정 채널 목록이 없다 — 알려진 3개에 속하지 않는 모든 채널의 합.
+      const pick = (m: Record<string, number>) => g.key === "other"
+        ? Object.entries(m).reduce((s2, [c, v]) => (KNOWN_SALES_CH.includes(c) ? s2 : s2 + v), 0)
+        : g.salesCh.reduce((s2, c) => s2 + (m[c] || 0), 0);
+      const revenue = pick(cur.revByCh);
       const adSpend = storeAd(g.key, cur.adByCh, cur.blMG);
-      const prevRev = g.salesCh.reduce((s, c) => s + (prev.revByCh[c] || 0), 0);
+      const prevRev = pick(prev.revByCh);
       const prevAd = storeAd(g.key, prev.adByCh, prev.blMG);
       const roas = adSpend > 0 ? revenue / adSpend : 0;
       const prevRoas = prevAd > 0 ? prevRev / prevAd : 0;
@@ -138,7 +148,9 @@ export async function GET(req: NextRequest) {
       const row: Record<string, unknown> = { date };
       for (const g of GROUPS) {
         row[g.key] = {
-          revenue: g.salesCh.reduce((s, c) => s + (d.rev[c] || 0), 0),
+          revenue: g.key === "other"
+            ? Object.entries(d.rev).reduce((s2, [c, v]) => (KNOWN_SALES_CH.includes(c) ? s2 : s2 + v), 0)
+            : g.salesCh.reduce((s2, c) => s2 + (d.rev[c] || 0), 0),
           adSpend: storeAd(g.key, d.ad, d.blMG),
         };
       }
