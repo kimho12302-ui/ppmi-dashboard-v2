@@ -5,6 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatWon, cn } from "@/lib/utils";
+import { bucketKey, bucketLabel, type Gran } from "@/lib/bucket";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
@@ -24,25 +25,6 @@ interface ChannelGroupsData {
   series: SeriesRow[];
 }
 
-type Gran = "day" | "week" | "month";
-
-function bucketKey(date: string, gran: Gran): string {
-  if (gran === "month") return date.slice(0, 7);
-  if (gran === "week") {
-    const d = new Date(date + "T00:00:00Z");
-    if (isNaN(d.getTime())) return date;
-    const dow = d.getUTCDay();
-    d.setUTCDate(d.getUTCDate() - (dow === 0 ? 6 : dow - 1)); // 그 주 월요일
-    return d.toISOString().slice(0, 10);
-  }
-  return date;
-}
-function bucketLabel(key: string, gran: Gran): string {
-  if (gran === "month") { const [y, m] = key.split("-"); return `${y}.${m}`; }
-  const [, m, d] = key.split("-");
-  if (gran === "week") return `${Number(m)}/${Number(d)} 주`;
-  return `${Number(m)}/${Number(d)}`;
-}
 
 function Delta({ v, invert = false }: { v: number | null; invert?: boolean }) {
   if (v === null || !isFinite(v)) return <span className="text-muted-foreground/50">—</span>;

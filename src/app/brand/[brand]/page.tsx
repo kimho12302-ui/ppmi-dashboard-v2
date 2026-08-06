@@ -1,14 +1,15 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { DateRangeSelector } from "@/components/ui/date-range-selector";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
+import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { BRAND_LABELS, AD_CHANNEL_COLORS } from "@/lib/types";
-import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { bucketize, GRAN_LABELS, type Gran } from "@/lib/bucket";
+import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 // 브랜드 종합 페이지 (2026-08): 사이드바 브랜드 클릭 시 진입.
 // 개요와 달리 브랜드 탭(전체/펫/밸런스랩)을 두지 않는다 — 브랜드는 경로로 고정, 기간만 선택.
@@ -30,10 +31,21 @@ interface ChannelGroupsResp {
 interface BrandDetailResp {
   lineupBreakdown: { lineup: string; revenue: number; quantity: number; orders: number }[];
   topProducts: { product: string; revenue: number; quantity: number }[];
+  stackSeries?: { date: string; byChannel: Record<string, number>; byProduct: Record<string, number>; byLineup: Record<string, number> }[];
+  stackKeys?: { channels: string[]; products: string[]; lineups: string[] };
   gongguSales?: { seller: string; revenue: number; orders: number }[];
   gongguSalesTotal?: number;
   selfSalesTotal?: number;
 }
+
+// 누적 막대 계열 색 (범례 순서대로). 판매처·라인업·제품 공통 사용.
+const STACK_COLORS = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#94a3b8"];
+type StackDim = "channel" | "lineup" | "product";
+const STACK_DIMS: { key: StackDim; label: string }[] = [
+  { key: "channel", label: "판매처별" },
+  { key: "lineup", label: "라인업별" },
+  { key: "product", label: "제품별" },
+];
 
 export default function BrandPage({ params }: { params: { brand: string } }) {
   return (
@@ -59,6 +71,8 @@ function BarRow({ label, value, max, sub, color = "#2563eb" }: { label: string; 
 function BrandInner({ brand }: { brand: string }) {
   const { preset, from, to, isCustom, setPreset, setCustomRange } = useFilterParams();
   const label = BRAND_LABELS[brand] || brand;
+  const [gran, setGran] = useState<Gran>("day");
+  const [dim, setDim] = useState<StackDim>("channel");
 
   const { data: dash, loading } = useFetch<DashboardResp>(`/api/dashboard?brand=${brand}&from=${from}&to=${to}`);
   const { data: cg } = useFetch<ChannelGroupsResp>(`/api/channel-groups?brand=${brand}&from=${from}&to=${to}`);
@@ -71,6 +85,25 @@ function BrandInner({ brand }: { brand: string }) {
   const maxAd = Math.max(0, ...adChannels.map(c => c.spend));
   const lineups = detail?.lineupBreakdown || [];
   const maxLineup = Math.max(0, ...lineups.map(l => l.revenue));
+
+  // ── 누적 막대: 선택한 차원(판매처/라인업/제품) × 선택한 단위(일/주/월) ──
+  const CH_KOR: Record<string, string> = { smartstore: "스마트스토어", cafe24: "자사몰(카페24)", coupang: "쿠팡", other: "기타", pp: "피피", ably: "에이블리", petfriends: "펫프렌즈" };
+  const stackKeys = useMemo(() => {
+    const k = detail?.stackKeys;
+    if (!k) return [] as string[];
+    return dim === "channel" ? k.channels : dim === "lineup" ? k.lineups : k.products;
+  }, [detail, dim]);
+
+  const stackData = useMemo(() => {
+    const rows = detail?.stackSeries || [];
+    if (!rows.length) return [];
+    const field = dim === "channel" ? "byChannel" : dim === "lineup" ? "byLineup" : "byProduct";
+    return bucketize(rows, gran, (r) => (r as unknown as Record<string, Record<string, number>>)[field] || {})
+      .map((b) => ({ label: b.label, ...b.values }));
+  }, [detail, dim, gran]);
+
+  const dimLabel = STACK_DIMS.find(d => d.key === dim)?.label || "";
+  const keyLabel = (k: string) => (dim === "channel" ? CH_KOR[k] || k : k);
 
   if (!VALID_BRANDS.includes(brand)) {
     return <PageShell title="브랜드 없음" description=""><p className="text-muted-foreground">알 수 없는 브랜드: {brand}</p></PageShell>;
@@ -92,6 +125,57 @@ function BrandInner({ brand }: { brand: string }) {
         <KpiCard title="주문 수" value={formatNumber(kpi?.orders || 0)} change={pct(kpi?.orders, kpi?.ordersPrev)} />
         <KpiCard title="이익" value={formatCurrency(kpi?.profit || 0)} change={pct(kpi?.profit, kpi?.profitPrev)} />
       </div>
+
+      {/* 매출 구성 누적 막대 — 판매처/라인업/제품 × 일/주/월 */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <h3 className="font-semibold text-sm">
+              매출 구성 · {dimLabel}
+              <span className="text-xs text-muted-foreground font-normal ml-2">자체매출 기준 (공구 제외)</span>
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
+                {STACK_DIMS.map(d => (
+                  <button key={d.key} onClick={() => setDim(d.key)}
+                    className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
+                      dim === d.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
+                {GRAN_LABELS.map(g => (
+                  <button key={g.key} onClick={() => setGran(g.key)}
+                    className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
+                      gran === g.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          {stackData.length > 0 && stackKeys.length > 0 ? (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={stackData}>
+                  <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
+                  <Tooltip
+                    formatter={(v, name) => [formatCurrency(Number(v)), keyLabel(String(name))]}
+                    labelFormatter={(l) => `${l}`}
+                    itemSorter={(i) => -(Number(i.value) || 0)} />
+                  <Legend formatter={(v) => keyLabel(String(v))} wrapperStyle={{ fontSize: 11 }} />
+                  {stackKeys.map((k, i) => (
+                    <Bar key={k} dataKey={k} stackId="rev" fill={STACK_COLORS[i % STACK_COLORS.length]}
+                      radius={i === stackKeys.length - 1 ? [3, 3, 0, 0] : undefined} />
+                  ))}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <p className="text-sm text-muted-foreground py-10 text-center">{loading ? "로딩 중..." : "기간 내 판매 없음"}</p>}
+        </CardContent>
+      </Card>
 
       {/* 일별 매출·광고비 추이 */}
       <Card>

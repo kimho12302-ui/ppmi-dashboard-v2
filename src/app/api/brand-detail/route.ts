@@ -35,31 +35,31 @@ export async function GET(req: NextRequest) {
     const filteredProducts = brand === "balancelab" ? allRows.filter(r => !isGonggu(r)) : allRows;
 
     // ── Lineup/SubBrand breakdown ──
-    const lineupMap = new Map<string, { revenue: number; quantity: number; orders: number }>();
-    for (const r of filteredProducts) {
-      let key: string;
-      if (brand === "nutty") {
-        key = r.lineup || "기타";
-      } else if (brand === "saip") {
-        key = r.lineup || (
+    // 라인업 키 결정은 시계열(누적 막대)에서도 같은 기준을 써야 하므로 함수로 뺀다.
+    const lineupKey = (r: { product: string; lineup: string | null }): string => {
+      if (brand === "nutty") return r.lineup || "기타";
+      if (brand === "saip") {
+        return r.lineup || (
           r.product.includes("파미나") ? "파미나" :
           r.product.includes("테라카니스") ? "테라카니스" :
           r.product.includes("닥터레이") ? "닥터레이" :
           r.product.includes("고네이티브") ? "고네이티브" : "기타"
         );
-      } else if (brand === "balancelab") {
+      }
+      if (brand === "balancelab") {
         // 검사 라인은 brand-groups 의 단일 분류기를 쓴다.
         // 이전에는 `includes("검사") → 큐모발검사` 하드코딩이라, 런칭 예정인
         // 타액검사·음식물과민증검사 매출이 전부 모발검사로 합산될 상태였다(2026-08 수정).
-        const lineKey = classifyBlProduct(r.product);
-        const lineDef = BL_TEST_LINES.find(l => l.key === lineKey);
-        key = lineDef ? lineDef.label
-            : r.product.includes("영양제") ? "맞춤 영양제" : "기타";
-      } else if (brand === "ironpet") {
-        key = r.product.includes("키트") || r.product.includes("검사") ? "검사 키트" : "기타";
-      } else {
-        key = r.lineup || "기타";
+        const lineDef = BL_TEST_LINES.find(l => l.key === classifyBlProduct(r.product));
+        return lineDef ? lineDef.label : (r.product.includes("영양제") ? "맞춤 영양제" : "기타");
       }
+      if (brand === "ironpet") return r.product.includes("키트") || r.product.includes("검사") ? "검사 키트" : "기타";
+      return r.lineup || "기타";
+    };
+
+    const lineupMap = new Map<string, { revenue: number; quantity: number; orders: number }>();
+    for (const r of filteredProducts) {
+      const key = lineupKey(r);
       const e = lineupMap.get(key) || { revenue: 0, quantity: 0, orders: 0 };
       e.revenue += Number(r.revenue || 0);
       e.quantity += Number(r.quantity || 0);
@@ -104,6 +104,36 @@ export async function GET(req: NextRequest) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, revenue]) => ({ date, revenue }));
 
+    // ── 누적 막대용 시계열: 날짜 × (판매처 / 제품 / 라인업) ──
+    // 화면에서 일/주/월로 접을 수 있게 날짜 단위로 내려준다.
+    // 제품은 종류가 많아 상위 6개만 계열로 두고 나머지는 "기타"로 접는다(범례 폭발 방지).
+    const TOP_N = 6;
+    const topProductKeys = topProducts.slice(0, TOP_N).map(p => p.product);
+    const topLineupKeys = lineupBreakdown.slice(0, TOP_N).map(l => l.lineup);
+
+    const stackMap = new Map<string, { byChannel: Record<string, number>; byProduct: Record<string, number>; byLineup: Record<string, number> }>();
+    for (const r of filteredProducts) {
+      const e = stackMap.get(r.date) || { byChannel: {}, byProduct: {}, byLineup: {} };
+      const rev = Number(r.revenue || 0);
+      const ch = r.channel || "기타";
+      e.byChannel[ch] = (e.byChannel[ch] || 0) + rev;
+      const pk = topProductKeys.includes(r.product) ? r.product : "기타";
+      e.byProduct[pk] = (e.byProduct[pk] || 0) + rev;
+      const lk0 = lineupKey(r);
+      const lk = topLineupKeys.includes(lk0) ? lk0 : "기타";
+      e.byLineup[lk] = (e.byLineup[lk] || 0) + rev;
+      stackMap.set(r.date, e);
+    }
+    const stackSeries = Array.from(stackMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, d]) => ({ date, ...d }));
+
+    const stackKeys = {
+      channels: channelBreakdown.map(c => c.channel),
+      products: [...topProductKeys, ...(topProducts.length > TOP_N ? ["기타"] : [])],
+      lineups: [...topLineupKeys, ...(lineupBreakdown.length > TOP_N ? ["기타"] : [])],
+    };
+
     // ── Gonggu analysis (balancelab only) — product_sales 단일 소스 ──
     let gongguSales: { seller: string; revenue: number; orders: number }[] = [];
     let selfSalesTotal = 0;
@@ -144,13 +174,13 @@ export async function GET(req: NextRequest) {
         .map(([date, d]) => ({ date, ...d }));
 
       return NextResponse.json({
-        lineupBreakdown, topProducts, channelBreakdown, dailyTrend,
+        lineupBreakdown, topProducts, channelBreakdown, dailyTrend, stackSeries, stackKeys,
         gongguSales, gongguSalesTotal, selfSalesTotal, selfGongguTrend,
       });
     }
 
     return NextResponse.json({
-      lineupBreakdown, topProducts, channelBreakdown, dailyTrend,
+      lineupBreakdown, topProducts, channelBreakdown, dailyTrend, stackSeries, stackKeys,
     });
   } catch (error) {
     console.error("Brand detail API error:", error);
