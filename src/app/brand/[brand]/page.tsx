@@ -36,16 +36,19 @@ interface BrandDetailResp {
   gongguSales?: { seller: string; revenue: number; orders: number }[];
   gongguSalesTotal?: number;
   selfSalesTotal?: number;
+  selfGongguTrend?: { date: string; self: number; gonggu: number }[];
 }
 
 // 누적 막대 계열 색 (범례 순서대로). 판매처·라인업·제품 공통 사용.
 const STACK_COLORS = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#94a3b8"];
-type StackDim = "channel" | "lineup" | "product";
+type StackDim = "channel" | "lineup" | "product" | "gonggu";
 const STACK_DIMS: { key: StackDim; label: string }[] = [
   { key: "channel", label: "판매처별" },
   { key: "lineup", label: "라인업별" },
   { key: "product", label: "제품별" },
 ];
+// 밸런스랩은 매출의 대부분이 공구라 자체/공구 구성을 따로 볼 수 있어야 한다.
+const GONGGU_DIM: { key: StackDim; label: string } = { key: "gonggu", label: "자체/공구" };
 
 export default function BrandPage({ params }: { params: { brand: string } }) {
   return (
@@ -88,13 +91,24 @@ function BrandInner({ brand }: { brand: string }) {
 
   // ── 누적 막대: 선택한 차원(판매처/라인업/제품) × 선택한 단위(일/주/월) ──
   const CH_KOR: Record<string, string> = { smartstore: "스마트스토어", cafe24: "자사몰(카페24)", coupang: "쿠팡", other: "기타", pp: "피피", ably: "에이블리", petfriends: "펫프렌즈" };
+  // 밸런스랩만 자체/공구 차원 추가
+  const hasGonggu = (detail?.gongguSalesTotal || 0) > 0;
+  const dims = useMemo(() => (hasGonggu ? [...STACK_DIMS, GONGGU_DIM] : STACK_DIMS), [hasGonggu]);
+
   const stackKeys = useMemo(() => {
+    if (dim === "gonggu") return ["자체", "공구"];
     const k = detail?.stackKeys;
     if (!k) return [] as string[];
     return dim === "channel" ? k.channels : dim === "lineup" ? k.lineups : k.products;
   }, [detail, dim]);
 
   const stackData = useMemo(() => {
+    if (dim === "gonggu") {
+      const rows = detail?.selfGongguTrend || [];
+      if (!rows.length) return [];
+      return bucketize(rows, gran, (r) => ({ 자체: r.self || 0, 공구: r.gonggu || 0 }))
+        .map((b) => ({ label: b.label, ...b.values }));
+    }
     const rows = detail?.stackSeries || [];
     if (!rows.length) return [];
     const field = dim === "channel" ? "byChannel" : dim === "lineup" ? "byLineup" : "byProduct";
@@ -102,7 +116,7 @@ function BrandInner({ brand }: { brand: string }) {
       .map((b) => ({ label: b.label, ...b.values }));
   }, [detail, dim, gran]);
 
-  const dimLabel = STACK_DIMS.find(d => d.key === dim)?.label || "";
+  const dimLabel = [...STACK_DIMS, GONGGU_DIM].find(d => d.key === dim)?.label || "";
   const keyLabel = (k: string) => (dim === "channel" ? CH_KOR[k] || k : k);
 
   if (!VALID_BRANDS.includes(brand)) {
@@ -117,14 +131,28 @@ function BrandInner({ brand }: { brand: string }) {
         <DateRangeSelector preset={preset} onChange={setPreset} onCustomRange={setCustomRange} from={from} to={to} isCustom={isCustom} />
       </div>
 
-      {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <KpiCard title="매출" value={formatCurrency(kpi?.revenue || 0)} change={pct(kpi?.revenue, kpi?.revenuePrev)} />
+      {/* KPI. 공구가 있는 브랜드(밸런스랩)는 매출의 대부분이 공구라 자체매출만 보면
+          브랜드 규모가 크게 과소 표시된다 → '총매출(공구 포함)'을 맨 앞에 병기한다.
+          단 ROAS·이익은 광고/원가와 대응하는 자체매출 기준을 유지한다(공구는 광고와 무관). */}
+      <div className={cn("grid grid-cols-2 gap-4", hasGonggu ? "lg:grid-cols-6" : "lg:grid-cols-5")}>
+        {hasGonggu && (
+          <KpiCard
+            title="총매출 (공구 포함)"
+            value={formatCurrency((detail?.selfSalesTotal || 0) + (detail?.gongguSalesTotal || 0))}
+          />
+        )}
+        <KpiCard title={hasGonggu ? "자체매출" : "매출"} value={formatCurrency(kpi?.revenue || 0)} change={pct(kpi?.revenue, kpi?.revenuePrev)} />
         <KpiCard title="광고비" value={formatCurrency(kpi?.adSpend || 0)} change={pct(kpi?.adSpend, kpi?.adSpendPrev)} />
         <KpiCard title="ROAS" value={`${(kpi?.roas || 0).toFixed(2)}x`} change={pct(kpi?.roas, kpi?.roasPrev)} />
         <KpiCard title="주문 수" value={formatNumber(kpi?.orders || 0)} change={pct(kpi?.orders, kpi?.ordersPrev)} />
         <KpiCard title="이익" value={formatCurrency(kpi?.profit || 0)} change={pct(kpi?.profit, kpi?.profitPrev)} />
       </div>
+      {hasGonggu && (
+        <p className="text-xs text-muted-foreground -mt-2">
+          총매출 = 자체 {formatCurrency(detail?.selfSalesTotal || 0)} + 공구 {formatCurrency(detail?.gongguSalesTotal || 0)}
+          {" · "}ROAS·이익은 광고·원가와 대응하는 <b>자체매출</b> 기준입니다 (공구는 광고와 무관).
+        </p>
+      )}
 
       {/* 매출 구성 누적 막대 — 판매처/라인업/제품 × 일/주/월 */}
       <Card>
@@ -132,11 +160,13 @@ function BrandInner({ brand }: { brand: string }) {
           <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
             <h3 className="font-semibold text-sm">
               매출 구성 · {dimLabel}
-              <span className="text-xs text-muted-foreground font-normal ml-2">자체매출 기준 (공구 제외)</span>
+              <span className="text-xs text-muted-foreground font-normal ml-2">
+                {dim === "gonggu" ? "자체매출 + 공구 (전체)" : "자체매출 기준 (공구 제외)"}
+              </span>
             </h3>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
-                {STACK_DIMS.map(d => (
+                {dims.map(d => (
                   <button key={d.key} onClick={() => setDim(d.key)}
                     className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-colors",
                       dim === d.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
