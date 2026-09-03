@@ -236,7 +236,7 @@ function SalesPageInner() {
 
   if (loading) {
     return (
-      <PageShell title="매출 분석" description="채널별·브랜드별 매출 트렌드">
+      <PageShell title="매출 분석" description="판매처별·브랜드별 매출 트렌드">
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <Card key={i} className="p-5 animate-pulse">
@@ -252,7 +252,7 @@ function SalesPageInner() {
   }
 
   return (
-    <PageShell title="매출 분석" description="채널별·브랜드별 매출 트렌드">
+    <PageShell title="매출 분석" description="판매처별·브랜드별 매출 트렌드">
       {/* 탭 */}
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -363,7 +363,7 @@ function SalesPageInner() {
           </div>
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-semibold mb-4">채널별 매출 비교</h3>
+              <h3 className="font-semibold mb-4">판매처별 매출 비교</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={byChannel} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />

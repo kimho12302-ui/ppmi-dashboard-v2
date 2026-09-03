@@ -15,34 +15,43 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  // ── 현황: "지금 어떤가" — 열자마자 보는 것 ──
   { href: "/", label: "Overview", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
-  { href: "/sales", label: "매출 분석", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" },
+  { href: "/insights", label: "인사이트", icon: "M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" },
+
+  // ── 성과: "왜 그런가" — 축별 분석 ──
+  // ★ 용어 규칙(2026-09 IA 정리): 돈이 들어오는 곳 = **판매처**(스마트스토어·자사몰·쿠팡),
+  //   돈이 나가는 곳 = **매체**(메타·네이버·구글·GFA). "채널"이 두 뜻으로 쓰여
+  //   조인 불가능한 두 축을 같은 이름으로 부르고 있었다. 라벨에서 "채널"을 없앤다.
+  { href: "/sales", label: "매출 분석", icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z", separator: true, section: "성과" },
   { href: "/ads", label: "광고 분석", icon: "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" },
-  { href: "/channel", label: "채널 성과", icon: "M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" },
+  { href: "/channel", label: "판매처 성과", icon: "M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" },
   { href: "/funnel", label: "퍼널", icon: "M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" },
-  // ── 브랜드별 뷰 (2026-08): 클릭 = 브랜드 종합 페이지 (채널·라인업·제품·광고비) ──
+  { href: "/content", label: "콘텐츠/SNS", icon: "M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-5 6v4m-2-2h4M5 8h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8a2 2 0 012-2z" },
+  { href: "/keywords", label: "키워드", icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" },
+
+  // ── 브랜드: 브랜드 하나를 깊게 (판매처·라인업·제품·광고비 종합) ──
   { href: "/brand/pet", label: "펫 통합", icon: "", emoji: "🐾", separator: true, section: "브랜드" },
   { href: "/brand/nutty", label: "너티", icon: "", emoji: "🐶" },
   { href: "/brand/ironpet", label: "아이언펫", icon: "", emoji: "🦴" },
   { href: "/brand/saip", label: "사입", icon: "", emoji: "📦" },
   { href: "/brand/balancelab", label: "밸런스랩", icon: "", emoji: "🧬" },
-  { href: "/content", label: "콘텐츠/SNS", icon: "M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-5 6v4m-2-2h4M5 8h14a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2v-8a2 2 0 012-2z" },
-  { href: "/keywords", label: "키워드", icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" },
+
+  // ── 계획·기록 ──
+  { href: "/budget", label: "예산 페이싱", icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z", separator: true, section: "계획·기록" },
+  { href: "/media-budget", label: "매체별 집행", icon: "M3 6h18M3 12h18M3 18h18 M7 4v4 M13 10v4 M17 16v4" },
   { href: "/monthly", label: "월별 요약", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
-  { href: "/budget", label: "예산 현황", icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" },
-  { href: "/media-budget", label: "매체 예산", icon: "M3 6h18M3 12h18M3 18h18 M7 4v4 M13 10v4 M17 16v4" },
-  { href: "/raw", label: "Raw Data", icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4", separator: true },
-  { href: "/insights", label: "인사이트", icon: "M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" },
+  { href: "/raw", label: "Raw Data", icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" },
+
+  // ── 입력·설정: 매일 하는 일을 '설정' 뒤에 숨기지 않는다 ──
+  { href: "/daily", label: "일일 입력", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z", separator: true, section: "입력·설정" },
   { href: "/settings", label: "설정", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" },
 ];
 
-/** 모바일 하단 탭에 표시할 항목 (4개 + 더보기) */
-const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
-  ["/", "/sales", "/ads", "/funnel"].includes(item.href)
-);
-const MORE_NAV_ITEMS = NAV_ITEMS.filter((item) =>
-  !["/", "/sales", "/ads", "/funnel"].includes(item.href)
-);
+/** 모바일 하단 탭 (4개 + 더보기). 매일 쓰는 것 위주. */
+const MOBILE_HREFS = ["/", "/daily", "/sales", "/ads"];
+const MOBILE_NAV_ITEMS = NAV_ITEMS.filter((item) => MOBILE_HREFS.includes(item.href));
+const MORE_NAV_ITEMS = NAV_ITEMS.filter((item) => !MOBILE_HREFS.includes(item.href));
 
 import { useState, useCallback } from "react";
 

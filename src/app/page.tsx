@@ -337,9 +337,9 @@ function OverviewInner() {
       rows.push(`${b.brand},${b.revenue},${b.orders}`);
     }
     rows.push("");
-    // 채널별 광고비
-    rows.push("=== 채널별 광고비 ===");
-    rows.push("채널,광고비,ROAS");
+    // 매체별 광고비
+    rows.push("=== 매체별 광고비 ===");
+    rows.push("매체,광고비,ROAS");
     for (const c of data?.channels || []) {
       rows.push(`${c.channel},${c.spend},${c.roas.toFixed(2)}`);
     }
@@ -358,11 +358,11 @@ function OverviewInner() {
     const configs: Record<string, { title: string; type: "brand" | "channel"; valueKey: string; format: (v: number) => string }> = {
       revenue: { title: "브랜드별 매출", type: "brand", valueKey: "revenue", format: formatCurrency },
       orders: { title: "브랜드별 주문 수", type: "brand", valueKey: "orders", format: formatNumber },
-      adSpend: { title: "채널별 광고비", type: "channel", valueKey: "spend", format: formatCurrency },
-      roas: { title: "채널별 ROAS (플랫폼 신고 기준)", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
+      adSpend: { title: "매체별 광고비", type: "channel", valueKey: "spend", format: formatCurrency },
+      roas: { title: "매체별 ROAS (플랫폼 신고 기준)", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
       profit: { title: "브랜드별 통상이익", type: "brand", valueKey: "profit", format: formatCurrency },
       profitRate: { title: "브랜드별 이익률", type: "brand", valueKey: "profitRate", format: (v) => formatPercent(v) },
-      ctr: { title: "채널별 ROAS", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
+      ctr: { title: "매체별 ROAS", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
       aov: { title: "브랜드별 객단가", type: "brand", valueKey: "aov", format: (v) => formatCurrency(Math.round(v)) },
     };
     const c = configs[selectedKpi];
@@ -395,7 +395,12 @@ function OverviewInner() {
       {anomalies.length > 0 && (
         <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
           <CardContent className="p-3">
-            <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-1">이상치 감지 ({anomalies.length}건)</p>
+            {/* ★ IA(2026-09): Overview 의 자체 이상치 카드와 /insights 가 서로를 모르는 상태였다.
+                /insights 는 사이드바로만 도달 가능한 고아 페이지라 인사이트가 몇 건인지 눌러봐야 알았다. */}
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-sm font-medium text-red-700 dark:text-red-400">이상치 감지 ({anomalies.length}건)</p>
+              <Link href="/insights" className="text-xs text-red-700 dark:text-red-400 hover:underline whitespace-nowrap">원인 분석 →</Link>
+            </div>
             {anomalies.map((a, i) => (
               <p key={i} className="text-xs text-red-600 dark:text-red-300">
                 • {a.brand} {a.metric}: {a.change > 0 ? "+" : ""}{a.change.toFixed(0)}% 변동
@@ -765,13 +770,13 @@ function OverviewInner() {
         </Card>
       </div>
 
-      {/* 채널별 ROAS */}
+      {/* 매체별 ROAS */}
       {channelAds.length > 0 && (
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-baseline gap-2">
-                <h3 className="font-semibold">채널별 ROAS</h3>
+                <h3 className="font-semibold">매체별 ROAS</h3>
                 {/* 각 플랫폼이 자기 기여로 신고한 값이라 채널 간 합산은 실매출을 넘는다. 비교용으로만 쓴다. */}
                 <span className="text-xs text-muted-foreground">플랫폼 신고 기준 · 합산 불가</span>
               </div>
@@ -901,7 +906,7 @@ function BrandDetailSection({ brand, from, to }: { brand: string; from: string; 
         {channels.length > 1 && (
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-semibold mb-3">채널별 매출</h3>
+              <h3 className="font-semibold mb-3">판매처별 매출</h3>
               <div className="space-y-2">
                 {channels.map((c, i) => {
                   const maxRev = channels[0]?.revenue || 1;

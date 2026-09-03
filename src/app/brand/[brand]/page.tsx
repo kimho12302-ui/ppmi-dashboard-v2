@@ -124,7 +124,7 @@ function BrandInner({ brand }: { brand: string }) {
   }
 
   return (
-    <PageShell title={label} description={`${label} 종합 성과 — 채널·라인업·제품·광고비`} hideFilters>
+    <PageShell title={label} description={`${label} 종합 성과 — 판매처·라인업·제품·광고비`} hideFilters>
       {/* 기간 선택만 — 브랜드는 경로 고정, 전역 필터(전체/펫/밸런스랩 탭) 숨김 (혼동 방지) */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <span className="text-sm text-muted-foreground">{from} ~ {to}</span>
@@ -259,10 +259,10 @@ function BrandInner({ brand }: { brand: string }) {
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* 광고 채널별 비용 */}
+        {/* 매체별 광고비 */}
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-semibold text-sm mb-3">광고 채널별 비용 <span className="text-xs text-muted-foreground font-normal">ROAS는 플랫폼 신고 기준</span></h3>
+            <h3 className="font-semibold text-sm mb-3">매체별 광고비 <span className="text-xs text-muted-foreground font-normal">ROAS는 플랫폼 신고 기준</span></h3>
             {adChannels.length > 0 ? (
               <div className="space-y-2">
                 {adChannels.map(c => (

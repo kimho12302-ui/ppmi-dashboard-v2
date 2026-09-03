@@ -167,7 +167,7 @@ function AdsPageInner() {
 
   if (loading) {
     return (
-      <PageShell title="광고 분석" description="채널별 광고 효율 및 ROAS">
+      <PageShell title="광고 분석" description="매체별 광고 효율 및 ROAS">
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <Card key={i} className="p-5 animate-pulse">
@@ -183,12 +183,12 @@ function AdsPageInner() {
   }
 
   return (
-    <PageShell title="광고 분석" description="채널별 광고 효율 및 ROAS">
+    <PageShell title="광고 분석" description="매체별 광고 효율 및 ROAS">
       {/* 탭 전환 */}
       <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
         {([
           { key: "overview", label: "개요" },
-          { key: "channels", label: "채널별 상세" },
+          { key: "channels", label: "매체별 상세" },
           { key: "ga4", label: "GA4 UTM" },
           { key: "creatives", label: "Meta 소재" },
           { key: "naver", label: "네이버 캠페인" },
@@ -239,7 +239,7 @@ function AdsPageInner() {
                     <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 text-xs text-muted-foreground">
                       <div>
                         <p>ROAS</p>
-                        {/* 전환 미연동 채널을 0.00x 빨강으로 찍으면 "돈만 태우는 채널"로 오독된다.
+                        {/* 전환 미연동 채널을 0.00x 빨강으로 찍으면 "돈만 태우는 매체"로 오독된다.
                             '미연동'으로 구분해야 예산 삭감 판단이 왜곡되지 않는다(2026-08 리뷰). */}
                         <p className={`font-medium ${isRoasUntracked(c.roas, c.spend) ? "text-muted-foreground/70 italic" : c.roas >= 3 ? "text-green-600" : c.roas >= 1 ? "text-yellow-600" : "text-red-500"}`}
                           title={isRoasUntracked(c.roas, c.spend) ? "전환 추적 미연동 — 성과 0이 아니라 측정 불가" : undefined}>
@@ -298,10 +298,10 @@ function AdsPageInner() {
               ))}
           </div>
 
-          {/* 5.3-2: 채널별 ROAS 트렌드 */}
+          {/* 5.3-2: 매체별 ROAS 트렌드 */}
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-semibold mb-4">채널별 ROAS 트렌드</h3>
+              <h3 className="font-semibold mb-4">매체별 ROAS 트렌드</h3>
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={dailyRoas}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -362,7 +362,7 @@ function AdsPageInner() {
             </CardContent>
           </Card>
 
-          {/* 11.4 채널 효율 사분면 — ROAS vs CPA */}
+          {/* 11.4 매체 효율 사분면 — ROAS vs CPA */}
           {byChannel.filter(c => !c.channel.startsWith("ga4_") && c.spend > 0).length > 1 && (
             <Card>
               <CardContent className="p-4">
@@ -422,7 +422,7 @@ function AdsPageInner() {
       {tab === "channels" && (
         <Card>
           <CardContent className="p-4 overflow-x-auto">
-            <h3 className="font-semibold mb-4">채널별 상세 성과</h3>
+            <h3 className="font-semibold mb-4">매체별 상세 성과</h3>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left border-b text-muted-foreground">
