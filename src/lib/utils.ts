@@ -58,31 +58,39 @@ export interface DateRange {
   to: string;
 }
 
+// ★ 기본 종료일 = 어제 (2026-09).
+//   오늘 데이터는 아직 집계 중이라 마지막 막대가 항상 뚝 떨어져 보이고, 추세 판단을 흐린다
+//   (판매 업로드는 하루 뒤, 광고 API 는 T-1 확정). 그래서 프리셋의 to 를 어제로 끝낸다.
+//   오늘까지 보고 싶으면 "직접 입력"으로 지정하면 된다.
 export function getDateRangeFromPreset(preset: DatePreset): DateRange {
   const today = new Date();
+  const yesterday = subDays(today, 1);
   const fmt = (d: Date) => format(d, "yyyy-MM-dd");
+  // from 이 to 를 넘지 않도록 (매월 1일에 "이번 달"을 고르면 to=지난달 말일이 된다).
+  const range = (from: Date, to: Date): DateRange =>
+    from > to ? { from: fmt(to), to: fmt(to) } : { from: fmt(from), to: fmt(to) };
 
   switch (preset) {
     case "yesterday":
-      return { from: fmt(subDays(today, 1)), to: fmt(subDays(today, 1)) };
+      return { from: fmt(yesterday), to: fmt(yesterday) };
     case "7d":
-      return { from: fmt(subDays(today, 7)), to: fmt(today) };
+      return range(subDays(today, 7), yesterday);
     case "14d":
-      return { from: fmt(subDays(today, 14)), to: fmt(today) };
+      return range(subDays(today, 14), yesterday);
     case "30d":
-      return { from: fmt(subDays(today, 30)), to: fmt(today) };
+      return range(subDays(today, 30), yesterday);
     case "this_month":
-      return { from: fmt(startOfMonth(today)), to: fmt(today) };
+      return range(startOfMonth(today), yesterday);
     case "last_month": {
       const last = subMonths(today, 1);
       return { from: fmt(startOfMonth(last)), to: fmt(endOfMonth(last)) };
     }
     case "this_year":
-      return { from: fmt(new Date(today.getFullYear(), 0, 1)), to: fmt(today) };
+      return range(new Date(today.getFullYear(), 0, 1), yesterday);
     case "all":
-      return { from: "2020-01-01", to: fmt(today) };
+      return { from: "2020-01-01", to: fmt(yesterday) };
     default:
-      return { from: fmt(subDays(today, 30)), to: fmt(today) };
+      return range(subDays(today, 30), yesterday);
   }
 }
 

@@ -66,7 +66,7 @@ export type MetricKey = "adSpend" | "roas" | "revenue" | "funnel";
 const INACTIVE_SOURCES: Record<string, { since: string; note: string }> = {
   google_ads: {
     since: "2026-05-14",
-    note: "구글 애즈 미집행 (2026-05-14 마지막 집행). 재개 시 이 목록에서 해제",
+    note: "구글 애즈 미집행 (2026-05-14 마지막 집행). GA4 광고비 익스포트(ga4_campaigns)도 같이 멈춤. 재개 시 이 목록에서 해제",
   },
 };
 
@@ -148,7 +148,11 @@ const HB_KEY: Record<string, string> = {
   google_ads: "google_ads",
   naver_sa: "naver_sa",
   naver_shopping: "naver_sa",
-  ga4: "ga4_campaigns",
+  // ★ ga4 소스(카페24 세션)는 하트비트를 매핑하지 않는다.
+  //   예전엔 ga4_campaigns 를 봤는데 그건 GA4 **광고비 익스포트**(ga4_Performance Max 등)라
+  //   전혀 다른 수집기다. 구글 광고를 끈 2026-05-14 이후 그 익스포트가 멈추자,
+  //   멀쩡히 매일 세션이 들어오는 카페24 퍼널 소스가 "고장(데이터 정지)"으로 표시됐다.
+  //   세션 수집 자체는 sync_ga4_funnel.py 가 하고, 신선도는 latestDate 로 이미 판정된다.
 };
 
 /** 수집기가 스스로 보고한 최신 데이터가 이 일수 이상 뒤처지면 '죽은 수집기'로 본다. */

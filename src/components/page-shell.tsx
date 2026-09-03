@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
+import { usePathname } from "next/navigation";
 import { Filters } from "./filters";
 import { DataStatusRail } from "./data-status-rail";
 import { useFilterParams } from "@/hooks/use-dashboard-data";
@@ -15,6 +16,11 @@ interface PageShellProps {
 
 function PageShellInner({ title, description, children, hideFilters }: PageShellProps) {
   const { brand, preset, from, to, isCustom, setBrand, setPreset, setCustomRange } = useFilterParams();
+  const pathname = usePathname();
+  // ★ 데이터 상태 레일은 '입력하는 화면'에서만 띄운다 (2026-09).
+  //   전 페이지 최상단에 있으니 자리를 크게 먹고, 분석하러 들어온 화면에서는
+  //   사업 숫자보다 정비 상태가 먼저 읽혔다. 조치할 수 있는 곳에서만 보이면 충분하다.
+  const showStatusRail = pathname === "/daily" || pathname === "/settings";
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -29,7 +35,7 @@ function PageShellInner({ title, description, children, hideFilters }: PageShell
           )}
         </div>
       </div>
-      <DataStatusRail />
+      {showStatusRail && <DataStatusRail />}
       {!hideFilters && (
         <Filters
           brand={brand}
