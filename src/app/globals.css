@@ -37,6 +37,23 @@
     --kpi-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
     --ring: #6366f1;
 
+    /* ── 의미 색(정상·주의·위험·미운영) ──
+       브랜드 액센트(--primary 인디고)와 의도적으로 분리한다. 브랜드색은 '무엇'을,
+       의미색은 '괜찮은가'를 말한다. 두 축이 같은 색을 쓰면 상태가 안 읽힌다. */
+    --sig-ok: #047857;
+    --sig-ok-surface: rgb(4 120 87 / 0.09);
+    --sig-ok-border: rgb(4 120 87 / 0.35);
+    --sig-warn: #b45309;
+    --sig-warn-surface: rgb(180 83 9 / 0.10);
+    --sig-warn-border: rgb(180 83 9 / 0.38);
+    --sig-danger: #be123c;
+    --sig-danger-surface: rgb(190 18 60 / 0.10);
+    --sig-danger-border: rgb(190 18 60 / 0.40);
+    /* 미운영은 '조용히'. 채도를 의도적으로 낮춘다. */
+    --sig-idle: #64748b;
+    --sig-idle-surface: rgb(100 116 139 / 0.08);
+    --sig-idle-border: rgb(100 116 139 / 0.28);
+
     /* Brand colors */
     --brand-nutty: #dc2626;
     --brand-ironpet: #ea580c;
@@ -92,7 +109,37 @@
 
     --kpi-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3);
     --ring: #818cf8;
+
+    --sig-ok: #34d399;
+    --sig-ok-surface: rgb(52 211 153 / 0.10);
+    --sig-ok-border: rgb(52 211 153 / 0.32);
+    --sig-warn: #fbbf24;
+    --sig-warn-surface: rgb(251 191 36 / 0.10);
+    --sig-warn-border: rgb(251 191 36 / 0.34);
+    --sig-danger: #fb7185;
+    --sig-danger-surface: rgb(251 113 133 / 0.11);
+    --sig-danger-border: rgb(251 113 133 / 0.38);
+    --sig-idle: #8b8b94;
+    --sig-idle-surface: rgb(139 139 148 / 0.09);
+    --sig-idle-border: rgb(139 139 148 / 0.26);
   }
+}
+
+/* ── 숫자는 기계가 찍은 것처럼 읽혀야 한다 ──
+   Geist Mono 는 이미 로드돼 있으면서 한 번도 안 쓰였다. 수치·날짜·상태 코드를
+   등폭+tabular 로 세워 자릿수가 흔들리지 않게 한다. 산문은 Sans 그대로. */
+.num {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.01em;
+}
+/* 상태 스탬프: 계측 장비의 각인처럼. 짧고 대문자 없이, 등폭. */
+.stamp {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
 }
 
 @layer base {

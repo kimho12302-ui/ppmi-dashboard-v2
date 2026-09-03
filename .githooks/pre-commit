@@ -1,0 +1,22 @@
+#!/bin/sh
+# 커밋 전 타입 검사 게이트.
+#
+# 왜 있나: 2026-08-18 에 타입 오류가 있는 UI 개편이 커밋도 배포도 못 된 채
+# 워킹트리에 8일간 방치됐다. 그동안 대시보드는 옛 화면을 계속 띄웠고,
+# "구글 미집행"이 "연결끊김(장애)"으로 잘못 표시되는 문제도 함께 묻혔다.
+# 로컬에서 빌드가 깨진 걸 아무도 모르는 상태가 문제의 핵심이었다.
+#
+# tsc --noEmit 은 next build 보다 훨씬 빠르면서 그때의 오류
+# ('confidence' is possibly 'undefined' = strictNullChecks)를 그대로 잡는다.
+# 전체 빌드는 CI(.github/workflows/ci.yml)가 담당한다.
+#
+# 우회가 꼭 필요하면: git commit --no-verify
+
+echo "[pre-commit] 타입 검사 중..."
+if ! npx tsc --noEmit; then
+  echo ""
+  echo "[pre-commit] ❌ 타입 오류로 커밋을 막았습니다."
+  echo "             고치고 다시 커밋하세요. (정말 우회하려면 --no-verify)"
+  exit 1
+fi
+echo "[pre-commit] ✅ 통과"

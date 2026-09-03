@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { Filters } from "./filters";
-import { FreshnessStrip } from "./freshness-strip";
+import { DataStatusRail } from "./data-status-rail";
 import { useFilterParams } from "@/hooks/use-dashboard-data";
 
 interface PageShellProps {
@@ -29,7 +29,7 @@ function PageShellInner({ title, description, children, hideFilters }: PageShell
           )}
         </div>
       </div>
-      <FreshnessStrip />
+      <DataStatusRail />
       {!hideFilters && (
         <Filters
           brand={brand}

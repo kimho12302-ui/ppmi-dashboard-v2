@@ -2,9 +2,10 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
-import { KpiCard } from "@/components/ui/kpi-card";
+import { KpiCard, type KpiConfidence } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
+import { useDataStatus } from "@/hooks/use-data-status";
 import { useConfig } from "@/hooks/use-config";
 import {
   BRAND_LABELS, BRAND_COLORS, CHANNEL_LABELS, CHANNEL_COLORS,
@@ -60,6 +61,7 @@ function OverviewInner() {
   const { brand, from, to } = useFilterParams();
   const { brandMap, channelMap } = useConfig();
   const { data, loading } = useFetch<DashboardData>(`/api/dashboard?from=${from}&to=${to}&brand=${brand || "all"}`);
+  const { data: status } = useDataStatus();
   const [selectedKpi, setSelectedKpi] = useState<KpiKey>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -196,6 +198,76 @@ function OverviewInner() {
     return ((cur - prev) / Math.abs(prev)) * 100;
   };
 
+  /* ────────────────────────────────────────────────────────────────
+     측정 신뢰도.
+     "0원"과 "측정이 안 됨"은 다른 사건인데 화면은 둘 다 0으로 찍고 있었다.
+     메타 토큰이 만료된 동안 광고비가 0으로 표시됐고, 그 화면을 보고
+     "메타 집행을 안 했나 보다"로 읽혔다. 그래서 숫자 옆에 등급을 붙인다.
+     ──────────────────────────────────────────────────────────────── */
+
+  // 비교 구간 길이. "전기간"은 캘린더 전월이 아니라 직전 같은 길이의 구간이다.
+  const periodDays = useMemo(() => {
+    if (!from || !to) return 0;
+    const d = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+    return d > 0 ? d : 0;
+  }, [from, to]);
+  const changeLabel = periodDays > 0 ? `직전 ${periodDays}일 대비` : undefined;
+
+  // 고장난 자동 수집이 오염시키는 지표 (미운영은 여기 안 들어온다 — 0이 사실이므로)
+  const impacted = status?.impactedMetrics || {};
+  const brokenAd = impacted.adSpend || [];
+  const brokenAdNames = brokenAd.map((x) => x.label).join(", ");
+  // 미운영 광고 채널: 목록에 없는 이유가 '고장'이 아니라 '안 돌림'이라는 걸 밝히는 용도
+  const inactiveAdSources = (status?.sources || []).filter(
+    (s) => s.status === "inactive" && s.metrics.includes("adSpend")
+  );
+
+  // 판매실적은 수기 업로드다. 선택 기간의 끝보다 업로드가 뒤처지면 매출·주문·이익이
+  // 전부 과소 집계된다 (기간 마지막 며칠이 통째로 0).
+  const salesSource = status?.sources.find((s) => s.id === "sales");
+  const salesGapDays = useMemo(() => {
+    const latest = salesSource?.latestDate;
+    if (!latest || !to || latest >= to) return 0;
+    return Math.round((Date.parse(to) - Date.parse(latest)) / 86400000);
+  }, [salesSource, to]);
+  const salesGapNote = salesGapDays > 0
+    ? `판매 업로드가 ${salesSource?.latestDate}까지입니다. 선택 기간 마지막 ${salesGapDays}일이 비어 매출이 실제보다 낮습니다`
+    : null;
+
+  const revenueConfidence: KpiConfidence | undefined = salesGapNote
+    ? { level: "partial", note: salesGapNote }
+    : undefined;
+
+  const adSpendConfidence: KpiConfidence | undefined = brokenAd.length > 0
+    ? {
+        level: kpi.adSpend > 0 ? "partial" : "unmeasurable",
+        note: `${brokenAdNames} 수집 중단. 이 채널 집행액이 빠져 있어 실제 광고비는 이보다 큽니다`,
+      }
+    : undefined;
+
+  // ROAS 는 분자(매출)와 분모(광고비)가 각각 다른 이유로 틀어질 수 있다. 둘 다 밝힌다.
+  const roasConfidence: KpiConfidence | undefined = useMemo(() => {
+    const notes: string[] = [];
+    if (brokenAd.length > 0) notes.push(`분모에 ${brokenAdNames} 광고비가 빠져 ROAS가 과대 계상됩니다`);
+    if (salesGapDays > 0) notes.push(`분자 매출이 ${salesSource?.latestDate}까지만 반영됐습니다`);
+    if (notes.length === 0) return undefined;
+    return { level: "partial", note: notes.join(" · ") };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [brokenAdNames, brokenAd.length, salesGapDays, salesSource?.latestDate]);
+
+  // 이익: 원가 매칭이 안 된 품목은 원가 0으로 계산된다 → 이익이 과대.
+  const matchedPct = Math.round((kpi.matchedRate || 0) * 100);
+  const profitConfidence: KpiConfidence | undefined = useMemo(() => {
+    const notes: string[] = [];
+    if (kpi.matchedRate > 0 && kpi.matchedRate < 0.95) {
+      notes.push(`원가 매칭 ${matchedPct}%. 미매칭 품목은 원가 0으로 계산돼 이익이 과대 표시됩니다`);
+    }
+    if (salesGapDays > 0) notes.push(`매출이 ${salesSource?.latestDate}까지만 반영됐습니다`);
+    if (notes.length === 0) return undefined;
+    return { level: "partial", note: notes.join(" · ") };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kpi.matchedRate, matchedPct, salesGapDays, salesSource?.latestDate]);
+
   // 목표는 "달" 단위로 등록된다. 이전에는 조회 기간과 무관하게 항상 오늘이 속한 달의 목표를 써서
   // 7월을 조회해도 8월 목표와 비교됐고, 브랜드 목표가 없으면 조용히 전사(_all) 목표로 폴백해
   // 펫 실적을 전사 목표와 비교했다(2026-08 수정).
@@ -215,9 +287,25 @@ function OverviewInner() {
     return { targets: fallback || null, targetIsCompanyWide: !!fallback && b !== "all" };
   }, [targetsData, brand, from, to]);
 
+  // ★ 목표는 달 전체(31일) 기준인데 실적은 선택 기간(예: 15일치)이다.
+  //   달성률만 찍으면 "22.6%밖에 못 했다"로 읽히는데, 기간 경과가 48%인지 90%인지에 따라
+  //   같은 22.6%가 전혀 다른 뜻이 된다. 경과율을 같은 막대에 세운다.
+  const targetElapsedPercent = useMemo(() => {
+    if (!from || !to || from.slice(0, 7) !== to.slice(0, 7)) return undefined;
+    const [y, m] = from.slice(0, 7).split("-").map(Number);
+    const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    const coveredDays = Math.round((Date.parse(to) - Date.parse(`${from.slice(0, 7)}-01`)) / 86400000) + 1;
+    if (!(daysInMonth > 0) || !(coveredDays > 0)) return undefined;
+    return Math.min(100, (coveredDays / daysInMonth) * 100);
+  }, [from, to]);
+
   const targetProp = (current: number, targetVal: number | undefined, label: string) => {
     if (!targetVal || targetVal <= 0) return undefined;
-    return { label: targetIsCompanyWide ? `${label}(전사)` : label, percent: (current / targetVal) * 100 };
+    return {
+      label: targetIsCompanyWide ? `${label}(전사)` : label,
+      percent: (current / targetVal) * 100,
+      elapsedPercent: targetElapsedPercent,
+    };
   };
 
   const toggleKpi = (key: KpiKey) => setSelectedKpi((prev) => (prev === key ? null : key));
@@ -336,18 +424,18 @@ function OverviewInner() {
         </button>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
-        <KpiCard title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, kpi.adSpendPrev)} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
-        <KpiCard title="ROAS" value={`${(kpi.roas || 0).toFixed(2)}x`} change={pctChange(kpi.roas, kpi.roasPrev)} target={targetProp(kpi.roas, targets?.roas_target, "목표")} onClick={() => toggleKpi("roas")} active={selectedKpi === "roas"} />
-        <KpiCard title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, kpi.ordersPrev)} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
-        <KpiCard title="이익" value={formatCurrency(kpi.profit)} change={pctChange(kpi.profit, kpi.profitPrev)} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
-        <KpiCard title="이익률" value={kpi.revenue > 0 ? formatPercent((kpi.profit / kpi.revenue) * 100) : "—"} onClick={() => toggleKpi("profitRate")} active={selectedKpi === "profitRate"} />
+        <KpiCard title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} changeLabel={changeLabel} confidence={revenueConfidence} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
+        <KpiCard title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, kpi.adSpendPrev)} changeLabel={changeLabel} confidence={adSpendConfidence} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
+        <KpiCard title="ROAS" value={`${(kpi.roas || 0).toFixed(2)}x`} change={pctChange(kpi.roas, kpi.roasPrev)} changeLabel={changeLabel} confidence={roasConfidence} target={targetProp(kpi.roas, targets?.roas_target, "목표")} onClick={() => toggleKpi("roas")} active={selectedKpi === "roas"} />
+        <KpiCard title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, kpi.ordersPrev)} changeLabel={changeLabel} confidence={revenueConfidence} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
+        <KpiCard title="이익" value={formatCurrency(kpi.profit)} change={pctChange(kpi.profit, kpi.profitPrev)} changeLabel={changeLabel} confidence={profitConfidence} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
+        <KpiCard title="이익률" value={kpi.revenue > 0 ? formatPercent((kpi.profit / kpi.revenue) * 100) : "—"} confidence={profitConfidence} onClick={() => toggleKpi("profitRate")} active={selectedKpi === "profitRate"} />
         {/* MER은 매출/(매체비+잡비), ROAS는 매출/매체비. 잡비가 0인 달에는 두 값이 완전히 같아
             카드 두 개가 같은 숫자를 보여준다. 잡비가 있을 때만 별도 카드로 낸다. */}
         {(kpi.miscCost || 0) > 0 && (
-          <KpiCard title="MER" value={`${(kpi.mer || 0).toFixed(2)}x`} change={pctChange(kpi.mer, kpi.merPrev)} onClick={() => toggleKpi("ctr")} active={selectedKpi === "ctr"} />
+          <KpiCard title="MER" value={`${(kpi.mer || 0).toFixed(2)}x`} change={pctChange(kpi.mer, kpi.merPrev)} changeLabel={changeLabel} confidence={roasConfidence} onClick={() => toggleKpi("ctr")} active={selectedKpi === "ctr"} />
         )}
-        <KpiCard title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "—"} change={pctChange(kpi.aov, kpi.aovPrev)} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
+        <KpiCard title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "—"} change={pctChange(kpi.aov, kpi.aovPrev)} changeLabel={changeLabel} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
       </div>
 
       {/* 사업 그룹 뷰: 펫(너티+아이언펫+사입) vs 밸런스랩(검사 라인별) */}
@@ -541,6 +629,21 @@ function OverviewInner() {
               ))}
               {channelAds.length === 0 && <div className="text-sm text-muted-foreground">데이터 없음</div>}
             </div>
+            {/* 목록에 없는 채널의 이유를 밝힌다. 안 보이는 것과 0원인 것은 다르다. */}
+            {(brokenAd.length > 0 || inactiveAdSources.length > 0) && (
+              <div className="mt-3 pt-2 border-t border-border/60 space-y-1">
+                {brokenAd.length > 0 && (
+                  <p className="stamp" style={{ color: "var(--sig-danger)" }}>
+                    측정 불가 {brokenAdNames} · 수집 중단으로 집행액이 이 목록에 없습니다
+                  </p>
+                )}
+                {inactiveAdSources.length > 0 && (
+                  <p className="stamp text-muted-foreground">
+                    미운영 {inactiveAdSources.map((s) => s.label).join(", ")} · 집행하지 않는 채널입니다
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 

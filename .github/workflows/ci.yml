@@ -1,0 +1,37 @@
+name: CI
+
+# 빌드 게이트. 배포는 하지 않는다 — 검사만 한다.
+#
+# 왜 있나: 이 레포엔 워크플로가 하나도 없어서, 빌드가 깨진 코드가 로컬에 있어도
+# 아무 신호가 없었다(2026-08-18 UI 개편이 8일간 그 상태로 방치). pre-commit 훅은
+# --no-verify 로 우회되고 새로 클론한 사람에겐 적용도 안 되므로, push 마다 도는
+# 이 워크플로가 실질적인 마지막 방어선이다.
+#
+# ⚠ 이 레포는 CLI(`vercel --prod`)로 배포한다. 여기에 배포 스텝을 추가하지 말 것.
+#   과거 marketing-dashboard 의 deploy.yml 이 같은 Vercel 프로젝트를 가리켜
+#   구버전이 실서비스를 덮어쓴 사고가 있었다.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: 타입 검사
+        run: npx tsc --noEmit
+      - name: 프로덕션 빌드
+        run: npm run build
+        env:
+          # 빌드 시점엔 실제 값이 필요 없다(런타임에 읽음). 누락 시 빌드가 죽지 않도록 더미 주입.
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
