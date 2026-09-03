@@ -27,6 +27,8 @@ interface DashboardResp {
 }
 interface ChannelGroupsResp {
   groups: { key: string; label: string; revenue: number; adSpend: number; roas: number; adRatio: number; revDelta: number | null }[];
+  /** 날짜 × 판매처별 매출·광고비. 판매처 개별 추이 차트가 쓴다. */
+  series?: ({ date: string } & Record<string, { revenue: number; adSpend: number } | string>)[];
 }
 interface BrandDetailResp {
   lineupBreakdown: { lineup: string; revenue: number; quantity: number; orders: number }[];
@@ -76,6 +78,7 @@ function BrandInner({ brand }: { brand: string }) {
   const label = BRAND_LABELS[brand] || brand;
   const [gran, setGran] = useState<Gran>("day");
   const [dim, setDim] = useState<StackDim>("channel");
+  const [store, setStore] = useState<string | null>(null); // 선택한 판매처 (null=첫 번째)
 
   const { data: dash, loading } = useFetch<DashboardResp>(`/api/dashboard?brand=${brand}&from=${from}&to=${to}`);
   const { data: cg } = useFetch<ChannelGroupsResp>(`/api/channel-groups?brand=${brand}&from=${from}&to=${to}`);
@@ -83,7 +86,6 @@ function BrandInner({ brand }: { brand: string }) {
 
   const kpi = dash?.kpi;
   const pct = (cur?: number, prev?: number) => (prev && prev > 0 ? (((cur || 0) - prev) / prev) * 100 : undefined);
-  const trendData = useMemo(() => (dash?.trend || []).map(t => ({ ...t, d: t.date.slice(5) })), [dash]);
   const adChannels = (dash?.channels || []).filter(c => c.spend > 0).sort((a, b) => b.spend - a.spend);
   const maxAd = Math.max(0, ...adChannels.map(c => c.spend));
   const lineups = detail?.lineupBreakdown || [];
@@ -115,6 +117,43 @@ function BrandInner({ brand }: { brand: string }) {
     return bucketize(rows, gran, (r) => (r as unknown as Record<string, Record<string, number>>)[field] || {})
       .map((b) => ({ label: b.label, ...b.values }));
   }, [detail, dim, gran]);
+
+  // 매출 구성 차트에 겹쳐 그릴 광고비. 같은 버킷 단위로 접는다.
+  // (별도 "일별 매출·광고비" 차트가 이 차트와 사실상 같은 그림이라 광고비 선만 여기로 합쳤다)
+  const adByBucket = useMemo(() => {
+    const rows = dash?.trend || [];
+    if (!rows.length) return new Map<string, number>();
+    const m = new Map<string, number>();
+    for (const b of bucketize(rows, gran, (r) => ({ ad: r.adSpend || 0 }))) m.set(b.label, b.values.ad || 0);
+    return m;
+  }, [dash, gran]);
+
+  const chartData = useMemo(
+    () => stackData.map((row) => ({ ...row, __ad: adByBucket.get(String(row.label)) || 0 })),
+    [stackData, adByBucket]
+  );
+
+  // ── 판매처 개별 성과: channel-groups 의 series(날짜 × 판매처 {revenue, adSpend}) 사용 ──
+  const storeOptions = useMemo(
+    () => (cg?.groups || []).filter(g => g.revenue > 0 || g.adSpend > 0),
+    [cg]
+  );
+  const activeStore = store && storeOptions.some(g => g.key === store) ? store : storeOptions[0]?.key || null;
+  const storeSeries = useMemo(() => {
+    const rows = (cg?.series || []) as unknown as { date: string; [k: string]: { revenue: number; adSpend: number } | string }[];
+    if (!rows.length || !activeStore) return [];
+    return bucketize(
+      rows.map(r => ({ date: String(r.date), cell: r[activeStore] as { revenue: number; adSpend: number } | undefined })),
+      gran,
+      (r) => ({ 매출: r.cell?.revenue || 0, 광고비: r.cell?.adSpend || 0 })
+    ).map(b => ({
+      label: b.label,
+      매출: b.values["매출"] || 0,
+      광고비: b.values["광고비"] || 0,
+      ROAS: (b.values["광고비"] || 0) > 0 ? +((b.values["매출"] || 0) / (b.values["광고비"] || 1)).toFixed(2) : 0,
+    }));
+  }, [cg, activeStore, gran]);
+  const activeStoreLabel = storeOptions.find(g => g.key === activeStore)?.label || "";
 
   const dimLabel = [...STACK_DIMS, GONGGU_DIM].find(d => d.key === dim)?.label || "";
   const keyLabel = (k: string) => (dim === "channel" ? CH_KOR[k] || k : k);
@@ -188,18 +227,20 @@ function BrandInner({ brand }: { brand: string }) {
           {stackData.length > 0 && stackKeys.length > 0 ? (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={stackData}>
+                <ComposedChart data={chartData}>
                   <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} />
                   <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
                   <Tooltip
-                    formatter={(v, name) => [formatCurrency(Number(v)), keyLabel(String(name))]}
+                    formatter={(v, name) => [formatCurrency(Number(v)), name === "__ad" ? "광고비" : keyLabel(String(name))]}
                     labelFormatter={(l) => `${l}`}
                     itemSorter={(i) => -(Number(i.value) || 0)} />
-                  <Legend formatter={(v) => keyLabel(String(v))} wrapperStyle={{ fontSize: 11 }} />
+                  <Legend formatter={(v) => (v === "__ad" ? "광고비" : keyLabel(String(v)))} wrapperStyle={{ fontSize: 11 }} />
                   {stackKeys.map((k, i) => (
                     <Bar key={k} dataKey={k} stackId="rev" fill={STACK_COLORS[i % STACK_COLORS.length]}
                       radius={i === stackKeys.length - 1 ? [3, 3, 0, 0] : undefined} />
                   ))}
+                  {/* 광고비는 누적 막대 위에 선으로. 매출 구성과 투입을 한 그림에서 본다. */}
+                  <Line dataKey="__ad" stroke="#ef4444" strokeWidth={2} dot={false} name="__ad" />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -207,25 +248,44 @@ function BrandInner({ brand }: { brand: string }) {
         </CardContent>
       </Card>
 
-      {/* 일별 매출·광고비 추이 */}
-      <Card>
-        <CardContent className="p-4">
-          <h3 className="font-semibold text-sm mb-3">일별 매출 · 광고비</h3>
-          {trendData.length > 0 ? (
-            <div className="h-60">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={trendData}>
-                  <XAxis dataKey="d" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
-                  <Tooltip formatter={(v, name) => [formatCurrency(Number(v)), name === "revenue" ? "매출" : "광고비"]} labelFormatter={(l) => `날짜: ${l}`} />
-                  <Bar dataKey="revenue" fill="#2563eb" radius={[3, 3, 0, 0]} name="revenue" />
-                  <Line dataKey="adSpend" stroke="#ef4444" strokeWidth={2} dot={false} name="adSpend" />
-                </ComposedChart>
-              </ResponsiveContainer>
+      {/* 판매처 개별 추이 — 하나 골라서 매출·광고비·ROAS 를 같이 본다 */}
+      {storeOptions.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+              <h3 className="font-semibold text-sm">
+                판매처 상세 · {activeStoreLabel}
+                <span className="text-xs text-muted-foreground font-normal ml-2">매출 막대 · 광고비 선 · ROAS 선</span>
+              </h3>
+              <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 flex-wrap">
+                {storeOptions.map(g => (
+                  <button key={g.key} onClick={() => setStore(g.key)}
+                    className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
+                      activeStore === g.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                    {g.label.replace(/s*(.*)$/, "")}
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : <p className="text-sm text-muted-foreground py-8 text-center">{loading ? "로딩 중..." : "기간 내 데이터 없음"}</p>}
-        </CardContent>
-      </Card>
+            {storeSeries.length > 0 ? (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={storeSeries}>
+                    <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="won" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
+                    <YAxis yAxisId="roas" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}x`} />
+                    <Tooltip formatter={(v, name) => [name === "ROAS" ? `${v}x` : formatCurrency(Number(v)), String(name)]} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar yAxisId="won" dataKey="매출" fill="#2563eb" radius={[3, 3, 0, 0]} />
+                    <Line yAxisId="won" dataKey="광고비" stroke="#ef4444" strokeWidth={2} dot={false} />
+                    <Line yAxisId="roas" dataKey="ROAS" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="4 3" />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            ) : <p className="text-sm text-muted-foreground py-10 text-center">이 판매처의 기간 내 데이터가 없습니다</p>}
+          </CardContent>
+        </Card>
+      )}
 
       {/* 판매처(채널)별 성과 */}
       <Card>

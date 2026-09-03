@@ -16,8 +16,18 @@ import { isGongguInDailySales } from "@/lib/gonggu";
 //   "기타"를 명시적으로 두어 합계가 항상 맞도록 한다. OTHER_SALES_CH 는 아래 periodData 에서
 //   "위 3개에 속하지 않는 모든 채널"로 동적으로 채운다.
 const KNOWN_SALES_CH = ["smartstore", "cafe24", "coupang"];
+
+// 스마트스토어 라벨에 붙는 매체는 브랜드마다 다르다.
+// ★ 이전에는 "스마트스토어 (네이버·GFA + 밸런스랩 메타)" 를 전 브랜드에 고정으로 붙여,
+//   너티·사입 화면에서도 밸런스랩 메타가 공통으로 섞이는 것처럼 보였다(금액은 0으로 정확했다).
+//   밸런스랩 메타/구글은 밸런스랩에만 귀속된다.
+function naverLabel(brand: string): string {
+  return brand === "balancelab"
+    ? "스마트스토어 (네이버·GFA·메타/구글)"
+    : "스마트스토어 (네이버·GFA)";
+}
 const GROUPS = [
-  { key: "naver", label: "스마트스토어 (네이버·GFA + 밸런스랩 메타)", salesCh: ["smartstore"] },
+  { key: "naver", label: "스마트스토어", salesCh: ["smartstore"] },
   { key: "jasamol", label: "자사몰 (카페24)", salesCh: ["cafe24"] },
   { key: "coupang", label: "쿠팡", salesCh: ["coupang"] },
   { key: "other", label: "기타 (피피·에이블리 등)", salesCh: [] as string[] },
@@ -128,12 +138,14 @@ export async function GET(req: NextRequest) {
       const prevRoas = prevAd > 0 ? prevRev / prevAd : 0;
       return {
         key: g.key,
-        label: g.label,
+        label: g.key === "naver" ? naverLabel(brand) : g.label,
         revenue,
         adSpend,
         roas,
         adRatio: revenue > 0 ? (adSpend / revenue) * 100 : 0,
-        subAds: storeSubAds(g.key, cur.adByCh, cur.blMG),
+        // 0원 매체는 목록에서 뺀다. 밸런스랩이 아닌 브랜드에 "밸런스랩 메타/구글 0원" 줄이
+        // 남아 있어 공통 비용처럼 읽혔다.
+        subAds: storeSubAds(g.key, cur.adByCh, cur.blMG).filter((a) => a.spend > 0),
         revDelta: prevRev > 0 ? ((revenue / prevRev) - 1) * 100 : null,
         adDelta: prevAd > 0 ? ((adSpend / prevAd) - 1) * 100 : null,
         roasDelta: prevRoas > 0 ? ((roas / prevRoas) - 1) * 100 : null,
