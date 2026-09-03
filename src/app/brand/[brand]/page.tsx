@@ -9,6 +9,7 @@ import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { BRAND_LABELS, AD_CHANNEL_COLORS } from "@/lib/types";
 import { bucketize, GRAN_LABELS, type Gran } from "@/lib/bucket";
+import { StoreDetailChart } from "@/components/store-detail-chart";
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 // 브랜드 종합 페이지 (2026-08): 사이드바 브랜드 클릭 시 진입.
@@ -78,7 +79,6 @@ function BrandInner({ brand }: { brand: string }) {
   const label = BRAND_LABELS[brand] || brand;
   const [gran, setGran] = useState<Gran>("day");
   const [dim, setDim] = useState<StackDim>("channel");
-  const [store, setStore] = useState<string | null>(null); // 선택한 판매처 (null=첫 번째)
 
   const { data: dash, loading } = useFetch<DashboardResp>(`/api/dashboard?brand=${brand}&from=${from}&to=${to}`);
   const { data: cg } = useFetch<ChannelGroupsResp>(`/api/channel-groups?brand=${brand}&from=${from}&to=${to}`);
@@ -132,28 +132,6 @@ function BrandInner({ brand }: { brand: string }) {
     () => stackData.map((row) => ({ ...row, __ad: adByBucket.get(String(row.label)) || 0 })),
     [stackData, adByBucket]
   );
-
-  // ── 판매처 개별 성과: channel-groups 의 series(날짜 × 판매처 {revenue, adSpend}) 사용 ──
-  const storeOptions = useMemo(
-    () => (cg?.groups || []).filter(g => g.revenue > 0 || g.adSpend > 0),
-    [cg]
-  );
-  const activeStore = store && storeOptions.some(g => g.key === store) ? store : storeOptions[0]?.key || null;
-  const storeSeries = useMemo(() => {
-    const rows = (cg?.series || []) as unknown as { date: string; [k: string]: { revenue: number; adSpend: number } | string }[];
-    if (!rows.length || !activeStore) return [];
-    return bucketize(
-      rows.map(r => ({ date: String(r.date), cell: r[activeStore] as { revenue: number; adSpend: number } | undefined })),
-      gran,
-      (r) => ({ 매출: r.cell?.revenue || 0, 광고비: r.cell?.adSpend || 0 })
-    ).map(b => ({
-      label: b.label,
-      매출: b.values["매출"] || 0,
-      광고비: b.values["광고비"] || 0,
-      ROAS: (b.values["광고비"] || 0) > 0 ? +((b.values["매출"] || 0) / (b.values["광고비"] || 1)).toFixed(2) : 0,
-    }));
-  }, [cg, activeStore, gran]);
-  const activeStoreLabel = storeOptions.find(g => g.key === activeStore)?.label || "";
 
   const dimLabel = [...STACK_DIMS, GONGGU_DIM].find(d => d.key === dim)?.label || "";
   const keyLabel = (k: string) => (dim === "channel" ? CH_KOR[k] || k : k);
@@ -248,44 +226,8 @@ function BrandInner({ brand }: { brand: string }) {
         </CardContent>
       </Card>
 
-      {/* 판매처 개별 추이 — 하나 골라서 매출·광고비·ROAS 를 같이 본다 */}
-      {storeOptions.length > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-              <h3 className="font-semibold text-sm">
-                판매처 상세 · {activeStoreLabel}
-                <span className="text-xs text-muted-foreground font-normal ml-2">매출 막대 · 광고비 선 · ROAS 선</span>
-              </h3>
-              <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 flex-wrap">
-                {storeOptions.map(g => (
-                  <button key={g.key} onClick={() => setStore(g.key)}
-                    className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
-                      activeStore === g.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                    {g.label.split(" (")[0]}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {storeSeries.length > 0 ? (
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={storeSeries}>
-                    <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis yAxisId="won" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
-                    <YAxis yAxisId="roas" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}x`} />
-                    <Tooltip formatter={(v, name) => [name === "ROAS" ? `${v}x` : formatCurrency(Number(v)), String(name)]} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar yAxisId="won" dataKey="매출" fill="#2563eb" radius={[3, 3, 0, 0]} />
-                    <Line yAxisId="won" dataKey="광고비" stroke="#ef4444" strokeWidth={2} dot={false} />
-                    <Line yAxisId="roas" dataKey="ROAS" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="4 3" />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            ) : <p className="text-sm text-muted-foreground py-10 text-center">이 판매처의 기간 내 데이터가 없습니다</p>}
-          </CardContent>
-        </Card>
-      )}
+      {/* 판매처 개별 추이 — 개요와 같은 컴포넌트를 쓴다 */}
+      <StoreDetailChart brand={brand} from={from} to={to} />
 
       {/* 판매처(채널)별 성과 */}
       <Card>

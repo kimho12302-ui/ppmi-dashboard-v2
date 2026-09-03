@@ -2,6 +2,7 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
+import { StoreDetailChart } from "@/components/store-detail-chart";
 import { KpiCard, type KpiConfidence } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
@@ -802,6 +803,9 @@ function OverviewInner() {
       )}
 
       {/* 브랜드 상세 */}
+      {/* 판매처 개별 추이 — 브랜드 페이지와 같은 컴포넌트. 판매처를 눌러 매출·광고비·ROAS 를 함께 본다. */}
+      <StoreDetailChart brand={brand || "all"} from={from} to={to} />
+
       {brand && brand !== "all" && <BrandDetailSection brand={brand} from={from} to={to} />}
 
       {/* 밸런스랩 공구 매출 */}
