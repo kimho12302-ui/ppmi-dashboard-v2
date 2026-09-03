@@ -262,7 +262,7 @@ function BrandInner({ brand }: { brand: string }) {
                   <button key={g.key} onClick={() => setStore(g.key)}
                     className={cn("px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
                       activeStore === g.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                    {g.label.replace(/s*(.*)$/, "")}
+                    {g.label.split(" (")[0]}
                   </button>
                 ))}
               </div>
