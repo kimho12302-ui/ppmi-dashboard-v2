@@ -4,6 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { StoreDetailChart } from "@/components/store-detail-chart";
 import { KpiCard, type KpiConfidence } from "@/components/ui/kpi-card";
+import { SectionHeading } from "@/components/ui/section";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { useDataStatus } from "@/hooks/use-data-status";
@@ -416,40 +417,43 @@ function OverviewInner() {
         </Card>
       )}
 
-      {/* KPI 8개 — 위 페이싱(달력 월 고정)과 기간이 다를 수 있어 스코프를 명시한다 */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-baseline gap-2 flex-wrap">
-          <h3 className="font-semibold">선택 기간 실적</h3>
-          <span className="text-xs text-muted-foreground">{from} ~ {to}</span>
-          {/* 위 페이싱은 목표 스코프에 맞춰 공구를 포함한다. 여기 매출은 자체매출이라
-              두 값이 다르게 보이므로 그 차이를 명시한다. */}
-          {gongguSalesTotal > 0 && (
-            <span className="text-xs text-muted-foreground">
-              · 매출은 <b>자체매출</b> 기준 (공구 {formatCurrency(gongguSalesTotal)} 별도, 위 페이싱은 공구 포함)
-            </span>
-          )}
-        </div>
-        <button onClick={exportCSV}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md text-muted-foreground transition-colors">
-          ⬇ CSV 내보내기
-        </button>
+      {/* ── 선택 기간 실적 ──
+          기존에는 KPI 9개가 전부 같은 크기로 4열에 깔려 있었다. 균일 그리드는
+          "무엇을 먼저 봐야 하는지"를 지운다. 매출·광고비·ROAS 를 hero 로 띄우고
+          나머지는 compact 로 눌러 스캔만 되게 한다. */}
+      <SectionHeading
+        eyebrow="Performance"
+        title="선택 기간 실적"
+        note={`${from} ~ ${to}${gongguSalesTotal > 0 ? ` · 매출은 자체매출 기준 (공구 ${formatCurrency(gongguSalesTotal)} 별도, 위 페이싱은 공구 포함)` : ""}`}
+        action={
+          <button onClick={exportCSV}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md text-muted-foreground transition-colors">
+            ⬇ CSV 내보내기
+          </button>
+        }
+      />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <KpiCard size="hero" title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} changeLabel={changeLabel} confidence={revenueConfidence} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
+        <KpiCard size="hero" title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, kpi.adSpendPrev)} changeLabel={changeLabel} confidence={adSpendConfidence} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
+        <KpiCard size="hero" title="ROAS" value={`${(kpi.roas || 0).toFixed(2)}x`} change={pctChange(kpi.roas, kpi.roasPrev)} changeLabel={changeLabel} confidence={roasConfidence} target={targetProp(kpi.roas, targets?.roas_target, "목표")} onClick={() => toggleKpi("roas")} active={selectedKpi === "roas"} />
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} changeLabel={changeLabel} confidence={revenueConfidence} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
-        <KpiCard title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, kpi.adSpendPrev)} changeLabel={changeLabel} confidence={adSpendConfidence} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
-        <KpiCard title="ROAS" value={`${(kpi.roas || 0).toFixed(2)}x`} change={pctChange(kpi.roas, kpi.roasPrev)} changeLabel={changeLabel} confidence={roasConfidence} target={targetProp(kpi.roas, targets?.roas_target, "목표")} onClick={() => toggleKpi("roas")} active={selectedKpi === "roas"} />
-        <KpiCard title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, kpi.ordersPrev)} changeLabel={changeLabel} confidence={revenueConfidence} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
-        <KpiCard title="이익" value={formatCurrency(kpi.profit)} change={pctChange(kpi.profit, kpi.profitPrev)} changeLabel={changeLabel} confidence={profitConfidence} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
-        <KpiCard title="이익률" value={kpi.revenue > 0 ? formatPercent((kpi.profit / kpi.revenue) * 100) : "—"} confidence={profitConfidence} onClick={() => toggleKpi("profitRate")} active={selectedKpi === "profitRate"} />
+      {/* MER 은 잡비가 있을 때만 나온다. 열 수를 고정하면 없는 날 오른쪽에 빈 칸이 남는다. */}
+      <div className={`grid grid-cols-2 gap-2.5 ${(kpi.miscCost || 0) > 0 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+        <KpiCard size="compact" title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, kpi.ordersPrev)} changeLabel={changeLabel} confidence={revenueConfidence} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
+        <KpiCard size="compact" title="이익" value={formatCurrency(kpi.profit)} change={pctChange(kpi.profit, kpi.profitPrev)} changeLabel={changeLabel} confidence={profitConfidence} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
+        <KpiCard size="compact" title="이익률" value={kpi.revenue > 0 ? formatPercent((kpi.profit / kpi.revenue) * 100) : "—"} confidence={profitConfidence} onClick={() => toggleKpi("profitRate")} active={selectedKpi === "profitRate"} />
         {/* MER은 매출/(매체비+잡비), ROAS는 매출/매체비. 잡비가 0인 달에는 두 값이 완전히 같아
             카드 두 개가 같은 숫자를 보여준다. 잡비가 있을 때만 별도 카드로 낸다. */}
         {(kpi.miscCost || 0) > 0 && (
-          <KpiCard title="MER" value={`${(kpi.mer || 0).toFixed(2)}x`} change={pctChange(kpi.mer, kpi.merPrev)} changeLabel={changeLabel} confidence={roasConfidence} onClick={() => toggleKpi("ctr")} active={selectedKpi === "ctr"} />
+          <KpiCard size="compact" title="MER" value={`${(kpi.mer || 0).toFixed(2)}x`} change={pctChange(kpi.mer, kpi.merPrev)} changeLabel={changeLabel} confidence={roasConfidence} onClick={() => toggleKpi("ctr")} active={selectedKpi === "ctr"} />
         )}
-        <KpiCard title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "—"} change={pctChange(kpi.aov, kpi.aovPrev)} changeLabel={changeLabel} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
+        <KpiCard size="compact" title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "—"} change={pctChange(kpi.aov, kpi.aovPrev)} changeLabel={changeLabel} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
       </div>
 
       {/* 사업 그룹 뷰: 펫(너티+아이언펫+사입) vs 밸런스랩(검사 라인별) */}
+      {(brand === "all" || !brand) && (data?.groupRevenue || []).length > 0 && (
+        <SectionHeading eyebrow="Business Mix" title="사업 그룹" note="펫(너티·아이언펫·사입) vs 밸런스랩" />
+      )}
       {(brand === "all" || !brand) && (data?.groupRevenue || []).length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {(data?.groupRevenue || []).map(g => {
@@ -551,6 +555,7 @@ function OverviewInner() {
       )}
 
       {/* 일별 트렌드 + 브랜드 비중 */}
+      <SectionHeading eyebrow="Trend" title="추이와 비중" note="선택 기간 일별" />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardContent className="p-4">
@@ -620,6 +625,7 @@ function OverviewInner() {
       </div>
 
       {/* 매체별 광고비 + 판매처별 매출 — 두 축은 조인되지 않는다(매체=메타/네이버, 판매처=스마트스토어/자사몰) */}
+      <SectionHeading eyebrow="Channels" title="매체와 판매처" note="두 축은 조인되지 않습니다 (매체=집행, 판매처=주문)" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4">
@@ -722,6 +728,7 @@ function OverviewInner() {
       )}
 
       {/* 퍼널 요약 + TOP 5 제품 */}
+      <SectionHeading eyebrow="Funnel & Products" title="퍼널과 제품" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4">

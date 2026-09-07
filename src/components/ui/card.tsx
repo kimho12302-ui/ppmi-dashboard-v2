@@ -6,12 +6,13 @@ interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export function Card({ children, className, ...props }: CardProps) {
   return (
+    // ★ 그림자를 인라인 style 로 주면 인라인이 항상 이기므로 surface-hero/-sunken
+    //   계층 클래스가 무력화된다. 클래스(.card-base)로 내려서 계층이 덮을 수 있게 한다.
     <div
       className={cn(
-        "rounded-xl border bg-card text-card-foreground",
+        "card-base rounded-xl border bg-card text-card-foreground",
         className
       )}
-      style={{ boxShadow: "var(--kpi-shadow)" }}
       {...props}
     >
       {children}

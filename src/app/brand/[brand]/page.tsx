@@ -10,6 +10,7 @@ import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { BRAND_LABELS, AD_CHANNEL_COLORS } from "@/lib/types";
 import { bucketize, GRAN_LABELS, type Gran } from "@/lib/bucket";
 import { StoreDetailChart } from "@/components/store-detail-chart";
+import { SectionHeading } from "@/components/ui/section";
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 // 브랜드 종합 페이지 (2026-08): 사이드바 브랜드 클릭 시 진입.
@@ -153,18 +154,22 @@ function BrandInner({ brand }: { brand: string }) {
       {/* KPI. 공구가 있는 브랜드(밸런스랩)는 매출의 대부분이 공구라 자체매출만 보면
           브랜드 규모가 크게 과소 표시된다 → '총매출(공구 포함)'을 맨 앞에 병기한다.
           단 ROAS·이익은 광고/원가와 대응하는 자체매출 기준을 유지한다(공구는 광고와 무관). */}
-      <div className={cn("grid grid-cols-2 gap-4", hasGonggu ? "lg:grid-cols-6" : "lg:grid-cols-5")}>
+      <div className={cn("grid grid-cols-1 gap-4", hasGonggu ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
         {hasGonggu && (
           <KpiCard
+            size="hero"
             title="총매출 (공구 포함)"
             value={formatCurrency((detail?.selfSalesTotal || 0) + (detail?.gongguSalesTotal || 0))}
           />
         )}
-        <KpiCard title={hasGonggu ? "자체매출" : "매출"} value={formatCurrency(kpi?.revenue || 0)} change={pct(kpi?.revenue, kpi?.revenuePrev)} />
-        <KpiCard title="광고비" value={formatCurrency(kpi?.adSpend || 0)} change={pct(kpi?.adSpend, kpi?.adSpendPrev)} />
-        <KpiCard title="ROAS" value={`${(kpi?.roas || 0).toFixed(2)}x`} change={pct(kpi?.roas, kpi?.roasPrev)} />
-        <KpiCard title="주문 수" value={formatNumber(kpi?.orders || 0)} change={pct(kpi?.orders, kpi?.ordersPrev)} />
-        <KpiCard title="이익" value={formatCurrency(kpi?.profit || 0)} change={pct(kpi?.profit, kpi?.profitPrev)} />
+        <KpiCard size="hero" title={hasGonggu ? "자체매출" : "매출"} value={formatCurrency(kpi?.revenue || 0)} change={pct(kpi?.revenue, kpi?.revenuePrev)} />
+        <KpiCard size="hero" title="광고비" value={formatCurrency(kpi?.adSpend || 0)} change={pct(kpi?.adSpend, kpi?.adSpendPrev)} />
+        <KpiCard size="hero" title="ROAS" value={`${(kpi?.roas || 0).toFixed(2)}x`} change={pct(kpi?.roas, kpi?.roasPrev)} />
+      </div>
+      {/* 보조 지표는 폭을 묶는다. 전폭으로 늘리면 hero 와 무게가 같아져 계층이 무너진다. */}
+      <div className="grid grid-cols-2 gap-2.5 sm:max-w-lg">
+        <KpiCard size="compact" title="주문 수" value={formatNumber(kpi?.orders || 0)} change={pct(kpi?.orders, kpi?.ordersPrev)} />
+        <KpiCard size="compact" title="이익" value={formatCurrency(kpi?.profit || 0)} change={pct(kpi?.profit, kpi?.profitPrev)} />
       </div>
       {hasGonggu && (
         <p className="text-xs text-muted-foreground -mt-2">
@@ -262,6 +267,7 @@ function BrandInner({ brand }: { brand: string }) {
         </CardContent>
       </Card>
 
+      <SectionHeading eyebrow="Channels" title="매체와 라인업" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* 매체별 광고비 */}
         <Card>
