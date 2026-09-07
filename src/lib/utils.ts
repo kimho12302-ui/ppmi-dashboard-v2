@@ -8,10 +8,18 @@ export function formatNumber(n: number): string {
   return n.toLocaleString("ko-KR");
 }
 
+/**
+ * 금액 표시 — 1원 단위까지 전부 보여준다 (2026-09).
+ *
+ * 이전에는 1만원 이상을 "1201만원", 1억 이상을 "1.2억원" 으로 줄였다.
+ * 반올림된 값이라 시트·정산 숫자와 대조가 안 됐고, "1201만원" 두 개를 더해도
+ * 합계가 맞지 않아 화면 숫자를 검산에 쓸 수 없었다.
+ *
+ * 차트 축 눈금은 이 함수를 쓰지 않는다(각 차트가 자체 tickFormatter 로 "N만" 표기).
+ * 축까지 전체 자릿수로 찍으면 라벨이 서로 겹친다.
+ */
 export function formatCurrency(n: number): string {
-  if (Math.abs(n) >= 1e8) return (n / 1e8).toFixed(1) + "억원";
-  if (Math.abs(n) >= 1e4) return (n / 1e4).toFixed(0) + "만원";
-  return n.toLocaleString("ko-KR") + "원";
+  return Math.round(n).toLocaleString("ko-KR") + "원";
 }
 
 export function formatPercent(n: number): string {
