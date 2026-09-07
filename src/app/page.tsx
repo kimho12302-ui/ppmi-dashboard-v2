@@ -143,8 +143,13 @@ function OverviewInner() {
     if (brand && brand !== "all") {
       const PRODUCT_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#ec4899", "#06b6d4", "#84cc16"];
       return {
-        title: "제품 매출 비중",
-        data: topProducts.map((p, i) => ({
+        title: "제품 매출 비중 (상위 5 + 기타)",
+        // charts.csv Part-to-Whole 규칙: 파이는 최대 6조각. 그 이상은 서로 구분이 안 된다.
+        data: (() => {
+          const top = topProducts.slice(0, 5);
+          const restSum = topProducts.slice(5).reduce((s, p) => s + p.revenue, 0);
+          return restSum > 0 ? [...top, { product: "기타", revenue: restSum, quantity: 0, brand: "" }] : top;
+        })().map((p, i) => ({
           name: p.product.length > 15 ? p.product.slice(0, 15) + "…" : p.product,
           value: p.revenue,
           color: PRODUCT_COLORS[i % PRODUCT_COLORS.length],

@@ -6,15 +6,15 @@
   :root {
     /* Layout */
     --background: #f8fafc;
-    --foreground: #0f172a;
+    --foreground: #1e3a8a;
     --card: #ffffff;
     --card-foreground: #0f172a;
-    --border: #e2e8f0;
-    --muted: #f1f5f9;
-    --muted-foreground: #64748b;
+    --border: #dbeafe;
+    --muted: #e9eef6;
+    --muted-foreground: #475569;
     --accent: #f1f5f9;
     --accent-foreground: #0f172a;
-    --primary: #6366f1;
+    --primary: #1e40af;
     --primary-foreground: #ffffff;
     --destructive: #dc2626;
     --destructive-foreground: #ffffff;
@@ -30,23 +30,27 @@
     --sidebar-bg: #ffffff;
     --sidebar-border: #e2e8f0;
     --sidebar-hover: #f1f5f9;
-    --sidebar-active: #ede9fe;
-    --sidebar-active-text: #6366f1;
+    --sidebar-active: #dbeafe;
+    --sidebar-active-text: #1e40af;
 
     /* Misc */
     --kpi-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-    --ring: #6366f1;
+
+    /* Executive Dashboard 규격 (styles.csv Design System Variables) */
+    --kpi-font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.25rem);
+    --card-min-width: 280px;
+    --ring: #1e40af;
 
     /* ── 의미 색(정상·주의·위험·미운영) ──
        브랜드 액센트(--primary 인디고)와 의도적으로 분리한다. 브랜드색은 '무엇'을,
        의미색은 '괜찮은가'를 말한다. 두 축이 같은 색을 쓰면 상태가 안 읽힌다. */
-    --sig-ok: #047857;
+    --sig-ok: #15803d;
     --sig-ok-surface: rgb(4 120 87 / 0.09);
     --sig-ok-border: rgb(4 120 87 / 0.35);
     --sig-warn: #b45309;
     --sig-warn-surface: rgb(180 83 9 / 0.10);
     --sig-warn-border: rgb(180 83 9 / 0.38);
-    --sig-danger: #be123c;
+    --sig-danger: #dc2626;
     --sig-danger-surface: rgb(190 18 60 / 0.10);
     --sig-danger-border: rgb(190 18 60 / 0.40);
     /* 미운영은 '조용히'. 채도를 의도적으로 낮춘다. */
@@ -80,48 +84,54 @@
     --channel-gonggu: #8b5cf6;
   }
 
+  /* ── 다크: ui-ux-pro-max 의 "Financial Dashboard" 팔레트를 기반으로 한다.
+        (다크 네이티브 + 이익/손실 색 의미가 우리 KPI 와 같음: bg #020617 / card #0E1223)
+        데이터 계열은 "Analytics Dashboard" 팔레트(블루 데이터 + 앰버 액센트)를 쓴다.
+        선정 근거: styles.csv 에서 Data-Dense 는 "Do Not Use For: Marketing dashboards",
+        Sales Intelligence 는 "Do Not Use For: Marketing analytics" 로 명시돼 제외했다. */
   .dark {
-    --background: #09090b;
-    --foreground: #fafafa;
-    --card: #18181b;
-    --card-foreground: #fafafa;
-    --border: #27272a;
-    --muted: #27272a;
-    --muted-foreground: #a1a1aa;
-    --accent: #27272a;
-    --accent-foreground: #fafafa;
-    --primary: #818cf8;
-    --primary-foreground: #09090b;
+    --background: #020617;
+    --foreground: #f8fafc;
+    --card: #0e1223;
+    --card-foreground: #f8fafc;
+    --border: #1e2a44;
+    --muted: #131a2e;
+    --muted-foreground: #94a3b8;
+    --accent: #131a2e;
+    --accent-foreground: #f8fafc;
+    --primary: #3b82f6;
+    --primary-foreground: #ffffff;
     --destructive: #ef4444;
-    --destructive-foreground: #fafafa;
+    --destructive-foreground: #ffffff;
 
-    --chart-grid: #27272a;
-    --chart-tick: #a1a1aa;
-    --chart-tooltip-bg: #18181b;
-    --chart-tooltip-border: #27272a;
-    --chart-tooltip-text: #fafafa;
+    --chart-grid: #1e2a44;
+    --chart-tick: #94a3b8;
+    --chart-tooltip-bg: #0e1223;
+    --chart-tooltip-border: #1e2a44;
+    --chart-tooltip-text: #f8fafc;
 
-    --sidebar-bg: #18181b;
-    --sidebar-border: #27272a;
-    --sidebar-hover: #27272a;
-    --sidebar-active: #312e81;
-    --sidebar-active-text: #a5b4fc;
+    --sidebar-bg: #060b18;
+    --sidebar-border: #1e2a44;
+    --sidebar-hover: #131a2e;
+    --sidebar-active: #17306b;
+    --sidebar-active-text: #93c5fd;
 
-    --kpi-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3);
-    --ring: #818cf8;
+    --kpi-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+    --ring: #3b82f6;
 
-    --sig-ok: #34d399;
-    --sig-ok-surface: rgb(52 211 153 / 0.10);
-    --sig-ok-border: rgb(52 211 153 / 0.32);
-    --sig-warn: #fbbf24;
-    --sig-warn-surface: rgb(251 191 36 / 0.10);
-    --sig-warn-border: rgb(251 191 36 / 0.34);
-    --sig-danger: #fb7185;
-    --sig-danger-surface: rgb(251 113 133 / 0.11);
-    --sig-danger-border: rgb(251 113 133 / 0.38);
-    --sig-idle: #8b8b94;
-    --sig-idle-surface: rgb(139 139 148 / 0.09);
-    --sig-idle-border: rgb(139 139 148 / 0.26);
+    /* 상태색 — Executive / Comparative / Financial 세 스타일이 공통으로 지정한 값 */
+    --sig-ok: #22c55e;
+    --sig-ok-surface: rgb(34 197 94 / 0.12);
+    --sig-ok-border: rgb(34 197 94 / 0.34);
+    --sig-warn: #f59e0b;
+    --sig-warn-surface: rgb(245 158 11 / 0.12);
+    --sig-warn-border: rgb(245 158 11 / 0.36);
+    --sig-danger: #ef4444;
+    --sig-danger-surface: rgb(239 68 68 / 0.12);
+    --sig-danger-border: rgb(239 68 68 / 0.38);
+    --sig-idle: #6b7280;
+    --sig-idle-surface: rgb(107 114 128 / 0.10);
+    --sig-idle-border: rgb(107 114 128 / 0.28);
   }
 }
 

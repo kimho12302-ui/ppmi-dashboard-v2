@@ -135,12 +135,15 @@ export interface ChannelConfig {
    하드코딩 fallback (DB 없을 때)
    ──────────────────────────────────────────── */
 
+// 계열색 — ui-ux-pro-max "Analytics Dashboard" 팔레트(블루 데이터 + 앰버 액센트) 기준으로
+// 다시 배치했다. 채도·명도를 한 단계로 맞춰 어느 하나가 튀지 않게 한다.
+// ★ 의미 색은 건드리지 않는다: 매출=파랑, 광고비=빨강, ROAS=초록 (--sig-* 토큰).
 export const BRAND_COLORS: Record<string, string> = {
-  pet: "#ea580c",
-  nutty: "#dc2626",
-  ironpet: "#ea580c",
-  saip: "#92400e",
-  balancelab: "#2563eb",
+  pet: "#f59e0b",
+  nutty: "#3b82f6",
+  ironpet: "#f59e0b",
+  saip: "#8b5cf6",
+  balancelab: "#06b6d4",
 };
 
 export const BRAND_LABELS: Record<string, string> = {
@@ -152,21 +155,21 @@ export const BRAND_LABELS: Record<string, string> = {
 };
 
 export const AD_CHANNEL_COLORS: Record<string, string> = {
-  meta: "#1d4ed8",
-  naver_search: "#15803d",
-  naver_shopping: "#0e7490",
-  google_pmax: "#c2410c",
-  google_search: "#b45309",
-  gfa: "#6d28d9",
-  coupang_ads: "#b91c1c",
+  meta: "#3b82f6",
+  naver_search: "#22c55e",
+  naver_shopping: "#06b6d4",
+  google_pmax: "#f59e0b",
+  google_search: "#eab308",
+  gfa: "#8b5cf6",
+  coupang_ads: "#ef4444",
 };
 
 export const SALES_CHANNEL_COLORS: Record<string, string> = {
-  cafe24: "#2563eb",
-  smartstore: "#16a34a",
-  coupang: "#dc2626",
-  ably: "#be185d",
-  petfriends: "#7c3aed",
+  cafe24: "#3b82f6",
+  smartstore: "#22c55e",
+  coupang: "#f59e0b",
+  ably: "#ec4899",
+  petfriends: "#8b5cf6",
 };
 
 export const CHANNEL_LABELS: Record<string, string> = {

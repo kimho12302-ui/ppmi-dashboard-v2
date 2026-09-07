@@ -43,7 +43,9 @@ interface BrandDetailResp {
 }
 
 // 누적 막대 계열 색 (범례 순서대로). 판매처·라인업·제품 공통 사용.
-const STACK_COLORS = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#94a3b8"];
+// Analytics Dashboard 팔레트와 같은 계열. 채도가 한 단계로 맞아야 누적 막대에서
+// 특정 계열만 튀어 보이지 않는다.
+const STACK_COLORS = ["#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6", "#06b6d4", "#ec4899", "#94a3b8"];
 type StackDim = "channel" | "lineup" | "product" | "gonggu";
 const STACK_DIMS: { key: StackDim; label: string }[] = [
   { key: "channel", label: "판매처별" },

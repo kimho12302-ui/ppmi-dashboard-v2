@@ -64,8 +64,11 @@ export function KpiCard({
             )}
           </div>
           <p
-            className={`num text-lg sm:text-2xl font-bold ${confidence?.level === "unmeasurable" ? "opacity-60" : ""}`}
-            style={confidence?.level === "unmeasurable" ? { color: "var(--muted-foreground)" } : undefined}
+            className={`num font-bold leading-tight tracking-tight ${confidence?.level === "unmeasurable" ? "opacity-60" : ""}`}
+            style={{
+              fontSize: "var(--kpi-font-size)",
+              ...(confidence?.level === "unmeasurable" ? { color: "var(--muted-foreground)" } : {}),
+            }}
           >
             {value}
           </p>
