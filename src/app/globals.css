@@ -257,16 +257,30 @@
 .kpi-hero .kpi-value { font-size: var(--kpi-hero-font-size); }
 .kpi-compact .kpi-value { font-size: var(--kpi-compact-font-size); }
 
+/* 좁은 화면에서는 hero 도 카드 폭에 맞춰야 한다. 390px 에서 반폭 카드(164px)에
+   28px 숫자를 넣으면 "1,846,247" 과 "원" 이 갈라진다. 금액이 두 줄로 끊기면
+   자릿수를 다시 세게 되므로 계층보다 한 줄 유지가 우선이다.
+   전폭 카드(매출)는 여유가 있으므로 크게 유지해 헤드라인 지위를 지킨다. */
+@media (max-width: 639px) {
+  .kpi-hero .kpi-value { font-size: 1.25rem; }
+  .kpi-hero.col-span-2 .kpi-value { font-size: 1.875rem; }
+}
+
 :root {
   --kpi-hero-font-size: clamp(1.75rem, 1.15rem + 2.1vw, 2.75rem);
   --kpi-compact-font-size: clamp(1.05rem, 0.92rem + 0.55vw, 1.3rem);
 }
 
-/* 필터 바는 스크롤 중에도 '지금 무슨 기간을 보고 있는지'가 유지돼야 한다. */
-.filter-dock {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  background-color: color-mix(in srgb, var(--background) 88%, transparent);
-  backdrop-filter: blur(10px);
+/* 필터 바는 스크롤 중에도 '지금 무슨 기간을 보고 있는지'가 유지돼야 한다.
+   ★ 단 모바일에서는 고정하지 않는다. 375px 폭에서 필터가 2줄로 접혀 130px(뷰포트의 16%)를
+     먹는데, 하단 탭바 90px 까지 합치면 화면의 27%가 크롬이 된다. 실측으로 확인한 손해다.
+     데스크톱에서는 52px(5.8%)라 '항상 기간이 보인다'는 이득이 비용보다 크다. */
+@media (min-width: 768px) {
+  .filter-dock {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background-color: color-mix(in srgb, var(--background) 88%, transparent);
+    backdrop-filter: blur(10px);
+  }
 }

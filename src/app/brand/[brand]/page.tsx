@@ -154,15 +154,16 @@ function BrandInner({ brand }: { brand: string }) {
       {/* KPI. 공구가 있는 브랜드(밸런스랩)는 매출의 대부분이 공구라 자체매출만 보면
           브랜드 규모가 크게 과소 표시된다 → '총매출(공구 포함)'을 맨 앞에 병기한다.
           단 ROAS·이익은 광고/원가와 대응하는 자체매출 기준을 유지한다(공구는 광고와 무관). */}
-      <div className={cn("grid grid-cols-1 gap-4", hasGonggu ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
+      <div className={cn("grid grid-cols-2 gap-4", hasGonggu ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
         {hasGonggu && (
           <KpiCard
             size="hero"
+            className="col-span-2 sm:col-span-1"
             title="총매출 (공구 포함)"
             value={formatCurrency((detail?.selfSalesTotal || 0) + (detail?.gongguSalesTotal || 0))}
           />
         )}
-        <KpiCard size="hero" title={hasGonggu ? "자체매출" : "매출"} value={formatCurrency(kpi?.revenue || 0)} change={pct(kpi?.revenue, kpi?.revenuePrev)} />
+        <KpiCard size="hero" className={hasGonggu ? "" : "col-span-2 sm:col-span-1"} title={hasGonggu ? "자체매출" : "매출"} value={formatCurrency(kpi?.revenue || 0)} change={pct(kpi?.revenue, kpi?.revenuePrev)} />
         <KpiCard size="hero" title="광고비" value={formatCurrency(kpi?.adSpend || 0)} change={pct(kpi?.adSpend, kpi?.adSpendPrev)} />
         <KpiCard size="hero" title="ROAS" value={`${(kpi?.roas || 0).toFixed(2)}x`} change={pct(kpi?.roas, kpi?.roasPrev)} />
       </div>

@@ -39,11 +39,14 @@ interface KpiCardProps {
    *  compact — 스캔용 보조 지표. 한 줄로 눌러 hero 와 경쟁하지 않게 한다.
    */
   size?: "hero" | "default" | "compact";
+  /** 그리드 배치용(예: 모바일에서 매출만 전폭). 시각 스타일은 size 가 정한다. */
+  className?: string;
 }
 
 export function KpiCard({
   title, value, change, changeLabel, icon, subtitle, target, confidence, onClick, active,
   size = "default",
+  className = "",
 }: KpiCardProps) {
   const conf = confidence ? CONFIDENCE[confidence.level] : null;
   // 측정 불가·부분 측정이면 카드 왼쪽에 레일을 세운다. 균일한 카드 그리드에서
@@ -53,14 +56,14 @@ export function KpiCard({
   const isHero = size === "hero";
   const isCompact = size === "compact";
   const tierClass = isHero ? "surface-hero kpi-hero" : isCompact ? "surface-sunken kpi-compact border-transparent" : "";
-  const padClass = isHero ? "p-4 sm:p-6" : isCompact ? "p-3 sm:p-3.5" : "p-3 sm:p-5";
+  const padClass = isHero ? "p-3 sm:p-6" : isCompact ? "p-3 sm:p-3.5" : "p-3 sm:p-5";
   const titleClass = isCompact ? "text-xs text-muted-foreground font-medium" : "text-sm text-muted-foreground font-medium";
   // hero 만 아이콘 배지를 키운다. compact 는 아이콘 자체를 버린다(스캔 방해).
   const showIcon = icon && !isCompact;
 
   return (
     <Card
-      className={`relative overflow-hidden ${padClass} ${tierClass} ${onClick ? "cursor-pointer hover:ring-2 hover:ring-primary/30 hover:-translate-y-px transition-all" : ""} ${active ? "ring-2 ring-primary" : ""}`}
+      className={`relative overflow-hidden ${padClass} ${tierClass} ${onClick ? "cursor-pointer hover:ring-2 hover:ring-primary/30 hover:-translate-y-px transition-all" : ""} ${active ? "ring-2 ring-primary" : ""} ${className}`}
       onClick={onClick}
     >
       {railed && conf && (

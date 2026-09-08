@@ -18,7 +18,7 @@ interface SectionProps {
 
 export function SectionHeading({ eyebrow, title, note, action }: SectionProps) {
   return (
-    <div className="pt-2">
+    <div className="pt-1 sm:pt-2">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <p className="section-eyebrow">{eyebrow}</p>
@@ -29,7 +29,7 @@ export function SectionHeading({ eyebrow, title, note, action }: SectionProps) {
         </div>
         {action}
       </div>
-      <div className="section-rule mt-2" />
+      <div className="section-rule mt-1.5 sm:mt-2" />
     </div>
   );
 }
