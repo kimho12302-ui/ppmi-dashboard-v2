@@ -40,7 +40,7 @@ export default function KeywordsPage() {
 function KeywordsInner() {
   const { from, to, brand } = useFilterParams();
   const { data, loading } = useFetch<{ keywords: KeywordPerformance[]; latestCollected?: string | null }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
-  const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr">("cost");
+  const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr" | "roas" | "waste">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [tab, setTab] = useState<"keywords" | "gsc">("keywords");
 
@@ -78,6 +78,9 @@ function KeywordsInner() {
           case "clicks": return b.clicks - a.clicks;
           case "conversions": return b.conversions - a.conversions;
           case "ctr": return b.ctr - a.ctr;
+          case "roas": return b.roas - a.roas;
+          // 낭비순: 돈은 썼는데 매출이 없는 것부터. 자를 키워드를 찾는 정렬이다.
+          case "waste": return (b.convValue > 0 ? -1 : b.cost) - (a.convValue > 0 ? -1 : a.cost);
           default: return b.cost - a.cost;
         }
       })
@@ -90,11 +93,19 @@ function KeywordsInner() {
     const cost = filtered.reduce((s, k) => s + (k.cost || 0), 0);
     const clicks = filtered.reduce((s, k) => s + (k.clicks || 0), 0);
     const impressions = filtered.reduce((s, k) => s + (k.impressions || 0), 0);
+    const convValue = filtered.reduce((s, k) => s + (k.conversion_value || 0), 0);
+    // 전환매출 컬럼이 아직 없는 DB 에서는 값이 전부 undefined 로 온다. 그때 ROAS 0.00x 를
+    // 자신있게 찍으면 "성과가 없다"로 오독된다 → 측정 자체가 안 된 상태를 구분해서 표시한다.
+    const hasConvValue = filtered.some((k) => k.conversion_value !== undefined && k.conversion_value !== null);
     return {
       cost,
       clicks,
       uniqueKeywords: new Set(filtered.map((k) => k.keyword)).size,
       ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+      convValue,
+      hasConvValue,
+      roas: cost > 0 ? convValue / cost : 0,
+      wasted: filtered.reduce((s, k) => s + ((k.conversion_value || 0) === 0 ? (k.cost || 0) : 0), 0),
     };
   }, [keywords, platformFilter]);
 
@@ -199,6 +210,28 @@ function KeywordsInner() {
         <KpiCard title="총 클릭" value={formatNumber(totals.clicks)} />
         <KpiCard title="평균 CTR" value={formatPercent(totals.ctr)} />
       </div>
+      {/* 성과(ROAS) 행. 전환매출 없이는 '어떤 키워드가 돈을 벌었나'를 판단할 수 없다. */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5">
+        <KpiCard
+          size="compact"
+          title="전환매출"
+          value={totals.hasConvValue ? formatCurrency(totals.convValue) : "—"}
+          confidence={totals.hasConvValue ? undefined : { level: "unmeasurable", note: "전환매출 미수집 — keyword_performance.conversion_value 컬럼 추가 필요" }}
+        />
+        <KpiCard
+          size="compact"
+          title="ROAS"
+          value={totals.hasConvValue ? `${totals.roas.toFixed(2)}x` : "—"}
+          confidence={totals.hasConvValue ? undefined : { level: "unmeasurable", note: "전환매출이 없어 계산 불가" }}
+        />
+        <KpiCard
+          size="compact"
+          title="매출 0 키워드 비용"
+          value={totals.hasConvValue ? formatCurrency(totals.wasted) : "—"}
+          subtitle={totals.hasConvValue ? "자를 후보" : undefined}
+          confidence={totals.hasConvValue ? undefined : { level: "unmeasurable", note: "전환매출이 없어 판별 불가" }}
+        />
+      </div>
 
       {/* 필터 */}
       <div className="flex flex-wrap items-center gap-4">
@@ -234,6 +267,8 @@ function KeywordsInner() {
           <option value="clicks">클릭순</option>
           <option value="conversions">전환순</option>
           <option value="ctr">CTR순</option>
+          <option value="roas">ROAS순</option>
+          <option value="waste">낭비순 (매출 0, 비용 큰 것)</option>
         </select>
       </div>
 
@@ -252,7 +287,9 @@ function KeywordsInner() {
                 <th className="pb-2 pr-4 text-right">클릭</th>
                 <th className="pb-2 pr-4 text-right">CTR</th>
                 <th className="pb-2 pr-4 text-right">CPC</th>
-                <th className="pb-2 text-right">전환</th>
+                <th className="pb-2 pr-4 text-right">전환</th>
+                <th className="pb-2 pr-4 text-right">전환매출</th>
+                <th className="pb-2 text-right">ROAS</th>
               </tr>
             </thead>
             <tbody>
@@ -276,12 +313,20 @@ function KeywordsInner() {
                   <td className="py-2 pr-4 text-right">{formatNumber(k.clicks)}</td>
                   <td className="py-2 pr-4 text-right">{formatPercent(k.ctr)}</td>
                   <td className="py-2 pr-4 text-right">{k.cpc > 0 ? formatCurrency(Math.round(k.cpc)) : "—"}</td>
-                  <td className="py-2 text-right">{formatNumber(k.conversions)}</td>
+                  <td className="py-2 pr-4 text-right">{formatNumber(k.conversions)}</td>
+                  <td className="py-2 pr-4 text-right">{totals.hasConvValue ? (k.convValue > 0 ? formatCurrency(k.convValue) : "0원") : "—"}</td>
+                  <td className="py-2 text-right num">
+                    {!totals.hasConvValue ? "—" : k.cost === 0 ? "—" : (
+                      <span style={{ color: k.roas >= 1 ? "var(--sig-ok)" : k.convValue === 0 ? "var(--sig-danger)" : "var(--sig-warn)" }}>
+                        {k.roas.toFixed(2)}x
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {aggregated.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-muted-foreground">
+                  <td colSpan={11} className="py-8 text-center text-muted-foreground">
                     키워드 데이터가 없습니다
                   </td>
                 </tr>
