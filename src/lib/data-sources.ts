@@ -77,6 +77,10 @@ const INACTIVE_SOURCES: Record<string, { since: string; note: string }> = {
     since: "2026-07-17",
     note: "로켓배송 전환으로 판매자 화면에서 퍼널(세션·장바구니·주문)을 볼 수 없음 (김호 확인 2026-09-15). 쿠팡 '광고비'는 계속 운영하므로 coupang_ads 는 그대로 둔다. 조회가 가능해지면 이 줄을 지운다",
   },
+  gfa_ironpet: {
+    since: "2026-09-15",
+    note: "아이언펫 GFA 집행 이력 없음. 통계시트 [I]Paid 의 GFA COST 열이 전 기간 0원(집행일 0일)이고, 네이버 광고계정 1406004 의 GFA 캠페인 8개도 전부 OFF·비용 0 (2026-09-15 양쪽 확인). 브랜드 자리는 만들어 두되 집행 전까지는 미운영. 시작하면 이 줄을 지운다",
+  },
   gfa_balancelab: {
     since: "2026-07-09",
     note: "밸런스랩 GFA 집행 중단 (2026-07-08 마지막 집행, 김호 확인 2026-09-15). 광고계정 2009261 은 2026-04-17 이후 집행 없음. 재개 시 이 목록에서 해제",
@@ -161,6 +165,7 @@ const SOURCE_DEFS: SourceDef[] = [
   // GFA 는 브랜드별 입력 주기가 달라 통합 최신일이 결측을 가림 (2026-07 사용성 리뷰) → 브랜드별 분리
   { id: "gfa_saip", label: "GFA (사입)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "saip", true) },
   { id: "gfa_nutty", label: "GFA (너티)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "nutty", true) },
+  { id: "gfa_ironpet", label: "GFA (아이언펫)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "ironpet", true) },
   { id: "gfa_balancelab", label: "GFA (밸런스랩)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "balancelab", true) },
   { id: "sales", label: "판매실적", type: "manual", metrics: ["revenue"], entry: "/settings?tab=upload", entryLabel: "판매 엑셀 업로드", fetcher: () => getLatestFromTable("daily_sales") },
   { id: "coupang_funnel", label: "쿠팡 퍼널", type: "manual", metrics: ["funnel"], entry: "/settings?tab=upload", entryLabel: "엑셀 업로드", fetcher: () => getLatestFunnelByChannel("coupang", "all", ["sessions", "impressions", "cart_adds", "purchases"]) },
