@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { INACTIVE_SOURCE_IDS } from "@/lib/data-sources";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,9 @@ export async function GET() {
 
     const salesDates = new Set((salesRes.data || []).map((r) => r.date));
     const coupangAdsDates = new Set((adsRes.data || []).filter((r) => r.channel === "coupang_ads" && Number(r.spend ?? 0) > 0).map((r) => r.date));
-    const gfaDates = new Set((adsRes.data || []).filter((r) => r.channel === "gfa" && Number(r.spend ?? 0) > 0).map((r) => r.date));
+    // GFA 는 0원 행도 '입력됨'으로 센다. 자동 수집 경로 네 곳이 전부 0을 건너뛰므로
+    // 0원 행 = 사람이 "그날은 집행 0이었다"고 넣은 기록이다. (data-sources.ts 의 countZeroRows 주석 참고)
+    const gfaDates = new Set((adsRes.data || []).filter((r) => r.channel === "gfa").map((r) => r.date));
     const metaDates = new Set((adsRes.data || []).filter((r) => r.channel === "meta").map((r) => r.date));
     const googleDates = new Set((adsRes.data || []).filter((r) => r.channel === "google_pmax" || r.channel.startsWith("ga4_")).map((r) => r.date));
     // 카페24 퍼널: GA4 자동수집과 수기입력이 같은 행(cafe24) — 수기 전용 필드에 값이 있어야 입력된 것
@@ -51,6 +54,15 @@ export async function GET() {
       (funnelRes.data || []).filter((r) => r.channel === "coupang" && hasVal(r, ["sessions", "impressions", "cart_adds", "purchases"])).map((r) => r.date)
     );
 
+    // ★ 운영을 멈춘 소스는 결측으로 세지 않는다.
+    //   data-status 는 INACTIVE_SOURCES 를 보고 '미운영'으로 표시하는데 이 라우트는 몰라서,
+    //   2026-05-14 에 끈 구글 광고가 30일 내내 "구글광고 미입력"으로 찍혔다(2026-09-15 확인).
+    //   같은 원장을 두 화면이 따로 해석하던 문제다. 이제 한쪽만 고치면 양쪽이 같이 움직인다.
+    const off = (sourceId: string) => INACTIVE_SOURCE_IDS.has(sourceId);
+    // GFA 는 이 라우트가 브랜드를 구분하지 않는다(channel=gfa 통합). 세 브랜드가 전부
+    // 미운영일 때만 건너뛴다. 하나라도 집행 중이면 결측 판정은 살아 있어야 한다.
+    const gfaAllOff = off("gfa_nutty") && off("gfa_saip") && off("gfa_balancelab");
+
     const gaps: { date: string; missing: string[] }[] = [];
     const missingSales: string[] = [];
     const missingGfa: string[] = [];
@@ -62,13 +74,13 @@ export async function GET() {
     for (const date of days) {
       const missing: string[] = [];
       if (!salesDates.has(date)) { missing.push("판매실적"); missingSales.push(date); }
-      if (!metaDates.has(date)) missing.push("메타광고");
-      if (!googleDates.has(date)) missing.push("구글광고");
-      if (!gfaDates.has(date)) { missing.push("GFA"); missingGfa.push(date); }
-      if (!coupangAdsDates.has(date)) { missing.push("쿠팡광고보고서"); missingCoupangAds.push(date); }
-      if (!coupangFunnelDates.has(date)) { missing.push("쿠팡퍼널"); missingCoupangFunnel.push(date); }
-      if (!cafe24Dates.has(date)) { missing.push("카페24퍼널"); missingCafe24.push(date); }
-      if (!ssDates.has(date)) { missing.push("스마트스토어퍼널"); missingSmartstore.push(date); }
+      if (!off("meta_ads") && !metaDates.has(date)) missing.push("메타광고");
+      if (!off("google_ads") && !googleDates.has(date)) missing.push("구글광고");
+      if (!gfaAllOff && !gfaDates.has(date)) { missing.push("GFA"); missingGfa.push(date); }
+      if (!off("coupang_ads") && !coupangAdsDates.has(date)) { missing.push("쿠팡광고보고서"); missingCoupangAds.push(date); }
+      if (!off("coupang_funnel") && !coupangFunnelDates.has(date)) { missing.push("쿠팡퍼널"); missingCoupangFunnel.push(date); }
+      if (!off("cafe24_funnel") && !cafe24Dates.has(date)) { missing.push("카페24퍼널"); missingCafe24.push(date); }
+      if (!off("smartstore_ironpet") && !ssDates.has(date)) { missing.push("스마트스토어퍼널"); missingSmartstore.push(date); }
       if (missing.length > 0) gaps.push({ date, missing });
     }
 

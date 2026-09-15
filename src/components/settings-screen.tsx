@@ -247,14 +247,23 @@ function ManualRowTable({
 /* ── 데이터 수집 현황 ── */
 interface SourceStatus { id: string; label: string; type: "auto" | "manual"; latestDate: string | null; ok: boolean; status?: string; lastSync?: string | null }
 
-// 하트비트 결합 3-상태: 🟢정상 / 🟡집행0(수집됨,활동없음) / 🔴연결끊김 / ⚪미입력
+/**
+ * 소스 상태 배지.
+ *
+ * ★ 이 표의 키는 /api/data-status 가 실제로 내리는 값과 같아야 한다.
+ *   예전 키(no_activity / disconnected / stale_manual)가 남아 있어서 API 가 보내는
+ *   broken · input_needed · inactive 가 전부 폴백(ok)으로 떨어졌다. 즉 수집이 끊긴
+ *   소스도 화면엔 🟢정상으로 보였다(2026-09-15 확인). 모르는 값은 초록으로 봐주지 않고
+ *   물음표로 드러낸다 — 감시 장치가 조용히 고장나는 게 제일 나쁘다.
+ */
 const STATUS_BADGE: Record<string, { icon: string; label: string; text: string }> = {
   ok: { icon: "🟢", label: "정상", text: "" },
-  no_activity: { icon: "🟡", label: "집행0 (수집됨)", text: "text-amber-600" },
-  disconnected: { icon: "🔴", label: "연결 끊김", text: "text-red-600 dark:text-red-400" },
-  stale_manual: { icon: "⚪", label: "미입력", text: "text-muted-foreground" },
+  broken: { icon: "🔴", label: "수집 끊김", text: "text-red-600 dark:text-red-400" },
+  input_needed: { icon: "⚪", label: "미입력", text: "text-muted-foreground" },
+  inactive: { icon: "🟡", label: "미운영", text: "text-amber-600" },
 };
-const sBadge = (status?: string) => STATUS_BADGE[status || "ok"] || STATUS_BADGE.ok;
+const UNKNOWN_BADGE = { icon: "❓", label: "상태 불명", text: "text-amber-600" };
+const sBadge = (status?: string) => (status ? STATUS_BADGE[status] || UNKNOWN_BADGE : UNKNOWN_BADGE);
 
 function DataStatusPanel({ refreshKey }: { refreshKey?: number }) {
   const [sources, setSources] = useState<SourceStatus[]>([]);

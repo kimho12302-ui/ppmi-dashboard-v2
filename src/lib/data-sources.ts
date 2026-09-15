@@ -63,10 +63,19 @@ export type MetricKey = "adSpend" | "roas" | "revenue" | "funnel";
  * 미운영 소스. 고장이 아니라 "애초에 안 돌린다".
  * 여기서 빼면 다시 빨간 경고로 돌아온다. 재개하면 이 목록에서 지운다.
  */
+/**
+ * 운영을 안 하는 소스. '미입력(할 일)'이 아니라 '미운영'으로 표시한다.
+ * ★ 여기 없으면 집행을 안 해도 매일 "입력 안 했다"고 뜬다. 집행을 멈췄으면 여기 적는다.
+ *   재개할 때는 해당 줄을 지우면 된다.
+ */
 const INACTIVE_SOURCES: Record<string, { since: string; note: string }> = {
   google_ads: {
     since: "2026-05-14",
     note: "구글 애즈 미집행 (2026-05-14 마지막 집행). GA4 광고비 익스포트(ga4_campaigns)도 같이 멈춤. 재개 시 이 목록에서 해제",
+  },
+  gfa_balancelab: {
+    since: "2026-07-09",
+    note: "밸런스랩 GFA 집행 중단 (2026-07-08 마지막 집행, 김호 확인 2026-09-15). 광고계정 2009261 은 2026-04-17 이후 집행 없음. 재개 시 이 목록에서 해제",
   },
 };
 
@@ -96,9 +105,24 @@ async function getLatestFunnelByChannel(
   return data?.[0]?.date || null;
 }
 
-/** 광고비도 마찬가지로 0원 행을 '입력됨'으로 세지 않는다. */
-async function getLatestSpendByChannel(channel: string, brand?: string): Promise<string | null> {
-  let q = supabase.from("daily_ad_spend").select("date").eq("channel", channel).gt("spend", 0);
+/**
+ * 광고비 소스의 최신 입력일.
+ *
+ * 기본은 0원 행을 '입력됨'으로 세지 않는다 (쿠팡 광고 업로드처럼 빈 날짜가 0으로 깔릴 수 있어서).
+ *
+ * @param countZeroRows GFA 전용. GFA 는 DB에 쓰는 경로 네 곳이 **전부** 0원을 건너뛴다
+ *   (import_sheet_gfa_to_db `cost<=0: continue`, reverse_sync_paid 동일, sync_ho_dashboard `gfa_cost>0`,
+ *   push_bl_gfa 는 아웃바운드). 그래서 GFA 의 0원 행은 사람이 폼으로 직접 넣은 것뿐이고,
+ *   그건 '집행이 없었음을 확인했다'는 기록이다. 그걸 안 세면 집행을 멈춘 기간 내내
+ *   "입력 안 했다"가 뜨고, 0을 아무리 넣어도 사라지지 않는다(2026-09-15 확인).
+ */
+async function getLatestSpendByChannel(
+  channel: string,
+  brand?: string,
+  countZeroRows = false
+): Promise<string | null> {
+  let q = supabase.from("daily_ad_spend").select("date").eq("channel", channel);
+  if (!countZeroRows) q = q.gt("spend", 0);
   if (brand) q = q.eq("brand", brand);
   const { data } = await q.order("date", { ascending: false }).limit(1);
   return data?.[0]?.date || null;
@@ -131,9 +155,9 @@ const SOURCE_DEFS: SourceDef[] = [
   // Manual — API 가 없어서 사람이 넣는 게 정상 운영이다. 고장이 아니다.
   { id: "coupang_ads", label: "쿠팡 광고비", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=upload", entryLabel: "엑셀 업로드", fetcher: () => getLatestSpendByChannel("coupang_ads") },
   // GFA 는 브랜드별 입력 주기가 달라 통합 최신일이 결측을 가림 (2026-07 사용성 리뷰) → 브랜드별 분리
-  { id: "gfa_saip", label: "GFA (사입)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "saip") },
-  { id: "gfa_nutty", label: "GFA (너티)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "nutty") },
-  { id: "gfa_balancelab", label: "GFA (밸런스랩)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "balancelab") },
+  { id: "gfa_saip", label: "GFA (사입)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "saip", true) },
+  { id: "gfa_nutty", label: "GFA (너티)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "nutty", true) },
+  { id: "gfa_balancelab", label: "GFA (밸런스랩)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "balancelab", true) },
   { id: "sales", label: "판매실적", type: "manual", metrics: ["revenue"], entry: "/settings?tab=upload", entryLabel: "판매 엑셀 업로드", fetcher: () => getLatestFromTable("daily_sales") },
   { id: "coupang_funnel", label: "쿠팡 퍼널", type: "manual", metrics: ["funnel"], entry: "/settings?tab=upload", entryLabel: "엑셀 업로드", fetcher: () => getLatestFunnelByChannel("coupang", "all", ["sessions", "impressions", "cart_adds", "purchases"]) },
   { id: "smartstore_ironpet", label: "스마트스토어 (아이언펫)", type: "manual", metrics: ["funnel"], entry: "/settings?tab=daily#smartstore", entryLabel: "스마트스토어 퍼널 입력", fetcher: () => getLatestFunnelByChannel("smartstore", "all", ["sessions", "subscribers", "repurchases"]) },
