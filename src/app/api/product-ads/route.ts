@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { expandBrands } from "@/lib/brand-groups";
+import { masterByPid } from "@/lib/product-master";
 
 /**
  * 제품(상품) 단위 광고 성과.
@@ -28,6 +29,21 @@ export async function GET(req: NextRequest) {
 
     const rows = await fetchAll(q);
 
+    // 같은 기간 실제 판매. 제품 정본(상품번호 → 판매 제품명)으로 광고와 잇는다.
+    // 플랫폼 신고 전환매출은 매체마다 같은 주문을 자기 기여로 세서 실매출을 넘는다.
+    // 제품 단위에서도 마찬가지라, 실판매를 같이 보여줘야 판단이 된다.
+    let sq = supabase.from("product_sales").select("product,brand,revenue,quantity").gte("date", from).lte("date", to);
+    if (brand !== "all") sq = sq.in("brand", expandBrands(brand));
+    const salesRows = await fetchAll(sq);
+    const salesByProduct = new Map<string, { revenue: number; quantity: number }>();
+    for (const r of salesRows as Record<string, unknown>[]) {
+      const k = String(r.product);
+      const cur = salesByProduct.get(k) || { revenue: 0, quantity: 0 };
+      cur.revenue += Number(r.revenue) || 0;
+      cur.quantity += Number(r.quantity) || 0;
+      salesByProduct.set(k, cur);
+    }
+
     // 상품 단위로 기간 합산.
     const map = new Map<string, {
       product_id: string; product_name: string; brand: string; lineup: string | null;
@@ -49,8 +65,22 @@ export async function GET(req: NextRequest) {
     }
 
     const products = Array.from(map.values())
-      .map((p) => ({ ...p, roas: p.spend > 0 ? p.conversion_value / p.spend : 0 }))
+      .map((p) => {
+        const m = masterByPid(p.product_id);
+        const sale = m ? salesByProduct.get(m.product) : undefined;
+        return {
+          ...p,
+          roas: p.spend > 0 ? p.conversion_value / p.spend : 0,
+          // 정본으로 이어붙인 실제 판매. 상품번호가 시트에 없으면 null 로 두고
+          // 화면이 '연결 안 됨'과 '판매 0'을 구분해 말할 수 있게 한다.
+          salesProduct: m?.product ?? null,
+          actualRevenue: m ? (sale?.revenue ?? 0) : null,
+          actualQuantity: m ? (sale?.quantity ?? 0) : null,
+          actualRoas: m && p.spend > 0 ? (sale?.revenue ?? 0) / p.spend : null,
+        };
+      })
       .sort((a, b) => b.spend - a.spend);
+    const linkedCount = products.filter((p) => p.salesProduct !== null).length;
 
     // 라인업(밸런스랩 검사 제품) 합산. 펫 브랜드는 lineup 이 null 이라 빠진다.
     const lineMap = new Map<string, { lineup: string; brand: string; spend: number; conversion_value: number }>();
@@ -65,7 +95,7 @@ export async function GET(req: NextRequest) {
       .map((l) => ({ ...l, roas: l.spend > 0 ? l.conversion_value / l.spend : 0 }))
       .sort((a, b) => b.spend - a.spend);
 
-    return NextResponse.json({ available: true, products, lineups, latestDate: rows.length ? (rows as Record<string, unknown>[]).reduce((m, r) => (String(r.date) > m ? String(r.date) : m), "") : null });
+    return NextResponse.json({ available: true, products, lineups, linkedCount, latestDate: rows.length ? (rows as Record<string, unknown>[]).reduce((m, r) => (String(r.date) > m ? String(r.date) : m), "") : null });
   } catch (error) {
     // ★ 테이블이 아직 없을 때(마이그레이션 미실행)는 500 이 아니라 available:false 로 내린다.
     //   화면이 '데이터 없음'과 '아직 준비 안 됨'을 구분해서 말할 수 있어야 한다.

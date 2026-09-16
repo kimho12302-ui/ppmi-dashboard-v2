@@ -1,0 +1,2365 @@
+{
+ "generated_from": "상품 목록",
+ "by_smartstore_pid": {
+  "12138498319": {
+   "code": "P000000P",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "카놉틱",
+   "coupang_pid": ""
+  },
+  "12138640450": {
+   "code": "P000000R",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "프로키온",
+   "coupang_pid": ""
+  },
+  "12138688283": {
+   "code": "P000000S",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "오메가3",
+   "coupang_pid": ""
+  },
+  "12138711156": {
+   "code": "P000000U",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "바나퀸 조인트",
+   "coupang_pid": ""
+  },
+  "12138788510": {
+   "code": "P000000Y",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "베가",
+   "coupang_pid": ""
+  },
+  "12138874295": {
+   "code": "P000000Z",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "판크레타",
+   "coupang_pid": ""
+  },
+  "12838158080": {
+   "code": "P00000BC",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "스몰브리드 오리 1.5kg",
+   "coupang_pid": ""
+  },
+  "13236905940": {
+   "code": "P00000BE",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "스몰브리드 연어 1.5kg",
+   "coupang_pid": ""
+  },
+  "12838730485": {
+   "code": "P00000BG",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "스몰브리드 치킨 1.5kg",
+   "coupang_pid": ""
+  },
+  "13236952010": {
+   "code": "P00000BH",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "스몰브리드 청어 1.5kg",
+   "coupang_pid": ""
+  },
+  "12205312449": {
+   "code": "P00000CK",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "냠 단호박",
+   "coupang_pid": "15713541593"
+  },
+  "12962316927": {
+   "code": "P00000CQ_11",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "엔세스트럴 캣 닭고기 석류 5kg",
+   "coupang_pid": ""
+  },
+  "12967807797": {
+   "code": "P00000CQ_6",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "프라임 캣 멧돼지 사과 50g",
+   "coupang_pid": ""
+  },
+  "12967684732": {
+   "code": "P00000CQ_7",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "프라임 캣 닭고기 석류 50g",
+   "coupang_pid": ""
+  },
+  "12837592746": {
+   "code": "P00000CR_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 독 청어&오렌지 미니 100g 5개",
+   "coupang_pid": ""
+  },
+  "12962952074": {
+   "code": "P00000CR_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 독 청어&오렌지 미니 7kg",
+   "coupang_pid": ""
+  },
+  "12962934042": {
+   "code": "P00000CR_3",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 독 청어&오렌지 미니 100g",
+   "coupang_pid": ""
+  },
+  "12867501128": {
+   "code": "P00000CS_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 유리너리 오리 50g 5개",
+   "coupang_pid": ""
+  },
+  "12868128194": {
+   "code": "P00000CS_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 유리너리 오리 5kg",
+   "coupang_pid": ""
+  },
+  "12376500782": {
+   "code": "P00000CU",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "에너젯바",
+   "coupang_pid": "15758153426"
+  },
+  "12963860740": {
+   "code": "P00000CX",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 연어 열대과일 미니 알갱이 5kg",
+   "coupang_pid": ""
+  },
+  "12638140546": {
+   "code": "P00000CZ",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "펌킨 독 닭고기&석류 미니 바이트 2.5kg",
+   "coupang_pid": ""
+  },
+  "12679027737": {
+   "code": "P00000CO_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "화이트 독 농어&스피룰리나 미니 알갱이 100g 5개 강아지 사료 맛보기",
+   "coupang_pid": ""
+  },
+  "12963031268": {
+   "code": "P00000CY_5",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 캣 닭고기 열대과일 50g 고양이 샘플",
+   "coupang_pid": ""
+  },
+  "12963791628": {
+   "code": "P00000CX_3",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 연어 열대과일 미니 알갱이 1.5Kg",
+   "coupang_pid": ""
+  },
+  "12962158952": {
+   "code": "P00000CS_3",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 유리너리 오리 50g",
+   "coupang_pid": ""
+  },
+  "12963083851": {
+   "code": "P00000CY_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 돼지고기 열대과일 미니 알갱이 100g 샘플",
+   "coupang_pid": ""
+  },
+  "12967786600": {
+   "code": "P00000CQ_13",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "프라임 캣 멧돼지 사과 1.5kg 고양이 사료",
+   "coupang_pid": ""
+  },
+  "12962786330": {
+   "code": "P00000CP_6",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "캣 대구 오렌지 1.5kg 고양이 사료",
+   "coupang_pid": ""
+  },
+  "12963072941": {
+   "code": "P00000CY_3",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 돼지고기 열대과일 미니 알갱이 1.5KG",
+   "coupang_pid": ""
+  },
+  "13553973867": {
+   "code": "P00000BG_1",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "스몰브리드",
+   "product": "고네이티브 스몰브리드 치킨 4kg 브로콜리 감자",
+   "coupang_pid": ""
+  },
+  "13553908737": {
+   "code": "P00000BG_2",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "스몰브리드",
+   "product": "고네이티브 스몰브리드 오리 4kg 강아지 프리미엄 사료",
+   "coupang_pid": ""
+  },
+  "13637207527": {
+   "code": "P00000CZ_05",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 펌킨 독 닭고기 석류 미니 알갱이 100g 5개",
+   "coupang_pid": ""
+  },
+  "13554036510": {
+   "code": "P00000BG_3",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "스몰브리드",
+   "product": "고네이티브 스몰브리드 연어 4kg 시금치 생강 강아지 프리미엄 사료",
+   "coupang_pid": ""
+  },
+  "13630727479": {
+   "code": "P000000Z_1",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "레이앤이본 닥터레이 프라피스 강아지 구강 스프레이 기관지",
+   "coupang_pid": ""
+  },
+  "13698189880": {
+   "code": "O00000AA",
+   "category": "사료",
+   "brand_ko": "오리젠",
+   "brand": "saip",
+   "lineup": "스몰브리드",
+   "product": "독 사료 1.8kg 강아지 사료 칠면조 닭고기",
+   "coupang_pid": ""
+  },
+  "13694766555": {
+   "code": "V00000AA_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "처방식 독 울트라하이포 50g",
+   "coupang_pid": ""
+  },
+  "13688133094": {
+   "code": "V00000AC",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "처방식 독 가스트로인테스티널 2kg 위장 소화 건강",
+   "coupang_pid": ""
+  },
+  "13694747362": {
+   "code": "V00000AD_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 레날 50g 강아지 신부전 신장 관리",
+   "coupang_pid": ""
+  },
+  "13553759738": {
+   "code": "P00000BG_4",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "스몰브리드",
+   "product": "고네이티브 스몰브리드 청어 4kg 강아지 사료 면역력",
+   "coupang_pid": ""
+  },
+  "13688160436": {
+   "code": "V00000AE",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 카디악 2kg 심장 건강 관리",
+   "coupang_pid": ""
+  },
+  "13688138679": {
+   "code": "V00000AD",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 레날 2kg 강아지 신부전 신장 관리",
+   "coupang_pid": ""
+  },
+  "13688145083": {
+   "code": "V00000AF",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 스트루바이트 2kg 강아지 결석관리",
+   "coupang_pid": ""
+  },
+  "13697866509": {
+   "code": "V00000AH_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 오베시티 50g 다이어트 당뇨",
+   "coupang_pid": ""
+  },
+  "13703320898": {
+   "code": "O00000AB",
+   "category": "사료",
+   "brand_ko": "오리젠",
+   "brand": "saip",
+   "lineup": "식스피쉬",
+   "product": "오리젠6 식스피쉬 독 사료 2kg 강아지 사료 단백질 미네랄",
+   "coupang_pid": ""
+  },
+  "12963004054": {
+   "code": "P00000CY_6",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 트로피컬 캣 닭고기 열대과일 1.5kg 고양이 사료",
+   "coupang_pid": ""
+  },
+  "12565240183": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 펌킨 멧돼지&사과 미니 알갱이 미니바이트 7kg 대용량 사료",
+   "coupang_pid": ""
+  },
+  "13718224431": {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "스트레스 제로껌 2개",
+   "coupang_pid": ""
+  },
+  "12962080906": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 퀴노아 독 오리 코코넛 강황 미니 알갱이 2.5kg 피부 피모 관리",
+   "coupang_pid": ""
+  },
+  "12205200709": {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "너티 강아지 닭가슴살 수제간식 바삭칩 개과자 쿠키 닭가슴살, 80g, 1개",
+   "coupang_pid": ""
+  },
+  "13720034045": {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "너티 강아지 파우치 퓨레 짜먹는간식 연어맛 스틱간식 360g, 2개",
+   "coupang_pid": ""
+  },
+  "13718313925": {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "냠 단호박 2개",
+   "coupang_pid": ""
+  },
+  "13718263649": {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "바삭 닭가슴살 3개",
+   "coupang_pid": ""
+  },
+  "12663584455": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "[맛보기샘플] 고네이티브 스몰브리드 독 연어 치킨 오리 청어 40g 4종 세트",
+   "coupang_pid": ""
+  },
+  "13718416338": {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "에너젯바 2개",
+   "coupang_pid": ""
+  },
+  "13718263648": {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "바삭 닭가슴살 2개",
+   "coupang_pid": ""
+  },
+  "12962736191": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 오션 독 대구&오렌지 미디움 알갱이 100g 강아지 사료",
+   "coupang_pid": ""
+  },
+  "13718224432": {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "스트레스 제로껌 3개",
+   "coupang_pid": ""
+  },
+  "13718313926": {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "냠 단호박 3개",
+   "coupang_pid": ""
+  },
+  "13718416339": {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "에너젯바 3개",
+   "coupang_pid": ""
+  },
+  "12844746020": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 오션 독 대구&오렌지 미디움 알갱이 12kg 강아지 사료 대용량",
+   "coupang_pid": ""
+  },
+  "12962298998": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 엔세스트럴 캣 닭고기 석류 50g 고양이 당뇨 사료",
+   "coupang_pid": ""
+  },
+  "12962308987": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 엔세스트럴 캣 닭고기 석류 50g 5개 고양이 당뇨 사료",
+   "coupang_pid": ""
+  },
+  "12962357346": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 엔세스트럴 독 닭고기 석류 미니 알갱이 7kg 대용량 사료",
+   "coupang_pid": ""
+  },
+  "13687656059": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 울트라하이포 2kg 알러지 아토피",
+   "coupang_pid": ""
+  },
+  "13697818070": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 스트루바이트 50g 강아지 결석관리",
+   "coupang_pid": ""
+  },
+  "13697830912": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 옥살레이트 50g 비뇨계 건강 관리",
+   "coupang_pid": ""
+  },
+  "13697887391": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 카디악 50g 심장 건강 관리",
+   "coupang_pid": ""
+  },
+  "12844510457": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 오션 독 대구&오렌지 미니 알갱이 7kg 강아지 대용량 사료",
+   "coupang_pid": ""
+  },
+  "13521780534": {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 엔세스트럴 독 닭고기 석류 미니 알갱이 2.5kg 강아지 사료",
+   "coupang_pid": ""
+  }
+ },
+ "items": [
+  {
+   "code": "P000000L",
+   "category": "헬스케어",
+   "brand_ko": "아이언펫",
+   "brand": "ironpet",
+   "lineup": "",
+   "product": "반려견 영양분석 키트",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000M",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "마그네타 미니",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000N",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "코르카",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000O",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "바나퀸 소프트젤",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000P",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "카놉틱",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000Q",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "후코이카",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000R",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "프로키온",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000S",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "오메가3",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000T",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "마그네타",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000U",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "바나퀸 조인트",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000Y",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "베가",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000Z",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "판크레타",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BC",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "스몰브리드 오리 1.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BE",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "스몰브리드 연어 1.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BF",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "[맛보기샘플] 고네이티브독 연어 치킨 오리 청어 40g 4종",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BG",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "스몰브리드 치킨 1.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BH",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "스몰브리드 청어 1.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BS",
+   "category": "사료",
+   "brand_ko": "테라카니스",
+   "brand": "saip",
+   "lineup": "",
+   "product": "그레인프리 치킨과 파스닙 200g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BV",
+   "category": "사료",
+   "brand_ko": "테라카니스",
+   "brand": "saip",
+   "lineup": "",
+   "product": "라이트 치킨과 애호박 400g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BW",
+   "category": "사료",
+   "brand_ko": "테라카니스",
+   "brand": "saip",
+   "lineup": "",
+   "product": "라이트 칠면조와 샐러리 400g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CE",
+   "category": "사료",
+   "brand_ko": "테라카니스",
+   "brand": "saip",
+   "lineup": "",
+   "product": "퍼피 치킨과 호박 200g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CJ",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "바삭 닭가슴살",
+   "coupang_pid": "15713490825"
+  },
+  {
+   "code": "P00000CK",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "냠 단호박",
+   "coupang_pid": "15713541593"
+  },
+  {
+   "code": "P00000CK_1",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "냠 단호박_낱개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CK_2",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "바삭! 닭가슴살 * 3개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CM",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "사운드시리즈 냠+바삭",
+   "coupang_pid": "15847714233"
+  },
+  {
+   "code": "P00000CM_2",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "사운드시리즈 냠2+바삭1",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CM_3",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "사운드시리즈 냠1+바삭2",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CM_4",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "사운드시리즈 냠2+바삭2",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CM_5",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "",
+   "product": "크리스마스 선물세트",
+   "coupang_pid": "15914712735"
+  },
+  {
+   "code": "P00000CM_6",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "",
+   "product": "설날 선물세트",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CO",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "화이트 독 농어&스피룰리나 미니 알갱이 2kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CO_0",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "화이트 독 농어&스피룰리나 미니 알갱이 100g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CP",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 독 대구&오렌지 미니알갱이 2.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CP_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 독 대구&오렌지 미디움알갱이 12kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CP_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 독 대구&오렌지 미니알갱이 7kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CP_4",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 독 대구&오렌지 미니알갱이 100g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CP_5",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 캣 대구&오렌지 5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "펌킨 독 멧돼지&사과 미니알갱이 2.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_0",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "펌킨 독 멧돼지&사과 미니알갱이 100g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "펌킨 독 멧돼지&사과 미니알갱이 7kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_10",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "앤세스트럴 캣 닭고기 석류 50g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_11",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "엔세스트럴 캣 닭고기 석류 5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "펌킨 독 멧돼지&사과 미디움 알갱이 12kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_4",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "펌킨 독 멧돼지&사과 미니알갱이 100g 5개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_5",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "멧돼지&사과+대구&오렌지 100g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_6",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "프라임 캣 멧돼지 사과 50g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_7",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "프라임 캣 닭고기 석류 50g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_8",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "프라임 캣 닭고기 석류 5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_9",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "프라임 캣 닭고기 석류 1.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CR",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 청어&오렌지 미니알갱이 2.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CR_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 독 청어&오렌지 미니 100g 5개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CR_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 독 청어&오렌지 미니 7kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CR_3",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 독 청어&오렌지 미니 100g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CS",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 유리너리 오리 1.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CS_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 유리너리 오리 50g 5개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CS_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 유리너리 오리 5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CS_5",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 오리&브로콜리 50g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CT",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "굿모닝퓨레",
+   "coupang_pid": "15955667196"
+  },
+  {
+   "code": "P00000CT_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 오리 브로콜리 5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CT_3",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 독 오리 브로콜리 미니 2.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CT_4",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 독 오리 코코넛 강황 미디움 2.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CU",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "에너젯바",
+   "coupang_pid": "15758153426"
+  },
+  {
+   "code": "P00000CV",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "스트레스제로껌",
+   "coupang_pid": "15758167743"
+  },
+  {
+   "code": "P00000CV_1",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "스트레스제로껌 2개",
+   "coupang_pid": "15713541593"
+  },
+  {
+   "code": "P00000CW",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "하루루틴시리즈 3종",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CX",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 연어 열대과일 미니 알갱이 5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CX_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 연어 열대과일 미니 알갱이 100g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CY",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 돼지고기 열대과일 미디움 알갱이 10kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CY_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 돼지고기 열대과일 미니 5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CZ",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "펌킨 독 닭고기&석류 미니 바이트 2.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CZ_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "펌킨 독 닭고기 석류 미디움 알갱이 12kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CZ_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "앤세스트럴 독 닭고기&석류 미니 바이트 2.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CZ_3",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "앤세스트럴 독 닭고기&석류 미디움 12kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CZ_4",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "앤세스트럴 독 닭고기&석류 미니 바이트 7kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000TK01",
+   "category": "사료",
+   "brand_ko": "테라카니스",
+   "brand": "saip",
+   "lineup": "",
+   "product": "하이포알러젠 캥거루와 파스닙 400g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CO_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "화이트 독 농어&스피룰리나 미니 알갱이 100g 5개 강아지 사료 맛보기",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CV_2",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "스트레스제로껌 3개",
+   "coupang_pid": "16078441649"
+  },
+  {
+   "code": "P00000CV_3",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "스트레스제로껌 4개",
+   "coupang_pid": "16095905818"
+  },
+  {
+   "code": "P00000CY_5",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 캣 닭고기 열대과일 50g 고양이 샘플",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CX_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 연어 열대과일 미디움 알갱이 10kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0002",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "큐모발검사 중금속",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0003",
+   "category": "하루가꿈",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "맞춤영양제",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G2",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "조유경",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_3",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "큐모발검사 뉴트리션 + 종이결과지",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_2",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "큐모발검사 뉴트리션 + 맞춤 영양제",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_4",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "큐모발검사 뉴트리션 + 맞춤 영양제 + 종이결과지",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G1",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "더에르고 3차",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0002_1",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "큐모발검사 중금속 + 종이결과지",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0002_2",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "큐모발검사 미네랄",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0006",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "종이결과지",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0008",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "큐타액호르몬검사",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0008_1",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "큐타액호르몬검사 + 종이결과지",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "심수",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "우아띵 2차",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "여울맘",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "도다미네",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "신림댁",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "유니맘",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G3",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "듀얼홀릭",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G4",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "리리맘",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CX_3",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 연어 열대과일 미니 알갱이 1.5Kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CS_3",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 유리너리 오리 50g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000DA",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "덴탈 트릿 하이포알러제닉 포크 60g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000DB",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "강아지 덴탈 트릿 레날 60g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CT_5",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 유리너리 오리 브로콜리 미니 100g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G5",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "율윤이네",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CY_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 돼지고기 열대과일 미니 알갱이 100g 샘플",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CR_5",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 캣 청어 오렌지 5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G6",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "코루비",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G7",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "키키맘",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G8",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "도다미네2차",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G9",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "채코치",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G10",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "찐하트",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CM_7",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "",
+   "product": "4종 맛보기 세트",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G11",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "아임박선생",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CR_4",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "오션 캣 청어&오렌지 1.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CT_7",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "캣 오리 브로콜리 아스파라거스 1.5kg",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G12",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "우아띵",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_12",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "엔세스트럴 캣 닭고기 석류 1.5kg 고양이 당뇨 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G13",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "서하네",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000DD",
+   "category": "간식",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "강아지 덴탈 트릿 조인트 60g 관절 하드 덴탈껌",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000DE",
+   "category": "간식",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "강아지 덴탈 트릿 스트루바이트 60g 결석 덴탈껌",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_13",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "프라임 캣 멧돼지 사과 1.5kg 고양이 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CP_6",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "캣 대구 오렌지 1.5kg 고양이 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CS_6",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "퀴노아 캣 오리 브로콜리 아스파라거스 50g 5개 중성화 체중관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G14",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "제니마망",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000DF",
+   "category": "간식",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "강아지 덴탈 트릿 오베시티 60g 비만 하드 덴탈껌",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G15",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "유리티지",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CT_6",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "독 오리 브로콜리 미니 100g 5개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CY_3",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "트로피컬 독 돼지고기 열대과일 미니 알갱이 1.5KG",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BG_1",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "스몰브리드",
+   "product": "고네이티브 스몰브리드 치킨 4kg 브로콜리 감자",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CT_8",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 퀴노아 독 오리 코코넛 강황 미디움 알갱이 100g 강아지 피부 피모",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BG_2",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "스몰브리드",
+   "product": "고네이티브 스몰브리드 오리 4kg 강아지 프리미엄 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CZ_05",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 펌킨 독 닭고기 석류 미니 알갱이 100g 5개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BG_3",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "스몰브리드",
+   "product": "고네이티브 스몰브리드 연어 4kg 시금치 생강 강아지 프리미엄 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CT_9",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 퀴노아 독 오리 코코넛 강황 미디움 알갱이 100g 5개 피부 피모 관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000Z_1",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "레이앤이본 닥터레이 프라피스 강아지 구강 스프레이 기관지",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CQ_14",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 프라임 캣 멧돼지 사과 5kg 고양이 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G16",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "도치맘",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G17",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "아하맘",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P000000Z_2",
+   "category": "영양제",
+   "brand_ko": "닥터레이",
+   "brand": "saip",
+   "lineup": "",
+   "product": "레이앤이본 닥터레이 안타레스 강아지 종양 영양제 항산화제",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G18",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "떠아니네",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G19",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "찬우맘",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0001_G20",
+   "category": "밸런스랩",
+   "brand_ko": "공동구매",
+   "brand": "balancelab",
+   "lineup": "마샤홈",
+   "product": "큐모발검사 뉴트리션",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AA",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 울트라하이포 2kg 강아지 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "YSIET0010",
+   "category": "밸런스랩",
+   "brand_ko": "자체판매",
+   "brand": "balancelab",
+   "lineup": "",
+   "product": "큐음식물 과민증 검사 식단관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "O00000AA",
+   "category": "사료",
+   "brand_ko": "오리젠",
+   "brand": "saip",
+   "lineup": "스몰브리드",
+   "product": "독 사료 1.8kg 강아지 사료 칠면조 닭고기",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CJ_3",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "바삭! 닭가슴살 * 4개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AB_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "처방식 독 인테스티널 울트라케어 로우팻 50g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AA_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "처방식 독 울트라하이포 50g",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AC",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "처방식 독 가스트로인테스티널 2kg 위장 소화 건강",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CK_3",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "단호박 고구마 양갱 부드러운 노견 간식 부드러운 수제 영양간식 고구마+단호박, 640g, 4개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AA_2",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "처방식 독 울트라하이포 12kg 알러지 아토피 대용량",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AD_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 레날 50g 강아지 신부전 신장 관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000BG_4",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "스몰브리드",
+   "product": "고네이티브 스몰브리드 청어 4kg 강아지 사료 면역력",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AC_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 가스트로인테스티널 50g 소화 건강",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AE",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 카디악 2kg 심장 건강 관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AD",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 레날 2kg 강아지 신부전 신장 관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AF",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 스트루바이트 2kg 강아지 결석관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000DG",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 강아지 덴탈 트릿 가스트로인테스티널 60g 강아지 간식",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AG",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 옥살레이트 2kg 비뇨계 건강 관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "V00000AH_1",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 오베시티 50g 다이어트 당뇨",
+   "coupang_pid": ""
+  },
+  {
+   "code": "O00000AB",
+   "category": "사료",
+   "brand_ko": "오리젠",
+   "brand": "saip",
+   "lineup": "식스피쉬",
+   "product": "오리젠6 식스피쉬 독 사료 2kg 강아지 사료 단백질 미네랄",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CA",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "게더",
+   "product": "게더 앤드레스 밸리 50g + 비건 프리에이커 치킨 50g 강아지 사료 샘플",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CB",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "나우",
+   "product": "나우 독 프레쉬 굿 그레이비 스몰 40g 강아지 사료 샘플",
+   "coupang_pid": ""
+  },
+  {
+   "code": "P00000CY_6",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 트로피컬 캣 닭고기 열대과일 1.5kg 고양이 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 펌킨 멧돼지&사과 미니 알갱이 미니바이트 7kg 대용량 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "스트레스 제로껌 2개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 퀴노아 독 오리 코코넛 강황 미니 알갱이 2.5kg 피부 피모 관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "너티 강아지 닭가슴살 수제간식 바삭칩 개과자 쿠키 닭가슴살, 80g, 1개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "너티 강아지 파우치 퓨레 짜먹는간식 연어맛 스틱간식 360g, 2개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "냠 단호박 2개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "바삭 닭가슴살 3개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "고네이티브",
+   "brand": "saip",
+   "lineup": "",
+   "product": "[맛보기샘플] 고네이티브 스몰브리드 독 연어 치킨 오리 청어 40g 4종 세트",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "에너젯바 2개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "바삭 닭가슴살 2개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 오션 독 대구&오렌지 미디움 알갱이 100g 강아지 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "스트레스 제로껌 3개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "사운드",
+   "product": "냠 단호박 3개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "간식",
+   "brand_ko": "너티",
+   "brand": "nutty",
+   "lineup": "하루루틴",
+   "product": "에너젯바 3개",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 오션 독 대구&오렌지 미디움 알갱이 12kg 강아지 사료 대용량",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 엔세스트럴 캣 닭고기 석류 50g 고양이 당뇨 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 엔세스트럴 캣 닭고기 석류 50g 5개 고양이 당뇨 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 엔세스트럴 독 닭고기 석류 미니 알갱이 7kg 대용량 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 울트라하이포 2kg 알러지 아토피",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 스트루바이트 50g 강아지 결석관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 옥살레이트 50g 비뇨계 건강 관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "벳라이프",
+   "product": "파미나 벳라이프 처방식 독 카디악 50g 심장 건강 관리",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 오션 독 대구&오렌지 미니 알갱이 7kg 강아지 대용량 사료",
+   "coupang_pid": ""
+  },
+  {
+   "code": "",
+   "category": "사료",
+   "brand_ko": "파미나",
+   "brand": "saip",
+   "lineup": "N&D",
+   "product": "파미나 N&D 엔세스트럴 독 닭고기 석류 미니 알갱이 2.5kg 강아지 사료",
+   "coupang_pid": ""
+  }
+ ]
+}

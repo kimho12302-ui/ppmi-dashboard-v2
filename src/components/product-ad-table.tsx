@@ -15,6 +15,10 @@ interface ProductAdRow {
   conversions: number;
   conversion_value: number;
   roas: number;
+  salesProduct: string | null;
+  actualRevenue: number | null;
+  actualQuantity: number | null;
+  actualRoas: number | null;
 }
 interface LineupRow { lineup: string; brand: string; spend: number; conversion_value: number; roas: number }
 
@@ -28,7 +32,7 @@ interface LineupRow { lineup: string; brand: string; spend: number; conversion_v
  */
 export function ProductAdTable({ from, to, brand }: { from: string; to: string; brand: string }) {
   const { data, loading } = useFetch<{
-    available: boolean; products: ProductAdRow[]; lineups: LineupRow[]; reason?: string;
+    available: boolean; products: ProductAdRow[]; lineups: LineupRow[]; linkedCount?: number; reason?: string;
   }>(`/api/product-ads?from=${from}&to=${to}&brand=${brand}`);
 
   if (loading) {
@@ -65,18 +69,23 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
   }
 
   const totalSpend = products.reduce((s, p) => s + p.spend, 0);
-  const wasted = products.reduce((s, p) => s + (p.conversion_value === 0 ? p.spend : 0), 0);
+  // ★ 신고 전환매출이 아니라 **실매출** 0 을 기준으로 센다. 신고는 부풀어 있어
+  //   "신고 0" 이 실제로는 팔린 경우가 있고, 그 반대도 있다.
+  const wasted = products.reduce((s, p) => s + (p.actualRevenue === 0 ? p.spend : 0), 0);
 
   return (
     <Card><CardContent className="p-4">
       <div className="flex items-baseline justify-between gap-2 flex-wrap mb-3">
         <h3 className="font-semibold text-sm">
-          제품별 광고 성과 <span className="text-xs text-muted-foreground font-normal">GFA 상품 단위 · 전환매출은 플랫폼 신고 기준</span>
+          제품별 광고 성과 <span className="text-xs text-muted-foreground font-normal">
+            GFA 상품 단위 · 실매출은 판매 원장 기준
+            {typeof data?.linkedCount === "number" && ` · 판매 연결 ${data.linkedCount}/${products.length}종`}
+          </span>
         </h3>
         {wasted > 0 && (
           <span className="stamp px-2 py-1 rounded border"
                 style={{ color: "var(--sig-danger)", backgroundColor: "var(--sig-danger-surface)", borderColor: "var(--sig-danger-border)" }}>
-            매출 0 제품에 {formatCurrency(wasted)} ({Math.round(wasted / totalSpend * 100)}%)
+            실매출 0 제품에 {formatCurrency(wasted)} ({Math.round(wasted / totalSpend * 100)}%)
           </span>
         )}
       </div>
@@ -104,8 +113,10 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
               <th className="text-right py-2 font-medium">광고비</th>
               <th className="text-right py-2 font-medium">클릭</th>
               <th className="text-right py-2 font-medium">전환</th>
-              <th className="text-right py-2 font-medium">전환매출</th>
-              <th className="text-right py-2 font-medium">ROAS</th>
+              <th className="text-right py-2 font-medium">신고 전환매출</th>
+              <th className="text-right py-2 font-medium">신고 ROAS</th>
+              <th className="text-right py-2 font-medium">실매출</th>
+              <th className="text-right py-2 font-medium">실 ROAS</th>
             </tr>
           </thead>
           <tbody>
@@ -116,9 +127,20 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
                 <td className="py-2 text-right num">{formatNumber(p.clicks)}</td>
                 <td className="py-2 text-right num">{formatNumber(p.conversions)}</td>
                 <td className="py-2 text-right num">{formatCurrency(p.conversion_value)}</td>
-                <td className="py-2 text-right num font-medium"
-                    style={{ color: p.roas >= 1 ? "var(--sig-ok)" : p.conversion_value === 0 ? "var(--sig-danger)" : "var(--sig-warn)" }}>
+                <td className="py-2 text-right num text-muted-foreground">
                   {p.spend > 0 ? `${p.roas.toFixed(2)}x` : "—"}
+                </td>
+                {/* 상품번호가 시트에 없으면 '연결 안 됨'(—). 연결됐는데 0이면 진짜 안 팔린 것. */}
+                <td className="py-2 text-right num">
+                  {p.actualRevenue === null
+                    ? <span className="text-muted-foreground" title="상품 목록 시트 G열에 상품번호가 없습니다">미연결</span>
+                    : formatCurrency(p.actualRevenue)}
+                </td>
+                <td className="py-2 text-right num font-medium"
+                    style={p.actualRoas === null ? undefined
+                      : { color: p.actualRoas >= 1 ? "var(--sig-ok)" : p.actualRevenue === 0 ? "var(--sig-danger)" : "var(--sig-warn)" }}>
+                  {p.actualRoas === null ? <span className="text-muted-foreground">—</span>
+                    : p.spend > 0 ? `${p.actualRoas.toFixed(2)}x` : "—"}
                 </td>
               </tr>
             ))}
