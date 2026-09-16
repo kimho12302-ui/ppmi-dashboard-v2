@@ -11,6 +11,7 @@ import { BRAND_LABELS, AD_CHANNEL_COLORS } from "@/lib/types";
 import { bucketize, GRAN_LABELS, type Gran } from "@/lib/bucket";
 import { StoreDetailChart } from "@/components/store-detail-chart";
 import { SectionHeading } from "@/components/ui/section";
+import { ProductAdTable } from "@/components/product-ad-table";
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 // 브랜드 종합 페이지 (2026-08): 사이드바 브랜드 클릭 시 진입.
@@ -300,7 +301,11 @@ function BrandInner({ brand }: { brand: string }) {
         </Card>
       </div>
 
-      {/* 제품별 성과 */}
+      <SectionHeading eyebrow="Products" title="제품" note="왼쪽은 판매 원장(매출), 아래는 광고 원장(광고비·ROAS)" />
+      {/* 제품별 광고 성과 — 광고 원장(ad_product_performance) 기준 */}
+      <ProductAdTable from={from} to={to} brand={brand} />
+
+      {/* 제품별 성과 — 판매 원장(product_sales) 기준 */}
       <Card>
         <CardContent className="p-4">
           <h3 className="font-semibold text-sm mb-3">제품별 성과 (TOP 15)</h3>
