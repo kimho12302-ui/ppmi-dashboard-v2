@@ -3,6 +3,9 @@ import { supabase } from "@/lib/supabase";
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "";
+// 발송 흔적용 의사 소스명. 관제판(L4.6 보고)이 이 행을 읽어 "보고가 실제로 나갔나"를 판정한다.
+// sync_heartbeat 를 상태 저장소로 재사용하는 방식은 watchdog 라우트의 watchdog_manual_alert 와 같다.
+const REPORT_SOURCE = "daily_report";
 
 function fmt(n: number) {
   return Math.round(n).toLocaleString("ko-KR");
@@ -11,16 +14,45 @@ function pct(n: number) {
   return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
 }
 
-async function sendTelegram(text: string) {
+// 성공 여부를 돌려준다. 예전에는 던지지도 돌려주지도 않아서 발송 실패가 조용히 묻혔다.
+async function sendTelegram(text: string): Promise<{ ok: boolean; why: string }> {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
     console.warn("Telegram env not set");
-    return;
+    return { ok: false, why: "env_missing" };
   }
-  await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, parse_mode: "HTML" }),
-  });
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, parse_mode: "HTML" }),
+    });
+    return res.ok ? { ok: true, why: "" } : { ok: false, why: `http_${res.status}` };
+  } catch {
+    return { ok: false, why: "fetch_failed" };
+  }
+}
+
+// 발송 흔적 남기기. 심박 기록이 실패해도 보고 자체를 되돌리지 않는다.
+// supabase-js 는 DB 오류를 던지지 않고 error 로 돌려주므로 try/catch 만으로는 못 잡는다.
+async function writeReportHeartbeat(dateStr: string, revenue: number, sent: { ok: boolean; why: string }) {
+  const now = new Date().toISOString();
+  try {
+    const { error } = await supabase.from("sync_heartbeat").upsert(
+      {
+        source: REPORT_SOURCE,
+        last_run: now,
+        ...(sent.ok ? { last_success: now } : {}),
+        ok: sent.ok,
+        rows_written: sent.ok ? 1 : 0,
+        latest_data_date: dateStr,
+        note: sent.ok ? `revenue=${Math.round(revenue)}` : `telegram_${sent.why}`,
+      },
+      { onConflict: "source" }
+    );
+    if (error) console.warn("daily_report heartbeat failed:", error.message);
+  } catch (e) {
+    console.warn("daily_report heartbeat threw:", e);
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -91,8 +123,9 @@ export async function GET(req: NextRequest) {
       `📅 이달 누계(MTD): ₩${fmt(mtdRevenue)}`,
     ].join("\n");
 
-    await sendTelegram(msg);
-    return NextResponse.json({ ok: true, date: yStr, revenue: totalRevenue });
+    const sent = await sendTelegram(msg);
+    await writeReportHeartbeat(yStr, totalRevenue, sent);
+    return NextResponse.json({ ok: true, date: yStr, revenue: totalRevenue, telegram: sent.ok });
   } catch (error) {
     console.error("Cron error:", error);
     return NextResponse.json({ error: "Failed" }, { status: 500 });
