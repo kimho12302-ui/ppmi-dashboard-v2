@@ -5,6 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { StoreDetailChart } from "@/components/store-detail-chart";
 import { KpiCard, type KpiConfidence } from "@/components/ui/kpi-card";
 import { SectionHeading } from "@/components/ui/section";
+import { AttributionGap } from "@/components/attribution-gap";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { useDataStatus } from "@/hooks/use-data-status";
@@ -627,6 +628,9 @@ function OverviewInner() {
       </div>
 
       {/* 매체별 광고비 + 판매처별 매출 — 두 축은 조인되지 않는다(매체=메타/네이버, 판매처=스마트스토어/자사몰) */}
+      <SectionHeading eyebrow="Attribution" title="광고 신고 vs 실제" note="채널 ROAS 를 더하면 실매출을 넘습니다" />
+      <AttributionGap channels={data?.channels || []} actualRevenue={kpi.revenue} adSpend={kpi.adSpend} />
+
       <SectionHeading eyebrow="Channels" title="매체와 판매처" note="두 축은 조인되지 않습니다 (매체=집행, 판매처=주문)" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>

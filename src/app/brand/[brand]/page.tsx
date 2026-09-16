@@ -12,6 +12,7 @@ import { bucketize, GRAN_LABELS, type Gran } from "@/lib/bucket";
 import { StoreDetailChart } from "@/components/store-detail-chart";
 import { SectionHeading } from "@/components/ui/section";
 import { ProductAdTable } from "@/components/product-ad-table";
+import { AttributionGap } from "@/components/attribution-gap";
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 // 브랜드 종합 페이지 (2026-08): 사이드바 브랜드 클릭 시 진입.
@@ -268,6 +269,9 @@ function BrandInner({ brand }: { brand: string }) {
           </div>
         </CardContent>
       </Card>
+
+      <SectionHeading eyebrow="Attribution" title="광고 신고 vs 실제" note="채널 ROAS 를 더하면 실매출을 넘습니다" />
+      <AttributionGap channels={dash?.channels || []} actualRevenue={kpi?.revenue || 0} adSpend={kpi?.adSpend || 0} />
 
       <SectionHeading eyebrow="Channels" title="매체와 라인업" />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

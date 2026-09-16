@@ -141,13 +141,23 @@ export async function GET(request: NextRequest) {
           // 매체비/잡비 분리: 광고비·ROAS·광고비비중·CAC는 매체비 기준(목표가 매체비라 일치). 잡비는 별도.
           adSpend: d.adSpend, // 매체비 (오버뷰·페이싱과 동일 분모)
           miscCost: d.miscCost, // 잡비 (별도 노출, 이익·MER에만 반영)
-          cv: d.cv, // 전환가치 (ROAS 계산용)
+          cv: d.cv, // 플랫폼 신고 전환매출 합 (채널별 중복 포함 — ROAS 분자로 쓰지 말 것)
           cogs: d.cogs,
           shippingCost: d.shipCost,
           profit,
           profitRate: d.revenue > 0 ? (profit / d.revenue) * 100 : 0,
-          // ★ROAS = 전환가치/매체비 (오버뷰·페이싱과 동일 정의). 매출/총마케팅비는 MER로 분리.
-          roas: d.adSpend > 0 ? d.cv / d.adSpend : 0,
+          // ★ROAS = **실매출** / 매체비. 오버뷰(api/dashboard)·페이싱과 같은 정의다.
+          //   예전엔 d.cv(플랫폼 신고 전환매출 합)를 분자로 썼는데, 주석엔 "오버뷰와 동일"이라고
+          //   적혀 있었지만 실제로는 달랐고 값이 부풀었다. 매체마다 같은 주문을 자기 기여로
+          //   신고하기 때문이다. 2026-09 실측(사입 9/3~9/14):
+          //     쇼핑광고 19,215,820 + GFA 15,992,700 + 검색광고 3,691,300 = 38,899,820
+          //     실제 판매 매출 18,417,880  → 211% 신고
+          //   그래서 2026-09 월별 ROAS 가 10.31x 로 찍혔다(실제 4.98x, 2.1배).
+          //   더 나쁜 건 방향이 일정하지 않다는 것이다 — 2월·5월은 오히려 낮게 나와서
+          //   추세 판단에도 못 쓴다. 신고값은 reportedRoas 로 따로 둔다.
+          roas: d.adSpend > 0 ? d.revenue / d.adSpend : 0,
+          reportedRevenue: d.cv,
+          reportedRoas: d.adSpend > 0 ? d.cv / d.adSpend : 0,
           mer: marketingCost > 0 ? d.revenue / marketingCost : 0,
           aov: d.orders > 0 ? d.revenue / d.orders : 0,
           adRatio: d.revenue > 0 ? (d.adSpend / d.revenue) * 100 : 0, // 광고비 비중% (매체비/매출)
@@ -177,11 +187,14 @@ export async function GET(request: NextRequest) {
       profit: summary.reduce((s, m) => s + m.profit, 0),
       cv: summary.reduce((s, m) => s + (m.cv || 0), 0),
       roas: 0 as number,
+      reportedRoas: 0 as number,
       mer: 0 as number,
       aov: 0 as number,
       profitRate: 0 as number,
     };
-    ytd.roas = ytd.adSpend > 0 ? ytd.cv / ytd.adSpend : 0; // 전환 ROAS = 전환가치/매체비 (오버뷰와 동일)
+    // 월별과 같은 정의(실매출/매체비). 신고값은 reportedRoas 로 분리.
+    ytd.roas = ytd.adSpend > 0 ? ytd.revenue / ytd.adSpend : 0;
+    ytd.reportedRoas = ytd.adSpend > 0 ? ytd.cv / ytd.adSpend : 0;
     ytd.mer = (ytd.adSpend + ytd.miscCost) > 0 ? ytd.revenue / (ytd.adSpend + ytd.miscCost) : 0; // MER = 매출/총마케팅비
     ytd.aov = ytd.orders > 0 ? ytd.revenue / ytd.orders : 0;
     ytd.profitRate = ytd.revenue > 0 ? (ytd.profit / ytd.revenue) * 100 : 0;

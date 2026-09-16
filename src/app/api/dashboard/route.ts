@@ -236,7 +236,13 @@ export async function GET(req: NextRequest) {
     }
     const channels = Array.from(channelMap.entries()).map(([channel, d]) => ({
       channel, spend: d.spend, roas: d.spend > 0 ? d.revenue / d.spend : 0,
+      // ★ 플랫폼이 '자기 덕분'이라고 신고한 매출. 채널끼리 더하면 안 된다 —
+      //   매체마다 같은 주문을 각자 자기 기여로 세기 때문에 실매출을 넘는다.
+      //   화면이 그 차이를 보여줄 수 있게 원값을 같이 내린다.
+      reportedRevenue: d.revenue,
     }));
+    // 신고 합계. 실매출과 나란히 놓으면 귀속 중복이 얼마나 되는지 바로 보인다.
+    const reportedRevenueTotal = Array.from(channelMap.values()).reduce((a, d) => a + d.revenue, 0);
 
     // ── Channel ROAS trend ──
     const chRoasMap = new Map<string, Map<string, { spend: number; cv: number }>>();
@@ -401,7 +407,7 @@ export async function GET(req: NextRequest) {
         cogs: totalCOGS, shippingCost: totalShippingCost, miscCost: totalMiscCost,
         matchedRate: totalProducts > 0 ? matchedProducts / totalProducts : 0,
       },
-      trend, channels, channelRoasTrend,
+      trend, channels, channelRoasTrend, reportedRevenueTotal,
       brandRevenue, brandRevenueTrend, brandProfit, groupRevenue, blTestLines,
       salesByChannel, topProducts,
       funnelSummary: { ...funnelSummary, convRate },
