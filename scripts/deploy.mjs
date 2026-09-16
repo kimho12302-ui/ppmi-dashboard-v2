@@ -106,7 +106,7 @@ function main() {
     console.log(`      ${BRANCH} @ ${report.commit.slice(0, 8)} (clean)`);
 
     console.log("[2/5] vercel 프로덕션 배포");
-    const deployed = sh("vercel --prod --yes");
+    const deployed = sh("vercel --prod --yes", { timeout: VERCEL_TIMEOUT_MS });
     report.deploymentUrl = extractDeploymentUrl(
       `${deployed.stdout}\n${deployed.stderr}`,
     );
@@ -118,7 +118,7 @@ function main() {
     console.log(`      ${report.deploymentUrl}`);
 
     console.log(`[3/5] alias ${ALIAS} 재지정`);
-    sh(`vercel alias set ${report.deploymentUrl} ${ALIAS}`);
+    sh(`vercel alias set ${report.deploymentUrl} ${ALIAS}`, { timeout: VERCEL_TIMEOUT_MS });
 
     console.log(`[4/5] git push origin ${BRANCH}`);
     sh(`git push origin ${BRANCH}`);

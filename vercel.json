@@ -10,10 +10,6 @@
     },
     {
       "path": "/api/watchdog",
-      "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/watchdog",
       "schedule": "0 6 * * *"
     }
   ]
