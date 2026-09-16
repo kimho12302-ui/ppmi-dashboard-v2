@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/watchdog",
-      "schedule": "30 0 * * *"
+      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/watchdog",
