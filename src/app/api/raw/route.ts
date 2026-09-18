@@ -7,6 +7,13 @@ const ALLOWED_TABLES = [
   "daily_funnel",
   "product_sales",
   "keyword_performance",
+  // 원천(raw). 2026-09-17 신설. aside 수집기가 /api/raw-ingest 로 넣는다.
+  // 사람이 손으로 넣던 것은 일별 합계뿐이었고 이쪽은 채널별·상품별·캠페인별이다.
+  // 스키마는 docs/sql/raw-sources.sql.
+  "raw_cafe24_cart",
+  "raw_smartstore_inflow",
+  "raw_smartstore_customers",
+  "raw_gfa_campaign",
 ] as const;
 
 export async function GET(req: NextRequest) {
