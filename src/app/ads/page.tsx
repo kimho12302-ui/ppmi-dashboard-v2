@@ -5,6 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
+import { AdAlerts } from "@/components/ad-alerts";
 import { CHANNEL_LABELS, CHANNEL_COLORS, type DailyAdSpend } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, formatPercent, formatRoas, isRoasUntracked, cn } from "@/lib/utils";
@@ -184,6 +185,7 @@ function AdsPageInner() {
 
   return (
     <PageShell title="광고 분석" description="매체별 광고 효율 및 ROAS">
+      <AdAlerts />
       {/* 탭 전환 */}
       <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
         {([

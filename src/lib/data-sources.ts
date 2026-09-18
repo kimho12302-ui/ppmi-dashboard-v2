@@ -151,7 +151,14 @@ interface SourceDef {
   entry?: string;
   /** 수기 입력 안내 문구. */
   entryLabel?: string;
+  /**
+   * 로컬 aside 수집기(크론 dashboard-daily-collect, 매일 07:36)가 채우는 소스. 2026-09-18 수기 입력 종료.
+   * 이 소스는 sync_heartbeat 를 쓰지 않으므로 늦을 때 원인 추정 대신 이 문구를 보인다.
+   */
+  collector?: string;
 }
+
+const ASIDE_ACTION = "aside 자동 수집(매일 07:36)이 늦음. 설정 > 일일 입력의 '자동 수집 상태'에서 원인 확인. 급하면 손 입력 가능";
 
 const SOURCE_DEFS: SourceDef[] = [
   // Auto - API
@@ -160,19 +167,20 @@ const SOURCE_DEFS: SourceDef[] = [
   { id: "ga4", label: "GA4 (카페24 세션)", type: "auto", metrics: ["funnel"], fetcher: () => getLatestFunnelByChannel("cafe24", undefined, ["sessions"]) },
   { id: "naver_sa", label: "네이버 검색광고", type: "auto", metrics: ["adSpend", "roas"], fetcher: () => getLatestByChannel("naver_search") },
   { id: "naver_shopping", label: "네이버 쇼핑광고", type: "auto", metrics: ["adSpend", "roas"], fetcher: () => getLatestByChannel("naver_shopping") },
-  // Manual — API 가 없어서 사람이 넣는 게 정상 운영이다. 고장이 아니다.
-  { id: "coupang_ads", label: "쿠팡 광고비", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=upload", entryLabel: "엑셀 업로드", fetcher: () => getLatestSpendByChannel("coupang_ads") },
+  // 아래 여섯(쿠팡 광고비·GFA 사입/너티·스마트스토어 둘·카페24 퍼널)은 2026-09-18 부터 aside 자동 수집이다(collector).
+  // 남은 manual 은 판매실적 엑셀 업로드와 미운영 소스뿐이다.
+  { id: "coupang_ads", label: "쿠팡 광고비", type: "auto", collector: "coupang-ads", metrics: ["adSpend"], entry: "/settings?tab=upload", entryLabel: "엑셀 업로드", fetcher: () => getLatestSpendByChannel("coupang_ads") },
   // GFA 는 브랜드별 입력 주기가 달라 통합 최신일이 결측을 가림 (2026-07 사용성 리뷰) → 브랜드별 분리
-  { id: "gfa_saip", label: "GFA (사입)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "saip", true) },
-  { id: "gfa_nutty", label: "GFA (너티)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "nutty", true) },
+  { id: "gfa_saip", label: "GFA (사입)", type: "auto", collector: "gfa-spend", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "saip", true) },
+  { id: "gfa_nutty", label: "GFA (너티)", type: "auto", collector: "gfa-spend", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "nutty", true) },
   { id: "gfa_ironpet", label: "GFA (아이언펫)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "ironpet", true) },
   { id: "gfa_balancelab", label: "GFA (밸런스랩)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "balancelab", true) },
   { id: "sales", label: "판매실적", type: "manual", metrics: ["revenue"], entry: "/settings?tab=upload", entryLabel: "판매 엑셀 업로드", fetcher: () => getLatestFromTable("daily_sales") },
   { id: "coupang_funnel", label: "쿠팡 퍼널", type: "manual", metrics: ["funnel"], entry: "/settings?tab=upload", entryLabel: "엑셀 업로드", fetcher: () => getLatestFunnelByChannel("coupang", "all", ["sessions", "impressions", "cart_adds", "purchases"]) },
-  { id: "smartstore_ironpet", label: "스마트스토어 (아이언펫)", type: "manual", metrics: ["funnel"], entry: "/settings?tab=daily#smartstore", entryLabel: "스마트스토어 퍼널 입력", fetcher: () => getLatestFunnelByChannel("smartstore", "all", ["sessions", "subscribers", "repurchases"]) },
-  { id: "smartstore_balancelab", label: "스마트스토어 (밸런스랩)", type: "manual", metrics: ["funnel"], entry: "/settings?tab=daily#smartstore", entryLabel: "스마트스토어 퍼널 입력", fetcher: () => getLatestFunnelByChannel("smartstore", "balancelab", ["sessions", "subscribers", "repurchases"]) },
+  { id: "smartstore_ironpet", label: "스마트스토어 (아이언펫)", type: "auto", collector: "smartstore-inflow", metrics: ["funnel"], entry: "/settings?tab=daily#smartstore", entryLabel: "스마트스토어 퍼널 입력", fetcher: () => getLatestFunnelByChannel("smartstore", "all", ["sessions", "subscribers", "repurchases"]) },
+  { id: "smartstore_balancelab", label: "스마트스토어 (밸런스랩)", type: "auto", collector: "smartstore-inflow", metrics: ["funnel"], entry: "/settings?tab=daily#smartstore", entryLabel: "스마트스토어 퍼널 입력", fetcher: () => getLatestFunnelByChannel("smartstore", "balancelab", ["sessions", "subscribers", "repurchases"]) },
   // GA4 세션과 같은 행에 저장되므로 수기 전용 필드로만 판정한다.
-  { id: "cafe24_funnel", label: "카페24 퍼널", type: "manual", metrics: ["funnel"], entry: "/settings?tab=daily#cafe24", entryLabel: "카페24 퍼널 입력", fetcher: () => getLatestFunnelByChannel("cafe24", "all", ["cart_adds", "purchases", "repurchases"]) },
+  { id: "cafe24_funnel", label: "카페24 퍼널", type: "auto", collector: "cafe24-cart", metrics: ["funnel"], entry: "/settings?tab=daily#cafe24", entryLabel: "카페24 퍼널 입력", fetcher: () => getLatestFunnelByChannel("cafe24", "all", ["cart_adds", "purchases", "repurchases"]) },
 ];
 
 // 하트비트 소스명 매핑 (고장 원인 구분용)
@@ -324,7 +332,7 @@ export async function getSourceStatuses(): Promise<{
         reason,
         action:
           status === "broken"
-            ? REASON_ACTION[reason || "unknown"]
+            ? def.collector ? ASIDE_ACTION : REASON_ACTION[reason || "unknown"]
             : status === "input_needed"
             ? def.entryLabel || "설정 > 일일 입력에서 입력"
             : null,
