@@ -10,6 +10,7 @@ import {
   ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
 import type { KeywordPerformance } from "@/lib/types";
+import { CoupangKeywordSection } from "@/components/coupang-keywords";
 
 const PLATFORM_LABELS: Record<string, string> = {
   naver_search: "네이버 검색",
@@ -42,7 +43,7 @@ function KeywordsInner() {
   const { data, loading } = useFetch<{ keywords: KeywordPerformance[]; latestCollected?: string | null }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
   const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr" | "roas" | "waste">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
-  const [tab, setTab] = useState<"keywords" | "gsc">("keywords");
+  const [tab, setTab] = useState<"keywords" | "gsc" | "coupang">("keywords");
 
   const keywords = useMemo(() => data?.keywords || [], [data]);
 
@@ -177,7 +178,8 @@ function KeywordsInner() {
         {([
           { key: "keywords", label: "키워드 분석" },
           { key: "gsc", label: "Google Search Console" },
-        ] as { key: "keywords" | "gsc"; label: string }[]).map((t) => (
+          { key: "coupang", label: "쿠팡 광고 키워드" },
+        ] as { key: "keywords" | "gsc" | "coupang"; label: string }[]).map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -192,6 +194,7 @@ function KeywordsInner() {
       </div>
 
       {tab === "gsc" && <GscSection brand={brand} from={from} to={to} />}
+      {tab === "coupang" && <CoupangKeywordSection brand={brand} from={from} to={to} />}
 
       {/* 수집 중단을 빈 화면으로 오독하지 않도록 최종 수집일을 명시한다(2026-08 리뷰).
           조회 기간보다 마지막 수집일이 앞서면 "이 기간엔 애초에 데이터가 없다"는 뜻. */}
