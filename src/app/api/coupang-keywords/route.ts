@@ -18,9 +18,11 @@ interface RawRow {
   conv_sales_1d: number;
   orders_14d: number;
   conv_sales_14d: number;
+  file: string | null;
+  read_at: string | null;
 }
 
-type Sum = Omit<RawRow, "date" | "keyword" | "placement" | "campaign">;
+type Sum = Omit<RawRow, "date" | "keyword" | "placement" | "campaign" | "file" | "read_at">;
 const METRICS: (keyof Sum)[] = ["impressions", "clicks", "spend", "orders_1d", "conv_sales_1d", "orders_14d", "conv_sales_14d"];
 const zero = (): Sum => ({ impressions: 0, clicks: 0, spend: 0, orders_1d: 0, conv_sales_1d: 0, orders_14d: 0, conv_sales_14d: 0 });
 const add = (a: Sum, r: RawRow) => { for (const k of METRICS) a[k] += Number(r[k]) || 0; };
@@ -37,15 +39,25 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const rows = await fetchAll<RawRow>(
+    const fetched = await fetchAll<RawRow>(
       supabase
         .from("raw_coupang_keyword")
-        .select("date,keyword,placement,campaign,impressions,clicks,spend,orders_1d,conv_sales_1d,orders_14d,conv_sales_14d")
+        .select("date,keyword,placement,campaign,impressions,clicks,spend,orders_1d,conv_sales_1d,orders_14d,conv_sales_14d,file,read_at")
         .gte("date", from)
         .lte("date", to)
         .order("date"),
       "row_key",
     );
+
+    // 한 날짜에 파일이 둘 이상이면(손으로 받은 맞춤 보고서 + 매일 예약 보고서) 행 구성이 달라 row_key 가
+    // 겹치지 않고 둘 다 남는다. 그대로 합치면 두 번 센다. 날짜마다 가장 늦게 읽은 파일 하나만 쓴다.
+    const latestFile = new Map<string, { file: string | null; at: string }>();
+    for (const r of fetched) {
+      const cur = latestFile.get(r.date);
+      const at = r.read_at || "";
+      if (!cur || at > cur.at) latestFile.set(r.date, { file: r.file, at });
+    }
+    const rows = fetched.filter((r) => latestFile.get(r.date)?.file === r.file);
 
     const byKeyword = new Map<string, Sum & { keyword: string; placements: Set<string>; campaigns: Set<string> }>();
     const byPlacement = new Map<string, Sum & { placement: string }>();
