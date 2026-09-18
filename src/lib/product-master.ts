@@ -27,3 +27,13 @@ export function masterByPid(productId: string | number | null | undefined): Mast
 }
 
 export const masterPidCount = Object.keys(byPid).length;
+
+/** 판매 원장 제품명 → 정본. 판매 원장(product_sales.product)과 마스터 '제품'이 98% 일치한다. */
+const byProduct = new Map<string, MasterItem>(
+  ((raw as { items?: MasterItem[] }).items || []).map((i) => [i.product, i])
+);
+
+export function masterByProduct(product: string | null | undefined): MasterItem | null {
+  if (!product) return null;
+  return byProduct.get(String(product).trim()) || null;
+}

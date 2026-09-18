@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { isGonggu, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
+import { masterByProduct } from "@/lib/product-master";
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -39,6 +40,13 @@ export async function GET(req: NextRequest) {
     const lineupKey = (r: { product: string; lineup: string | null }): string => {
       if (brand === "nutty") return r.lineup || "기타";
       if (brand === "saip") {
+        // ★ 사입은 유통 브랜드가 곧 라인업이다. 판매 원장의 lineup 은 대부분 비어 있고,
+        //   상품명에 브랜드가 안 붙는 제품이 많다("오메가3", "후코이카", "마그네타 미니").
+        //   그래서 이름 추측으로는 닥터레이 영양제 6,271,020원이 통째로 "기타"로 떨어졌다
+        //   (2026-09-18 확인, 사입 라인업 1위가 '기타'였던 원인).
+        //   제품 정본('상품 목록' 시트)의 브랜드명을 먼저 본다. 거기 다 적혀 있다.
+        const m = masterByProduct(r.product);
+        if (m?.brand_ko) return m.brand_ko;
         return r.lineup || (
           r.product.includes("파미나") ? "파미나" :
           r.product.includes("테라카니스") ? "테라카니스" :
@@ -128,10 +136,18 @@ export async function GET(req: NextRequest) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, d]) => ({ date, ...d }));
 
+    // ★ 넘침 묶음 이름이 "기타"인데, lineupKey()/제품명 자체가 "기타"일 수 있다.
+    //   사입 라인업은 "기타"가 6,271,020원으로 1위라 상위 6개에 이미 들어가는데
+    //   7종이라 넘침 "기타"가 또 붙어 키가 중복됐다. 같은 dataKey 로 막대가 두 번
+    //   그려져 툴팁에 "기타 832,300원"이 두 줄로 떴다(2026-09-18 김호 발견).
+    //   값 자체는 stackSeries 에서 이미 한 번만 합산되므로 금액은 맞았고, 키만 중복이었다.
+    const withOverflow = (keys: string[], hasMore: boolean) =>
+      Array.from(new Set(hasMore ? [...keys, "기타"] : keys));
+
     const stackKeys = {
-      channels: channelBreakdown.map(c => c.channel),
-      products: [...topProductKeys, ...(topProducts.length > TOP_N ? ["기타"] : [])],
-      lineups: [...topLineupKeys, ...(lineupBreakdown.length > TOP_N ? ["기타"] : [])],
+      channels: Array.from(new Set(channelBreakdown.map(c => c.channel))),
+      products: withOverflow(topProductKeys, topProducts.length > TOP_N),
+      lineups: withOverflow(topLineupKeys, lineupBreakdown.length > TOP_N),
     };
 
     // ── Gonggu analysis (balancelab only) — product_sales 단일 소스 ──
