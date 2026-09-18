@@ -14,6 +14,7 @@ const ALLOWED_TABLES = [
   "raw_smartstore_inflow",
   "raw_smartstore_customers",
   "raw_gfa_campaign",
+  "raw_coupang_keyword",
 ] as const;
 
 export async function GET(req: NextRequest) {

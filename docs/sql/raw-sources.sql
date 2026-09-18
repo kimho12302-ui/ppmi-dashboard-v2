@@ -85,6 +85,38 @@ create table if not exists raw_gfa_campaign (
 );
 create index if not exists raw_gfa_campaign_date_idx on raw_gfa_campaign (date);
 
+-- ── 5. 쿠팡 광고 키워드별 성과 (2026-09-18 추가) ────────────
+-- 쿠팡 "보고서 예약" 일간 보고서(구조: 캠페인 > 광고그룹 > 상품 > 키워드)의 행을 그대로 담는다.
+-- 한 행 = 날짜 × 캠페인 × 광고그룹 × 광고한 옵션 × 실제 팔린 옵션 × 노출 지면 × 키워드.
+-- 비검색 영역·외부 채널 행은 키워드가 '-' 다. 너티만 집행한다.
+-- row_key 는 위 차원을 이어 붙인 것(수집기 bin/coupang-ads-parse.py 가 만든다). 같은 날을 여러 번 받아도 덧쌓이지 않는다.
+create table if not exists raw_coupang_keyword (
+  row_key          text        primary key,
+  date             date        not null,
+  campaign_id      text,
+  campaign         text,
+  ad_group         text,
+  ad_product       text,
+  ad_option_id     text,
+  conv_product     text,
+  conv_option_id   text,
+  placement        text,
+  keyword          text,
+  impressions      bigint      default 0,
+  clicks           bigint      default 0,
+  spend            numeric     default 0,
+  orders_1d        int         default 0,
+  units_1d         int         default 0,
+  conv_sales_1d    numeric     default 0,
+  orders_14d       int         default 0,
+  units_14d        int         default 0,
+  conv_sales_14d   numeric     default 0,
+  file             text,
+  read_at          timestamptz
+);
+create index if not exists raw_coupang_keyword_date_idx on raw_coupang_keyword (date);
+create index if not exists raw_coupang_keyword_kw_idx on raw_coupang_keyword (keyword);
+
 -- ── 권한 ───────────────────────────────────────────────
 -- 대시보드는 anon 키로 붙는다(src/lib/supabase.ts). 기존 집계 테이블과 같은 조건이어야
 -- /api/raw-ingest 가 쓰고 /raw 가 읽는다.

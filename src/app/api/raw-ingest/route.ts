@@ -15,7 +15,8 @@ type Source =
   | "cafe24-cart"
   | "smartstore-inflow"
   | "smartstore-customers"
-  | "gfa-campaign";
+  | "gfa-campaign"
+  | "coupang-keyword";
 
 // 소스 → 테이블과 충돌 키. 키가 자연키라 같은 날을 여러 번 보내도 덧쌓이지 않는다.
 const TARGET: Record<Source, { table: string; onConflict: string }> = {
@@ -34,6 +35,11 @@ const TARGET: Record<Source, { table: string; onConflict: string }> = {
   "gfa-campaign": {
     table: "raw_gfa_campaign",
     onConflict: "account,date,campaign",
+  },
+  // 2026-09-18. 쿠팡 예약 일간 보고서의 키워드 행. row_key 는 수집기가 차원을 이어 붙여 만든다.
+  "coupang-keyword": {
+    table: "raw_coupang_keyword",
+    onConflict: "row_key",
   },
 };
 

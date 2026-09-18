@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     const clickCol = findCol(headers, ["클릭수", "클릭", "clicks"]);
     const spendCol = findCol(headers, ["광고비(원)", "광고비", "비용(원)", "비용", "spend", "cost"]);
     const ordersCol = findCol(headers, ["총 주문수 (1일)", "총 주문수(1일)", "주문수", "전환수", "주문수(1일)"]);
-    const convCol = findCol(headers, ["총 전환 매출액 (1일)(원)", "총 전환 매출액(1일)(원)", "전환매출액", "전환 매출액", "매출액"]);
+    const convCol = findCol(headers, ["총 전환 매출액 (1일)(원)", "총 전환 매출액(1일)(원)", "총 전환매출액(1일)", "전환매출액", "전환 매출액", "매출액"]);
 
     if (dateCol < 0 || spendCol < 0) {
       return NextResponse.json({
