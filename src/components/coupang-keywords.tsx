@@ -15,7 +15,11 @@ interface Sum {
 }
 interface KeywordRow extends Sum { keyword: string; placements: string[]; campaigns: string[] }
 interface PlacementRow extends Sum { placement: string }
-interface Resp { keywords: KeywordRow[]; placements: PlacementRow[]; total: Sum; rows: number; latestCollected: string | null; error?: string }
+interface ProductRow extends Sum { product: string; keywordCount: number }
+interface Resp {
+  keywords: KeywordRow[]; placements: PlacementRow[]; products: ProductRow[];
+  total: Sum; rows: number; latestCollected: string | null; error?: string;
+}
 
 type SortKey = "spend" | "clicks" | "conv_sales_14d" | "roas14" | "ctr";
 
@@ -29,6 +33,7 @@ export function CoupangKeywordSection({ brand, from, to }: { brand: string; from
   const { data, loading } = useFetch<Resp>(`/api/coupang-keywords?from=${from}&to=${to}`);
   const [sortBy, setSortBy] = useState<SortKey>("spend");
   const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<string | null>(null);
 
   const list = useMemo(() => {
     const rows = (data?.keywords || []).filter((k) => !query || k.keyword.includes(query));
@@ -102,6 +107,35 @@ export function CoupangKeywordSection({ brand, from, to }: { brand: string; from
             </CardContent>
           </Card>
 
+          <Card>
+            <CardContent className="p-4">
+              <h3 className="font-semibold text-sm">상품별 <span className="text-xs font-normal text-muted-foreground">캠페인 기준 · 누르면 그 상품의 키워드</span></h3>
+              <p className="text-xs text-muted-foreground mb-2">쿠팡 캠페인을 상품 하나씩 짜 두어 캠페인 이름으로 묶었습니다(앞의 &quot;로켓배송_&quot;·날짜는 뗌).</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead><tr className="text-muted-foreground border-b">
+                    <th className="text-left py-1.5 pr-2">상품</th><th className="text-right px-2">광고비</th><th className="text-right px-2">클릭</th>
+                    <th className="text-right px-2">주문 14일</th><th className="text-right px-2">전환매출 14일</th><th className="text-right px-2">ROAS 14일</th>
+                    <th className="text-right px-2">검색 키워드</th>
+                  </tr></thead>
+                  <tbody>{(data.products || []).map((p) => (
+                    <tr key={p.product} onClick={() => setPicked(picked === p.product ? null : p.product)}
+                      className={cn("border-b last:border-0 cursor-pointer hover:bg-muted/60", picked === p.product && "bg-muted")}>
+                      <td className="py-1.5 pr-2 font-medium">{picked === p.product ? "▾ " : "▸ "}{p.product}</td>
+                      <td className="text-right px-2">{formatCurrency(p.spend)}</td>
+                      <td className="text-right px-2">{formatNumber(p.clicks)}</td>
+                      <td className="text-right px-2">{formatNumber(p.orders_14d)}</td>
+                      <td className="text-right px-2">{formatCurrency(p.conv_sales_14d)}</td>
+                      <td className="text-right px-2">{pct(roas(p.conv_sales_14d, p.spend))}</td>
+                      <td className="text-right px-2">{formatNumber(p.keywordCount)}개</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+              {picked && <ProductKeywords product={picked} from={from} to={to} onClose={() => setPicked(null)} />}
+            </CardContent>
+          </Card>
+
           {waste.length > 0 && (
             <Card>
               <CardContent className="p-4">
@@ -161,6 +195,65 @@ export function CoupangKeywordSection({ brand, from, to }: { brand: string; from
           </Card>
         </>
       ) : null}
+    </div>
+  );
+}
+
+// 상품 하나를 눌렀을 때만 붙는다. 같은 API 에 product 를 주면 그 상품의 행만으로 키워드를 낸다.
+function ProductKeywords({ product, from, to, onClose }: { product: string; from: string; to: string; onClose: () => void }) {
+  const { data, loading } = useFetch<Resp>(`/api/coupang-keywords?from=${from}&to=${to}&product=${encodeURIComponent(product)}`);
+  const [sortBy, setSortBy] = useState<SortKey>("spend");
+  const rows = useMemo(() => {
+    const list = (data?.keywords || []).filter((k) => !k.keyword.startsWith("("));
+    const val = (k: KeywordRow) => sortBy === "roas14" ? roas(k.conv_sales_14d, k.spend)
+      : sortBy === "ctr" ? (k.impressions ? k.clicks / k.impressions : 0) : k[sortBy];
+    return [...list].sort((a, b) => val(b) - val(a)).slice(0, 50);
+  }, [data, sortBy]);
+  const noKw = data?.keywords.find((k) => k.keyword.startsWith("("));
+
+  return (
+    <div className="mt-3 rounded-lg border p-3 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold">{product} · 검색 키워드 상위 50</h4>
+        <div className="flex items-center gap-2">
+          <div className="flex gap-0.5 rounded-lg bg-muted p-0.5">
+            {([["spend", "광고비"], ["conv_sales_14d", "전환매출"], ["roas14", "ROAS"], ["clicks", "클릭"]] as [SortKey, string][]).map(([k, l]) => (
+              <button key={k} onClick={() => setSortBy(k)}
+                className={cn("px-2 py-1 text-xs rounded-md", sortBy === k ? "bg-card shadow-sm" : "text-muted-foreground")}>{l}</button>
+            ))}
+          </div>
+          <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">닫기</button>
+        </div>
+      </div>
+      {loading ? <p className="text-xs text-muted-foreground">불러오는 중...</p> : (
+        <>
+          {noKw && (
+            <p className="text-xs text-muted-foreground">
+              이 상품 광고비 중 {formatCurrency(noKw.spend)}은 키워드 없는 지면(비검색·외부)에서 썼습니다. 아래는 검색 지면 키워드입니다.
+            </p>
+          )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="text-muted-foreground border-b">
+                <th className="text-left py-1.5 pr-2">키워드</th><th className="text-right px-2">클릭</th><th className="text-right px-2">광고비</th>
+                <th className="text-right px-2">주문 14일</th><th className="text-right px-2">전환매출 14일</th><th className="text-right px-2">ROAS 14일</th>
+              </tr></thead>
+              <tbody>{rows.map((k) => (
+                <tr key={k.keyword} className="border-b last:border-0">
+                  <td className="py-1.5 pr-2">{k.keyword}</td>
+                  <td className="text-right px-2">{formatNumber(k.clicks)}</td>
+                  <td className="text-right px-2">{formatCurrency(k.spend)}</td>
+                  <td className="text-right px-2">{formatNumber(k.orders_14d)}</td>
+                  <td className="text-right px-2">{formatCurrency(k.conv_sales_14d)}</td>
+                  <td className="text-right px-2" style={{ color: k.spend > 0 && k.orders_14d === 0 ? "var(--sig-danger)" : undefined }}>
+                    {pct(roas(k.conv_sales_14d, k.spend))}
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }

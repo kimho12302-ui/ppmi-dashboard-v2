@@ -27,6 +27,18 @@ const METRICS: (keyof Sum)[] = ["impressions", "clicks", "spend", "orders_1d", "
 const zero = (): Sum => ({ impressions: 0, clicks: 0, spend: 0, orders_1d: 0, conv_sales_1d: 0, orders_14d: 0, conv_sales_14d: 0 });
 const add = (a: Sum, r: RawRow) => { for (const k of METRICS) a[k] += Number(r[k]) || 0; };
 
+// 상품 = 캠페인. 쿠팡 캠페인을 상품 하나씩 짜 두었고(로켓배송_제로껌_260815), 맞춤 보고서에는 상품 칸이
+// 비어 있어 캠페인 이름이 유일한 상품 단서다(2026-09-18 확인). 앞의 "로켓배송_"·날짜 조각을 떼어 묶는다.
+function productOf(campaign: string | null): string {
+  if (!campaign) return "(캠페인 없음)";
+  const name = campaign
+    .replace(/^로켓배송_/, "")
+    .replace(/^\d{6}_/, "")
+    .replace(/_\d{6}$/, "")
+    .trim();
+  return name || campaign;
+}
+
 // 비검색 영역·외부 채널 행은 키워드 칸이 '-' 다. 키워드 표에서는 한 줄로 묶어 따로 보인다.
 const NO_KEYWORD = "(키워드 없음: 비검색·외부 지면)";
 
@@ -34,6 +46,7 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
+  const product = sp.get("product"); // 주면 그 상품의 행만으로 키워드·지면을 낸다
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
     return NextResponse.json({ error: "from·to 는 YYYY-MM-DD" }, { status: 400 });
   }
@@ -57,7 +70,18 @@ export async function GET(req: NextRequest) {
       const at = r.read_at || "";
       if (!cur || at > cur.at) latestFile.set(r.date, { file: r.file, at });
     }
-    const rows = fetched.filter((r) => latestFile.get(r.date)?.file === r.file);
+    const deduped = fetched.filter((r) => latestFile.get(r.date)?.file === r.file);
+
+    // 상품 표는 항상 전체 기준. 나머지(키워드·지면·합계)는 상품을 고르면 그 상품만.
+    const byProduct = new Map<string, Sum & { product: string; keywords: Set<string> }>();
+    for (const r of deduped) {
+      const name = productOf(r.campaign);
+      const p = byProduct.get(name) || { ...zero(), product: name, keywords: new Set<string>() };
+      add(p, r);
+      if (r.keyword && r.keyword !== "-") p.keywords.add(r.keyword);
+      byProduct.set(name, p);
+    }
+    const rows = product ? deduped.filter((r) => productOf(r.campaign) === product) : deduped;
 
     const byKeyword = new Map<string, Sum & { keyword: string; placements: Set<string>; campaigns: Set<string> }>();
     const byPlacement = new Map<string, Sum & { placement: string }>();
@@ -84,6 +108,10 @@ export async function GET(req: NextRequest) {
         .map(({ placements, campaigns, ...k }) => ({ ...k, placements: [...placements], campaigns: [...campaigns] }))
         .sort((a, b) => b.spend - a.spend),
       placements: [...byPlacement.values()].sort((a, b) => b.spend - a.spend),
+      products: [...byProduct.values()]
+        .map(({ keywords, ...p }) => ({ ...p, keywordCount: keywords.size }))
+        .sort((a, b) => b.spend - a.spend),
+      product: product || null,
       total,
       rows: rows.length,
       latestCollected: latest?.[0]?.date ?? null,
