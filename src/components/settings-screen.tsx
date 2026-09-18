@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { EventManagerPanel } from "@/components/event-markers";
 import { SalesCoverage } from "@/components/sales-coverage";
 import { OpsStatusPanel } from "@/components/ops-status-panel";
+import { ManualEntries } from "@/components/manual-entries";
 
 const API = "/api/settings";
 
@@ -544,6 +545,7 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
       <DataStatusCard />
       <OpsStatusPanel section="collector" title="🤖 자동 수집 상태"
         hint="매일 07:36 화면에서 읽어 이 대시보드에 넣는 수집기입니다. 못 읽은 날은 0 대신 실패로 남깁니다." />
+      <ManualEntries />
       <OpsStatusPanel section="report" title="🗒️ 보고 상태"
         hint="일일 브리핑·주간/월간 회의록·팀 공지가 제때 나왔는지." />
 

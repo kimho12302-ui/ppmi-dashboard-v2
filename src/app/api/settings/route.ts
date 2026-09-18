@@ -181,6 +181,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { type, data, forceOverride, extra } = body;
+    // 누가 넣었나(docs/sql/entry-source.sql). aside 수집기는 body.source="aside" 를 보낸다. 없으면 사람(입력 폼).
+    const stamp = { entry_source: body.source === "aside" ? "aside" : "manual", entered_at: new Date().toISOString() };
 
     switch (type) {
       // ── 스마트스토어 퍼널 (일반 / 밸런스랩) ──
@@ -198,6 +200,7 @@ export async function POST(req: NextRequest) {
             sessions: Number(sessions) || 0,
             avg_duration: Number(avg_duration) || 0,
             repurchases: Number(repurchases) || 0,
+            ...stamp,
           },
           { onConflict: "date,brand,channel" }
         );
@@ -230,6 +233,7 @@ export async function POST(req: NextRequest) {
             cart_adds: Number(cart_adds) || 0,
             purchases: Number(purchases) || 0,
             repurchases: Number(repurchases) || 0,
+            ...stamp,
           },
           { onConflict: "date,brand,channel" }
         );
@@ -283,6 +287,7 @@ export async function POST(req: NextRequest) {
           clicks: Number(clicks) || 0,
           conversions: Number(conversions) || 0,
           conversion_value: Number(conversion_value) || 0,
+          ...stamp,
         };
 
         if (extra?.subscribers !== undefined) {

@@ -53,6 +53,9 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const brand = (formData.get("brand") as string) || "nutty";
+    // 누가 올렸나(docs/sql/entry-source.sql). 쿠팡 수집기(coupang-ads.mjs)는 source=aside 를 붙인다.
+    const entrySource = formData.get("source") === "aside" ? "aside" : "manual";
+    const enteredAt = new Date().toISOString();
 
     if (!file) {
       return NextResponse.json({ error: "파일이 필요합니다" }, { status: 400 });
@@ -147,9 +150,9 @@ export async function POST(req: NextRequest) {
 
     // 엑셀에 없던 컬럼은 payload에서 제외 → 기존 값 보존(부분 업로드가 노출/클릭/전환을 0으로 덮는 사고 방지).
     // spend는 필수 매칭 컬럼(위 검증)이라 항상 포함.
-    type AdRow = { date: string; channel: string; brand: string; spend: number; impressions?: number; clicks?: number; conversions?: number; conversion_value?: number };
+    type AdRow = { date: string; channel: string; brand: string; spend: number; entry_source: string; entered_at: string; impressions?: number; clicks?: number; conversions?: number; conversion_value?: number };
     const dbRows: AdRow[] = Array.from(dailyAgg.entries()).map(([date, d]) => {
-      const row: AdRow = { date, channel: "coupang_ads", brand, spend: Math.round(d.spend) };
+      const row: AdRow = { date, channel: "coupang_ads", brand, spend: Math.round(d.spend), entry_source: entrySource, entered_at: enteredAt };
       if (impCol >= 0) row.impressions = Math.round(d.impressions);
       if (clickCol >= 0) row.clicks = Math.round(d.clicks);
       if (ordersCol >= 0) row.conversions = Math.round(d.conversions);
