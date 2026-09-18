@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
+import { OpsStatusPanel } from "@/components/ops-status-panel";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatNumber, formatCurrency, cn } from "@/lib/utils";
 import {
@@ -104,6 +105,8 @@ function ContentInner() {
   if (byType.length === 0) {
     return (
       <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
+        <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행"
+          hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             선택한 기간에 콘텐츠 데이터가 없습니다.
@@ -115,6 +118,8 @@ function ContentInner() {
 
   return (
     <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
+      <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행"
+        hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Card>
