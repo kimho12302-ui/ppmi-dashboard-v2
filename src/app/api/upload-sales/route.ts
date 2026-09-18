@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, prefer-const */
 import { NextRequest, NextResponse } from "next/server";
-import { google } from "googleapis";
+import { google, sheets_v4 } from "googleapis";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import { triggerSheetSync } from "@/lib/github-dispatch";
@@ -79,6 +79,48 @@ function pickProductName(row: unknown[], productNameCol: number, productCodeCol:
     if (isName(s) && s.length > best.length) best = s;
   }
   return best || productCode;
+}
+
+// 통계시트 Sales 탭의 날짜 키. A열 "26년9월" + B열 "9월 4일 (금)" 의 요일 앞부분.
+function sheetDateKey(isoDate: string): string {
+  const d = new Date(isoDate + "T00:00:00");
+  const ym = `${String(d.getFullYear()).slice(2)}년${d.getMonth() + 1}월`;
+  return `${ym}|${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
+type SheetsClient = sheets_v4.Sheets;
+
+async function verifySalesSheet(sheets: SheetsClient, rows: { date: string; revenue: number }[]) {
+  const want = new Map<string, { date: string; count: number; revenue: number }>();
+  for (const r of rows) {
+    const key = sheetDateKey(r.date);
+    const cur = want.get(key) || { date: r.date, count: 0, revenue: 0 };
+    cur.count += 1;
+    cur.revenue += r.revenue;
+    want.set(key, cur);
+  }
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: STATS_SHEET_ID,
+    range: "Sales!A:J",
+    valueRenderOption: "UNFORMATTED_VALUE",
+  });
+  const got = new Map<string, { count: number; revenue: number }>();
+  for (const row of (res.data.values || []).slice(2)) {
+    const key = `${String(row[0] ?? "")}|${String(row[1] ?? "").split("(")[0].trim()}`;
+    if (!want.has(key)) continue;
+    const cur = got.get(key) || { count: 0, revenue: 0 };
+    cur.count += 1;
+    cur.revenue += Number(row[9] || 0);
+    got.set(key, cur);
+  }
+  const mismatch: { date: string; expectedRows: number; sheetRows: number; expectedRevenue: number; sheetRevenue: number }[] = [];
+  for (const [key, w] of want) {
+    const g = got.get(key) || { count: 0, revenue: 0 };
+    if (g.count !== w.count || Math.abs(g.revenue - w.revenue) >= 1) {
+      mismatch.push({ date: w.date, expectedRows: w.count, sheetRows: g.count, expectedRevenue: w.revenue, sheetRevenue: g.revenue });
+    }
+  }
+  return mismatch;
 }
 
 export async function POST(request: NextRequest) {
@@ -400,20 +442,24 @@ export async function POST(request: NextRequest) {
         // Delete existing rows for the same date
         // \u2605 \uC5F0\uC6D4(A\uC5F4)+\uC77C(B\uC5F4 \uC811\uB450) \uC815\uD655 \uB9E4\uCE6D \u2014 \uAE30\uC874 .includes()\uB294 "2\uC6D4 3\uC77C"\uC774 "12\uC6D4 3\uC77C"\uC5D0 \uBD80\uBD84\uC77C\uCE58\uD574
         //   \uC5C9\uB6B1\uD55C \uB2EC(\uBC0F \uB2E4\uB978 \uC5F0\uB3C4) \uD589\uAE4C\uC9C0 \uC0AD\uC81C\uD558\uB358 \uBC84\uADF8. A\uC5F4 \uC5F0\uC6D4 \uC77C\uCE58 + B\uC5F4 startsWith \uB85C \uAD50\uC815.
+        // \u2605 2026-09-18: \uD30C\uC77C\uC5D0 \uB4E0 \uB0A0\uC9DC \uC804\uBD80\uB97C \uC9C0\uC6B0\uACE0(\uC608\uC804\uC5D4 \uCCAB \uD589 \uB0A0\uC9DC \uD558\uB098\uB9CC), \uC9C0\uC6B0\uAE30\u00B7\uB07C\uC6B0\uAE30\u00B7\uC4F0\uAE30\uB97C
+        //   batchUpdate \uD55C \uBC88\uC73C\uB85C \uBB36\uB294\uB2E4. \uC694\uCCAD\uC744 \uB098\uB220 \uBCF4\uB0B4\uB358 \uB54C\uB294 \uC5C5\uB85C\uB4DC \uB450 \uAC1C\uAC00 \uACB9\uCE58\uBA74 \uC0AC\uC774\uC5D0 \uB07C\uC5B4\uB4E0
+        //   \uCABD\uC758 \uC0BD\uC785\uC73C\uB85C \uC904 \uBC88\uD638\uAC00 \uBC00\uB824 \uC5C9\uB6B1\uD55C \uD589\uC774 \uC9C0\uC6CC\uC9C0\uAC70\uB098 \uC548 \uC9C0\uC6CC\uC84C\uB2E4(07-11\u00B709-04 2\uBC30, 08-28\u00B708-30 \uC18C\uC2E4).
+        //   \uBB36\uC5B4\uB3C4 "\uC77D\uAE30 \u2192 \uC4F0\uAE30" \uC0AC\uC774 \uACBD\uD569\uC740 \uB0A8\uC73C\uBBC0\uB85C \uC544\uB798\uC5D0\uC11C \uB2E4\uC2DC \uC77D\uC5B4 \uAC80\uC99D\uD55C\uB2E4.
         const existingRes = await sheets.spreadsheets.values.get({
           spreadsheetId: STATS_SHEET_ID,
           range: "Sales!A:B",
         });
         const existingVals = existingRes.data.values || [];
-        const uploadDate = new Date(rows[0].date + "T00:00:00");
-        const targetYearMonth = `${String(uploadDate.getFullYear()).slice(2)}\uB144${uploadDate.getMonth() + 1}\uC6D4`;
-        const targetDateText = `${uploadDate.getMonth() + 1}\uC6D4 ${uploadDate.getDate()}\uC77C`;
+        const targetKeys = new Set(
+          [...new Set(rows.map(r => r.date))].map(sheetDateKey)
+        );
 
         const deleteRequests: any[] = [];
         for (let ri = existingVals.length - 1; ri >= 2; ri--) {
           const aVal = String(existingVals[ri]?.[0] || "");
           const bVal = String(existingVals[ri]?.[1] || "");
-          if (aVal === targetYearMonth && bVal.startsWith(targetDateText)) {
+          if (targetKeys.has(`${aVal}|${bVal.split("(")[0].trim()}`)) {
             deleteRequests.push({
               deleteDimension: {
                 range: {
@@ -427,40 +473,35 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        if (deleteRequests.length > 0) {
-          for (let di = 0; di < deleteRequests.length; di += 100) {
-            const chunk = deleteRequests.slice(di, di + 100);
-            await sheets.spreadsheets.batchUpdate({
-              spreadsheetId: STATS_SHEET_ID,
-              requestBody: { requests: chunk },
-            });
-          }
-        }
+        const toCell = (v: unknown) => typeof v === "number"
+          ? { userEnteredValue: { numberValue: v } }
+          : { userEnteredValue: { stringValue: String(v ?? "") } };
 
-        // Insert new rows at row 3
         await sheets.spreadsheets.batchUpdate({
           spreadsheetId: STATS_SHEET_ID,
           requestBody: {
-            requests: [{
-              insertDimension: {
-                range: {
-                  sheetId: SALES_SHEET_ID,
-                  dimension: "ROWS",
-                  startIndex: 2,
-                  endIndex: 2 + rowCount,
+            requests: [
+              ...deleteRequests,
+              {
+                insertDimension: {
+                  range: {
+                    sheetId: SALES_SHEET_ID,
+                    dimension: "ROWS",
+                    startIndex: 2,
+                    endIndex: 2 + rowCount,
+                  },
+                  inheritFromBefore: false,
                 },
-                inheritFromBefore: false,
               },
-            }],
+              {
+                updateCells: {
+                  start: { sheetId: SALES_SHEET_ID, rowIndex: 2, columnIndex: 0 },
+                  rows: salesSheetRows.map(r => ({ values: r.map(toCell) })),
+                  fields: "userEnteredValue",
+                },
+              },
+            ],
           },
-        });
-
-        // Write data
-        await sheets.spreadsheets.values.update({
-          spreadsheetId: STATS_SHEET_ID,
-          range: `Sales!A3:K${2 + rowCount}`,
-          valueInputOption: "RAW",
-          requestBody: { values: salesSheetRows },
         });
 
         // Format
@@ -548,6 +589,10 @@ export async function POST(request: NextRequest) {
 
         dbResults.sheetAppended = salesSheetRows.length;
         dbResults.sheetDeletedDuplicates = deleteRequests.length;
+
+        // 검증: 날짜별 행 수·매출이 방금 쓴 것과 같은지 시트를 다시 읽어 본다. 다르면 조용히 넘기지 않는다.
+        const mismatch = await verifySalesSheet(sheets, rows);
+        if (mismatch.length > 0) dbResults.sheetMismatch = mismatch;
       } catch (e) {
         dbResults.sheetError = String(e);
       }

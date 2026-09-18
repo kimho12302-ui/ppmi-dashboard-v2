@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1402,7 +1402,23 @@ function BatchUploadSection({
   const update = (id: number, patch: Partial<BatchRow>) =>
     setRows(prev => prev.map(r => r.id === id ? { ...r, ...patch } : r));
 
+  // 업로드 중 재클릭 차단. 두 번 누르면 같은 파일이 두 줄로 동시에 올라가 통계시트가 줄 번호 경합으로
+  // 깨졌다(2026-07-11·09-04 전 브랜드 2배, 08-28·08-30 스마트스토어 행 소실). state 는 재렌더 전에
+  // 두 번째 클릭을 못 막으므로 ref 로 잡는다.
+  const busyRef = useRef(false);
+  const [busy, setBusy] = useState(false);
   const uploadAll = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      await uploadPending();
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+  const uploadPending = async () => {
     for (const row of rows) {
       if (!row.file || row.status !== "pending") continue;
       update(row.id, { status: "uploading" });
@@ -1458,9 +1474,9 @@ function BatchUploadSection({
           onClick={() => setRows(prev => [...prev, makeRow(today)])}
           className="text-xs text-primary hover:underline">+ 날짜 추가</button>
         {pendingWithFile.length > 0 && (
-          <button type="button" onClick={uploadAll}
-            className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90">
-            💾 전체 업로드 ({pendingWithFile.length}건)
+          <button type="button" onClick={uploadAll} disabled={busy}
+            className="px-3 py-1.5 bg-primary text-primary-foreground rounded text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+            {busy ? "⏳ 업로드 중..." : `💾 전체 업로드 (${pendingWithFile.length}건)`}
           </button>
         )}
       </div>
@@ -1530,6 +1546,14 @@ function UploadTab() {
       let msg = `✅ ${data.parsed}건 파싱 | ${brands}`;
       if (data.unmatchedProducts?.length) {
         msg += `\n⚠️ 미등록 품목코드 ${data.totalUnmatched}개:\n${formatUnmatched(data.unmatchedProducts)}`;
+      }
+      if (data.sheetError) {
+        msg += `\n⚠️ DB 는 저장됐지만 통계시트 기록 실패: ${data.sheetError}`;
+      }
+      if (data.sheetMismatch?.length) {
+        const lines = (data.sheetMismatch as { date: string; expectedRows: number; sheetRows: number }[])
+          .map(m => `${m.date.slice(5)} 기대 ${m.expectedRows}행 · 시트 ${m.sheetRows}행`).join(", ");
+        msg += `\n⚠️ 통계시트가 DB 와 다릅니다 (${lines}). 같은 파일을 한 번 더 올리면 그 날짜가 다시 쓰입니다.`;
       }
       msg += await verifyUpload("sales");
       return { ok: true, message: msg };
