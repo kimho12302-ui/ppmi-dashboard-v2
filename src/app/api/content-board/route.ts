@@ -5,11 +5,12 @@ import { supabase } from "@/lib/supabase";
 //
 // section = naver    : 네이버 블로그 글 한 편 = 한 행. 초안 → 임시저장 → 발행 확인 단계
 //           research : 축 하나 = 한 행. 최근 7일 수집·후보·판정 수와 최근 채택 항목
+//           magazine : 펫 축 자사몰 매거진(2026-09-21 추가). 요약 1행 + 조회수 상위 10행 + 최근 60일 글
 // 로컬 content-board-push.mjs 가 계산해 섹션 단위로 통째 교체한다. 대시보드는 판정하지 않는다.
 //
 // 인증: /api/ops-status 와 같다(요청 단 인증 없음, 배포 자체가 보호 경계).
 
-const SECTIONS = ["naver", "research"] as const;
+const SECTIONS = ["naver", "research", "magazine"] as const;
 type Section = (typeof SECTIONS)[number];
 const MAX_ITEMS = 200;
 

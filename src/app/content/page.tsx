@@ -5,7 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { OpsStatusPanel } from "@/components/ops-status-panel";
 import { ThreadsCandidates } from "@/components/threads-candidates";
-import { NaverProgressBoard, ResearchFreshness } from "@/components/content-board";
+import { NaverProgressBoard, ResearchFreshness, MagazineBoard } from "@/components/content-board";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatNumber, formatCurrency, cn } from "@/lib/utils";
 import {
@@ -112,6 +112,7 @@ function ContentInner() {
         <ResearchFreshness />
         <ThreadsCandidates />
         <NaverProgressBoard />
+        <MagazineBoard />
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             선택한 기간에 콘텐츠 데이터가 없습니다.
@@ -128,6 +129,7 @@ function ContentInner() {
       <ResearchFreshness />
       <ThreadsCandidates />
       <NaverProgressBoard />
+      <MagazineBoard />
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Card>
