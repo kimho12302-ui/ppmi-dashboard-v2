@@ -37,6 +37,26 @@ function Stale({ at }: { at?: string }) {
   );
 }
 
+
+// 표가 아직 없을 때(SQL 미실행) 날 에러 문구 대신 무엇을 하면 되는지 말한다.
+// 2026-09-21: content_board 가 없어 세 칸이 통째로 안 뜨는데 화면에는 Supabase 원문만 나왔다.
+function BoardError({ what, error }: { what: string; error: string }) {
+  const missing = /Could not find the table/i.test(error);
+  return (
+    <Card>
+      <CardContent className="p-4 text-xs space-y-1">
+        <div style={{ color: "var(--sig-danger)" }}>{what}: {missing ? "표가 아직 없습니다" : error}</div>
+        {missing && (
+          <div className="text-muted-foreground">
+            Supabase SQL Editor 에 <code>docs/sql/_PENDING.sql</code> 을 한 번 실행하면 이 칸이 살아납니다.
+            그다음 볼트에서 <code>node content-board-push.mjs</code> 를 돌리면 값이 찹니다.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ---------- 네이버 진행판 ----------
 
 type Stage = "draft" | "temp_saved" | "published" | "unconfirmed";
@@ -56,7 +76,7 @@ const STAGE: Record<Stage, { text: string; color: string }> = {
 
 export function NaverProgressBoard() {
   const { rows, error } = useBoard<NaverPost | NaverRecent>("naver");
-  if (error) return <Card><CardContent className="p-4 text-xs" style={{ color: "var(--sig-danger)" }}>네이버 진행판: {error}</CardContent></Card>;
+  if (error) return <BoardError what="네이버 진행판" error={error} />;
   if (!rows) return null;
   const recent = rows.find((r) => r.item_key === "_recent")?.data as NaverRecent | undefined;
   const posts = rows.filter((r) => r.item_key !== "_recent").map((r) => r.data as NaverPost);
@@ -131,7 +151,7 @@ const todayKst = () => new Date(Date.now() + 9 * 3_600_000).toISOString().slice(
 
 export function ResearchFreshness() {
   const { rows, error } = useBoard<Axis>("research");
-  if (error) return <Card><CardContent className="p-4 text-xs" style={{ color: "var(--sig-danger)" }}>자료조사 신선도: {error}</CardContent></Card>;
+  if (error) return <BoardError what="자료조사 신선도" error={error} />;
   if (!rows) return null;
   const today = todayKst();
 
@@ -210,7 +230,7 @@ const isTop = (d: MagItem): d is MagTop => "top" in d;
 
 export function MagazineBoard() {
   const { rows, error } = useBoard<MagItem>("magazine");
-  if (error) return <Card><CardContent className="p-4 text-xs" style={{ color: "var(--sig-danger)" }}>자사몰 매거진: {error}</CardContent></Card>;
+  if (error) return <BoardError what="자사몰 매거진" error={error} />;
   if (!rows) return null;
   if (rows.length === 0) {
     return <Card><CardContent className="p-4 text-xs" style={{ color: "var(--muted-foreground)" }}>

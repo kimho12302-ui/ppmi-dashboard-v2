@@ -1,0 +1,42 @@
+-- ============================================================
+--  아직 실행 안 된 SQL 모음 · 2026-09-21 확인
+--
+--  Supabase 대시보드 > SQL Editor 에 이 파일 전체를 붙여넣고 한 번 실행하면 됩니다.
+--  여러 번 실행해도 안전합니다(전부 if not exists).
+--
+--  2026-09-21 에 실제로 조회해 확인한 결과, 아래 하나만 남았습니다.
+--    이미 적용됨: raw_cafe24_cart · raw_smartstore_inflow · raw_smartstore_customers
+--                raw_gfa_campaign · raw_coupang_keyword · raw_naver_search_term
+--                content_candidates · ops_status · daily_ad_spend.entry_source
+-- ============================================================
+
+-- ── content_board : 콘텐츠 탭 보드 ───────────────────────────
+--
+-- 이게 없어서 콘텐츠 탭의 **세 칸이 통째로 안 뜹니다.**
+--   naver    네이버 블로그 진행판 (초안 → 임시저장 → 발행 확인)
+--   research 자료조사 신선도 (축별 최근 7일 수집·후보·판정)
+--   magazine 자사몰 매거진 진행·조회수 (2026-09-21 추가)
+--
+-- 쓰는 쪽: 로컬 content-board-push.mjs → POST /api/content-board (섹션 단위 통째 교체)
+-- 보는 쪽: content 페이지
+--
+-- 왜 ops_status 와 따로 두나: ops_status 는 관제판이 section 을 통째로 갈아 끼운다.
+-- 같은 섹션을 두 곳에서 쓰면 서로 지운다. 게다가 ops_status 는 section 에 CHECK 제약이 있어
+-- 새 이름을 넣을 수 없다.
+
+create table if not exists content_board (
+  section     text        not null,
+  item_key    text        not null,
+  sort_order  int         not null default 0,
+  data        jsonb       not null default '{}'::jsonb,
+  reported_at timestamptz not null default now(),
+  primary key (section, item_key)
+);
+
+-- ── 실행 뒤 확인 ─────────────────────────────────────────────
+-- 아래가 0 행이면 정상입니다(표만 생기고 값은 로컬에서 올립니다).
+select count(*) as content_board_rows from content_board;
+
+-- 그다음 볼트에서 한 번 돌리면 값이 찹니다.
+--   cd "H:/내 드라이브/obsidian/Obsidian/Work/밸런스랩/projects/네이버블로그-자동화/_스크립트"
+--   node content-board-push.mjs

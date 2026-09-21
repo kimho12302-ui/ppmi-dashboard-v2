@@ -15,6 +15,8 @@ const ALLOWED_TABLES = [
   "raw_smartstore_customers",
   "raw_gfa_campaign",
   "raw_coupang_keyword",
+  // 2026-09-21: 표는 09-18 에 만들어졌는데 화이트리스트에 없어 /raw 에서 볼 수 없었다.
+  "raw_naver_search_term",
 ] as const;
 
 export async function GET(req: NextRequest) {
