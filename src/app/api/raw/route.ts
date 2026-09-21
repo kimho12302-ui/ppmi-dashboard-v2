@@ -38,18 +38,27 @@ export async function GET(req: NextRequest) {
 
     if (countErr) throw countErr;
 
-    // 데이터
-    const { data, error } = await supabase
+    // 데이터. 모든 표에 date 열이 있지는 않다(2026-09-21: raw_naver_search_term 이 이 정렬로 500 이 났다).
+    // 정렬이 안 되면 정렬 없이 한 번 더 본다. 표를 아예 못 보는 것보다 순서가 없는 편이 낫다.
+    let { data, error } = await supabase
       .from(table)
       .select("*")
       .order("date", { ascending: false })
       .range(offset, offset + limit - 1);
 
+    if (error) {
+      ({ data, error } = await supabase
+        .from(table)
+        .select("*")
+        .range(offset, offset + limit - 1));
+    }
     if (error) throw error;
 
     return NextResponse.json({ rows: data || [], total: count || 0 });
   } catch (error) {
-    console.error("Raw API error:", error);
-    return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });
+    // 사유를 감추지 않는다. "Failed to fetch data" 만 보면 표가 없는 건지 열이 없는 건지 알 수 없다.
+    const why = error instanceof Error ? error.message : String(error);
+    console.error("Raw API error:", table, why);
+    return NextResponse.json({ error: `조회 실패: ${why}` }, { status: 500 });
   }
 }
