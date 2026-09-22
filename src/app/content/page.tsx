@@ -5,7 +5,8 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { OpsStatusPanel } from "@/components/ops-status-panel";
 import { ThreadsCandidates } from "@/components/threads-candidates";
-import { NaverProgressBoard, ResearchFreshness, MagazineBoard } from "@/components/content-board";
+import { NaverProgressBoard, ResearchFreshness } from "@/components/content-board";
+import { MagazineBoard } from "@/components/magazine-board";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatNumber, formatCurrency, cn } from "@/lib/utils";
 import {

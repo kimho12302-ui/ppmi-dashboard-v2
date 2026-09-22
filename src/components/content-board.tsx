@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 interface Row<T> { item_key: string; data: T; reported_at: string }
 
-function useBoard<T>(section: "naver" | "research" | "magazine") {
+export function useBoard<T>(section: "naver" | "research" | "magazine") {
   const [rows, setRows] = useState<Row<T>[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // 표가 없을 때 API 가 배포에 실린 스냅샷을 준다. 어느 쪽인지 화면에 밝혀야 한다.
@@ -24,12 +24,12 @@ function useBoard<T>(section: "naver" | "research" | "magazine") {
   return { rows, error, snap };
 }
 
-const kst = (iso: string) =>
+export const kst = (iso: string) =>
   new Date(iso).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 // 보드는 하루 두 번(06시 크롤러 뒤, 09시 작성 뒤) 올라온다. 36시간 넘게 안 오면 올리는 쪽이 멈춘 것이다.
 const STALE_HOURS = 36;
-function Stale({ at }: { at?: string }) {
+export function Stale({ at }: { at?: string }) {
   if (!at) return null;
   const h = (Date.now() - new Date(at).getTime()) / 3_600_000;
   return (
@@ -42,7 +42,7 @@ function Stale({ at }: { at?: string }) {
 
 // 표가 없어 스냅샷으로 뜬 칸임을 밝힌다. 배포에 실린 값이라 크론이 다시 올려도 배포 전까지 안 바뀐다.
 // 라이브인 척하면 낡은 수치를 최신으로 읽게 된다.
-function Snap({ at }: { at: string | null }) {
+export function Snap({ at }: { at: string | null }) {
   if (at === null) return null;
   return (
     <span className="text-xs font-normal" style={{ color: "var(--sig-warn)" }}>
@@ -53,7 +53,7 @@ function Snap({ at }: { at: string | null }) {
 
 // 표가 아직 없을 때(SQL 미실행) 날 에러 문구 대신 무엇을 하면 되는지 말한다.
 // 2026-09-21: content_board 가 없어 세 칸이 통째로 안 뜨는데 화면에는 Supabase 원문만 나왔다.
-function BoardError({ what, error }: { what: string; error: string }) {
+export function BoardError({ what, error }: { what: string; error: string }) {
   const missing = /Could not find the table/i.test(error);
   return (
     <Card>
@@ -217,102 +217,6 @@ export function ResearchFreshness({ only }: { only?: "balancelab" | "pet" } = {}
             );
           })}
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------- 자사몰 매거진 (아이언펫·너티) ----------
-//
-// 2026-09-21 신설. 김호 "너티/아이언펫은 블로그 + 자사몰 매거진 다 저장되면 좋겠구먼", "상황도 바로바로".
-// 세 장부(mapping.json 원장 · published.json 실재 · 공개 게시판 조회수)를 로컬에서 맞춰 올린 것을 그린다.
-// 어긋난 행은 감추지 않는다. 2026-09 에 그 어긋남 하나가 매거진 장부를 50건 묵히고 블로그를 13일 세웠다.
-
-interface MagSummary {
-  summary: true; recent: number; windowDays: number; totalArticles: number;
-  totalViews: number; avgViews: number; mismatches: number; naverMissing: number; viewsReadAt: string | null;
-}
-interface MagTop { top: true; rank: number; articleNo: number; title: string; views: number; publish: string | null }
-interface MagRow {
-  articleNo: number; slug: string; keyword: string | null; brand: string | null; publish: string | null;
-  ledgerStatus: string | null; liveOnSite: boolean; mismatch: string | null;
-  views: number | null; viewsReadAt: string | null; naverDraft: boolean; url: string;
-}
-type MagItem = MagSummary | MagTop | MagRow;
-
-const isSummary = (d: MagItem): d is MagSummary => "summary" in d;
-const isTop = (d: MagItem): d is MagTop => "top" in d;
-
-export function MagazineBoard() {
-  const { rows, error, snap } = useBoard<MagItem>("magazine");
-  if (error) return <BoardError what="자사몰 매거진" error={error} />;
-  if (!rows) return null;
-  if (rows.length === 0) {
-    return <Card><CardContent className="p-4 text-xs" style={{ color: "var(--muted-foreground)" }}>
-      자사몰 매거진: 아직 올라온 값이 없습니다. 로컬에서 <code>content-board-push.mjs --only=magazine</code> 을 한 번 돌리면 채워집니다.
-    </CardContent></Card>;
-  }
-
-  const summary = rows.map((r) => r.data).find(isSummary);
-  const top = rows.map((r) => r.data).filter(isTop).sort((a, b) => a.rank - b.rank);
-  const recent = rows.map((r) => r.data).filter((d): d is MagRow => !isSummary(d) && !isTop(d));
-  const reportedAt = rows[0]?.reported_at;
-
-  return (
-    <Card>
-      <CardContent className="p-4 space-y-4">
-        <div className="flex items-baseline justify-between gap-2">
-          <h3 className="text-sm font-semibold">자사몰 매거진 (아이언펫·너티)</h3>
-          <Stale at={reportedAt} />
-          <Snap at={snap} />
-        </div>
-
-        {summary && (
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs">
-            <span>글 <b>{summary.totalArticles}</b>편</span>
-            <span>조회수 합 <b>{summary.totalViews.toLocaleString()}</b></span>
-            <span>편당 평균 <b>{summary.avgViews}</b></span>
-            <span>최근 {summary.windowDays}일 <b>{summary.recent}</b>편</span>
-            {summary.mismatches > 0 && (
-              <span style={{ color: "var(--sig-danger)" }}>장부 어긋남 <b>{summary.mismatches}</b>건</span>
-            )}
-            {summary.naverMissing > 0 && (
-              <span style={{ color: "var(--sig-warn)" }}>네이버 재구성 없음 <b>{summary.naverMissing}</b>편</span>
-            )}
-          </div>
-        )}
-
-        {top.length > 0 && (
-          <div>
-            <div className="text-xs font-medium mb-1" style={{ color: "var(--muted-foreground)" }}>조회수 상위 (전 기간)</div>
-            <ol className="space-y-0.5">
-              {top.map((t) => (
-                <li key={t.articleNo} className="flex gap-2 text-xs">
-                  <span className="tabular-nums w-12 text-right font-medium">{t.views.toLocaleString()}</span>
-                  <span className="tabular-nums w-20" style={{ color: "var(--muted-foreground)" }}>{t.publish || "?"}</span>
-                  <span className="truncate">{t.title}</span>
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
-
-        {recent.length > 0 && (
-          <div>
-            <div className="text-xs font-medium mb-1" style={{ color: "var(--muted-foreground)" }}>최근 발행</div>
-            <ul className="space-y-0.5">
-              {recent.map((r) => (
-                <li key={r.articleNo} className="flex gap-2 text-xs items-baseline">
-                  <span className="tabular-nums w-20" style={{ color: "var(--muted-foreground)" }}>{r.publish || "?"}</span>
-                  <span className="tabular-nums w-12 text-right">{r.views === null ? "-" : r.views.toLocaleString()}</span>
-                  <a href={r.url} target="_blank" rel="noreferrer" className="truncate hover:underline">{r.keyword || r.slug}</a>
-                  {!r.naverDraft && <span style={{ color: "var(--sig-warn)" }}>네이버 없음</span>}
-                  {r.mismatch && <span style={{ color: "var(--sig-danger)" }}>{r.mismatch}</span>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
