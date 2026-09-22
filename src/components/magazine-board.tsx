@@ -30,6 +30,7 @@ interface MagRow {
   articleNo: number; slug: string; keyword: string | null; brand: string | null; publish: string | null;
   ledgerStatus: string | null; liveOnSite: boolean; mismatch: string | null;
   views: number | null; viewsReadAt: string | null; naverDraft: boolean; url: string;
+  channels?: { naverDraft: boolean; naverSaved: boolean; threads: boolean; instagram: boolean };
 }
 type MagItem = MagSummary | MagTop | MagRow;
 
@@ -47,6 +48,40 @@ const MISMATCH_SHORT: Record<string, string> = {
 // 원천은 브랜드를 한글 이름으로 준다. 다른 화면(매출·광고 차트)과 같은 색을 쓰려고 키로 옮긴다.
 const BRAND_KEY: Record<string, string> = { "너티": "nutty", "아이언펫": "ironpet" };
 const brandColor = (b: string | null) => (b && BRAND_COLORS[BRAND_KEY[b]]) || "var(--sig-idle)";
+
+/**
+ * 한 주제가 채널마다 어디까지 갔는지 네 칸으로 보인다 (OSMU 대조).
+ * 김호 2026-09-22: "어차피 같은 주제로 osmu 하는거니까. 주제별로 각 채널 발행여부가 나오면 좋겠는데".
+ *
+ * 켜짐 = 그 채널에 흔적이 있다. 꺼짐 = 없다.
+ * 네이버는 두 단계라 글자를 나눈다. 초(초안) → 임(임시저장).
+ * **발행 여부는 여기서 말하지 않는다.** 임시저장까지만 파일로 확인되고 그다음은 사람이 누른다.
+ */
+function OsmuMarks({ c }: { c?: MagRow["channels"] }) {
+  if (!c) return null;
+  const marks: [string, boolean, string][] = [
+    ["초", c.naverDraft, "네이버 재구성 초안"],
+    ["임", c.naverSaved, "네이버 임시저장"],
+    ["쓰", c.threads, "쓰레드 원고"],
+    ["인", c.instagram, "인스타 카드"],
+  ];
+  return (
+    <span className="hidden sm:flex shrink-0 items-center gap-[3px]" aria-label="채널 진행">
+      {marks.map(([ch, on, title]) => (
+        <span
+          key={ch}
+          title={`${title}: ${on ? "있음" : "없음"}`}
+          className="grid h-[15px] w-[15px] place-items-center rounded-[3px] text-[9px] font-semibold leading-none"
+          style={on
+            ? { background: "var(--sig-ok)", color: "var(--background)" }
+            : { background: "var(--muted)", color: "var(--muted-foreground)", opacity: 0.55 }}
+        >
+          {ch}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export function MagazineBoard() {
   const { rows, error, snap } = useBoard<MagItem>("magazine");
@@ -179,7 +214,7 @@ export function MagazineBoard() {
                               {r.keyword || r.slug}
                             </span>
                             {r.mismatch && <Flag tone="danger" title={r.mismatch}>{MISMATCH_SHORT[r.mismatch] || r.mismatch}</Flag>}
-                            {!r.naverDraft && <Flag tone="warn">네이버 없음</Flag>}
+                            <OsmuMarks c={r.channels} />
                           </span>
                           <span className="hidden sm:block"><MiniBar ratio={(r.views ?? 0) / recentMax} /></span>
                           <span className="num text-right text-[11px] font-medium">
