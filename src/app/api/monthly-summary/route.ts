@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch product_sales for COGS matching
-    let cogsProdQ = supabase.from("product_sales").select("date,product,brand,quantity").gte("date", fromDate).lte("date", toDate);
+    let cogsProdQ = supabase.from("product_sales").select("date,product,brand,quantity,channel,lineup").gte("date", fromDate).lte("date", toDate);
     if (brand !== "all") cogsProdQ = cogsProdQ.in("brand", expandBrands(brand));
     const cogsProdData = await fetchAll(cogsProdQ);
 
@@ -118,10 +118,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Add COGS by month
+    //
+    // ★ 매출과 **같은 기준**으로 센다. 2026-09-22 까지는 매출에서만 형식-A 공구를 빼고
+    //   원가는 공구까지 다 더해서, 공구가 큰 달은 원가율이 100% 를 넘었다.
+    //   2026-04: 매출 32,806,368 · 원가 43,643,260 → 133%. 그 달 공구 차감액이 43,956,367 원이었다.
+    //   판 것을 매출에서 뺐으면 그 물건 값도 빼야 이익률이 뜻을 갖는다.
+    //   공구를 따로 보는 것 자체는 김호 결정(2026-06-10). 여기서는 그 결정을 원가에도 똑같이 적용한다.
     for (const ps of cogsProdData || []) {
       const m = ps.date.slice(0, 7);
       const existing = months.get(m);
       if (!existing) continue;
+      // 위에서 매출을 뺀 그 행이다. 원가도 같이 뺀다. (밸런스랩 전용 규칙 — gonggu.ts 주석 참조)
+      if (ps.brand === "balancelab" && isGongguInDailySales(ps)) continue;
       const key = `${ps.product}__${ps.brand}`;
       const unitCost = costMap.get(key) || 0;
       existing.cogs += unitCost * Number(ps.quantity || 0);
