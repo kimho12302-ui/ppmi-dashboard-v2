@@ -17,7 +17,8 @@ interface Item {
   reported_at: string;
   // brand 열이 따로 없어 metrics 안에 넣어 보낸다(ops_status 는 DDL 을 못 고친다).
   // null 이면 두 브랜드 공통 행이라 어느 쪽을 보든 나온다.
-  metrics?: { brand?: "pet" | "balancelab" | null } | null;
+  // link = 그 칸에서 실제로 일하러 가는 곳(볼트 team-board.mjs 가 실측 주소만 넣는다)
+  metrics?: { brand?: "pet" | "balancelab" | null; link?: string | null } | null;
 }
 
 const SIG: Record<Signal, { dot: string; color: string; text: string }> = {
@@ -88,19 +89,42 @@ export function OpsStatusPanel({ section, title, hint, brand }: { section: "coll
         {items.length === 0 ? (
           <p className="text-sm text-muted-foreground">표시할 항목이 없습니다.</p>
         ) : (
-          <ul className="divide-y">
+          // 한 줄이 화면 폭을 가로지르면 이름과 값이 멀어져 눈이 따라가지 못한다.
+          // 김호 2026-09-22: "가로가 너무 길어서 말이지". 그래서 좁은 칸으로 쪼갠다.
+          <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {items.map((it) => {
               const s = SIG[it.signal] || SIG.unknown;
+              const go = it.metrics?.link || null;
               return (
-                <li key={it.item_key} className="py-2 flex gap-3 items-start">
-                  <span aria-label={s.text} title={s.text} style={{ color: s.color }} className="leading-5">{s.dot}</span>
+                <li
+                  key={it.item_key}
+                  className="rounded-lg border p-2.5 flex gap-2 items-start min-w-0"
+                  style={{ borderColor: it.signal === "ok" ? undefined : s.color }}
+                >
+                  <span aria-label={s.text} title={s.text} style={{ color: s.color }} className="leading-5 shrink-0">{s.dot}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline justify-between gap-2 flex-wrap">
-                      <span className="text-sm font-medium">{it.label}</span>
-                      {it.last_at && <span className="text-xs text-muted-foreground">마지막 {it.last_at}</span>}
+                    <div className="text-sm font-medium leading-snug">{it.label}</div>
+                    {it.summary && (
+                      <p className="text-xs mt-0.5 leading-snug" style={{ color: it.signal === "ok" ? "var(--muted-foreground)" : s.color }}>
+                        {it.summary}
+                      </p>
+                    )}
+                    {it.detail && <p className="text-xs text-muted-foreground break-words mt-0.5 leading-snug">{it.detail}</p>}
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {it.last_at && <span className="text-[11px] text-muted-foreground">마지막 {it.last_at}</span>}
+                      {/* 보기만 하고 끝나지 않게, 그 일을 하는 자리로 바로 보낸다. */}
+                      {go && (
+                        <a
+                          href={go}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] underline underline-offset-2 hover:no-underline"
+                          style={{ color: "var(--primary)" }}
+                        >
+                          하러 가기 →
+                        </a>
+                      )}
                     </div>
-                    {it.summary && <p className="text-xs" style={{ color: it.signal === "ok" ? "var(--muted-foreground)" : s.color }}>{it.summary}</p>}
-                    {it.detail && <p className="text-xs text-muted-foreground break-words">{it.detail}</p>}
                   </div>
                 </li>
               );
