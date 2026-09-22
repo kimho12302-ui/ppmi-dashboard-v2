@@ -107,7 +107,7 @@ function ContentInner() {
   if (byType.length === 0) {
     return (
       <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
-        <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행"
+        <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행" brand={brand}
           hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
         <BrandBoards brand={brand} />
         <Card>
@@ -121,7 +121,7 @@ function ContentInner() {
 
   return (
     <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
-      <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행"
+      <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행" brand={brand}
         hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
       <BrandBoards brand={brand} />
       {/* KPI Cards */}

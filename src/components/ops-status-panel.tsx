@@ -15,6 +15,9 @@ interface Item {
   detail: string;
   last_at: string | null;
   reported_at: string;
+  // brand 열이 따로 없어 metrics 안에 넣어 보낸다(ops_status 는 DDL 을 못 고친다).
+  // null 이면 두 브랜드 공통 행이라 어느 쪽을 보든 나온다.
+  metrics?: { brand?: "pet" | "balancelab" | null } | null;
 }
 
 const SIG: Record<Signal, { dot: string; color: string; text: string }> = {
@@ -34,15 +37,15 @@ function ago(iso: string): string {
   return `${Math.floor(h / 24)}일 전`;
 }
 
-export function OpsStatusPanel({ section, title, hint }: { section: "collector" | "content" | "report"; title: string; hint?: string }) {
-  const [items, setItems] = useState<Item[] | null>(null);
+export function OpsStatusPanel({ section, title, hint, brand }: { section: "collector" | "content" | "report"; title: string; hint?: string; brand?: string }) {
+  const [all, setAll] = useState<Item[] | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
     fetch(`/api/ops-status?section=${section}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((d) => { if (alive) setItems(d.items || []); })
+      .then((d) => { if (alive) setAll(d.items || []); })
       .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
   }, [section]);
@@ -54,7 +57,11 @@ export function OpsStatusPanel({ section, title, hint }: { section: "collector" 
       </CardContent></Card>
     );
   }
-  if (!items) return null;
+  if (!all) return null;
+  // 브랜드를 고르면 그 브랜드 행 + 공통 행만. 전체면 다 보인다.
+  const items = brand && brand !== "all"
+    ? all.filter((i) => !i.metrics?.brand || i.metrics.brand === brand)
+    : all;
 
   const reportedAt = items[0]?.reported_at;
   const stale = reportedAt ? (Date.now() - new Date(reportedAt).getTime()) / 3_600_000 > STALE_HOURS : true;
