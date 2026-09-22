@@ -162,8 +162,10 @@ interface Axis {
 
 const todayKst = () => new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
 
-export function ResearchFreshness() {
-  const { rows, error, snap } = useBoard<Axis>("research");
+export function ResearchFreshness({ only }: { only?: "balancelab" | "pet" } = {}) {
+  const { rows: all, error, snap } = useBoard<Axis>("research");
+  // 행 하나 = 축 하나(item_key). 브랜드 칩이 고른 축만 남긴다.
+  const rows = only && all ? all.filter((r) => r.item_key === only) : all;
   if (error) return <BoardError what="자료조사 신선도" error={error} />;
   if (!rows) return null;
   const today = todayKst();

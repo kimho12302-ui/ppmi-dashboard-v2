@@ -109,10 +109,7 @@ function ContentInner() {
       <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
         <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행"
           hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
-        <ResearchFreshness />
-        <ThreadsCandidates />
-        <NaverProgressBoard />
-        <MagazineBoard />
+        <BrandBoards brand={brand} />
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
             선택한 기간에 콘텐츠 데이터가 없습니다.
@@ -126,10 +123,7 @@ function ContentInner() {
     <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
       <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행"
         hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
-      <ResearchFreshness />
-      <ThreadsCandidates />
-      <NaverProgressBoard />
-      <MagazineBoard />
+      <BrandBoards brand={brand} />
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <Card>
@@ -328,6 +322,35 @@ function ContentInner() {
         </>
       )}
     </PageShell>
+  );
+}
+
+// 보드는 브랜드마다 주인이 다르다.
+//   네이버 진행판 = 밸런스랩(04-초안 · ysiet_qhair)   자사몰 매거진 = 펫(아이언펫·너티 Cafe24)
+//   자료조사·쓰레드 = 두 축 다 있고 axis 로 갈린다
+// 위 브랜드 칩(전체/펫/밸런스랩)을 그대로 쓴다. 칩과 따로 노는 탭을 또 만들면 둘이 어긋난다.
+function BrandBoards({ brand }: { brand: string }) {
+  const showBl = brand === "all" || brand === "balancelab";
+  const showPet = brand === "all" || brand === "pet";
+  return (
+    <>
+      {showBl && (
+        <section className="space-y-3">
+          {brand === "all" && <h2 className="text-sm font-semibold">밸런스랩</h2>}
+          <ResearchFreshness only="balancelab" />
+          <ThreadsCandidates only="balancelab" />
+          <NaverProgressBoard />
+        </section>
+      )}
+      {showPet && (
+        <section className="space-y-3">
+          {brand === "all" && <h2 className="text-sm font-semibold">너티 · 아이언펫</h2>}
+          <ResearchFreshness only="pet" />
+          <ThreadsCandidates only="pet" />
+          <MagazineBoard />
+        </section>
+      )}
+    </>
   );
 }
 

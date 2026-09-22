@@ -36,7 +36,7 @@ const STATUS: Record<Status, { text: string; color: string }> = {
   archived: { text: "선택됨 · 노션 보관 완료", color: "var(--sig-ok)" },
 };
 
-export function ThreadsCandidates() {
+export function ThreadsCandidates({ only }: { only?: "balancelab" | "pet" } = {}) {
   const [week, setWeek] = useState<string | null>(null);
   const [data, setData] = useState<Resp | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +88,8 @@ export function ThreadsCandidates() {
 
   if (!data && !error) return null;
   const items = data?.items || [];
-  const axes = (["balancelab", "pet"] as const).filter((a) => items.some((i) => i.axis === a));
+  // only 가 오면 그 축만. 콘텐츠 탭이 브랜드별로 갈리면서 한 축씩 부른다.
+  const axes = (["balancelab", "pet"] as const).filter((a) => (!only || a === only) && items.some((i) => i.axis === a));
 
   return (
     <Card>
