@@ -12,9 +12,11 @@ interface PageShellProps {
   children: React.ReactNode;
   /** 필터 바 숨기기 (설정 등) */
   hideFilters?: boolean;
+  /** 브랜드 "전체" 칩을 감춘다 */
+  hideAllBrand?: boolean;
 }
 
-function PageShellInner({ title, description, children, hideFilters }: PageShellProps) {
+function PageShellInner({ title, description, children, hideFilters, hideAllBrand }: PageShellProps) {
   const { brand, preset, from, to, isCustom, setBrand, setPreset, setCustomRange } = useFilterParams();
   const pathname = usePathname();
   // ★ 데이터 상태 레일은 '입력하는 화면'에서만 띄운다 (2026-09).
@@ -54,6 +56,7 @@ function PageShellInner({ title, description, children, hideFilters }: PageShell
             from={from}
             to={to}
             isCustom={isCustom}
+            hideAllBrand={hideAllBrand}
           />
         </div>
       )}

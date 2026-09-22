@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { OpsStatusPanel } from "@/components/ops-status-panel";
@@ -67,7 +67,11 @@ export default function ContentPage() {
 }
 
 function ContentInner() {
-  const { brand, from, to } = useFilterParams();
+  const { brand: rawBrand, from, to, setBrand } = useFilterParams();
+  // 김호 2026-09-22: "콘텐츠/sns에서 전체 탭을 그냥 없애줘. 이건 같이 볼 필요가 없을 거 같음"
+  // 보드마다 주인이 다르고 섞어 놓으면 어느 브랜드 얘기인지 매번 헷갈린다. 기본은 펫.
+  const brand = rawBrand === "all" ? "pet" : rawBrand;
+  useEffect(() => { if (rawBrand === "all") setBrand("pet"); }, [rawBrand, setBrand]);
   const { data, loading } = useFetch<ContentData>(
     `/api/content-v2?from=${from}&to=${to}&brand=${brand}`
   );
@@ -94,7 +98,7 @@ function ContentInner() {
 
   if (loading) {
     return (
-      <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
+      <PageShell hideAllBrand title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i} className="animate-pulse"><CardContent className="p-4"><div className="h-8 bg-muted rounded" /></CardContent></Card>
@@ -106,7 +110,7 @@ function ContentInner() {
 
   if (byType.length === 0) {
     return (
-      <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
+      <PageShell hideAllBrand title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
         <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행" brand={brand}
           hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
         <BrandBoards brand={brand} />
@@ -120,7 +124,7 @@ function ContentInner() {
   }
 
   return (
-    <PageShell title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
+    <PageShell hideAllBrand title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
       <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행" brand={brand}
         hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
       <BrandBoards brand={brand} />

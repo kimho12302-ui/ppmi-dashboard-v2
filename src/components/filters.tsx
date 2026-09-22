@@ -14,6 +14,8 @@ interface FiltersProps {
   from?: string;
   to?: string;
   isCustom?: boolean;
+  /** 전체 칩을 감춘다. 브랜드를 섞어 보는 게 뜻이 없는 화면(콘텐츠/SNS)에서 쓴다. */
+  hideAllBrand?: boolean;
 }
 
 export function Filters({
@@ -25,12 +27,13 @@ export function Filters({
   from,
   to,
   isCustom,
+  hideAllBrand,
 }: FiltersProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 overflow-x-auto">
       {/* 브랜드 필터 — 기본은 그룹(전체/펫/밸런스랩), 사이드바에서 개별 브랜드 진입 시 활성 칩 추가 표시 */}
       <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 flex-shrink-0">
-        {BRANDS.map((b) => (
+        {BRANDS.filter((b) => !(hideAllBrand && b === "all")).map((b) => (
           <button
             key={b}
             onClick={() => onBrandChange(b)}
