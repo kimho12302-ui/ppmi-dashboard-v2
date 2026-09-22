@@ -11,15 +11,17 @@ interface Row<T> { item_key: string; data: T; reported_at: string }
 function useBoard<T>(section: "naver" | "research" | "magazine") {
   const [rows, setRows] = useState<Row<T>[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 표가 없을 때 API 가 배포에 실린 스냅샷을 준다. 어느 쪽인지 화면에 밝혀야 한다.
+  const [snap, setSnap] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
     fetch(`/api/content-board?section=${section}`, { cache: "no-store" })
       .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || String(r.status)); return d; })
-      .then((d) => { if (alive) setRows(d.items || []); })
+      .then((d) => { if (!alive) return; setRows(d.items || []); setSnap(d.source === "snapshot" ? d.generatedAt || "" : null); })
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)); });
     return () => { alive = false; };
   }, [section]);
-  return { rows, error };
+  return { rows, error, snap };
 }
 
 const kst = (iso: string) =>
@@ -37,6 +39,17 @@ function Stale({ at }: { at?: string }) {
   );
 }
 
+
+// 표가 없어 스냅샷으로 뜬 칸임을 밝힌다. 배포에 실린 값이라 크론이 다시 올려도 배포 전까지 안 바뀐다.
+// 라이브인 척하면 낡은 수치를 최신으로 읽게 된다.
+function Snap({ at }: { at: string | null }) {
+  if (at === null) return null;
+  return (
+    <span className="text-xs font-normal" style={{ color: "var(--sig-warn)" }}>
+      스냅샷{at ? ` · ${kst(at)}` : " · 아직 안 채워짐"}
+    </span>
+  );
+}
 
 // 표가 아직 없을 때(SQL 미실행) 날 에러 문구 대신 무엇을 하면 되는지 말한다.
 // 2026-09-21: content_board 가 없어 세 칸이 통째로 안 뜨는데 화면에는 Supabase 원문만 나왔다.
@@ -75,7 +88,7 @@ const STAGE: Record<Stage, { text: string; color: string }> = {
 };
 
 export function NaverProgressBoard() {
-  const { rows, error } = useBoard<NaverPost | NaverRecent>("naver");
+  const { rows, error, snap } = useBoard<NaverPost | NaverRecent>("naver");
   if (error) return <BoardError what="네이버 진행판" error={error} />;
   if (!rows) return null;
   const recent = rows.find((r) => r.item_key === "_recent")?.data as NaverRecent | undefined;
@@ -85,7 +98,7 @@ export function NaverProgressBoard() {
   return (
     <Card>
       <CardContent className="p-4 space-y-3">
-        <h3 className="font-semibold text-sm">📝 네이버 블로그 진행판 <span className="font-normal text-muted-foreground text-xs">밸런스랩 · 최근 45일 초안</span> <Stale at={rows[0]?.reported_at} /></h3>
+        <h3 className="font-semibold text-sm">📝 네이버 블로그 진행판 <span className="font-normal text-muted-foreground text-xs">밸런스랩 · 최근 45일 초안</span> <Stale at={rows[0]?.reported_at} /> <Snap at={snap} /></h3>
         <p className="text-xs text-muted-foreground">
           자동 작업이 네이버 에디터에 넣고 <b>임시저장</b>까지 합니다. 검토·발행은 사람이 합니다.
           발행은 블로그 새 글 목록에서 제목으로 확인합니다. 발행할 때 제목을 바꾸면 여기서 &quot;발행 미확인&quot;으로 남습니다.
@@ -150,7 +163,7 @@ interface Axis {
 const todayKst = () => new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
 
 export function ResearchFreshness() {
-  const { rows, error } = useBoard<Axis>("research");
+  const { rows, error, snap } = useBoard<Axis>("research");
   if (error) return <BoardError what="자료조사 신선도" error={error} />;
   if (!rows) return null;
   const today = todayKst();
@@ -158,7 +171,7 @@ export function ResearchFreshness() {
   return (
     <Card>
       <CardContent className="p-4 space-y-3">
-        <h3 className="font-semibold text-sm">🔎 자료조사 신선도 <span className="font-normal text-muted-foreground text-xs">최근 7일</span> <Stale at={rows[0]?.reported_at} /></h3>
+        <h3 className="font-semibold text-sm">🔎 자료조사 신선도 <span className="font-normal text-muted-foreground text-xs">최근 7일</span> <Stale at={rows[0]?.reported_at} /> <Snap at={snap} /></h3>
         <p className="text-xs text-muted-foreground">
           매일 06시에 논문·건강 매체를 모으고, 규칙으로 1차 후보를 줄 세운 뒤 Claude 가 원문을 읽고 채택·보류·제외를 정합니다.
           채택된 것이 블로그·쓰레드의 재료가 됩니다.
@@ -229,7 +242,7 @@ const isSummary = (d: MagItem): d is MagSummary => "summary" in d;
 const isTop = (d: MagItem): d is MagTop => "top" in d;
 
 export function MagazineBoard() {
-  const { rows, error } = useBoard<MagItem>("magazine");
+  const { rows, error, snap } = useBoard<MagItem>("magazine");
   if (error) return <BoardError what="자사몰 매거진" error={error} />;
   if (!rows) return null;
   if (rows.length === 0) {
@@ -249,6 +262,7 @@ export function MagazineBoard() {
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-sm font-semibold">자사몰 매거진 (아이언펫·너티)</h3>
           <Stale at={reportedAt} />
+          <Snap at={snap} />
         </div>
 
         {summary && (

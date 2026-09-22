@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import snapshot from "@/data/content-board/snapshot.json";
 
 // 콘텐츠 탭 보드. 2026-09-18 신설. SQL: docs/sql/content-board.sql
 //
@@ -21,8 +22,18 @@ export async function GET(req: NextRequest) {
   }
   const { data, error } = await supabase
     .from("content_board").select("*").eq("section", section).order("sort_order");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ items: data || [] });
+  if (!error) return NextResponse.json({ items: data || [], source: "db" });
+
+  // 표가 없으면 빈손으로 돌려보내지 않고 배포에 같이 실린 스냅샷을 준다.
+  // anon 키로는 표를 만들 수 없어서(DDL 불가) 표가 생기기 전까지 세 칸이 통째로 비어 있었다.
+  // 표가 생기면 위에서 끝나므로 이 길은 저절로 닫힌다. source 로 어느 쪽인지 화면에 밝힌다.
+  const sections = snapshot.sections as Record<string, unknown[]>;
+  return NextResponse.json({
+    items: sections[section] || [],
+    source: "snapshot",
+    generatedAt: snapshot.generatedAt,
+    dbError: error.message,
+  });
 }
 
 export async function POST(req: NextRequest) {

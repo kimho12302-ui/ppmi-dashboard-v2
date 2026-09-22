@@ -1,0 +1,901 @@
+{
+  "_주의": "이 파일은 손으로 고치지 않는다. 볼트 content-board-push.mjs 가 덮어쓴다.",
+  "generatedAt": "2026-09-22T00:09:20.926Z",
+  "sections": {
+    "naver": [
+      {
+        "item_key": "_recent",
+        "data": {
+          "blog": "ysiet_qhair",
+          "rssOk": true,
+          "recent": [
+            {
+              "title": "다이어트 정체기 얼굴 붓기 원인, '이것'부터 체크하세요!",
+              "url": "https://blog.naver.com/ysiet_qhair/224411376603",
+              "date": "2026-09-14"
+            },
+            {
+              "title": "지연성 알러지와 피부 염증, 음식물 과민증 검사가 필요한 이유",
+              "url": "https://blog.naver.com/ysiet_qhair/224405800856",
+              "date": "2026-09-09"
+            },
+            {
+              "title": "지연성 알러지 검사 후기, 소화불량과 피부 트러블 원인? 음식물 과민증 검사 결과와 식단 관리법",
+              "url": "https://blog.naver.com/ysiet_qhair/224400864928",
+              "date": "2026-09-04"
+            },
+            {
+              "title": "지연성 알러지 검사 결과지, 반응 항목이 많이 나왔다면? (우선순위 정하는 법)",
+              "url": "https://blog.naver.com/ysiet_qhair/224393379376",
+              "date": "2026-08-28"
+            },
+            {
+              "title": "지연성 알러지, 음식물 과민증 검사로 내 몸에 딱 맞는 식사 설명서 찾는 법!",
+              "url": "https://blog.naver.com/ysiet_qhair/224383426423",
+              "date": "2026-08-19"
+            }
+          ]
+        }
+      },
+      {
+        "item_key": "2026-09-18-brand1-checkup-vs-measurement",
+        "data": {
+          "slug": "2026-09-18-brand1-checkup-vs-measurement",
+          "title": "건강검진 항목은 무엇을 보나, 그리고 검진표에 칸이 없는 것",
+          "draftDate": "2026-09-18",
+          "notion": "https://app.notion.com/p/38a6a1f8d88b81179c59f2d0c8121c41",
+          "stage": "temp_saved",
+          "tempSave": {
+            "ok": true,
+            "at": "2026-09-18T10:23:39.510Z",
+            "note": null
+          },
+          "published": null
+        }
+      },
+      {
+        "item_key": "2026-09-17-igg1-what-is-igg-test",
+        "data": {
+          "slug": "2026-09-17-igg1-what-is-igg-test",
+          "title": "큐음식물과민증검사란? 90종 IgG 식품 패널 가이드",
+          "draftDate": "2026-09-17",
+          "notion": null,
+          "stage": "draft",
+          "tempSave": null,
+          "published": null
+        }
+      },
+      {
+        "item_key": "2026-08-12-igg9-retest-cycle",
+        "data": {
+          "slug": "2026-08-12-igg9-retest-cycle",
+          "title": "IgG 재검사 주기, 언제 다시 받아보면 좋을까",
+          "draftDate": "2026-08-12",
+          "notion": null,
+          "stage": "unconfirmed",
+          "tempSave": null,
+          "published": null
+        }
+      },
+      {
+        "item_key": "2026-08-11-igg8-food-reintroduction",
+        "data": {
+          "slug": "2026-08-11-igg8-food-reintroduction",
+          "title": "제거식단 다음 단계, 음식 재도입 4주 로드맵",
+          "draftDate": "2026-08-11",
+          "notion": null,
+          "stage": "unconfirmed",
+          "tempSave": null,
+          "published": null
+        }
+      },
+      {
+        "item_key": "2026-08-10-saliva-exercise-cortisol",
+        "data": {
+          "slug": "2026-08-10-saliva-exercise-cortisol",
+          "title": "운동 직후 코르티솔이 잠시 오르는 게 정상인 이유",
+          "draftDate": "2026-08-10",
+          "notion": null,
+          "stage": "unconfirmed",
+          "tempSave": null,
+          "published": null
+        }
+      }
+    ],
+    "research": [
+      {
+        "item_key": "balancelab",
+        "data": {
+          "axis": "balancelab",
+          "label": "밸런스랩",
+          "days": [
+            {
+              "date": "2026-09-16",
+              "collected": 5
+            },
+            {
+              "date": "2026-09-17",
+              "collected": 3
+            },
+            {
+              "date": "2026-09-18",
+              "collected": 98
+            },
+            {
+              "date": "2026-09-19",
+              "collected": 46
+            },
+            {
+              "date": "2026-09-20",
+              "collected": 17
+            },
+            {
+              "date": "2026-09-21",
+              "collected": 26
+            },
+            {
+              "date": "2026-09-22",
+              "collected": 49
+            }
+          ],
+          "lastCrawl": "2026-09-22",
+          "collected7": 244,
+          "candidates": {
+            "date": "2026-09-22",
+            "scored": 75,
+            "picked": 20
+          },
+          "review": {
+            "adopted": 4,
+            "held": 3,
+            "excluded": 4,
+            "files": 2
+          },
+          "adopted": [
+            {
+              "date": "2026-09-22",
+              "title": "Millions take calcium and vitamin D for bone health. A major review finds little benefit",
+              "claim": "칼슘·비타민D 보충제는 골절과 낙상을 줄이는 효과가 거의 또는 전혀 없었다. 칼슘 단독, 비타민D 단독, 병용 셋 다 같은 결과였다",
+              "url": "https://www.sciencedaily.com/releases/2026/09/260920030147.htm",
+              "krCoverage": "선점 가능. 2026-09-21~22 kr-signal 80건(코메디닷컴·연합뉴스 건강)에 해당 보도 없음",
+              "channels": [
+                "네이버블로그",
+                "쓰레드"
+              ]
+            },
+            {
+              "date": "2026-09-22",
+              "title": "Salivary cortisol patterns linked to cognitive decline over 11 years",
+              "claim": "타액 코르티솔의 하루 곡선이 평평할수록, 그리고 전체 수치가 높을수록 인지 기능이 더 빨리 떨어졌다. 반대로 하루 안에서 변동폭이 큰 사람은 인지 저하가 느렸다",
+              "url": "https://medicalxpress.com/news/2026-09-salivary-cortisol-patterns-linked-cognitive.html",
+              "krCoverage": "선점 가능. 2026-09-21~22 kr-signal 80건에 해당 보도 없음",
+              "channels": [
+                "네이버블로그"
+              ]
+            },
+            {
+              "date": "2026-09-18",
+              "title": "Scientists find a natural gut compound that helps heal the intestine",
+              "claim": "장내 세균이 석류 등의 엘라지타닌으로 만드는 유로리틴 A 를 직접 투여하자 장 상피 AHR→NLRP6→IL-18→ILC3 IL-22 경로가 켜져 장벽이 강해졌다(음식 섭취 실험 아님)",
+              "url": "https://www.sciencedaily.com/releases/2026/09/260916232529.htm",
+              "krCoverage": "선점 가능",
+              "channels": []
+            },
+            {
+              "date": "2026-09-18",
+              "title": "This popular fermented food may help flush nanoplastics from the body",
+              "claim": "김치에서 분리한 유산균(Leuconostoc mesenteroides CBA3656)이 장에서 나노플라스틱과 붙어 배출량을 2배 넘게 늘렸다",
+              "url": "https://www.sciencedaily.com/releases/2026/09/260917101058.htm",
+              "krCoverage": "선점 가능",
+              "channels": []
+            }
+          ]
+        }
+      },
+      {
+        "item_key": "pet",
+        "data": {
+          "axis": "pet",
+          "label": "너티·아이언펫",
+          "days": [
+            {
+              "date": "2026-09-16",
+              "collected": 2
+            },
+            {
+              "date": "2026-09-17",
+              "collected": 2
+            },
+            {
+              "date": "2026-09-18",
+              "collected": 27
+            },
+            {
+              "date": "2026-09-19",
+              "collected": 11
+            },
+            {
+              "date": "2026-09-20",
+              "collected": 7
+            },
+            {
+              "date": "2026-09-21",
+              "collected": 1
+            },
+            {
+              "date": "2026-09-22",
+              "collected": 21
+            }
+          ],
+          "lastCrawl": "2026-09-22",
+          "collected7": 71,
+          "candidates": {
+            "date": "2026-09-22",
+            "scored": 22,
+            "picked": 8
+          },
+          "review": {
+            "adopted": 0,
+            "held": 0,
+            "excluded": 0,
+            "files": 0
+          },
+          "adopted": []
+        }
+      }
+    ],
+    "magazine": [
+      {
+        "item_key": "summary",
+        "data": {
+          "summary": true,
+          "recent": 31,
+          "windowDays": 60,
+          "totalArticles": 108,
+          "totalViews": 30670,
+          "avgViews": 284,
+          "mismatches": 2,
+          "naverMissing": 0,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z"
+        }
+      },
+      {
+        "item_key": "top:10",
+        "data": {
+          "rank": 1,
+          "articleNo": 10,
+          "title": "Tip.1 털 채취, 어떻게 하나요? - 털 채취 방법(영상)",
+          "views": 6409,
+          "publish": "2024-05-03",
+          "top": true
+        }
+      },
+      {
+        "item_key": "top:90",
+        "data": {
+          "rank": 2,
+          "articleNo": 90,
+          "title": "우리 강아지가 사람 손을 핥는 이유",
+          "views": 3791,
+          "publish": "2025-07-01",
+          "top": true
+        }
+      },
+      {
+        "item_key": "top:399",
+        "data": {
+          "rank": 3,
+          "articleNo": 399,
+          "title": "강아지 발작 증세 대처법 및 원인",
+          "views": 3347,
+          "publish": "2025-10-20",
+          "top": true
+        }
+      },
+      {
+        "item_key": "top:319",
+        "data": {
+          "rank": 4,
+          "articleNo": 319,
+          "title": "강아지 헥헥거림 원인 4가지",
+          "views": 2290,
+          "publish": "2025-08-27",
+          "top": true
+        }
+      },
+      {
+        "item_key": "top:1023",
+        "data": {
+          "rank": 5,
+          "articleNo": 1023,
+          "title": "강아지가 자기 발을 자꾸 핥는 이유 — 단순 습관 vs 신호 구분하기",
+          "views": 1373,
+          "publish": "2026-05-04",
+          "top": true
+        }
+      },
+      {
+        "item_key": "top:62",
+        "data": {
+          "rank": 6,
+          "articleNo": 62,
+          "title": "[아이언펫 쓰다듬기-사용편] 간편하니까. 안아프니까. 아이언펫이니까.",
+          "views": 929,
+          "publish": "2024-07-11",
+          "top": true
+        }
+      },
+      {
+        "item_key": "top:362",
+        "data": {
+          "rank": 7,
+          "articleNo": 362,
+          "title": "강아지 화식 급여 전, 주의사항",
+          "views": 868,
+          "publish": "2025-09-16",
+          "top": true
+        }
+      },
+      {
+        "item_key": "top:91",
+        "data": {
+          "rank": 8,
+          "articleNo": 91,
+          "title": "강아지 기력 회복, 어떻게 해야할까?",
+          "views": 771,
+          "publish": "2025-07-24",
+          "top": true
+        }
+      },
+      {
+        "item_key": "top:1020",
+        "data": {
+          "rank": 9,
+          "articleNo": 1020,
+          "title": "강아지 설사, 원인 분류부터 가정 대처까지 — 보호자가 알아둘 가이드",
+          "views": 757,
+          "publish": "2026-05-04",
+          "top": true
+        }
+      },
+      {
+        "item_key": "top:1265",
+        "data": {
+          "rank": 10,
+          "articleNo": 1265,
+          "title": "강아지 마운팅, 왜 하는 걸까요? 원인과 차분한 대처법 정리",
+          "views": 481,
+          "publish": "2026-06-23",
+          "top": true
+        }
+      },
+      {
+        "item_key": "mag:1320",
+        "data": {
+          "articleNo": 1320,
+          "slug": "2026-08-28-dog-cabbage",
+          "keyword": "강아지 양배추",
+          "brand": "너티",
+          "publish": "2026-10-02",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 19,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1320/"
+        }
+      },
+      {
+        "item_key": "mag:1319",
+        "data": {
+          "articleNo": 1319,
+          "slug": "2026-08-27-dog-dna-test",
+          "keyword": "강아지 유전자검사",
+          "brand": "아이언펫",
+          "publish": "2026-10-01",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 24,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1319/"
+        }
+      },
+      {
+        "item_key": "mag:1318",
+        "data": {
+          "articleNo": 1318,
+          "slug": "2026-08-26-dog-apple",
+          "keyword": "강아지 사과",
+          "brand": "너티",
+          "publish": "2026-09-30",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 25,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1318/"
+        }
+      },
+      {
+        "item_key": "mag:1317",
+        "data": {
+          "articleNo": 1317,
+          "slug": "2026-08-25-dog-toothbrushing",
+          "keyword": "강아지 양치",
+          "brand": "아이언펫",
+          "publish": "2026-09-29",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 27,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1317/"
+        }
+      },
+      {
+        "item_key": "mag:1316",
+        "data": {
+          "articleNo": 1316,
+          "slug": "2026-08-24-dog-clipper",
+          "keyword": "강아지 바리깡",
+          "brand": "너티",
+          "publish": "2026-09-28",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 29,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1316/"
+        }
+      },
+      {
+        "item_key": "mag:1314",
+        "data": {
+          "articleNo": 1314,
+          "slug": "2026-08-21-dog-cucumber",
+          "keyword": "강아지 오이",
+          "brand": "너티",
+          "publish": "2026-09-25",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 24,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1314/"
+        }
+      },
+      {
+        "item_key": "mag:1313",
+        "data": {
+          "articleNo": 1313,
+          "slug": "2026-08-20-dog-anal-glands",
+          "keyword": "강아지 항문낭 짜기",
+          "brand": "아이언펫",
+          "publish": "2026-09-24",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 18,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1313/"
+        }
+      },
+      {
+        "item_key": "mag:1312",
+        "data": {
+          "articleNo": 1312,
+          "slug": "2026-08-19-dog-corn",
+          "keyword": "강아지 옥수수",
+          "brand": "너티",
+          "publish": "2026-09-23",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 18,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1312/"
+        }
+      },
+      {
+        "item_key": "mag:1311",
+        "data": {
+          "articleNo": 1311,
+          "slug": "2026-08-18-dog-nasal-congestion",
+          "keyword": "강아지 코막힘",
+          "brand": "아이언펫",
+          "publish": "2026-09-22",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 29,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1311/"
+        }
+      },
+      {
+        "item_key": "mag:1310",
+        "data": {
+          "articleNo": 1310,
+          "slug": "2026-08-17-dog-harness",
+          "keyword": "강아지 하네스",
+          "brand": "너티",
+          "publish": "2026-09-21",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 22,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1310/"
+        }
+      },
+      {
+        "item_key": "mag:1308",
+        "data": {
+          "articleNo": 1308,
+          "slug": "2026-08-14-dog-tug-play",
+          "keyword": "강아지 터그놀이",
+          "brand": "너티",
+          "publish": "2026-09-18",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 21,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1308/"
+        }
+      },
+      {
+        "item_key": "mag:1307",
+        "data": {
+          "articleNo": 1307,
+          "slug": "2026-08-13-dog-raincoat",
+          "keyword": "강아지 우비",
+          "brand": "너티",
+          "publish": "2026-09-17",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 22,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1307/"
+        }
+      },
+      {
+        "item_key": "mag:1306",
+        "data": {
+          "articleNo": 1306,
+          "slug": "2026-08-12-dog-paw-care",
+          "keyword": "강아지 발바닥 보습제",
+          "brand": "아이언펫",
+          "publish": "2026-09-16",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 33,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1306/"
+        }
+      },
+      {
+        "item_key": "mag:1305",
+        "data": {
+          "articleNo": 1305,
+          "slug": "2026-08-11-dog-nail-trim",
+          "keyword": "강아지 발톱깎이",
+          "brand": "너티",
+          "publish": "2026-09-15",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 44,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1305/"
+        }
+      },
+      {
+        "item_key": "mag:1304",
+        "data": {
+          "articleNo": 1304,
+          "slug": "2026-08-10-dog-walk-timing",
+          "keyword": "강아지 산책 시간",
+          "brand": "아이언펫",
+          "publish": "2026-09-14",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 29,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1304/"
+        }
+      },
+      {
+        "item_key": "mag:1303",
+        "data": {
+          "articleNo": 1303,
+          "slug": "2026-08-07-dog-heatstroke",
+          "keyword": "강아지 열사병",
+          "brand": "아이언펫",
+          "publish": "2026-09-11",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 45,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1303/"
+        }
+      },
+      {
+        "item_key": "mag:1302",
+        "data": {
+          "articleNo": 1302,
+          "slug": "2026-08-06-dog-summer-walk",
+          "keyword": "강아지 여름 산책",
+          "brand": "아이언펫",
+          "publish": "2026-09-10",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 34,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1302/"
+        }
+      },
+      {
+        "item_key": "mag:1301",
+        "data": {
+          "articleNo": 1301,
+          "slug": "2026-08-05-dog-summer-tonic",
+          "keyword": "강아지 보양식",
+          "brand": "너티",
+          "publish": "2026-09-09",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 26,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1301/"
+        }
+      },
+      {
+        "item_key": "mag:1300",
+        "data": {
+          "articleNo": 1300,
+          "slug": "2026-08-04-dog-broccoli",
+          "keyword": "강아지 브로콜리",
+          "brand": "너티",
+          "publish": "2026-09-08",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 47,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1300/"
+        }
+      },
+      {
+        "item_key": "mag:1299",
+        "data": {
+          "articleNo": 1299,
+          "slug": "2026-08-03-dog-cake",
+          "keyword": "강아지 케이크",
+          "brand": "너티",
+          "publish": "2026-09-07",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 30,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1299/"
+        }
+      },
+      {
+        "item_key": "mag:1325",
+        "data": {
+          "articleNo": 1325,
+          "slug": "2026-09-04-dog-bad-breath",
+          "keyword": "강아지 입냄새",
+          "brand": "아이언펫",
+          "publish": "2026-09-04",
+          "ledgerStatus": "Staged",
+          "liveOnSite": true,
+          "mismatch": "사이트에는 있는데 원장은 미발행",
+          "views": 10,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1325/"
+        }
+      },
+      {
+        "item_key": "mag:1324",
+        "data": {
+          "articleNo": 1324,
+          "slug": "2026-09-03-dog-respiratory-rate",
+          "keyword": "강아지 호흡수",
+          "brand": "아이언펫",
+          "publish": "2026-09-03",
+          "ledgerStatus": "Staged",
+          "liveOnSite": true,
+          "mismatch": "사이트에는 있는데 원장은 미발행",
+          "views": 13,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1324/"
+        }
+      },
+      {
+        "item_key": "mag:1323",
+        "data": {
+          "articleNo": 1323,
+          "slug": "2026-09-02-dog-ear-cleaning",
+          "keyword": "강아지 귀청소",
+          "brand": "아이언펫",
+          "publish": "2026-09-02",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 11,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1323/"
+        }
+      },
+      {
+        "item_key": "mag:1322",
+        "data": {
+          "articleNo": 1322,
+          "slug": "2026-09-01-dog-cold",
+          "keyword": "강아지 감기",
+          "brand": "아이언펫",
+          "publish": "2026-09-01",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 10,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1322/"
+        }
+      },
+      {
+        "item_key": "mag:1321",
+        "data": {
+          "articleNo": 1321,
+          "slug": "2026-08-31-dog-hiccups",
+          "keyword": "강아지 딸꾹질",
+          "brand": "아이언펫",
+          "publish": "2026-08-31",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 18,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1321/"
+        }
+      },
+      {
+        "item_key": "mag:1297",
+        "data": {
+          "articleNo": 1297,
+          "slug": "2026-07-31-dog-freeze-dried",
+          "keyword": "강아지 동결건조",
+          "brand": "아이언펫",
+          "publish": "2026-07-31",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 40,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1297/"
+        }
+      },
+      {
+        "item_key": "mag:1296",
+        "data": {
+          "articleNo": 1296,
+          "slug": "2026-07-30-dog-chicken-feet",
+          "keyword": "강아지 닭발",
+          "brand": "너티",
+          "publish": "2026-07-30",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 64,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1296/"
+        }
+      },
+      {
+        "item_key": "mag:1295",
+        "data": {
+          "articleNo": 1295,
+          "slug": "2026-07-29-dog-jerky",
+          "keyword": "강아지 육포",
+          "brand": "너티",
+          "publish": "2026-07-29",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 35,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1295/"
+        }
+      },
+      {
+        "item_key": "mag:1294",
+        "data": {
+          "articleNo": 1294,
+          "slug": "2026-07-28-dog-homemade-food",
+          "keyword": "강아지 수제사료",
+          "brand": "너티",
+          "publish": "2026-07-28",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 21,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1294/"
+        }
+      },
+      {
+        "item_key": "mag:1293",
+        "data": {
+          "articleNo": 1293,
+          "slug": "2026-07-27-dog-home-cooked-balance",
+          "keyword": "강아지 화식 영양 균형",
+          "brand": "아이언펫",
+          "publish": "2026-07-27",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 53,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1293/"
+        }
+      },
+      {
+        "item_key": "mag:1291",
+        "data": {
+          "articleNo": 1291,
+          "slug": "2026-07-24-dog-wet-food-terrine",
+          "keyword": "강아지 습식사료",
+          "brand": "너티",
+          "publish": "2026-07-24",
+          "ledgerStatus": "Published",
+          "liveOnSite": true,
+          "mismatch": null,
+          "views": 29,
+          "viewsReadAt": "2026-09-21T12:12:37.072Z",
+          "naverDraft": true,
+          "url": "https://ironpet.store/article/매거진/8/1291/"
+        }
+      }
+    ]
+  }
+}
