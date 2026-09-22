@@ -40,3 +40,18 @@ select count(*) as content_board_rows from content_board;
 -- 그다음 볼트에서 한 번 돌리면 값이 찹니다.
 --   cd "H:/내 드라이브/obsidian/Obsidian/Work/밸런스랩/projects/네이버블로그-자동화/_스크립트"
 --   node content-board-push.mjs
+
+-- ─────────────────────────────────────────────────────────────
+-- 2026-09-22 자료조사 채택·폐기 버튼
+--
+-- 김호: "자료조사 채택한 것에 버튼 넣어서 버리거나 채택을 할 수 있게 했으면 좋겠어.
+--        사람이 선택하거나, 의견이 없으면 니가 알아서 진행"
+--
+-- 판정 결과(review.json 의 '채택')를 content_candidates 에 channel='research' 로 올리고
+-- 대시보드에서 누른 것을 status 로 남긴다. 표를 새로 만들지 않고 있는 표를 넓힌다.
+-- 지금은 channel 에 CHECK 가 걸려 있어 'research' 가 들어가지 않는다.
+--
+-- ※ 버튼은 **게이트가 아니라 덮어쓰기**다. 김호가 아무것도 안 누르면 내 판정대로 간다.
+alter table content_candidates drop constraint if exists content_candidates_channel_check;
+alter table content_candidates add constraint content_candidates_channel_check
+  check (channel in ('threads', 'instagram', 'naver_blog', 'research'));
