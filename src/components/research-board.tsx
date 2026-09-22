@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
+
 import {
   useBoard,
   BoardCard, BoardEmpty, BoardError, Masthead, Figure, FigureRow, FigureRule,
@@ -142,6 +144,78 @@ function JudgeBar({ adopted, held, excluded }: { adopted: number; held: number; 
   );
 }
 
+/**
+ * 채택한 자료를 사람이 뒤집는 버튼.
+ *
+ * 김호 2026-09-22: "채택한 것에 버튼 넣어서 버리거나 채택을 할 수 있게 했으면 좋겠어.
+ *                   사람이 선택하거나, 의견이 없으면 니가 알아서 진행"
+ *
+ * 그래서 이 버튼은 **게이트가 아니라 덮어쓰기**다. 올라온 자료는 이미 `chosen` 이고,
+ * 아무도 안 누르면 그대로 쓰인다. 누르는 건 버릴 때뿐이다.
+ * 값은 content_candidates(channel=research)에 남고 볼트가 다음 회차에 읽는다.
+ */
+type Verdict = { id: string; status: string };
+
+function useResearchVerdicts() {
+  const [map, setMap] = useState<Map<string, Verdict>>(new Map());
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/content-candidates?channel=research&week=recent", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        const m = new Map<string, Verdict>();
+        for (const it of d.items || []) {
+          const url = (it.sources || [])[0]?.url;
+          if (url) m.set(url, { id: it.id, status: it.status });
+        }
+        setMap(m);
+      })
+      .catch(() => setMap(new Map()));
+  }, []);
+
+  useEffect(load, [load]);
+
+  const act = useCallback(async (url: string, action: "keep" | "drop") => {
+    const v = map.get(url);
+    if (!v) return;
+    setBusy(url);
+    // 먼저 화면을 바꾼다. 누르고 아무 반응이 없으면 눌렸는지 알 수 없다.
+    setMap((prev) => new Map(prev).set(url, { ...v, status: action === "keep" ? "chosen" : "rejected" }));
+    try {
+      const r = await fetch("/api/content-candidates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: v.id, action }),
+      });
+      if (!r.ok) throw new Error(String(r.status));
+    } catch {
+      load(); // 실패하면 서버 값으로 되돌린다. 화면만 바뀐 채 두지 않는다
+    } finally {
+      setBusy(null);
+    }
+  }, [map, load]);
+
+  return { map, busy, act };
+}
+
+function VerdictButtons({ v, busy, onAct }: { v?: Verdict; busy: boolean; onAct: (a: "keep" | "drop") => void }) {
+  if (!v) return <span className="stamp text-muted-foreground">올리기 전</span>;
+  const dropped = v.status === "rejected";
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAct(dropped ? "keep" : "drop"); }}
+      className="stamp rounded border px-1.5 py-px transition-colors hover:bg-[var(--accent)] disabled:opacity-50"
+      style={dropped ? { color: "var(--sig-ok)" } : { color: "var(--muted-foreground)" }}
+      title={dropped ? "다시 쓰겠다고 표시합니다" : "이 자료는 안 쓰겠다고 표시합니다"}
+    >
+      {busy ? "..." : dropped ? "되살리기" : "버리기"}
+    </button>
+  );
+}
+
 export function ResearchFreshness({ only }: { only?: "balancelab" | "pet" } = {}) {
   const { rows: all, error, snap } = useBoard<Axis>("research");
   if (error) return <BoardError what="자료조사 신선도" error={error} />;
@@ -158,6 +232,8 @@ export function ResearchFreshness({ only }: { only?: "balancelab" | "pet" } = {}
 }
 
 function AxisBoard({ axis: a, reportedAt, snap }: { axis: Axis; reportedAt?: string; snap: string | null }) {
+  // 채택한 자료를 사람이 뒤집을 수 있게 한다. 안 누르면 내 판정대로 간다.
+  const verdicts = useResearchVerdicts();
   const today = todayKst();
   const late = !a.lastCrawl || a.lastCrawl < today;
   const todayCount = a.days.length ? a.days[a.days.length - 1].collected : null;
@@ -261,26 +337,34 @@ function AxisBoard({ axis: a, reportedAt, snap }: { axis: Axis; reportedAt?: str
           ) : (
             <ScrollList>
               <ul className="space-y-px">
-                {a.adopted.map((x) => (
+                {a.adopted.map((x) => {
+                  const v = verdicts.map.get(x.url);
+                  const dropped = v?.status === "rejected";
+                  return (
                   <li key={x.url} className="group -mx-2">
-                    <a href={x.url} target="_blank" rel="noreferrer"
-                      className="grid grid-cols-[minmax(0,1fr)] sm:grid-cols-[3.4rem_minmax(0,1fr)] gap-x-3 rounded-md px-2 py-2.5 transition-colors group-hover:bg-[var(--accent)]">
+                    <div
+                      className="grid grid-cols-[minmax(0,1fr)] sm:grid-cols-[3.4rem_minmax(0,1fr)] gap-x-3 rounded-md px-2 py-2.5 transition-colors group-hover:bg-[var(--accent)]"
+                      style={dropped ? { opacity: 0.45 } : undefined}>
                       <span className="num stamp hidden pt-0.5 text-muted-foreground sm:block">{x.date.slice(5).replace("-", ".")}</span>
                       <span className="min-w-0">
-                        <span className="line-clamp-2 text-[12.5px] leading-snug group-hover:underline" title={x.title}>
+                        <a href={x.url} target="_blank" rel="noreferrer"
+                          className="line-clamp-2 text-[12.5px] leading-snug hover:underline" title={x.title}
+                          style={dropped ? { textDecoration: "line-through" } : undefined}>
                           {x.claim || x.title}
-                        </span>
+                        </a>
                         <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
                           <CoverageFlag text={x.krCoverage} />
                           {x.channels.map((c) => (
                             <span key={c} className="stamp rounded border px-1.5 py-px text-muted-foreground">{c}</span>
                           ))}
                           {x.channels.length === 0 && <span className="stamp text-muted-foreground">채널 미정</span>}
+                          <VerdictButtons v={v} busy={verdicts.busy === x.url} onAct={(action) => verdicts.act(x.url, action)} />
                         </span>
                       </span>
-                    </a>
+                    </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </ScrollList>
           )}

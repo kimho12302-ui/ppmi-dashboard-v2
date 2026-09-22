@@ -12,7 +12,11 @@ import { supabase } from "@/lib/supabase";
 // 인증: /api/ops-status·/api/raw-ingest 와 같다(요청 단 인증 없음, 배포 자체가 보호 경계).
 
 const AXES = new Set(["balancelab", "pet"]);
-const CHANNELS = new Set(["threads", "instagram", "naver_blog"]);
+// research = 자료조사 판정 결과. 쓰레드 후보와 성격이 다르다(글이 아니라 자료).
+// 그래서 아래 validate 에서 글쓰기 게이트를 묻지 않고, choose 대신 keep/drop 으로 한 건씩 뒤집는다.
+const CHANNELS = new Set(["threads", "instagram", "naver_blog", "research"]);
+// 자료조사는 한 주에 여러 건을 채택할 수 있다. 쓰레드처럼 하나만 고르는 게 아니다.
+const MULTI_PICK = new Set(["research"]);
 const WEEK_RE = /^\d{4}-W\d{2}$/;
 const MAX_ITEMS = 20;
 const GROUP_MAX = 3; // 한 주·축·채널에 후보 3개까지(김호: 2~3개)
@@ -38,14 +42,21 @@ function validate(items: unknown[]): { rows?: Candidate[]; error?: string } {
     const it = raw as Partial<Candidate>;
     if (!it || typeof it.id !== "string" || !it.id) return { error: `items[${i}].id 없음` };
     if (!AXES.has(String(it.axis))) return { error: `items[${i}].axis 는 balancelab/pet` };
-    if (!CHANNELS.has(String(it.channel))) return { error: `items[${i}].channel 은 threads/instagram/naver_blog` };
+    if (!CHANNELS.has(String(it.channel))) return { error: `items[${i}].channel 은 threads/instagram/naver_blog/research` };
+    const isResearch = String(it.channel) === "research";
     if (!WEEK_RE.test(String(it.week))) return { error: `items[${i}].week 는 YYYY-Www` };
     if (typeof it.title !== "string" || !it.title) return { error: `items[${i}].title 없음` };
-    if (typeof it.body !== "string" || it.body.length < 50) return { error: `items[${i}].body 가 비었거나 너무 짧음` };
+    // 자료조사는 한 줄 요약이 본문이라 길이를 길게 요구하지 않는다.
+    const minBody = isResearch ? 10 : 50;
+    if (typeof it.body !== "string" || it.body.length < minBody) return { error: `items[${i}].body 가 비었거나 너무 짧음` };
     const gates = it.gates && typeof it.gates === "object" ? it.gates : {};
     // 게이트를 통과하지 않은 후보는 받지 않는다. 대시보드에 올라온 것은 곧 올려도 되는 글이어야 한다.
-    const failed = ["evidence", "regulation", "evals"].filter((g) => (gates as Record<string, unknown>)[g] !== "pass");
-    if (failed.length) return { error: `items[${i}] 게이트 미통과: ${failed.join(", ")}` };
+    // 자료조사는 예외다. 그건 아직 글이 아니라 **글감**이라 출처·규제·기계검사를 물을 대상이 아니다.
+    // 그 검사는 이 자료로 글을 쓸 때 받는다. 여기서 요구하면 자료가 영영 못 올라온다.
+    if (!isResearch) {
+      const failed = ["evidence", "regulation", "evals"].filter((g) => (gates as Record<string, unknown>)[g] !== "pass");
+      if (failed.length) return { error: `items[${i}] 게이트 미통과: ${failed.join(", ")}` };
+    }
     const sources = Array.isArray(it.sources)
       ? it.sources
           .filter((s) => s && typeof s.url === "string" && /^https?:\/\//.test(s.url))
@@ -81,18 +92,17 @@ export async function GET(req: NextRequest) {
     .limit(500);
   if (wErr) return NextResponse.json({ error: wErr.message }, { status: 500 });
   const weeks = [...new Set((weeksData || []).map((r) => r.week as string))].slice(0, 12);
-  const target = week && WEEK_RE.test(week) ? week : weeks[0];
+  // week=recent 는 최근 두 주를 합쳐 준다. 자료조사는 '최근 7일' 로 보는데 그 7일이 주 경계를
+  // 넘는 일이 흔하다. 한 주만 주면 화면의 목록과 버튼이 어긋난다.
+  const recent = week === "recent";
+  const target = !recent && week && WEEK_RE.test(week) ? week : weeks[0];
   if (!target) return NextResponse.json({ weeks: [], week: null, items: [] });
 
-  const { data, error } = await supabase
-    .from("content_candidates")
-    .select("*")
-    .eq("channel", channel)
-    .eq("week", target)
-    .order("axis")
-    .order("id");
+  let q = supabase.from("content_candidates").select("*").eq("channel", channel);
+  q = recent ? q.in("week", weeks.slice(0, 2)) : q.eq("week", target);
+  const { data, error } = await q.order("axis").order("id");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ weeks, week: target, items: data || [] });
+  return NextResponse.json({ weeks, week: recent ? "recent" : target, items: data || [] });
 }
 
 export async function POST(req: NextRequest) {
@@ -127,7 +137,7 @@ export async function POST(req: NextRequest) {
     if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
     const ids = new Set((inDb || []).map((x) => x.id as string));
     toWrite.filter((x) => groupKey(x) === key).forEach((x) => ids.add(x.id));
-    if (ids.size > GROUP_MAX) {
+    if (!MULTI_PICK.has(r.channel) && ids.size > GROUP_MAX) {
       return NextResponse.json({ error: `${r.week} ${r.axis} ${r.channel} 후보가 ${GROUP_MAX}개를 넘습니다(${ids.size})` }, { status: 400 });
     }
   }
@@ -170,6 +180,22 @@ export async function PATCH(req: NextRequest) {
       .update({ status: "chosen", chosen_at: now, updated_at: now }).eq("id", id);
     if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
     return NextResponse.json({ ok: true, id, status: "chosen" });
+  }
+
+  // 자료조사 전용. 한 건만 뒤집는다. 옆 후보를 건드리지 않는다.
+  // 김호 2026-09-22: "버튼 넣어서 버리거나 채택을 할 수 있게. 사람이 선택하거나, 의견이 없으면 니가 알아서 진행"
+  // → 버튼은 **게이트가 아니라 덮어쓰기**다. 아무도 안 누르면 올라온 그대로(chosen) 간다.
+  if (body.action === "keep" || body.action === "drop") {
+    if (!MULTI_PICK.has(row.channel)) {
+      return NextResponse.json({ error: `${row.channel} 에는 keep/drop 을 쓰지 않습니다(choose 를 쓰세요)` }, { status: 400 });
+    }
+    if (row.status === "archived") return NextResponse.json({ error: "이미 보관된 항목입니다" }, { status: 409 });
+    const next = body.action === "keep" ? "chosen" : "rejected";
+    const { error } = await supabase.from("content_candidates")
+      .update({ status: next, chosen_at: next === "chosen" ? now : null, updated_at: now })
+      .eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, id, status: next });
   }
 
   if (body.action === "undo") {
