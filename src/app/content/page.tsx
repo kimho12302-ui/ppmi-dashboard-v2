@@ -5,6 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { OpsStatusPanel } from "@/components/ops-status-panel";
 import { ThreadsCandidates } from "@/components/threads-candidates";
+import { TopicProgress } from "@/components/topic-progress";
 import { NaverProgressBoard } from "@/components/naver-board";
 import { ResearchFreshness } from "@/components/research-board";
 import { MagazineBoard } from "@/components/magazine-board";
@@ -345,6 +346,7 @@ function BrandBoards({ brand }: { brand: string }) {
           {brand === "all" && <h2 className="text-sm font-semibold">밸런스랩</h2>}
           <ResearchFreshness only="balancelab" />
           <ThreadsCandidates only="balancelab" />
+          <TopicProgress only="balancelab" />
           <NaverProgressBoard />
         </section>
       )}
@@ -353,6 +355,7 @@ function BrandBoards({ brand }: { brand: string }) {
           {brand === "all" && <h2 className="text-sm font-semibold">너티 · 아이언펫</h2>}
           <ResearchFreshness only="pet" />
           <ThreadsCandidates only="pet" />
+          <TopicProgress only="pet" />
           <MagazineBoard />
         </section>
       )}

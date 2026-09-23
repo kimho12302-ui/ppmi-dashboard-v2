@@ -26,7 +26,7 @@ import { Card } from "@/components/ui/card";
 
 interface Row<T> { item_key: string; data: T; reported_at: string }
 
-export function useBoard<T>(section: "naver" | "research" | "magazine") {
+export function useBoard<T>(section: "naver" | "research" | "magazine" | "topics") {
   const [rows, setRows] = useState<Row<T>[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // 표가 없을 때 API 가 배포에 실린 스냅샷을 준다. 어느 쪽인지 화면에 밝혀야 한다.
