@@ -29,7 +29,7 @@ interface Axis {
   days: { date: string; collected: number | null }[];
   candidates: { date: string; scored: number; picked: number } | null;
   review: { adopted: number; held: number; excluded: number; files: number };
-  adopted: { date: string; title: string; claim: string; url: string; krCoverage: string; channels: string[] }[];
+  adopted: { date: string; title: string; claim: string; url: string; krCoverage: string; channels: string[]; used?: { threads?: boolean; carousel?: boolean } }[];
 }
 
 const todayKst = () => new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
@@ -199,6 +199,35 @@ function useResearchVerdicts() {
   return { map, busy, act };
 }
 
+/**
+ * 채택한 자료가 채널로 나갔는지 두 칸으로 보인다. 김호 2026-09-23.
+ * 쓰 = 쓰레드 후보에 그 원문 주소가 있음 · 인 = 인스타 캐러셀 post.json 에 있음.
+ * 블로그는 넣지 않는다. 밸런스랩 블로그 초안은 원문 주소를 남기지 않아 자료와 이어지지 않는다.
+ */
+function UseMarks({ used }: { used?: { threads?: boolean; carousel?: boolean } }) {
+  if (!used) return null;
+  const marks: [string, boolean, string][] = [
+    ["쓰", Boolean(used.threads), "쓰레드 후보로 씀"],
+    ["인", Boolean(used.carousel), "인스타 캐러셀로 씀"],
+  ];
+  return (
+    <span className="inline-flex shrink-0 items-center gap-[3px]" aria-label="채널 사용">
+      {marks.map(([ch, on, title]) => (
+        <span
+          key={ch}
+          title={`${title}: ${on ? "예" : "아직"}`}
+          className="grid h-[15px] w-[15px] place-items-center rounded-[3px] text-[9px] font-semibold leading-none"
+          style={on
+            ? { background: "var(--sig-ok)", color: "var(--background)" }
+            : { background: "var(--muted)", color: "var(--muted-foreground)", opacity: 0.55 }}
+        >
+          {ch}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function VerdictButtons({ v, busy, onAct }: { v?: Verdict; busy: boolean; onAct: (a: "keep" | "drop") => void }) {
   if (!v) return <span className="stamp text-muted-foreground">올리기 전</span>;
   const dropped = v.status === "rejected";
@@ -358,6 +387,7 @@ function AxisBoard({ axis: a, reportedAt, snap }: { axis: Axis; reportedAt?: str
                             <span key={c} className="stamp rounded border px-1.5 py-px text-muted-foreground">{c}</span>
                           ))}
                           {x.channels.length === 0 && <span className="stamp text-muted-foreground">채널 미정</span>}
+                          <UseMarks used={x.used} />
                           <VerdictButtons v={v} busy={verdicts.busy === x.url} onAct={(action) => verdicts.act(x.url, action)} />
                         </span>
                       </span>
