@@ -152,6 +152,15 @@ interface SourceDef {
   /** 수기 입력 안내 문구. */
   entryLabel?: string;
   /**
+   * 허용 지연(일). 기본 1 = "어제 데이터가 있어야 정상".
+   *
+   * ★ 원천마다 당연한 지연이 다르다. 전부 '어제까지'로 재면 정상인 소스가 매일 아침
+   *   빨간불이 된다. GA4(카페24 세션)가 그랬다 — 데이터는 매일 들어오는데 D-1 지연이라
+   *   수집 전 시간대에는 늘 '수집 끊김'으로 떴다(2026-09-15, 09-23 두 번 확인).
+   *   상시 오탐은 진짜 고장을 묻는다. 소스별로 실제 지연에 맞춘다.
+   */
+  lagDays?: number;
+  /**
    * 로컬 aside 수집기(크론 dashboard-daily-collect, 매일 07:36)가 채우는 소스. 2026-09-18 수기 입력 종료.
    * 이 소스는 sync_heartbeat 를 쓰지 않으므로 늦을 때 원인 추정 대신 이 문구를 보인다.
    */
@@ -164,7 +173,8 @@ const SOURCE_DEFS: SourceDef[] = [
   // Auto - API
   { id: "meta_ads", label: "Meta 광고비", type: "auto", metrics: ["adSpend", "roas"], fetcher: () => getLatestByChannel("meta") },
   { id: "google_ads", label: "Google Ads", type: "auto", metrics: ["adSpend", "roas"], fetcher: () => getLatestByChannel("google_pmax") },
-  { id: "ga4", label: "GA4 (카페24 세션)", type: "auto", metrics: ["funnel"], fetcher: () => getLatestFunnelByChannel("cafe24", undefined, ["sessions"]) },
+  // GA4 는 D-1 집계라 당일 수집 전에는 어제 데이터가 없는 게 정상이다. 2일까지 허용한다.
+  { id: "ga4", label: "GA4 (카페24 세션)", type: "auto", metrics: ["funnel"], lagDays: 2, fetcher: () => getLatestFunnelByChannel("cafe24", undefined, ["sessions"]) },
   { id: "naver_sa", label: "네이버 검색광고", type: "auto", metrics: ["adSpend", "roas"], fetcher: () => getLatestByChannel("naver_search") },
   { id: "naver_shopping", label: "네이버 쇼핑광고", type: "auto", metrics: ["adSpend", "roas"], fetcher: () => getLatestByChannel("naver_shopping") },
   // 아래 여섯(쿠팡 광고비·GFA 사입/너티·스마트스토어 둘·카페24 퍼널)은 2026-09-18 부터 aside 자동 수집이다(collector).
@@ -290,7 +300,10 @@ export async function getSourceStatuses(): Promise<{
       } catch {
         latestDate = null;
       }
-      const ok = !!latestDate && latestDate >= yesterday;
+      // 소스별 허용 지연을 적용한다(기본 1일 = 어제까지).
+      const lag = def.lagDays ?? 1;
+      const freshCutoff = lag === 1 ? yesterday : kstDate(-lag);
+      const ok = !!latestDate && latestDate >= freshCutoff;
       const hb = hbMap.get(HB_KEY[def.id] || "");
       const lastSync = hb?.last_success ? String(hb.last_success).slice(0, 10) : null;
       const lastRun = hb?.last_run ? String(hb.last_run).slice(0, 10) : null;

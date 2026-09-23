@@ -42,9 +42,16 @@ export async function GET() {
     const gfaDates = new Set((adsRes.data || []).filter((r) => r.channel === "gfa").map((r) => r.date));
     const metaDates = new Set((adsRes.data || []).filter((r) => r.channel === "meta").map((r) => r.date));
     const googleDates = new Set((adsRes.data || []).filter((r) => r.channel === "google_pmax" || r.channel.startsWith("ga4_")).map((r) => r.date));
-    // 카페24 퍼널: GA4 자동수집과 수기입력이 같은 행(cafe24) — 수기 전용 필드에 값이 있어야 입력된 것
+    // 카페24 퍼널.
+    // ★ 값이 0이어도 brand='all' 행이 있으면 '수집됨'으로 센다.
+    //   자사몰은 트래픽이 적어 장바구니·구매가 0인 날이 흔하다. 2026-09 실측: 결측으로
+    //   찍힌 12일 전부 행은 있고 값이 0이었는데, **같은 날 카페24 주문도 0** 이었다.
+    //   즉 수집은 됐고 그날이 진짜 0이었다. 값>0 으로 재면 한가한 날마다 '미입력'이 뜨고,
+    //   그 소음이 진짜 결측을 묻는다(GFA 에서 먼저 겪은 것과 같은 문제).
+    //   ※ 쿠팡 퍼널에는 같은 완화를 하지 않았다. 거기 0 은 주문이 있는데도 0이라 틀린 값이었다.
+    //     0 을 인정할지는 '같은 날 주문이 있었나'로 갈린다. 원천마다 따로 판단한다.
     const cafe24Dates = new Set(
-      (funnelRes.data || []).filter((r) => r.channel === "cafe24" && hasVal(r, ["cart_adds", "purchases", "repurchases"])).map((r) => r.date)
+      (funnelRes.data || []).filter((r) => r.channel === "cafe24" && r.brand === "all").map((r) => r.date)
     );
     // 기획서 2.7: 스마트스토어 일반(너티/아이언펫/사입) → brand="all", 밸런스랩은 별도
     const ssDates = new Set(
