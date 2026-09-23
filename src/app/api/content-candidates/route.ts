@@ -8,6 +8,8 @@ import { supabase } from "@/lib/supabase";
 // PATCH action=choose  대시보드 선택. 같은 channel·week·axis 의 나머지 proposed 는 rejected 로.
 //       action=undo    선택 취소. 그 묶음의 chosen·rejected 를 proposed 로 되돌린다(노션 보관 전까지만).
 //       action=archived 로컬이 노션에 보관한 뒤 notion_url 을 채운다.
+//       action=slug    로컬이 정한 회차 이름을 research jsonb 안 slug 로 적는다 (2026-09-23 선택 팬아웃).
+//                      칼럼을 새로 만들지 않으려고 research 안에 둔다. 이미 다른 값이 있으면 거부한다.
 //
 // 인증: /api/ops-status·/api/raw-ingest 와 같다(요청 단 인증 없음, 배포 자체가 보호 경계).
 
@@ -152,8 +154,11 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, written: toWrite.length, kept: [...decided] });
 }
 
+// {YYYY-MM-DD}-{영문 소문자 주제어}. threads-candidates.mjs 의 SLUG_RE 와 같은 식이다. 한쪽만 고치면 어긋난다.
+const SLUG_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 export async function PATCH(req: NextRequest) {
-  let body: { id?: string; action?: string; notion_url?: string };
+  let body: { id?: string; action?: string; notion_url?: string; slug?: string };
   try {
     body = await req.json();
   } catch {
@@ -206,6 +211,29 @@ export async function PATCH(req: NextRequest) {
       .in("status", ["chosen", "rejected"]);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, id, status: "proposed" });
+  }
+
+  // 회차 이름. 캐러셀 폴더·꾸러미 파일·검색량 파일이 전부 이 이름을 쓴다.
+  // 한 번 정한 이름을 조용히 바꾸면 앞 회차 산출물과 갈라지므로 덮어쓰기를 막는다.
+  if (body.action === "slug") {
+    if (row.status !== "chosen" && row.status !== "archived") {
+      return NextResponse.json({ error: `고른 글에만 붙입니다(지금 ${row.status})` }, { status: 409 });
+    }
+    const next = String(body.slug || "");
+    if (!SLUG_RE.test(next)) {
+      return NextResponse.json({ error: "slug 는 {YYYY-MM-DD}-{영문 소문자 주제어} 형식입니다" }, { status: 400 });
+    }
+    const research = (row.research && typeof row.research === "object" ? row.research : {}) as Record<string, unknown>;
+    const before = typeof research.slug === "string" ? research.slug : null;
+    if (before === next) return NextResponse.json({ ok: true, id, slug: next, state: "그대로" });
+    if (before) {
+      return NextResponse.json({ error: `이미 slug 가 있습니다: ${before}` }, { status: 409 });
+    }
+    // research 를 통째로 갈아 끼우지 않는다. url·evidence·krCoverage 가 그 안에 있다.
+    const { error } = await supabase.from("content_candidates")
+      .update({ research: { ...research, slug: next }, updated_at: now }).eq("id", id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, id, slug: next, state: "신규" });
   }
 
   if (body.action === "archived") {
