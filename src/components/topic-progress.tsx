@@ -34,18 +34,25 @@ interface Topic {
   axisLabel: string;
   n: string;
   title: string;
-  status: "ready" | "selected" | "dropped";
+  // 원천이 볼트 노트 frontmatter 라 여기 없는 값이 올 수 있다(노트 규칙의 status 와 이름이 겹친다). 넓게 받고 아래에서 기본값으로 떨어뜨린다.
+  status: string;
   researchUrl: string | null;
   slug: string | null;
   channels: Channel[];
   axisHint?: string;
 }
 
-const STATUS: Record<Topic["status"], { text: string; tone: string }> = {
+const STATUS: Record<string, { text: string; tone: string }> = {
   selected: { text: "선택됨", tone: "var(--sig-ok)" },
   ready: { text: "후보", tone: "var(--muted-foreground)" },
   dropped: { text: "반려", tone: "var(--muted-foreground)" },
 };
+
+// 모르는 status 가 와도 화면 전체를 죽이지 않는다. 2026-09-28 에 노트 frontmatter 의
+// status: draft 두 건이 그대로 올라와 STATUS[status] 가 undefined 가 됐고,
+// .tone 을 읽다 /content 가 통째로 하얗게 됐다(client-side exception).
+// 한 줄 값이 이상한 것과 페이지가 안 열리는 것은 무게가 다르다.
+const STATUS_FALLBACK = { text: "후보", tone: "var(--muted-foreground)" };
 
 // 링크 글자는 칸마다 다르다. "여기로 가면 무엇을 할 수 있는가"를 적는다.
 // 주소가 없으면 아무것도 그리지 않는다. 모르는 주소를 지어내면 404 로 보낸다.
@@ -96,7 +103,7 @@ function ChannelRow({ c }: { c: Channel }) {
 }
 
 function TopicRow({ t }: { t: Topic }) {
-  const st = STATUS[t.status];
+  const st = STATUS[t.status] ?? STATUS_FALLBACK;
   const dropped = t.status === "dropped";
   return (
     <li className="-mx-2 rounded-md px-2 py-2.5 transition-colors hover:bg-[var(--accent)]" style={dropped ? { opacity: 0.5 } : undefined}>
