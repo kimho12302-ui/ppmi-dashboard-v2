@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils";
 // ★ 2026-09-28 김호 "쓰레드 후보 여러개 선택은 안됨?" → 한 축에서 여러 건을 고를 수 있다.
 //   옛 판은 하나를 고르면 같은 축의 나머지가 자동 탈락했다.
 //
-//   대신 주 1편 규칙(축마다 주 1편)은 그대로다. 고른 것이 여럿이면 **대기열**이고 한 주에 나가는 것은
-//   1건이다. 순서는 고른 순서(chosen_at 이 이른 것부터). 팬아웃하는 쪽은 로컬 크론
+//   주 1편 상한은 2026-09-28 에 뗐다(김호 "주 1편은 원칙이긴 한데. 그냥 풀어줘라").
+//   고른 것은 전부 나간다. 순서만 남는다: chosen_at 오름차순(선착순).
 //   balancelab-daily-content-trigger 의 [2-E] 절이고, 대기열 판정은 threads-candidates.mjs pending 이 한다.
 //   이 화면은 그 순서를 **똑같은 규칙으로 계산해 보여 주기만** 한다. 정본은 pending 이다.
 
@@ -116,7 +116,7 @@ export function ThreadsCandidates({ only }: { only?: "balancelab" | "pet" } = {}
         </div>
         <p className="text-xs text-muted-foreground">
           한 축에서 여러 개 고를 수 있습니다. 안 고른 것은 그대로 남고, 「버리기」를 누른 것만 버려집니다.
-          다만 <b>축마다 주 1편</b>이라 고른 것이 여럿이면 대기열이 됩니다. 먼저 고른 것이 먼저 나갑니다.
+          고른 것은 <b>전부</b> 다음 회차에 나갑니다. 순서는 먼저 고른 것부터입니다.
           쓰레드에는 복사해서 직접 올려 주세요.
         </p>
         {error && <p className="text-xs" style={{ color: "var(--sig-danger)" }}>{error}</p>}
@@ -162,7 +162,7 @@ export function ThreadsCandidates({ only }: { only?: "balancelab" | "pet" } = {}
 
 /**
  * 축마다 지금 몇 개 골랐는지. 김호가 여러 개 고를 수 있게 된 뒤로 이 줄이 없으면
- * "다 나가는 건가?" 를 화면에서 못 읽는다. 주 1편 규칙을 여기에 적어 둔다.
+ * "다 나가는 건가?" 를 화면에서 못 읽는다. 고른 것이 전부 나간다는 것을 여기에 적어 둔다.
  */
 function QueueLine({ picked, done }: { picked: number; done: number }) {
   const sent = done ? ` · 이 주에서 이미 ${done}건 나갔습니다` : "";
