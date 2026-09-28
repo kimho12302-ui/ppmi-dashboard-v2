@@ -207,20 +207,39 @@ export async function POST(request: NextRequest) {
     const sheets = google.sheets({ version: "v4", auth });
     const plRes = await sheets.spreadsheets.values.get({
       spreadsheetId: STATS_SHEET_ID,
-      range: "\uC0C1\uD488 \uBAA9\uB85D!A3:E200",
+      range: "\uC0C1\uD488 \uBAA9\uB85D!A3:E1000",
     });
     const plRows = plRes.data.values || [];
     const productListMap = new Map<string, any>();
-    for (const row of plRows) {
-      if (row[0]) {
-        productListMap.set(String(row[0]).trim(), {
-          category: row[1] || "",
-          brand: row[2] || "",
-          lineup: row[3] || "",
-          product: row[4] || "",
-        });
+    // 같은 품목코드가 두 줄에 있으면 **먼저 나온 줄을 남긴다.** 나중 줄로 덮으면 이미 잘 쓰이던
+    // 상품의 브랜드가 소리 없이 바뀐다(2026-09-28 P00000CT_3 이 64행 파미나와 206행 너티에 겹쳐 있었다).
+    // 덮지 않고 응답에 경고로 올려 사람이 코드를 갈라 주게 한다.
+    const dupCodes = new Map<string, { rows: number[]; names: string[] }>();
+    plRows.forEach((row, i) => {
+      const code = String(row[0] ?? "").trim();
+      if (!code) return;
+      const sheetRow = i + 3; // A3 부터 읽는다
+      const prev = productListMap.get(code);
+      if (prev) {
+        const d = dupCodes.get(code) || { rows: [prev.sheetRow], names: [prev.product] };
+        d.rows.push(sheetRow);
+        d.names.push(row[4] || "");
+        dupCodes.set(code, d);
+        return;
       }
-    }
+      productListMap.set(code, {
+        category: row[1] || "",
+        brand: row[2] || "",
+        lineup: row[3] || "",
+        product: row[4] || "",
+        sheetRow,
+      });
+    });
+    const dupWarnings = Array.from(dupCodes.entries()).map(([code, d]) => ({
+      code,
+      rows: d.rows,
+      names: d.names,
+    }));
 
     interface SalesRow {
       date: string;
@@ -332,6 +351,7 @@ export async function POST(request: NextRequest) {
         totalUnmatched: unmatchedList.length,
         totalRows: rows.length,
         detectedHeaders: headers,
+        ...(dupWarnings.length ? { duplicateCodes: dupWarnings } : {}),
       }, { status: 400 });
     }
 
