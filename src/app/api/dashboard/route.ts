@@ -44,7 +44,10 @@ export async function GET(req: NextRequest) {
     if (brand !== "all") prevAdQ = prevAdQ.in("brand", expandBrands(brand));
     else prevAdQ = prevAdQ.neq("brand", "all");
 
-    let cogsProdQ = supabase.from("product_sales").select("product,brand,quantity").gte("date", from).lte("date", to);
+    // 공구를 가려내려면 channel·lineup 이 필요하다. 매출(daily_sales)은 공구를 빼는데
+    // 원가만 product_sales 전체로 계산하면 기준이 어긋난다(2026-09-28 발견:
+    // 7월 밸런스랩 매출 2,671,000원에 원가 7,746,000원이 붙어 마진 -245%로 보였다).
+    let cogsProdQ = supabase.from("product_sales").select("product,brand,quantity,channel,lineup").gte("date", from).lte("date", to);
     if (brand !== "all") cogsProdQ = cogsProdQ.in("brand", expandBrands(brand));
 
     let prodQ = supabase.from("product_sales").select("product,revenue,quantity,brand,channel,lineup").gte("date", from).lte("date", to);
@@ -88,10 +91,18 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // 원가에서 뺄 공구 row. **밸런스랩에서만** 판정한다.
+    // isGonggu 의 형식(A) 판정이 lineup 유무만 보는데 lineup 은 다른 브랜드에서 정규 라인업
+    // 컬럼이라(너티 "하루루틴", 사입 "파미나") 브랜드 구분 없이 부르면 정상 매출이 통째로
+    // 공구로 분류된다. gonggu.ts 의 경고와 2026-08 사고 참조.
+    const isCogsGonggu = (ps: { brand?: string | null; channel?: string | null; lineup?: string | null; product?: string | null }) =>
+      ps?.brand === "balancelab" && isGonggu(ps);
+
     let totalCOGS = 0;
     let matchedProducts = 0;
     let totalProducts = 0;
     for (const ps of cogsProdData || []) {
+      if (isCogsGonggu(ps)) continue;
       totalProducts++;
       const costs = costMap.get(`${ps.product}__${ps.brand}`);
       if (costs) {
@@ -300,6 +311,7 @@ export async function GET(req: NextRequest) {
     for (const r of nonGa4Ad) brandAdMap.set(r.brand, (brandAdMap.get(r.brand) || 0) + Number(r.spend));
     const brandCogsMap = new Map<string, number>();
     for (const ps of cogsProdData || []) {
+      if (isCogsGonggu(ps)) continue;
       const costs = costMap.get(`${ps.product}__${ps.brand}`);
       if (costs) brandCogsMap.set(ps.brand, (brandCogsMap.get(ps.brand) || 0) + costs.manufacturing_cost * Number(ps.quantity || 0));
     }
