@@ -10,6 +10,9 @@ import { supabase } from "@/lib/supabase";
 //       action=archived 로컬이 노션에 보관한 뒤 notion_url 을 채운다.
 //       action=slug    로컬이 정한 회차 이름을 research jsonb 안 slug 로 적는다 (2026-09-23 선택 팬아웃).
 //                      칼럼을 새로 만들지 않으려고 research 안에 둔다. 이미 다른 값이 있으면 거부한다.
+//       action=write        자료조사 카드의 「지금 쓰기」. 쓰레드를 써 달라는 의사만 남긴다 (2026-09-28).
+//       action=write-cancel 그 요청을 거둔다.
+//       action=write-done   로컬 크론이 쓰레드 후보를 만든 뒤 요청을 닫는다(멱등).
 //
 // 인증: /api/ops-status·/api/raw-ingest 와 같다(요청 단 인증 없음, 배포 자체가 보호 경계).
 
@@ -201,6 +204,68 @@ export async function PATCH(req: NextRequest) {
       .eq("id", id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, id, status: next });
+  }
+
+  // 자료조사 카드의 「지금 쓰기」. 김호 2026-09-28: "버리기 버튼처럼 지금 쓰기 버튼도 하나 더 만들어줘.
+  // 그래서 그 버튼 누르면 바로 쓰레드 만들어지게."
+  //
+  // ★ 대시보드는 웹앱이라 쓰레드 md 를 만들 수 없다. 볼트 파일을 읽고 content-writer 에게 위임하는 일은
+  //   로컬 Claude 세션만 한다. 그래서 이 action 은 **의사만 DB 에 남기고**, 실제 작성은
+  //   평일 09:02 balancelab-daily-content-trigger 의 `[-1b]` 절이 한다. 채택·폐기 버튼과 같은 구조다.
+  //
+  // 표시는 research jsonb 안에 둔다(anon 키라 칼럼을 못 만든다. slug 와 같은 방식).
+  //   writeRequestedAt  누른 시각. 있고 writeDoneAt 이 없으면 **열린 요청**
+  //   writeDoneAt       크론이 다 쓴 시각. 있으면 닫힘. 안 적으면 크론이 매일 같은 자료로 다시 쓴다
+  // 지금 요청은 쓰레드 한 채널만 뜻한다. 채널이 둘 이상이 되면 그때 writeChannel 칸을 더한다.
+  //
+  // ★ 중복 작성을 막는 자리가 셋이다. 하나만 두면 새는 것을 2026-09-28 에 확인했다.
+  //   (1) 여기 409  (2) 화면 research-board.tsx 의 WriteButton
+  //   (3) 크론: 쓰레드 후보 md 에 그 원문 주소가 이미 있으면 건너뛴다
+  //
+  // ★ 한계: undo 로 이 행이 proposed 로 내려가면 다음 research-candidates-push.mjs 가 research 를
+  //   덮어써 표시가 지워진다. chosen 인 동안은 POST 가 건드리지 않아 살아 있다.
+  if (body.action === "write" || body.action === "write-cancel" || body.action === "write-done") {
+    if (!MULTI_PICK.has(row.channel)) {
+      return NextResponse.json({ error: `${row.channel} 에는 write 를 쓰지 않습니다(자료조사 전용)` }, { status: 400 });
+    }
+    if (row.status === "archived") return NextResponse.json({ error: "이미 보관된 항목입니다" }, { status: 409 });
+    const research = (row.research && typeof row.research === "object" ? row.research : {}) as Record<string, unknown>;
+    const requestedAt = typeof research.writeRequestedAt === "string" ? research.writeRequestedAt : null;
+    const doneAt = typeof research.writeDoneAt === "string" ? research.writeDoneAt : null;
+    // research 를 통째로 갈아 끼우지 않는다. claim·evidence·krCoverage·slug 가 그 안에 있다.
+    const save = async (next: Record<string, unknown>) => {
+      const { error } = await supabase.from("content_candidates")
+        .update({ research: next, updated_at: now }).eq("id", id);
+      return error ? error.message : null;
+    };
+
+    if (body.action === "write") {
+      if (row.status === "rejected") {
+        return NextResponse.json({ error: "버린 자료입니다. 되살린 뒤에 요청하세요" }, { status: 409 });
+      }
+      if (doneAt) return NextResponse.json({ error: `이미 쓴 자료입니다(${doneAt}). 덮어쓰지 않습니다` }, { status: 409 });
+      if (requestedAt) return NextResponse.json({ error: `이미 요청돼 있습니다(${requestedAt}). 다음 회차에 씁니다` }, { status: 409 });
+      const failed = await save({ ...research, writeRequestedAt: now });
+      if (failed) return NextResponse.json({ error: failed }, { status: 500 });
+      return NextResponse.json({ ok: true, id, writeRequestedAt: now });
+    }
+
+    if (body.action === "write-cancel") {
+      if (doneAt) return NextResponse.json({ error: `이미 쓴 자료라 취소할 수 없습니다(${doneAt})` }, { status: 409 });
+      if (!requestedAt) return NextResponse.json({ error: "열린 요청이 없습니다" }, { status: 409 });
+      const next = { ...research };
+      delete next.writeRequestedAt;
+      const failed = await save(next);
+      if (failed) return NextResponse.json({ error: failed }, { status: 500 });
+      return NextResponse.json({ ok: true, id, writeRequestedAt: null });
+    }
+
+    // write-done. 크론은 같은 회차에 두 번 부를 수 있으니 멱등이다(slug 와 같은 규약).
+    if (doneAt) return NextResponse.json({ ok: true, id, writeDoneAt: doneAt, state: "그대로" });
+    if (!requestedAt) return NextResponse.json({ error: "열린 요청이 없습니다(요청 없이 닫지 않습니다)" }, { status: 409 });
+    const failed = await save({ ...research, writeDoneAt: now });
+    if (failed) return NextResponse.json({ error: failed }, { status: 500 });
+    return NextResponse.json({ ok: true, id, writeDoneAt: now, state: "신규" });
   }
 
   if (body.action === "undo") {

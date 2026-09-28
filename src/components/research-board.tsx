@@ -154,11 +154,19 @@ function JudgeBar({ adopted, held, excluded }: { adopted: number; held: number; 
  * 아무도 안 누르면 그대로 쓰인다. 누르는 건 버릴 때뿐이다.
  * 값은 content_candidates(channel=research)에 남고 볼트가 다음 회차에 읽는다.
  */
-type Verdict = { id: string; status: string };
+// writeRequestedAt · writeDoneAt 은 DB 의 research jsonb 안에 있다. 칼럼이 아니다(anon 키라 DDL 을 못 쓴다).
+// 뜻은 API route.ts 의 action=write 주석이 정본이다.
+type Verdict = { id: string; status: string; writeRequestedAt: string | null; writeDoneAt: string | null };
+
+type Act = "keep" | "drop" | "write" | "write-cancel";
+
+const asText = (v: unknown) => (typeof v === "string" && v ? v : null);
 
 function useResearchVerdicts() {
   const [map, setMap] = useState<Map<string, Verdict>>(new Map());
   const [busy, setBusy] = useState<string | null>(null);
+  // 버튼이 먹지 않은 것을 화면에 말한다. 조용히 되돌리면 눌렀는지 알 수 없어 또 누른다(2026-09-28).
+  const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/content-candidates?channel=research&week=recent", { cache: "no-store" })
@@ -167,7 +175,14 @@ function useResearchVerdicts() {
         const m = new Map<string, Verdict>();
         for (const it of d.items || []) {
           const url = (it.sources || [])[0]?.url;
-          if (url) m.set(url, { id: it.id, status: it.status });
+          if (!url) continue;
+          const rs = (it.research || {}) as Record<string, unknown>;
+          m.set(url, {
+            id: it.id,
+            status: it.status,
+            writeRequestedAt: asText(rs.writeRequestedAt),
+            writeDoneAt: asText(rs.writeDoneAt),
+          });
         }
         setMap(m);
       })
@@ -176,27 +191,37 @@ function useResearchVerdicts() {
 
   useEffect(load, [load]);
 
-  const act = useCallback(async (url: string, action: "keep" | "drop") => {
+  const act = useCallback(async (url: string, action: Act) => {
     const v = map.get(url);
     if (!v) return;
     setBusy(url);
+    setNote(null);
     // 먼저 화면을 바꾼다. 누르고 아무 반응이 없으면 눌렸는지 알 수 없다.
-    setMap((prev) => new Map(prev).set(url, { ...v, status: action === "keep" ? "chosen" : "rejected" }));
+    const guess: Verdict =
+      action === "keep" ? { ...v, status: "chosen" }
+        : action === "drop" ? { ...v, status: "rejected" }
+          : action === "write" ? { ...v, writeRequestedAt: new Date().toISOString() }
+            : { ...v, writeRequestedAt: null };
+    setMap((prev) => new Map(prev).set(url, guess));
     try {
       const r = await fetch("/api/content-candidates", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: v.id, action }),
       });
-      if (!r.ok) throw new Error(String(r.status));
-    } catch {
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error || `HTTP ${r.status}`);
+      }
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "요청이 실패했습니다");
       load(); // 실패하면 서버 값으로 되돌린다. 화면만 바뀐 채 두지 않는다
     } finally {
       setBusy(null);
     }
   }, [map, load]);
 
-  return { map, busy, act };
+  return { map, busy, note, act };
 }
 
 /**
@@ -241,6 +266,55 @@ function VerdictButtons({ v, busy, onAct }: { v?: Verdict; busy: boolean; onAct:
       title={dropped ? "다시 쓰겠다고 표시합니다" : "이 자료는 안 쓰겠다고 표시합니다"}
     >
       {busy ? "..." : dropped ? "되살리기" : "버리기"}
+    </button>
+  );
+}
+
+/**
+ * 「지금 쓰기」. 김호 2026-09-28: "버리기 버튼이 있잖아? 그거 처럼 지금 쓰기 버튼도 하나 더 만들어줘.
+ *                                 그래서 그 버튼 누르면 바로 쓰레드 만들어지게."
+ *
+ * ★ 이 버튼은 쓰레드를 여기서 만들지 않는다. 대시보드는 웹앱이라 볼트 파일을 못 읽고 content-writer 를
+ *   못 부른다. 버튼은 **써 달라는 의사를 DB 에 남기고**, 실제 작성은 평일 09:02 에 도는
+ *   balancelab-daily-content-trigger 의 `[-1b]` 절이 한다. 그래서 대기는 최대 하루다.
+ *   (금요일 자료조사 회차에 맡기면 최대 일주일이라 「바로」가 아니게 된다)
+ *
+ * 그래서 누른 뒤에 **반드시 상태를 보인다.** 눌렀는데 아무 일도 안 일어난 것처럼 보이면 또 누른다.
+ * 2026-09-28 에 쓰레드 선택 버튼이 안 먹은 것을 두 번 모르고 지나갔다.
+ *
+ * 중복 작성을 막는 자리 셋 중 첫째가 여기다. 나머지는 API(PATCH write 의 409)와 크론(md 에 주소 있으면 건너뜀).
+ */
+function WriteButton({ v, hasThread, busy, onAct }: {
+  v?: Verdict; hasThread: boolean; busy: boolean; onAct: (a: "write" | "write-cancel") => void;
+}) {
+  // 아직 DB 에 안 올라간 자료와 버린 자료는 쓸 대상이 아니다. 버튼을 안 보인다
+  if (!v || v.status === "rejected") return null;
+  // 이미 쓴 건. 버튼 대신 사실만 적는다. 이것이 화면 쪽 중복 작성 근거다
+  if (hasThread || v.writeDoneAt) {
+    return (
+      <span className="stamp" style={{ color: "var(--sig-ok)" }}
+        title={v.writeDoneAt
+          ? `${v.writeDoneAt.slice(0, 10)} 에 이 자료로 쓰레드 후보를 만들었습니다. 다시 쓰지 않습니다`
+          : "이 자료로 쓴 쓰레드 후보가 이미 있습니다. 다시 쓰지 않습니다"}>
+        쓰레드 있음
+      </span>
+    );
+  }
+  const requested = Boolean(v.writeRequestedAt);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAct(requested ? "write-cancel" : "write"); }}
+      className="stamp rounded border px-1.5 py-px transition-colors hover:bg-[var(--accent)] disabled:opacity-50"
+      style={requested
+        ? { color: "var(--sig-warn)", borderColor: "var(--sig-warn-border)", background: "var(--sig-warn-surface)" }
+        : { color: "var(--muted-foreground)" }}
+      title={requested
+        ? `${(v.writeRequestedAt || "").slice(0, 10)} 요청됨 · 다음 평일 09:02 회차에 씁니다. 누르면 요청을 거둡니다`
+        : "이 자료로 쓰레드를 써 달라고 표시합니다. 다음 평일 09:02 회차가 씁니다"}
+    >
+      {busy ? "..." : requested ? "요청됨" : "지금 쓰기"}
     </button>
   );
 }
@@ -364,6 +438,12 @@ function AxisBoard({ axis: a, reportedAt, snap }: { axis: Axis; reportedAt?: str
               </ul>
             </div>
           ) : (
+            <>
+            {verdicts.note && (
+              <p className="stamp mb-1.5" style={{ color: "var(--sig-danger)" }}>
+                버튼이 먹지 않았습니다: {verdicts.note}
+              </p>
+            )}
             <ScrollList>
               <ul className="space-y-px">
                 {a.adopted.map((x) => {
@@ -389,6 +469,8 @@ function AxisBoard({ axis: a, reportedAt, snap }: { axis: Axis; reportedAt?: str
                           {x.channels.length === 0 && <span className="stamp text-muted-foreground">채널 미정</span>}
                           <UseMarks used={x.used} />
                           <VerdictButtons v={v} busy={verdicts.busy === x.url} onAct={(action) => verdicts.act(x.url, action)} />
+                          <WriteButton v={v} hasThread={Boolean(x.used?.threads)}
+                            busy={verdicts.busy === x.url} onAct={(action) => verdicts.act(x.url, action)} />
                         </span>
                       </span>
                     </div>
@@ -397,6 +479,7 @@ function AxisBoard({ axis: a, reportedAt, snap }: { axis: Axis; reportedAt?: str
                 })}
               </ul>
             </ScrollList>
+            </>
           )}
         </>}
       />
@@ -404,6 +487,7 @@ function AxisBoard({ axis: a, reportedAt, snap }: { axis: Axis; reportedAt?: str
       <Footnote>
         매일 06시에 논문과 건강 매체를 모으고, 규칙으로 1차 후보를 줄 세운 뒤 Claude 가 원문을 읽고 채택 · 보류 · 제외를 정합니다.
         채택한 것이 블로그와 쓰레드의 재료가 됩니다. 대시보드는 따로 판정하지 않습니다.
+        「지금 쓰기」 를 누르면 다음 평일 09:02 회차가 그 자료로 쓰레드 후보를 씁니다. 여기서 바로 쓰지는 않습니다.
       </Footnote>
     </BoardCard>
   );
