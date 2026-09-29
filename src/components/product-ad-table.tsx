@@ -78,7 +78,7 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
       <div className="flex items-baseline justify-between gap-2 flex-wrap mb-3">
         <h3 className="font-semibold text-sm">
           제품별 광고 성과 <span className="text-xs text-muted-foreground font-normal">
-            GFA 상품 단위 · 실매출은 판매 원장 기준
+            광고 상품·캠페인 단위 · 실매출은 판매 원장 기준
             {typeof data?.linkedCount === "number" && ` · 판매 연결 ${data.linkedCount}/${products.length}종`}
           </span>
         </h3>

@@ -50,7 +50,10 @@ export async function GET(req: NextRequest) {
       spend: number; impressions: number; clicks: number; conversions: number; conversion_value: number;
     }>();
     for (const r of rows as Record<string, unknown>[]) {
-      const key = `${r.brand}|${r.product_id}`;
+      // ★ 합산 키는 제품명이다. 같은 제품이 매체·캠페인별로 여러 product_id 를 갖는다
+      //   (네이버 검색광고는 파워링크·쇼핑이 캠페인ID가 달라 큐음식물과민증검사가 두 줄로 갈렸다).
+      //   화면이 보는 단위는 '제품'이지 '광고 단위'가 아니다.
+      const key = `${r.brand}|${r.product_name}`;
       const cur = map.get(key) || {
         product_id: String(r.product_id), product_name: String(r.product_name),
         brand: String(r.brand), lineup: (r.lineup as string) ?? null,
@@ -66,17 +69,20 @@ export async function GET(req: NextRequest) {
 
     const products = Array.from(map.values())
       .map((p) => {
+        // 상품번호(스마트스토어)로 정본을 찾는다. 네이버 검색광고처럼 캠페인ID 기반이라
+        // 정본에 없으면, 제품명이 판매 원장과 그대로 일치하는지 본다(밸런스랩 검사 제품이 그렇다).
         const m = masterByPid(p.product_id);
-        const sale = m ? salesByProduct.get(m.product) : undefined;
+        const salesName = m?.product ?? (salesByProduct.has(p.product_name) ? p.product_name : null);
+        const sale = salesName ? salesByProduct.get(salesName) : undefined;
         return {
           ...p,
           roas: p.spend > 0 ? p.conversion_value / p.spend : 0,
           // 정본으로 이어붙인 실제 판매. 상품번호가 시트에 없으면 null 로 두고
           // 화면이 '연결 안 됨'과 '판매 0'을 구분해 말할 수 있게 한다.
-          salesProduct: m?.product ?? null,
-          actualRevenue: m ? (sale?.revenue ?? 0) : null,
-          actualQuantity: m ? (sale?.quantity ?? 0) : null,
-          actualRoas: m && p.spend > 0 ? (sale?.revenue ?? 0) / p.spend : null,
+          salesProduct: salesName,
+          actualRevenue: salesName ? (sale?.revenue ?? 0) : null,
+          actualQuantity: salesName ? (sale?.quantity ?? 0) : null,
+          actualRoas: salesName && p.spend > 0 ? (sale?.revenue ?? 0) / p.spend : null,
         };
       })
       .sort((a, b) => b.spend - a.spend);
