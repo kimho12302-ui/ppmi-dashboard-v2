@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { expandBrands } from "@/lib/brand-groups";
 import { masterByPid } from "@/lib/product-master";
+import { classifyBlProduct } from "@/lib/brand-groups";
 
 /**
  * 제품(상품) 단위 광고 성과.
@@ -36,12 +37,26 @@ export async function GET(req: NextRequest) {
     if (brand !== "all") sq = sq.in("brand", expandBrands(brand));
     const salesRows = await fetchAll(sq);
     const salesByProduct = new Map<string, { revenue: number; quantity: number }>();
+    // ★ 밸런스랩은 판매 원장이 옵션까지 쪼개진 SKU 다
+    //   ("큐모발검사 중금속", "큐모발검사 중금속 + 종이결과지", "큐음식물 과민증 검사 식단관리").
+    //   광고는 검사 제품 단위라 이름이 정확히 같은 것만 이으면 옵션 매출이 통째로 빠진다
+    //   (중금속이 65,000원으로 나왔는데 + 종이결과지 209,000원이 누락됐다, 2026-09-29).
+    //   검사 라인 분류기(brand-groups 의 단일 정본)로 묶어 같은 라인끼리 합산한다.
+    const salesByLine = new Map<string, { revenue: number; quantity: number }>();
     for (const r of salesRows as Record<string, unknown>[]) {
       const k = String(r.product);
       const cur = salesByProduct.get(k) || { revenue: 0, quantity: 0 };
       cur.revenue += Number(r.revenue) || 0;
       cur.quantity += Number(r.quantity) || 0;
       salesByProduct.set(k, cur);
+
+      const line = classifyBlProduct(k);
+      if (line) {
+        const lc = salesByLine.get(line) || { revenue: 0, quantity: 0 };
+        lc.revenue += Number(r.revenue) || 0;
+        lc.quantity += Number(r.quantity) || 0;
+        salesByLine.set(line, lc);
+      }
     }
 
     // 상품 단위로 기간 합산.
@@ -71,9 +86,17 @@ export async function GET(req: NextRequest) {
       .map((p) => {
         // 상품번호(스마트스토어)로 정본을 찾는다. 네이버 검색광고처럼 캠페인ID 기반이라
         // 정본에 없으면, 제품명이 판매 원장과 그대로 일치하는지 본다(밸런스랩 검사 제품이 그렇다).
+        // ① 스마트스토어 상품번호로 정본 조회(GFA 경로). ② 제품명이 판매 원장에 그대로 있으면 그것.
+        // ③ 밸런스랩은 검사 라인으로 묶어 옵션 SKU 까지 합산.
         const m = masterByPid(p.product_id);
-        const salesName = m?.product ?? (salesByProduct.has(p.product_name) ? p.product_name : null);
-        const sale = salesName ? salesByProduct.get(salesName) : undefined;
+        const adLine = classifyBlProduct(p.product_name);
+        const lineSale = adLine ? salesByLine.get(adLine) : undefined;
+        const salesName = m?.product
+          ?? (salesByProduct.has(p.product_name) ? p.product_name : null)
+          ?? (lineSale ? p.product_name : null);
+        const sale = m?.product
+          ? salesByProduct.get(m.product)
+          : (salesByProduct.get(p.product_name) ?? lineSale);
         return {
           ...p,
           roas: p.spend > 0 ? p.conversion_value / p.spend : 0,
