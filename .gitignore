@@ -38,3 +38,6 @@ next-env.d.ts
 .vercel
 .env*.local
 .env*
+
+# 편집기 로컬 설정 (다른 세션이 만든 것, 저장소에 넣지 않는다)
+.claude/

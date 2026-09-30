@@ -9,6 +9,7 @@ import { TopicProgress } from "@/components/topic-progress";
 import { NaverProgressBoard } from "@/components/naver-board";
 import { ResearchFreshness } from "@/components/research-board";
 import { MagazineBoard } from "@/components/magazine-board";
+import { PhotoSearch } from "@/components/photo-search";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatNumber, formatCurrency, cn } from "@/lib/utils";
 import {
@@ -61,6 +62,42 @@ const TYPE_LABELS: Record<string, string> = {
   magazine: "매거진",
 };
 
+const PAGE_TITLE = "콘텐츠/SNS";
+const PAGE_DESC = "콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드 · Pexels 사진 찾기";
+
+/**
+ * 화면 전환. 김호 2026-09-30: "그냥 컨텐츠탭 브랜드 옆에 탭을 하나 분리해서 만들어줘라"
+ *
+ * PageShell 이 필터 독을 그리고 바로 children 을 놓으므로, 이걸 children 의 첫 요소로 두면
+ * 브랜드 칩 바로 아래에 붙어 칩 옆에 있는 것처럼 읽힌다.
+ *
+ * 세 군데(로딩·데이터 없음·정상) 모두에 같은 줄이 있어야 한다. 정상 화면에만 두면
+ * 데이터가 없는 브랜드에서는 사진 찾기로 넘어갈 길이 사라진다.
+ */
+type View = "work" | "photos";
+
+function ViewSwitch({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
+      {([
+        { key: "work", label: "성과·진행" },
+        { key: "photos", label: "사진 찾기" },
+      ] as const).map((t) => (
+        <button
+          key={t.key}
+          onClick={() => onChange(t.key)}
+          className={cn(
+            "px-3 py-1.5 text-xs font-semibold rounded-md transition-colors",
+            view === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ContentPage() {
   return (
     <Suspense fallback={<div className="p-8 text-muted-foreground">Loading...</div>}>
@@ -79,6 +116,7 @@ function ContentInner() {
     `/api/content-v2?from=${from}&to=${to}&brand=${brand}`
   );
   const [tab, setTab] = useState<"overview" | "trend">("overview");
+  const [view, setView] = useState<View>("work");
 
   const byType = data?.byType || [];
   const postsTrend = data?.postsTrend || [];
@@ -99,9 +137,21 @@ function ContentInner() {
     ])
   );
 
+  // 사진 찾기는 기간·브랜드와 무관하므로 성과 데이터를 기다리지 않는다.
+  // 로딩 분기보다 앞에 둬야 데이터가 느린 날에도 바로 쓸 수 있다.
+  if (view === "photos") {
+    return (
+      <PageShell hideAllBrand title={PAGE_TITLE} description={PAGE_DESC}>
+        <ViewSwitch view={view} onChange={setView} />
+        <PhotoSearch />
+      </PageShell>
+    );
+  }
+
   if (loading) {
     return (
-      <PageShell hideAllBrand title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
+      <PageShell hideAllBrand title={PAGE_TITLE} description={PAGE_DESC}>
+        <ViewSwitch view={view} onChange={setView} />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i} className="animate-pulse"><CardContent className="p-4"><div className="h-8 bg-muted rounded" /></CardContent></Card>
@@ -113,7 +163,8 @@ function ContentInner() {
 
   if (byType.length === 0) {
     return (
-      <PageShell hideAllBrand title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
+      <PageShell hideAllBrand title={PAGE_TITLE} description={PAGE_DESC}>
+        <ViewSwitch view={view} onChange={setView} />
         <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행" brand={brand}
           hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
         <BrandBoards brand={brand} />
@@ -127,7 +178,8 @@ function ContentInner() {
   }
 
   return (
-    <PageShell hideAllBrand title="콘텐츠/SNS" description="콘텐츠 유형별 성과 · 팔로워 추이 · 게시 트렌드">
+    <PageShell hideAllBrand title={PAGE_TITLE} description={PAGE_DESC}>
+      <ViewSwitch view={view} onChange={setView} />
       <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행" brand={brand}
         hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
       <BrandBoards brand={brand} />
