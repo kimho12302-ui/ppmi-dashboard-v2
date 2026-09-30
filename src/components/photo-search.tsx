@@ -23,16 +23,18 @@ import {
 // 지금까지는 캐러셀 스크립트(pexels.mjs)를 돌려야만 사진이 나왔다. 매거진 썸네일이나
 // 블로그 이미지 한 장이 필요할 때 쓸 자리가 없었다.
 //
-// 한도를 지키는 장치가 여기 있다
+// 디바운스는 눈이 편하려고 있다
 // ────────────────────────────
-// Pexels 는 시간당 200회다. 스크립트는 회차당 5~15회로 끝나지만 검색창은 사람이 두드린다.
-//   디바운스 500ms : 사람이 글자 사이에 쉬는 간격이 보통 150~300ms 다. 400ms 면 단어
-//                    중간에 잠깐 멈춘 것도 한 번의 검색으로 새어 나간다. 500ms 는 그 위에
-//                    있으면서 누른 뒤 기다리는 느낌은 아직 안 드는 선이다. 200회/시간을
-//                    초당으로 풀면 18초에 한 번인데, 한 낱말 치는 사이 1회로 줄면 넉넉하다.
-//   최소 2글자     : 한 글자 검색은 결과가 사실상 무의미한데 한도는 똑같이 깎인다.
+// 한도를 아끼려고 넣은 것이 아니다. Pexels 시간당 200회는 사람이 손으로 두드리는 검색에는
+// 넉넉하다. 이유는 화면이다. 글자마다 곧바로 부르면 격자가 타자 속도로 갈려서 읽을 수가 없다.
+//   디바운스 300ms : 낱말을 치는 동안은 결과를 안 바꾸고, 손을 멈추면 바로 나온다.
+//                    1초씩 잡으면 느리다고 느낀다. 300ms 면 깜빡임은 사라지고 기다리는
+//                    느낌은 아직 안 든다.
+//   최소 2글자     : 한 글자로는 결과가 사실상 무의미해서 보여 줄 값이 없다.
 //   같은 질의 차단 : 질의·방향·페이지가 그대로면 요청 상태 객체가 바뀌지 않아 아예 안 부른다.
-// 서버 쪽에도 같은 질의 10분 캐시가 있다(api/photos/route.ts).
+//
+// 호출 카운터·시간당 상한·쿨다운 같은 것은 두지 않는다(김호 2026-09-30). 쓰는 사람을 막는
+// 장치가 된다. 한도에 닿으면 429 문구로 알리는 것으로 끝낸다.
 //
 // 출처 표기는 선택이 아니다
 // ───────────────────────
@@ -41,7 +43,7 @@ import {
 // (2) 사진마다 촬영자 이름을 보여 주고 그 이름이 사진 페이지로 이어지고 (3) 내려받기에
 // 크레딧 문구가 따라간다. 사진만 주고 크레딧을 버리면 약관 위반이다.
 
-const DEBOUNCE_MS = 500;
+const DEBOUNCE_MS = 300;
 const MIN_QUERY_LEN = 2;
 const PER_PAGE = 24;
 /** 브라우저는 연달아 터지는 내려받기를 막는다. 한 장씩 틈을 두고 보낸다. */
@@ -83,7 +85,6 @@ interface ApiBody {
   total?: number;
   page?: number;
   hasMore?: boolean;
-  quotaRemaining?: number | null;
   cached?: boolean;
   note?: string;
   error?: string;
@@ -104,8 +105,8 @@ export function PhotoSearch() {
   const [req, setReq] = useState<Req>({ q: "", orientation: "portrait", page: 1 });
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [meta, setMeta] = useState<{ total: number; hasMore: boolean; quota: number | null; cached: boolean }>({
-    total: 0, hasMore: false, quota: null, cached: false,
+  const [meta, setMeta] = useState<{ total: number; hasMore: boolean; cached: boolean }>({
+    total: 0, hasMore: false, cached: false,
   });
   const [loading, setLoading] = useState(false);
   const [problem, setProblem] = useState<{ kind: "rate" | "error" | "note"; text: string } | null>(null);
@@ -138,7 +139,7 @@ export function PhotoSearch() {
     if (q.length < MIN_QUERY_LEN) {
       setPhotos([]);
       setSelected(new Set());
-      setMeta({ total: 0, hasMore: false, quota: null, cached: false });
+      setMeta({ total: 0, hasMore: false, cached: false });
       setProblem(q.length === 0 ? null : { kind: "note", text: `검색어를 ${MIN_QUERY_LEN}글자 이상 적어 주세요` });
       return;
     }
@@ -170,7 +171,6 @@ export function PhotoSearch() {
         setMeta({
           total: body.total ?? incoming.length,
           hasMore: Boolean(body.hasMore),
-          quota: body.quotaRemaining ?? null,
           cached: Boolean(body.cached),
         });
         if (body.note) setProblem({ kind: "note", text: body.note });
@@ -290,16 +290,12 @@ export function PhotoSearch() {
         title="Pexels 실사진 검색"
         subtitle="위 브랜드 칩은 이 검색에 영향을 주지 않습니다. 세 브랜드가 같이 쓰는 도구입니다."
         right={
-          <div className="flex flex-col items-end gap-1">
-            {/* Pexels 지침이 요구하는 눈에 띄는 링크 */}
-            <a href={PEXELS_HOME} target="_blank" rel="noreferrer"
-              className="text-xs font-semibold underline decoration-dotted" style={{ color: "var(--primary)" }}>
-              사진 제공: Pexels
-            </a>
-            {meta.quota !== null && (
-              <span className="stamp text-muted-foreground">이번 달 남은 호출 {meta.quota.toLocaleString()}회</span>
-            )}
-          </div>
+          // Pexels 지침이 요구하는 눈에 띄는 링크.
+          // 남은 호출 수 같은 계기판은 일부러 두지 않는다. 사람이 눈치를 보게 된다.
+          <a href={PEXELS_HOME} target="_blank" rel="noreferrer"
+            className="text-xs font-semibold underline decoration-dotted" style={{ color: "var(--primary)" }}>
+            사진 제공: Pexels
+          </a>
         }
       >
         <div className="mt-4 space-y-3">
@@ -426,7 +422,7 @@ export function PhotoSearch() {
         사진과 문구는 <a href={PEXELS_HOME} target="_blank" rel="noreferrer" className="underline">Pexels</a> 것입니다.
         내려받으면 <code>Photo by 이름 on Pexels: 주소</code> 가 클립보드에 같이 담깁니다. 캡션 출처 칸에 붙여 주세요.
         파일명은 캐러셀 스크립트와 같은 <code>pexels-아이디.jpg</code> 입니다.
-        Pexels 한도는 시간당 200회라 입력이 멎은 뒤 {DEBOUNCE_MS}ms 에 한 번, {MIN_QUERY_LEN}글자부터만 찾습니다.
+        치는 동안 격자가 갈리지 않게 손을 멈춘 뒤 {DEBOUNCE_MS}ms 에 찾고, {MIN_QUERY_LEN}글자부터 찾습니다.
       </Footnote>
     </BoardCard>
   );
