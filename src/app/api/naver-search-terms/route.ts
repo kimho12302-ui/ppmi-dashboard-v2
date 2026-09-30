@@ -68,10 +68,16 @@ export async function GET(req: NextRequest) {
     .in("channel", ["naver_search", "naver_shopping"])
     .in("brand", spendBrands(brand)).gte("date", from).lte("date", to).limit(5000);
 
+  // 오래 안 본 뒤 처음 여는 질의(cold)는 타임아웃을 넘길 때가 있다. 두 번째는 1~3초에 끝난다.
+  // 읽기 전용이라 다시 불러도 안전하다. 타임아웃(57014)일 때만 한 번 더 부른다.
+  const isTimeout = (e: { code?: string; message?: string } | null) =>
+    !!e && (e.code === "57014" || (e.message || "").includes("statement timeout"));
+
   const rpcs: { brand: string; data: unknown; error: { message: string } | null }[] = [];
   for (const c of calls) {
-    const r = await supabase.rpc("naver_search_term_summary",
-      { p_account: c.account, p_from: from, p_to: to, p_brand: c.brand });
+    const args = { p_account: c.account, p_from: from, p_to: to, p_brand: c.brand };
+    let r = await supabase.rpc("naver_search_term_summary", args);
+    if (isTimeout(r.error)) r = await supabase.rpc("naver_search_term_summary", args);
     rpcs.push({ brand: c.brand, data: r.data, error: r.error });
   }
   const ads = await adsPromise;
