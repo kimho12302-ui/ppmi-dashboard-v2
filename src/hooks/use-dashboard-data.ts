@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { getDateRangeFromPreset, type DatePreset } from "@/lib/utils";
 
@@ -94,11 +94,25 @@ export function useFetch<T>(url: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // ★ 응답 경합 가드 (2026-09-30).
+  //   브랜드 칩을 누르면 URL 이 바뀌며 새 요청이 나가는데, 먼저 나간 요청이 늦게 끝나면
+  //   그 응답이 최신 응답을 덮어썼다. 전체(285행)가 밸런스랩(86행)보다 느려서, 밸런스랩을
+  //   눌러도 화면엔 전 브랜드 합계가 남았다(광고 분석 총광고비 10,867,959 vs 실제 2,087,438,
+  //   밸런스랩이 안 쓰는 GFA·쿠팡이 표에 그대로 떴다). 새로고침하면 정상이라 더 안 보였다.
+  //   요청마다 번호를 붙여 **마지막 요청의 응답만** 상태에 반영하고, 이전 요청은 취소한다.
+  const seqRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+
   const fetchData = useCallback(async () => {
+    const seq = ++seqRef.current;
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: ac.signal });
       if (!res.ok) {
         // 라우트가 { error } 를 실어 보내면 그 문구를 그대로 노출 (HTTP 500 보다 원인이 보인다)
         let msg = `HTTP ${res.status}`;
@@ -114,11 +128,15 @@ export function useFetch<T>(url: string) {
       //   이를 throw 하면 안내가 "소재 데이터가 없습니다"로 둔갑한다(2026-08 회귀).
       //   실제 장애는 위에서 4xx/5xx 로 걸러진다(감시 라우트는 fail-closed 로 500 반환).
       const json = await res.json();
+      if (seq !== seqRef.current) return; // 뒤처진 응답 — 버린다
       setData(json);
     } catch (err) {
+      // 내가 취소한 요청은 오류가 아니다. 뒤처진 요청의 오류도 최신 화면에 띄우지 않는다.
+      if (ac.signal.aborted || seq !== seqRef.current) return;
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
-      setLoading(false);
+      // 최신 요청만 로딩을 내린다. 뒤처진 요청이 내리면 아직 받는 중인데 다 받은 것처럼 보인다.
+      if (seq === seqRef.current) setLoading(false);
     }
   }, [url]);
 
