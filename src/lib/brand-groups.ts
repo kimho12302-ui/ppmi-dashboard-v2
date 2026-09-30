@@ -8,6 +8,28 @@ export function expandBrands(brand: string): string[] {
   return brand === "pet" ? PET_BRANDS : [brand];
 }
 
+// ── 사입 유통 브랜드 판정 (2026-09-30 공용화) ──
+// 사입은 유통 브랜드가 곧 라인업이다. 판매 원장의 lineup 은 대부분 비어 있고(9월 513행 중 162행),
+// 차 있어도 "N&D" 처럼 제품 라인이라 유통 브랜드가 아니다. 상품명에 브랜드가 안 붙는 제품도 많다
+// ("오메가3", "후코이카", "마그네타 미니"). 그래서 이름 추측만으로는 닥터레이 영양제가 통째로
+// "기타"로 떨어졌다(2026-09-18, 사입 라인업 1위가 '기타'였던 원인).
+// 제품 정본('상품 목록' 시트)의 브랜드명을 먼저 본다. 거기 다 적혀 있다.
+//
+// ★ 오버뷰 카드와 브랜드 상세가 같은 함수를 써야 한다. 판정이 갈리면 두 화면의 사입 분해가
+//   서로 다른 숫자를 낸다. masterByProduct 주입은 호출부에서 한다(lib 순환참조 회피).
+export function saipBrandKey(
+  r: { product: string; lineup: string | null },
+  brandKoOf: (product: string) => string | null,
+): string {
+  const ko = brandKoOf(r.product);
+  if (ko) return ko;
+  if (r.lineup) return r.lineup;
+  for (const n of ["파미나", "테라카니스", "닥터레이", "고네이티브"]) {
+    if (r.product.includes(n)) return n;
+  }
+  return "기타";
+}
+
 // 브랜드 → 그룹 키 (오버뷰 그룹 합산용)
 export function brandGroup(brand: string): "pet" | "balancelab" | "other" {
   if (PET_BRANDS.includes(brand)) return "pet";

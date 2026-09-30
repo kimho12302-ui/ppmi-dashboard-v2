@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
 
-import { expandBrands, PET_BRANDS, GROUP_LABELS, BL_TEST_LINES, classifyBlProduct } from "@/lib/brand-groups";
+import { expandBrands, PET_BRANDS, GROUP_LABELS, BL_TEST_LINES, classifyBlProduct, saipBrandKey } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
+import { masterByProduct } from "@/lib/product-master";
 import { isGonggu, isGongguAggregate, gongguSeller, isGongguInDailySales } from "@/lib/gonggu";
 
 export async function GET(req: NextRequest) {
@@ -290,6 +291,34 @@ export async function GET(req: NextRequest) {
       return { group: g, label: GROUP_LABELS[g], revenue, orders };
     });
 
+    // ── 펫 그룹 브랜드별 분해 (2026-09-30) ──
+    // 펫 카드가 5,226만원 한 덩어리로만 보여 어느 브랜드가 얼마인지 안 보였다.
+    // 매출·주문은 daily_sales(brandRevMap)를 쓴다 — 카드 합계와 같은 원장이라 합이 정확히 맞는다.
+    // 아이언펫은 매출 0이어도 줄을 남긴다. 빠지면 "브랜드가 사라졌나"로 읽힌다(9월 실측 0원).
+    const PET_BRAND_LABELS: Record<string, string> = { nutty: "너티", ironpet: "아이언펫", saip: "사입" };
+    const petBrands = PET_BRANDS.map(b => ({
+      brand: b,
+      label: PET_BRAND_LABELS[b] || b,
+      revenue: brandRevMap.get(b)?.revenue || 0,
+      orders: brandRevMap.get(b)?.orders || 0,
+    }));
+
+    // ── 사입 유통 브랜드별 분해 (2026-09-30) ──
+    // 사입은 우리 브랜드가 아니라 유통 대행이라 "사입" 한 줄로는 뭘 파는지 안 보인다.
+    // 판정은 brand-detail 과 같은 공용 함수(saipBrandKey) — 두 화면이 갈리면 숫자가 달라진다.
+    const saipAgg = new Map<string, { revenue: number; quantity: number }>();
+    for (const ps of prodData || []) {
+      if (ps.brand !== "saip") continue;
+      const key = saipBrandKey(ps as { product: string; lineup: string | null }, p => masterByProduct(p)?.brand_ko || null);
+      const e = saipAgg.get(key) || { revenue: 0, quantity: 0 };
+      e.revenue += Number(ps.revenue || 0); e.quantity += Number(ps.quantity || 0);
+      saipAgg.set(key, e);
+    }
+    // 매출순 전체. 상위 N 으로 자르지 않는다 — 합이 사입 총액과 맞아야 읽는 사람이 믿는다.
+    const saipBrands = Array.from(saipAgg.entries())
+      .map(([label, v]) => ({ label, ...v }))
+      .sort((a, b) => b.revenue - a.revenue);
+
     // ── 밸런스랩 검사 라인별 매출 (product_sales 기반, 공구 제외 = 헤드라인 스코프 동일) ──
     // 타액·음식물과민증은 런칭 전이어도 항상 0으로 표시 (런칭 후 자동 분류).
     const blLineAgg = new Map<string, { revenue: number; quantity: number }>();
@@ -420,7 +449,7 @@ export async function GET(req: NextRequest) {
         matchedRate: totalProducts > 0 ? matchedProducts / totalProducts : 0,
       },
       trend, channels, channelRoasTrend, reportedRevenueTotal,
-      brandRevenue, brandRevenueTrend, brandProfit, groupRevenue, blTestLines,
+      brandRevenue, brandRevenueTrend, brandProfit, groupRevenue, blTestLines, petBrands, saipBrands,
       salesByChannel, topProducts,
       funnelSummary: { ...funnelSummary, convRate },
       targets,

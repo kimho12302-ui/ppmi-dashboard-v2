@@ -1,4 +1,4 @@
-import { expandBrands, BL_TEST_LINES, classifyBlProduct } from "@/lib/brand-groups";
+import { expandBrands, BL_TEST_LINES, classifyBlProduct, saipBrandKey } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
@@ -39,21 +39,8 @@ export async function GET(req: NextRequest) {
     // 라인업 키 결정은 시계열(누적 막대)에서도 같은 기준을 써야 하므로 함수로 뺀다.
     const lineupKey = (r: { product: string; lineup: string | null }): string => {
       if (brand === "nutty") return r.lineup || "기타";
-      if (brand === "saip") {
-        // ★ 사입은 유통 브랜드가 곧 라인업이다. 판매 원장의 lineup 은 대부분 비어 있고,
-        //   상품명에 브랜드가 안 붙는 제품이 많다("오메가3", "후코이카", "마그네타 미니").
-        //   그래서 이름 추측으로는 닥터레이 영양제 6,271,020원이 통째로 "기타"로 떨어졌다
-        //   (2026-09-18 확인, 사입 라인업 1위가 '기타'였던 원인).
-        //   제품 정본('상품 목록' 시트)의 브랜드명을 먼저 본다. 거기 다 적혀 있다.
-        const m = masterByProduct(r.product);
-        if (m?.brand_ko) return m.brand_ko;
-        return r.lineup || (
-          r.product.includes("파미나") ? "파미나" :
-          r.product.includes("테라카니스") ? "테라카니스" :
-          r.product.includes("닥터레이") ? "닥터레이" :
-          r.product.includes("고네이티브") ? "고네이티브" : "기타"
-        );
-      }
+      // 사입 판정은 오버뷰 카드와 공용 함수를 쓴다 (brand-groups.saipBrandKey).
+      if (brand === "saip") return saipBrandKey(r, p => masterByProduct(p)?.brand_ko || null);
       if (brand === "balancelab") {
         // 검사 라인은 brand-groups 의 단일 분류기를 쓴다.
         // 이전에는 `includes("검사") → 큐모발검사` 하드코딩이라, 런칭 예정인

@@ -42,6 +42,8 @@ interface DashboardData {
   funnelSummary: { sessions: number; cartAdds: number; purchases: number; repurchases: number; convRate: number };
   groupRevenue?: { group: string; label: string; revenue: number; orders: number }[];
   blTestLines?: { key: string; label: string; preLaunch: boolean; revenue: number; quantity: number }[];
+  petBrands?: { brand: string; label: string; revenue: number; orders: number }[];
+  saipBrands?: { label: string; revenue: number; quantity: number }[];
   gongguSales: { seller: string; revenue: number; orders: number }[];
   gongguSalesTotal: number;
   selfSalesTotal: number;
@@ -476,6 +478,32 @@ function OverviewInner() {
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                     <div className="h-full rounded-full" style={{ width: `${share}%`, backgroundColor: g.group === "pet" ? "#ea580c" : "#2563eb" }} />
                   </div>
+                  {/* 펫은 브랜드별 분해. 사입은 우리 브랜드가 아니라 유통이므로 그 아래 유통 브랜드까지 편다. */}
+                  {g.group === "pet" && (data?.petBrands || []).length > 0 && (
+                    <div className="pt-1 space-y-1">
+                      {(data?.petBrands || []).map(b => (
+                        <div key={b.brand}>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">{b.label}</span>
+                            <span className={b.revenue > 0 ? "font-medium" : "text-muted-foreground"}>
+                              {formatCurrency(b.revenue)}{b.orders > 0 ? ` · ${formatNumber(b.orders)}건` : ""}
+                            </span>
+                          </div>
+                          {/* 사입 하위: 유통 브랜드. 합은 사입 매출과 정확히 맞는다(같은 product_sales). */}
+                          {b.brand === "saip" && (data?.saipBrands || []).length > 0 && (
+                            <div className="mt-0.5 ml-3 pl-2 border-l space-y-0.5">
+                              {(data?.saipBrands || []).map(s => (
+                                <div key={s.label} className="flex items-center justify-between text-[11px]">
+                                  <span className="text-muted-foreground">{s.label}</span>
+                                  <span className="text-muted-foreground">{formatCurrency(s.revenue)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {/* 밸런스랩은 검사 라인별 분해 (타액·음식물과민증은 런칭 전 → 0이어도 항상 표시) */}
                   {g.group === "balancelab" && (data?.blTestLines || []).length > 0 && (
                     <div className="pt-1 space-y-1">
