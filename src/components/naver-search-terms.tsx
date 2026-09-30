@@ -8,15 +8,21 @@ import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { SortTable, type SortCol } from "@/components/sort-table";
 
 // 키워드 탭 > 네이버 검색어. 사람들이 실제로 친 검색어(등록 키워드가 아님). 2026-09-18 신설.
-// 두 축을 섞지 않는다(김호): 너티·사입·아이언펫 계정 / 밸런스랩 계정.
 // 네이버는 **파워링크 검색어 단위 전환을 주지 않는다.** 구매·ROAS 는 쇼핑검색에만 있다. 파워링크 전환은
 // 등록 키워드 단위로 첫 번째 탭(키워드 분석)에 있다.
+//
+// ★ 2026-09-30: 계정 탭(너티·사입·아이언펫 / 밸런스랩)을 없앴다. 페이지 상단 브랜드 필터와 겹쳐
+//   "밸런스랩 → 네이버 검색어 → 또 밸런스랩 → 전체" 를 눌러야 했다(김호 지적). 이제 상단 필터를 따르고,
+//   가를 여지가 남을 때만 하위 칩을 낸다. 계정은 브랜드에서 유도하므로 화면에 안 나온다.
+//     전체  → 칩 [전체·너티·사입·아이언펫·밸런스랩]
+//     펫    → 칩 [전체·너티·사입·아이언펫]   (밸런스랩 칩은 안 보인다)
+//     그 외 → 칩 없음. 상단에서 이미 하나로 좁혔다
 
 type AdType = "powerlink" | "shopping";
 interface Sum { impressions: number; clicks: number; cost: number; purchases: number; purchase_value: number; cart_adds: number }
 interface Entry extends Sum { ad_type: AdType; product: string; query: string }
 interface Resp {
-  entries: Entry[]; rows: number; latestCollected: string | null;
+  brand: string; entries: Entry[]; rows: number; latestCollected: string | null;
   campaignCost: { powerlink: number; shopping: number }; error?: string;
 }
 type Row = Sum & { name: string; sub?: string; types?: string };
@@ -42,9 +48,25 @@ const METRIC_COLS: SortCol<Row>[] = [
 ];
 const nameCol = (label: string): SortCol<Row> => ({ key: "name", label, value: (r) => r.name, render: (r) => r.name, left: true });
 
-export function NaverSearchTermSection({ from, to }: { from: string; to: string }) {
-  const [account, setAccount] = useState<"main" | "balancelab">("main");
-  const { data, loading } = useFetch<Resp>(`/api/naver-search-terms?account=${account}&from=${from}&to=${to}`);
+// 상단 브랜드 필터별로 하위에 낼 칩. 빈 배열이면 칩 줄 자체를 안 그린다.
+const SUB_BRANDS: Record<string, { key: string; label: string }[]> = {
+  all: [
+    { key: "all", label: "전체" }, { key: "nutty", label: "너티" }, { key: "saip", label: "사입" },
+    { key: "ironpet", label: "아이언펫" }, { key: "balancelab", label: "밸런스랩" },
+  ],
+  pet: [
+    { key: "pet", label: "전체" }, { key: "nutty", label: "너티" },
+    { key: "saip", label: "사입" }, { key: "ironpet", label: "아이언펫" },
+  ],
+};
+
+export function NaverSearchTermSection({ brand, from, to }: { brand: string; from: string; to: string }) {
+  const subs = SUB_BRANDS[brand] || [];
+  // 하위 칩은 상단 필터가 바뀌면 그 필터 자신으로 돌아간다. 펫에서 '사입'을 고른 채 밸런스랩으로
+  // 옮기면 사입 데이터가 밸런스랩 화면에 남는다.
+  const [sub, setSub] = useState<string | null>(null);
+  const effective = subs.some(s => s.key === sub) ? (sub as string) : brand;
+  const { data, loading } = useFetch<Resp>(`/api/naver-search-terms?brand=${effective}&from=${from}&to=${to}`);
   const [type, setType] = useState<"all" | AdType>("all");
   const [picked, setPicked] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -94,7 +116,7 @@ export function NaverSearchTermSection({ from, to }: { from: string; to: string 
     setPicked((cur) => (cur === name ? null : name));
     requestAnimationFrame(() => kwRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
-  const switchAccount = (a: "main" | "balancelab") => { setAccount(a); setPicked(null); setQuery(""); };
+  const switchSub = (k: string) => { setSub(k); setPicked(null); setQuery(""); };
 
   const cov = (t: AdType) => {
     const c = data?.campaignCost?.[t] || 0;
@@ -104,12 +126,14 @@ export function NaverSearchTermSection({ from, to }: { from: string; to: string 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex gap-0.5 rounded-lg bg-muted p-1">
-          {([["main", "너티·사입·아이언펫"], ["balancelab", "밸런스랩"]] as const).map(([k, l]) => (
-            <button key={k} onClick={() => switchAccount(k)}
-              className={cn("px-3 py-1.5 text-xs rounded-md", account === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>{l}</button>
-          ))}
-        </div>
+        {subs.length > 0 && (
+          <div className="flex gap-0.5 rounded-lg bg-muted p-1">
+            {subs.map(({ key, label }) => (
+              <button key={key} onClick={() => switchSub(key)}
+                className={cn("px-3 py-1.5 text-xs rounded-md", effective === key ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>{label}</button>
+            ))}
+          </div>
+        )}
         <div className="flex gap-0.5 rounded-lg bg-muted p-1">
           {([["all", "전체"], ["powerlink", "파워링크"], ["shopping", "쇼핑검색"]] as const).map(([k, l]) => (
             <button key={k} onClick={() => { setType(k); setPicked(null); }}
@@ -121,8 +145,13 @@ export function NaverSearchTermSection({ from, to }: { from: string; to: string 
       {loading ? <Card><CardContent className="p-8 text-center text-muted-foreground">네이버 검색어 불러오는 중...</CardContent></Card>
         : data?.error ? <Card><CardContent className="p-4 text-sm" style={{ color: "var(--sig-danger)" }}>네이버 검색어 오류: {data.error}</CardContent></Card>
         : !data?.rows ? (
-          <Card><CardContent className="p-6 text-sm text-muted-foreground">
-            이 기간에 쌓인 검색어가 없습니다{data?.latestCollected ? ` (마지막 수집일 ${data.latestCollected})` : ""}.
+          // 빈 화면의 사유를 가른다. 수집이 살아 있는데 이 브랜드만 0 이면 집행을 안 한 것이고,
+          // 수집 자체가 조회 기간보다 앞서 멈췄으면 파이프 문제다. 아이언펫이 전자다(2026-05 이후 0행).
+          <Card><CardContent className="p-6 text-sm text-muted-foreground space-y-1">
+            <p>이 기간에 쌓인 검색어가 없습니다{data?.latestCollected ? ` (계정 마지막 수집일 ${data.latestCollected})` : ""}.</p>
+            {data?.latestCollected && data.latestCollected >= from && (
+              <p className="text-xs">수집은 돌고 있습니다. 이 브랜드가 그 기간에 검색광고를 집행하지 않았다는 뜻입니다.</p>
+            )}
           </CardContent></Card>
         ) : (
           <>

@@ -197,7 +197,7 @@ function KeywordsInner() {
 
       {tab === "gsc" && <GscSection brand={brand} from={from} to={to} />}
       {tab === "coupang" && <CoupangKeywordSection brand={brand} from={from} to={to} />}
-      {tab === "naver" && <NaverSearchTermSection from={from} to={to} />}
+      {tab === "naver" && <NaverSearchTermSection brand={brand} from={from} to={to} />}
 
       {/* 수집 중단을 빈 화면으로 오독하지 않도록 최종 수집일을 명시한다(2026-08 리뷰).
           조회 기간보다 마지막 수집일이 앞서면 "이 기간엔 애초에 데이터가 없다"는 뜻. */}
