@@ -30,6 +30,14 @@ export function saipBrandKey(
   return "기타";
 }
 
+// 행의 brand 가 필터에 들어가는지. 필터가 그룹("pet")이면 소속 브랜드 중 하나면 된다.
+// ★ `r.brand === brand` 로 거르면 안 된다. "pet" 이라는 brand 를 가진 행은 없어서
+//   펫을 고르는 순간 전부 빠진다(2026-10-13, 매출 분석 그래프가 펫에서 통째로 빈 원인).
+export function matchesBrand(rowBrand: string | null | undefined, filter: string | null | undefined): boolean {
+  if (!filter || filter === "all") return true;
+  return !!rowBrand && expandBrands(filter).includes(rowBrand);
+}
+
 // 브랜드 → 그룹 키 (오버뷰 그룹 합산용)
 export function brandGroup(brand: string): "pet" | "balancelab" | "other" {
   if (PET_BRANDS.includes(brand)) return "pet";

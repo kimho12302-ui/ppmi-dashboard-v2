@@ -112,7 +112,14 @@ export function useFetch<T>(url: string) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(url, { signal: ac.signal });
+      // 5xx 는 한 번 더 부른다. DB 게이트웨이 타임아웃이 순간적으로 나는데, 그걸 그대로 받으면
+      // 화면이 "기간 내 판매 없음" 같은 빈 상태로 그려졌다(2026-10-13, 밸런스랩 상세 매출 구성).
+      let res = await fetch(url, { signal: ac.signal });
+      if (res.status >= 500 && !ac.signal.aborted) {
+        await new Promise((r) => setTimeout(r, 700));
+        if (ac.signal.aborted || seq !== seqRef.current) return;
+        res = await fetch(url, { signal: ac.signal });
+      }
       if (!res.ok) {
         // 라우트가 { error } 를 실어 보내면 그 문구를 그대로 노출 (HTTP 500 보다 원인이 보인다)
         let msg = `HTTP ${res.status}`;

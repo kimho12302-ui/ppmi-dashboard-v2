@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useMemo } from "react";
+import { matchesBrand } from "@/lib/brand-groups";
 import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
@@ -65,7 +66,7 @@ function FunnelInner() {
   const metaFunnel = useMemo(() => {
     const rows = data?.metaAds || [];
     if (brand && brand !== "all") {
-      const filtered = rows.filter(r => r.brand === brand);
+      const filtered = rows.filter(r => matchesBrand(r.brand, brand));
       const t = { impressions: 0, reach: 0, clicks: 0, conversions: 0, convValue: 0, spend: 0 };
       for (const r of filtered) {
         t.impressions += r.impressions || 0; t.reach += r.reach || 0;

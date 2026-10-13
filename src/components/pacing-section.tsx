@@ -238,8 +238,8 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
           </div>
         )}
 
-        {/* 전체 보기일 때 브랜드별 미니 페이싱 */}
-        {b === "all" && data.perBrand.length > 0 && (
+        {/* 묶음 보기(전체·펫)일 때 브랜드별 미니 페이싱 */}
+        {(b === "all" || b === "pet") && data.perBrand.length > 0 && (
           <div className="pt-2 border-t space-y-2">
             <p className="text-xs text-muted-foreground">
               브랜드별 매출 달성률 (마커=날짜진행률 {pct(dateProgress)}) · 목표는 <b>공구 포함</b> 기준

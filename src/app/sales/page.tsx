@@ -4,6 +4,7 @@ import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
+import { matchesBrand } from "@/lib/brand-groups";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
@@ -71,19 +72,19 @@ function SalesPageInner() {
   const sales = useMemo(() => {
     const all = data?.sales || [];
     if (!brand || brand === "all") return all;
-    return all.filter((r) => r.brand === brand);
+    return all.filter((r) => matchesBrand(r.brand, brand));
   }, [data, brand]);
 
   const products = useMemo(() => {
     const all = data?.products || [];
     if (!brand || brand === "all") return all;
-    return all.filter((r) => r.brand === brand);
+    return all.filter((r) => matchesBrand(r.brand, brand));
   }, [data, brand]);
 
   const prevSales = useMemo(() => {
     const all = data?.prevSales || [];
     if (!brand || brand === "all") return all;
-    return all.filter((r) => r.brand === brand);
+    return all.filter((r) => matchesBrand(r.brand, brand));
   }, [data, brand]);
 
   /* KPI */
@@ -431,7 +432,8 @@ function SalesPageInner() {
           </CardContent>
         </Card>
       )}
-      {(
+      {/* 밸런스랩 전용 구역. 펫·개별 펫 브랜드를 고르면 공구가 없어 빈 카드 3장이 떴다(2026-10-13). */}
+      {(!brand || brand === "all" || brand === "balancelab") && (
         <div className="space-y-4">
           {/* 자체 vs 공구 비교 */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

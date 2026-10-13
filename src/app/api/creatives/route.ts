@@ -3,10 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 30; // Vercel serverless timeout (seconds)
 
 const META_TOKEN = process.env.META_ADS_TOKEN || "";
+// ★ 밸런스랩 계정이 빠져 있었다. 2026-10 현재 메타를 집행하는 브랜드는 밸런스랩뿐이라
+//   이 탭이 어느 브랜드로 봐도 비어 있었다(2026-10-13). 사입은 메타 계정이 없다.
 const AD_ACCOUNTS: Record<string, string> = {
   nutty: process.env.META_NUTTY_AD_ACCOUNT || "act_1510647003433200",
   ironpet: process.env.META_IRONPET_AD_ACCOUNT || "act_8188388757843816",
+  balancelab: process.env.META_BALANCELAB_AD_ACCOUNT || "act_276181463299827",
 };
+// 묶음 필터 → 계정 목록
+const GROUP_MEMBERS: Record<string, string[]> = { pet: ["nutty", "ironpet"] };
 
 interface Creative {
   id: string;
@@ -44,6 +49,8 @@ async function fetchAllPages(initialUrl: string): Promise<any[]> {
     iterations++;
     const resp: Response = await globalThis.fetch(nextUrl);
     const body = await resp.json();
+    // 토큰 만료 같은 오류를 빈 배열로 삼키지 않는다. 호출부가 계정별 사유로 모은다.
+    if (body.error) throw new Error(body.error.message || `Graph API ${resp.status}`);
     if (body.data) all.push(...body.data);
     nextUrl = body.paging?.next || null;
     if (all.length > 500) break;
@@ -62,8 +69,10 @@ export async function GET(request: NextRequest) {
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
 
+  // 유효한 메타 토큰은 GitHub Secrets 에만 있고(rotate_meta_token.py 가 거기만 갱신) Vercel 사본은 비어 있다.
+  // 빈 목록만 돌려주면 "소재가 없다"로 읽혀서 사유를 같이 준다.
   if (!META_TOKEN) {
-    return NextResponse.json({ creatives: [], error: "META_ADS_TOKEN not configured" });
+    return NextResponse.json({ creatives: [], total: 0, error: "메타 토큰이 대시보드 서버에 없어 소재를 불러오지 못합니다. 광고비·성과는 매일 수집되고 있으며 이 탭만 비어 있습니다" });
   }
 
   const cacheKey = `${brand}|${from}|${to}`;
@@ -74,9 +83,8 @@ export async function GET(request: NextRequest) {
   try {
     const accounts = brand === "all"
       ? Object.entries(AD_ACCOUNTS)
-      : AD_ACCOUNTS[brand]
-        ? [[brand, AD_ACCOUNTS[brand]]]
-        : [];
+      : (GROUP_MEMBERS[brand] || [brand]).filter((b) => AD_ACCOUNTS[b]).map((b) => [b, AD_ACCOUNTS[b]]);
+    const accountErrors: string[] = [];
 
     const allCreatives: Creative[] = [];
 
@@ -167,6 +175,7 @@ export async function GET(request: NextRequest) {
       }
       } catch (err) {
         console.error(`[creatives] ${brandName} error:`, err);
+        accountErrors.push(`${brandName}: ${err instanceof Error ? err.message.slice(0, 120) : String(err)}`);
         // Continue with other accounts
       }
     }
@@ -174,7 +183,12 @@ export async function GET(request: NextRequest) {
     // Sort by spend descending
     allCreatives.sort((a, b) => b.spend - a.spend);
 
-    const result = { creatives: allCreatives, total: allCreatives.length };
+    // 계정이 하나라도 실패하면 사유를 같이 준다. 실패를 빈 목록으로 삼키면 화면이 "소재 없음"으로 읽힌다.
+    const result = {
+      creatives: allCreatives, total: allCreatives.length,
+      ...(accountErrors.length ? { error: `메타 소재 조회 실패: ${accountErrors.join(" / ")}` } : {}),
+      ...(accounts.length === 0 ? { error: "이 브랜드는 메타 광고 계정이 없습니다" } : {}),
+    };
     cache = { key: cacheKey, data: result, ts: Date.now() };
     return NextResponse.json(result);
   } catch (error) {

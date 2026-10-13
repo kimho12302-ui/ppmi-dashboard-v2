@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { expandBrands } from "@/lib/brand-groups";
+import { expandBrands, PET_BRANDS } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
@@ -109,9 +109,11 @@ export async function GET(req: NextRequest) {
       else paceStatus = "behind";
     }
 
-    // 전체(all)일 때 브랜드별 미니 페이싱도 제공
+    // 묶음 보기(전체·펫)일 때 브랜드별 미니 페이싱도 제공.
+    // 펫을 고르면 펫 3개 브랜드로 펴야 한다. 전엔 all 에서만 계산해 펫에선 칸이 비었다(2026-10-13).
     let perBrand: unknown[] = [];
-    if (brand === "all") {
+    const memberBrands = brand === "all" ? BRANDS : brand === "pet" ? PET_BRANDS : [];
+    if (memberBrands.length > 0) {
       const tByBrand = new Map((targetsData || []).map((r) => [r.brand as string, r]));
       const revByBrand = new Map<string, number>();
       const adByBrand = new Map<string, number>();
@@ -119,7 +121,7 @@ export async function GET(req: NextRequest) {
       for (const r of ads) {
         adByBrand.set(r.brand, (adByBrand.get(r.brand) || 0) + Number(r.spend || 0));
       }
-      perBrand = BRANDS.map((b) => {
+      perBrand = memberBrands.map((b) => {
         const t = tByBrand.get(b);
         const tRev = Number(t?.revenue_target || 0);
         const tAd = Number(t?.ad_budget_target || 0);

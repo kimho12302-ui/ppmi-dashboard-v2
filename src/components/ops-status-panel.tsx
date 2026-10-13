@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { matchesBrand } from "@/lib/brand-groups";
 import { Card, CardContent } from "@/components/ui/card";
 
 // 팀용 운영 상태 카드. 로컬 관제판이 매일 /api/ops-status 로 올린 판정을 그대로 그린다.
@@ -61,7 +62,7 @@ export function OpsStatusPanel({ section, title, hint, brand }: { section: "coll
   if (!all) return null;
   // 브랜드를 고르면 그 브랜드 행 + 공통 행만. 전체면 다 보인다.
   const items = brand && brand !== "all"
-    ? all.filter((i) => !i.metrics?.brand || i.metrics.brand === brand)
+    ? all.filter((i) => !i.metrics?.brand || matchesBrand(i.metrics.brand, brand))
     : all;
 
   const reportedAt = items[0]?.reported_at;

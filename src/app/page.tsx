@@ -39,6 +39,7 @@ interface DashboardData {
   brandProfit: { brand: string; revenue: number; orders: number; adSpend: number; cogs: number; profit: number; margin: number }[];
   salesByChannel: { channel: string; revenue: number }[];
   topProducts: { product: string; revenue: number; quantity: number; brand: string }[];
+  productRevenueTotal?: number;
   funnelSummary: { sessions: number; cartAdds: number; purchases: number; repurchases: number; convRate: number };
   groupRevenue?: { group: string; label: string; revenue: number; orders: number }[];
   blTestLines?: { key: string; label: string; preLaunch: boolean; revenue: number; quantity: number }[];
@@ -151,7 +152,9 @@ function OverviewInner() {
         // charts.csv Part-to-Whole 규칙: 파이는 최대 6조각. 그 이상은 서로 구분이 안 된다.
         data: (() => {
           const top = topProducts.slice(0, 5);
-          const restSum = topProducts.slice(5).reduce((s, p) => s + p.revenue, 0);
+          // 기타 = 전체 제품 매출 − 상위 5. API 가 상위 5개만 주므로 합계를 따로 받아 뺀다.
+          const topSum = top.reduce((s, p) => s + p.revenue, 0);
+          const restSum = Math.max(0, (data?.productRevenueTotal ?? topSum) - topSum);
           return restSum > 0 ? [...top, { product: "기타", revenue: restSum, quantity: 0, brand: "" }] : top;
         })().map((p, i) => ({
           name: p.product.length > 15 ? p.product.slice(0, 15) + "…" : p.product,

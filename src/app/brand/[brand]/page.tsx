@@ -87,7 +87,7 @@ function BrandInner({ brand }: { brand: string }) {
 
   const { data: dash, loading } = useFetch<DashboardResp>(`/api/dashboard?brand=${brand}&from=${from}&to=${to}`);
   const { data: cg } = useFetch<ChannelGroupsResp>(`/api/channel-groups?brand=${brand}&from=${from}&to=${to}`);
-  const { data: detail } = useFetch<BrandDetailResp>(`/api/brand-detail?brand=${brand}&from=${from}&to=${to}`);
+  const { data: detail, error: detailError } = useFetch<BrandDetailResp>(`/api/brand-detail?brand=${brand}&from=${from}&to=${to}`);
 
   const kpi = dash?.kpi;
   const pct = (cur?: number, prev?: number) => (prev && prev > 0 ? (((cur || 0) - prev) / prev) * 100 : undefined);
@@ -232,7 +232,7 @@ function BrandInner({ brand }: { brand: string }) {
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
-          ) : <p className="text-sm text-muted-foreground py-10 text-center">{loading ? "로딩 중..." : "기간 내 판매 없음"}</p>}
+          ) : <p className="text-sm text-muted-foreground py-10 text-center">{loading ? "로딩 중..." : detailError ? `불러오지 못했습니다 (${detailError}). 새로고침해 주세요` : "기간 내 판매 없음"}</p>}
         </CardContent>
       </Card>
 

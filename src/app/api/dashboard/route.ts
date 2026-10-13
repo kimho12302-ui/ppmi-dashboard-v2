@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import { expandBrands, PET_BRANDS, GROUP_LABELS, BL_TEST_LINES, classifyBlProduct, saipBrandKey } from "@/lib/brand-groups";
+import { expandBrands, PET_BRANDS, GROUP_LABELS, BL_TEST_LINES, classifyBlProduct, saipBrandKey, matchesBrand } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
@@ -114,12 +114,12 @@ export async function GET(req: NextRequest) {
 
     // ── Shipping + Misc costs ──
     let totalShippingCost = 0;
-    for (const r of (shippingData || []).filter(r => brand === "all" || r.brand === brand)) {
+    for (const r of (shippingData || []).filter(r => matchesBrand(r.brand, brand))) {
       totalShippingCost += Number(r.total_cost || 0);
     }
 
     let totalMiscCost = 0;
-    for (const r of (miscData || []).filter(r => brand === "all" || r.brand === brand)) {
+    for (const r of (miscData || []).filter(r => matchesBrand(r.brand, brand))) {
       totalMiscCost += Number(r.amount || 0);
     }
 
@@ -381,6 +381,9 @@ export async function GET(req: NextRequest) {
       prodMap.set(r.product, e);
     }
     const topProducts = Array.from(prodMap.entries()).map(([product, d]) => ({ product, ...d })).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+    // 파이의 「기타」 조각 분모. 상위 5개만 내려보내면 화면이 상위 5개끼리 100% 를 나눠
+    // "오메가3 31%" 처럼 부풀려 보였다(실제 펫 매출 대비 약 12%, 2026-10-13). 같은 스코프의 합계를 같이 준다.
+    const productRevenueTotal = Array.from(prodMap.values()).reduce((s, d) => s + d.revenue, 0);
 
     // ── Funnel summary ──
     // purchases는 daily_sales의 orders와 동일 소스 사용 (daily_funnel.purchases는 brand="all" 혼합으로 부정확)
@@ -394,7 +397,7 @@ export async function GET(req: NextRequest) {
     const convRate = funnelSummary.sessions > 0 ? (funnelSummary.purchases / funnelSummary.sessions) * 100 : 0;
 
     // ── Targets ──
-    const targets = (targetData || []).filter(r => brand === "all" || r.brand === brand);
+    const targets = (targetData || []).filter(r => matchesBrand(r.brand, brand));
 
     // ── Anomaly detection ──
     const anomalies: { brand: string; metric: string; change: number; current: number; previous: number }[] = [];
@@ -450,7 +453,7 @@ export async function GET(req: NextRequest) {
       },
       trend, channels, channelRoasTrend, reportedRevenueTotal,
       brandRevenue, brandRevenueTrend, brandProfit, groupRevenue, blTestLines, petBrands, saipBrands,
-      salesByChannel, topProducts,
+      salesByChannel, topProducts, productRevenueTotal,
       funnelSummary: { ...funnelSummary, convRate },
       targets,
       gongguSales, gongguSalesTotal, selfSalesTotal,
