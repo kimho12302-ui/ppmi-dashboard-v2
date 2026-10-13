@@ -1,198 +1,83 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
+import { fetchAll } from "@/lib/db";
+import { expandBrands } from "@/lib/brand-groups";
 
-export const maxDuration = 30; // Vercel serverless timeout (seconds)
+// 메타 소재별 성과. 2026-10-13 원천 교체.
+//
+// 전에는 이 서버가 그래프 API 를 직접 불렀는데, 유효한 메타 토큰은 GitHub Secrets 에만 있고
+// (rotate_meta_token.py 가 거기만 갱신) 대시보드 서버 사본은 비어 있어 탭이 늘 비었다.
+// 게다가 계정 목록에 밸런스랩이 빠져 있었다(지금 메타를 쓰는 유일한 브랜드).
+// 지금은 수집기(sync_meta_api.py)가 소재×일을 meta_ad_daily 에 쓰고 여기서 기간 합산한다.
+//
+// ★ 밸런스랩 픽셀은 건강 분류로 구매(Purchase)가 막혀 있고 상세조회(ViewContent)는 살아 있다.
+//   구매·ROAS 로 그리면 모든 소재가 0 으로 보이므로 purchaseTracked=false 를 같이 준다.
+const PURCHASE_UNTRACKED = new Set(["balancelab"]);
 
-const META_TOKEN = process.env.META_ADS_TOKEN || "";
-// ★ 밸런스랩 계정이 빠져 있었다. 2026-10 현재 메타를 집행하는 브랜드는 밸런스랩뿐이라
-//   이 탭이 어느 브랜드로 봐도 비어 있었다(2026-10-13). 사입은 메타 계정이 없다.
-const AD_ACCOUNTS: Record<string, string> = {
-  nutty: process.env.META_NUTTY_AD_ACCOUNT || "act_1510647003433200",
-  ironpet: process.env.META_IRONPET_AD_ACCOUNT || "act_8188388757843816",
-  balancelab: process.env.META_BALANCELAB_AD_ACCOUNT || "act_276181463299827",
-};
-// 묶음 필터 → 계정 목록
-const GROUP_MEMBERS: Record<string, string[]> = { pet: ["nutty", "ironpet"] };
-
-interface Creative {
-  id: string;
-  name: string;
-  status: string;
-  brand: string;
-  thumbnail_url: string;
-  image_url: string;
-  video_id: string;
-  spend: number;
-  impressions: number;
-  clicks: number;
-  ctr: number;
-  cpc: number;
-  // Funnel metrics
-  landing_page_views: number;
-  add_to_cart: number;
-  initiate_checkout: number;
-  purchases: number;
-  revenue: number;
-  roas: number;
-  // Calculated
-  cac: number; // cost per purchase
-  cart_to_purchase_rate: number;
-  click_to_cart_rate: number;
+interface Row {
+  date: string; brand: string; ad_id: string; ad_name: string | null; campaign_name: string | null;
+  thumbnail_url: string | null; impressions: number; clicks: number; spend: number;
+  purchases: number; purchase_value: number; add_to_cart: number; view_content: number;
 }
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAllPages(initialUrl: string): Promise<any[]> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const all: any[] = [];
-  let nextUrl: string | null = initialUrl;
-  let iterations = 0;
-  while (nextUrl && iterations < 10) {
-    iterations++;
-    const resp: Response = await globalThis.fetch(nextUrl);
-    const body = await resp.json();
-    // 토큰 만료 같은 오류를 빈 배열로 삼키지 않는다. 호출부가 계정별 사유로 모은다.
-    if (body.error) throw new Error(body.error.message || `Graph API ${resp.status}`);
-    if (body.data) all.push(...body.data);
-    nextUrl = body.paging?.next || null;
-    if (all.length > 500) break;
-  }
-  return all;
-}
-
-// Simple in-memory cache (survives across requests within same serverless invocation)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let cache: { key: string; data: any; ts: number } | null = null;
-const CACHE_TTL = 10 * 60 * 1000; // 10 min
 
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
-
-  // 유효한 메타 토큰은 GitHub Secrets 에만 있고(rotate_meta_token.py 가 거기만 갱신) Vercel 사본은 비어 있다.
-  // 빈 목록만 돌려주면 "소재가 없다"로 읽혀서 사유를 같이 준다.
-  if (!META_TOKEN) {
-    return NextResponse.json({ creatives: [], total: 0, error: "메타 토큰이 대시보드 서버에 없어 소재를 불러오지 못합니다. 광고비·성과는 매일 수집되고 있으며 이 탭만 비어 있습니다" });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return NextResponse.json({ creatives: [], total: 0, error: "from·to 는 YYYY-MM-DD" }, { status: 400 });
   }
-
-  const cacheKey = `${brand}|${from}|${to}`;
-  if (cache && cache.key === cacheKey && Date.now() - cache.ts < CACHE_TTL) {
-    return NextResponse.json(cache.data);
+  if (brand === "saip") {
+    return NextResponse.json({ creatives: [], total: 0, error: "사입은 메타 광고 계정이 없습니다" });
   }
 
   try {
-    const accounts = brand === "all"
-      ? Object.entries(AD_ACCOUNTS)
-      : (GROUP_MEMBERS[brand] || [brand]).filter((b) => AD_ACCOUNTS[b]).map((b) => [b, AD_ACCOUNTS[b]]);
-    const accountErrors: string[] = [];
+    let q = supabase.from("meta_ad_daily")
+      .select("date,brand,ad_id,ad_name,campaign_name,thumbnail_url,impressions,clicks,spend,purchases,purchase_value,add_to_cart,view_content")
+      .gte("date", from).lte("date", to).order("date");
+    if (brand !== "all") q = q.in("brand", expandBrands(brand));
+    // 기본키 (date, ad_id) 라 date 다음 ad_id 로 전순서가 된다.
+    const rows = (await fetchAll(q, "ad_id")) as Row[];
 
-    const allCreatives: Creative[] = [];
-
-    for (const [brandName, accountId] of accounts) {
-      try {
-      // Strategy: fetch insights first (only ads with data), then fetch creative details for those
-      const insParams: Record<string, string> = {
-        access_token: META_TOKEN,
-        fields: "ad_id,ad_name,impressions,clicks,spend,ctr,cpc,actions,action_values",
-        level: "ad",
-        limit: "500",
-      };
-      if (from && to) {
-        insParams.time_range = JSON.stringify({ since: from, until: to });
-      } else {
-        insParams.date_preset = "last_30d";
-      }
-      const insightsUrl = `https://graph.facebook.com/v19.0/${accountId}/insights?` +
-        new URLSearchParams(insParams);
-      const allInsights = await fetchAllPages(insightsUrl);
-      console.log(`[creatives] ${brandName}: ${allInsights.length} insight rows`);
-
-      // Fetch creative details only for ads with spend > 0
-      const adsWithSpend = allInsights.filter(r => Number(r.spend || 0) > 0);
-      const adIds = adsWithSpend.map(r => r.ad_id);
-      
-      // Batch fetch ad details (up to 50 at a time via IDs filter)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const adDetailsMap = new Map<string, any>();
-      for (let i = 0; i < adIds.length; i += 50) {
-        const batch = adIds.slice(i, i + 50);
-        const idsParam = batch.join(",");
-        const adsUrl = `https://graph.facebook.com/v19.0/?ids=${idsParam}&fields=name,status,creative{thumbnail_url,image_url,effective_instagram_media_id,effective_object_story_id,video_id,object_story_spec}&access_token=${META_TOKEN}`;
-        try {
-          const resp = await globalThis.fetch(adsUrl);
-          const body = await resp.json();
-          for (const [id, data] of Object.entries(body)) {
-            adDetailsMap.set(id, data);
-          }
-        } catch { /* continue without creative details */ }
-      }
-
-      for (const ins of adsWithSpend) {
-        const ad = adDetailsMap.get(ins.ad_id) || {};
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const cr = (ad as any).creative || {};
-        const spend = Number(ins.spend || 0);
-
-        // Extract funnel actions
-        let purchases = 0, revenue = 0, addToCart = 0, initiateCheckout = 0, landingPageViews = 0;
-        for (const a of ins.actions || []) {
-          if (a.action_type === "purchase" || a.action_type === "offsite_conversion.fb_pixel_purchase") purchases = Number(a.value || 0);
-          if (a.action_type === "offsite_conversion.fb_pixel_add_to_cart" || a.action_type === "add_to_cart") addToCart = Number(a.value || 0);
-          if (a.action_type === "offsite_conversion.fb_pixel_initiate_checkout" || a.action_type === "initiate_checkout") initiateCheckout = Number(a.value || 0);
-          if (a.action_type === "landing_page_view") landingPageViews = Number(a.value || 0);
-        }
-        for (const a of ins.action_values || []) {
-          if (a.action_type === "purchase" || a.action_type === "offsite_conversion.fb_pixel_purchase") revenue = Number(a.value || 0);
-        }
-
-        const clicks = Number(ins.clicks || 0);
-
-        allCreatives.push({
-          id: ins.ad_id,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          name: (ad as any).name || ins.ad_name || "",
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          status: (ad as any).status || "UNKNOWN",
-          brand: brandName,
-          thumbnail_url: cr.thumbnail_url ? cr.thumbnail_url.replace(/\/s\d+x\d+\//, '/s1080x1080/') : "",
-          image_url: cr.image_url || cr.object_story_spec?.link_data?.picture || "",
-          video_id: cr.video_id || "",
-          spend,
-          impressions: Number(ins.impressions || 0),
-          clicks,
-          ctr: Number(ins.ctr || 0),
-          cpc: Number(ins.cpc || 0),
-          landing_page_views: landingPageViews,
-          add_to_cart: addToCart,
-          initiate_checkout: initiateCheckout,
-          purchases,
-          revenue,
-          roas: spend > 0 ? revenue / spend : 0,
-          cac: purchases > 0 ? spend / purchases : 0,
-          cart_to_purchase_rate: addToCart > 0 ? (purchases / addToCart) * 100 : 0,
-          click_to_cart_rate: clicks > 0 ? (addToCart / clicks) * 100 : 0,
-        });
-      }
-      } catch (err) {
-        console.error(`[creatives] ${brandName} error:`, err);
-        accountErrors.push(`${brandName}: ${err instanceof Error ? err.message.slice(0, 120) : String(err)}`);
-        // Continue with other accounts
-      }
+    const m = new Map<string, Row & { lastDate: string; firstDate: string }>();
+    for (const r of rows) {
+      const e = m.get(r.ad_id);
+      if (!e) { m.set(r.ad_id, { ...r, lastDate: r.date, firstDate: r.date }); continue; }
+      e.impressions += Number(r.impressions || 0); e.clicks += Number(r.clicks || 0); e.spend += Number(r.spend || 0);
+      e.purchases += Number(r.purchases || 0); e.purchase_value += Number(r.purchase_value || 0);
+      e.add_to_cart += Number(r.add_to_cart || 0); e.view_content += Number(r.view_content || 0);
+      if (r.date > e.lastDate) { e.lastDate = r.date; if (r.thumbnail_url) e.thumbnail_url = r.thumbnail_url; if (r.ad_name) e.ad_name = r.ad_name; }
+      if (r.date < e.firstDate) e.firstDate = r.date;
     }
 
-    // Sort by spend descending
-    allCreatives.sort((a, b) => b.spend - a.spend);
+    const creatives = Array.from(m.values())
+      .filter((c) => Number(c.spend) > 0)
+      .map((c) => {
+        const spend = Number(c.spend), clicks = Number(c.clicks), imp = Number(c.impressions);
+        const purchases = Number(c.purchases), revenue = Number(c.purchase_value);
+        return {
+          id: c.ad_id, name: c.ad_name || c.ad_id, campaign: c.campaign_name || "",
+          brand: c.brand, status: `${c.firstDate.slice(5)} ~ ${c.lastDate.slice(5)} 집행`,
+          thumbnail_url: c.thumbnail_url || "",
+          spend: Math.round(spend), impressions: imp, clicks,
+          ctr: imp > 0 ? (clicks / imp) * 100 : 0, cpc: clicks > 0 ? spend / clicks : 0,
+          purchases, revenue, roas: spend > 0 ? revenue / spend : 0, cac: purchases > 0 ? spend / purchases : 0,
+          add_to_cart: Number(c.add_to_cart), view_content: Number(c.view_content), landing_page_views: 0,
+          purchaseTracked: !PURCHASE_UNTRACKED.has(c.brand),
+        };
+      })
+      .sort((a, b) => b.spend - a.spend);
 
-    // 계정이 하나라도 실패하면 사유를 같이 준다. 실패를 빈 목록으로 삼키면 화면이 "소재 없음"으로 읽힌다.
-    const result = {
-      creatives: allCreatives, total: allCreatives.length,
-      ...(accountErrors.length ? { error: `메타 소재 조회 실패: ${accountErrors.join(" / ")}` } : {}),
-      ...(accounts.length === 0 ? { error: "이 브랜드는 메타 광고 계정이 없습니다" } : {}),
-    };
-    cache = { key: cacheKey, data: result, ts: Date.now() };
-    return NextResponse.json(result);
+    const latest = rows.reduce((mx, r) => (r.date > mx ? r.date : mx), "");
+    return NextResponse.json({
+      creatives, total: creatives.length, latestCollected: latest || null,
+      ...(creatives.length === 0 && brand !== "all" && brand !== "balancelab"
+        ? { notice: "이 기간에 이 브랜드의 메타 집행이 없습니다" } : {}),
+    });
   } catch (error) {
-    console.error("Creatives API error:", error);
-    return NextResponse.json({ creatives: [], error: "Failed to fetch creatives" });
+    const msg = error instanceof Error ? error.message : (error as { message?: string })?.message || String(error);
+    console.error("Creatives API error:", msg);
+    return NextResponse.json({ creatives: [], total: 0, error: `메타 소재를 불러오지 못했습니다: ${msg}` }, { status: 500 });
   }
 }

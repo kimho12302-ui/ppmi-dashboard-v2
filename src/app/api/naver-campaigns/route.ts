@@ -1,96 +1,72 @@
 import { NextRequest, NextResponse } from "next/server";
-import { google } from "googleapis";
+import { supabase } from "@/lib/supabase";
+import { fetchAll } from "@/lib/db";
+import { expandBrands } from "@/lib/brand-groups";
 
-const SA_KEY = process.env.GOOGLE_SA_KEY;
-const SHEET_ID = "1ky1rAsa8draGigQixBRSNMOPIEYH0ygsXiF_mYhDwgo";
+// 네이버 검색광고 캠페인별 성과. 2026-10-13 원천 교체.
+//
+// 옛 원천은 구글시트 「캠페인_성과」였는데 2026-09 부터 안 채워졌고 캠페인명 글자도 깨져
+// 이 탭이 전 브랜드 0건이었다. 지금은 수집기(sync_naver_sa.py 펫 계정, sync_all.py 밸런스랩 계정)가
+// 캠페인×일을 naver_campaign_daily 에 쓰고, 여기서 기간 합산한다.
+//
+// brand='other' 는 밸런스랩 계정에 얹힌 그룹사 캠페인(와이에스환경 등)이다. 어느 브랜드 화면에도,
+// 전체에도 넣지 않는다. 광고비 원장(daily_ad_spend)도 이걸 뺀다.
+
+const TYPE_LABEL: Record<string, string> = {
+  SHOPPING: "쇼핑검색", WEB_SITE: "파워링크", POWER_CONTENTS: "파워컨텐츠",
+  BRAND_SEARCH: "브랜드검색", PLACE: "플레이스",
+};
+
+interface Row {
+  date: string; campaign_id: string; campaign: string | null; campaign_type: string | null; brand: string | null;
+  impressions: number; clicks: number; cost: number; conversions: number; conversion_value: number;
+}
 
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
   const brand = sp.get("brand") || "all";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return NextResponse.json({ campaigns: [], summary: null, error: "from·to 는 YYYY-MM-DD" }, { status: 400 });
+  }
 
   try {
-    if (!SA_KEY) return NextResponse.json({ campaigns: [] });
-    const key = JSON.parse(SA_KEY);
-    const auth = new google.auth.GoogleAuth({ credentials: key, scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"] });
-    const sheets = google.sheets({ version: "v4", auth });
+    let q = supabase.from("naver_campaign_daily")
+      .select("date,campaign_id,campaign,campaign_type,brand,impressions,clicks,cost,conversions,conversion_value")
+      .gte("date", from).lte("date", to).order("date");
+    q = brand === "all" ? q.neq("brand", "other") : q.in("brand", expandBrands(brand));
+    // 이 테이블엔 id 가 없다. 기본키가 (date, campaign_id) 라 date 다음 campaign_id 로 전순서가 된다.
+    const rows = (await fetchAll(q, "campaign_id")) as Row[];
 
-    const res = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: "캠페인_성과!A:J",
-    });
-    const rows = res.data.values || [];
-    if (rows.length < 2) return NextResponse.json({ campaigns: [] });
-
-    // headers: 수집일시, 캠페인ID, 캠페인명, 날짜, 노출수, 클릭수, CTR, CPC, 총비용, 전환수
-    const data = rows.slice(1).filter(r => r.length >= 8);
-
-    // Filter by date range
-    const filtered = data.filter(r => {
-      const date = r[3];
-      if (!date) return false;
-      return (!from || date >= from) && (!to || date <= to);
-    });
-
-    // Brand filter: campaign name contains brand keyword
-    const brandKeywords: Record<string, string[]> = {
-      nutty: ["너티"],
-      ironpet: ["아이언펫"],
-      saip: ["사입", "파미나", "닥터레이"],
-    };
-
-    const brandFiltered = brand === "all" ? filtered : filtered.filter(r => {
-      const campaignName = r[2] || "";
-      const keywords = brandKeywords[brand] || [];
-      return keywords.some(k => campaignName.includes(k));
-    });
-
-    // Aggregate by campaign
-    const agg: Record<string, { campaignId: string; campaignName: string; impressions: number; clicks: number; cost: number; conversions: number; days: Set<string> }> = {};
-
-    for (const r of brandFiltered) {
-      const campaignName = r[2] || "";
-      const date = r[3] || "";
-      const impressions = parseInt(r[4]) || 0;
-      const clicks = parseInt(r[5]) || 0;
-      const cpc = parseFloat(r[7]) || 0;
-      // 총비용(r[8]) 직접 사용. clicks×CPC 역산은 행마다 반올림 오차가 누적돼 실제 집행비와 어긋남.
-      // 총비용 셀이 비면 역산으로 폴백.
-      const totalCost = parseFloat(String(r[8] ?? "").replace(/[,₩\s]/g, "")) || 0;
-      const cost = totalCost > 0 ? totalCost : clicks * cpc;
-      const conversions = parseInt(r[9]) || 0;
-
-      if (!agg[campaignName]) {
-        agg[campaignName] = { campaignId: r[1], campaignName, impressions: 0, clicks: 0, cost: 0, conversions: 0, days: new Set() };
-      }
-      agg[campaignName].impressions += impressions;
-      agg[campaignName].clicks += clicks;
-      agg[campaignName].cost += cost;
-      agg[campaignName].conversions += conversions;
-      agg[campaignName].days.add(date);
+    const agg = new Map<string, {
+      campaignId: string; campaignName: string; type: string; brand: string;
+      impressions: number; clicks: number; cost: number; conversions: number; convValue: number; days: Set<string>;
+    }>();
+    for (const r of rows) {
+      const e = agg.get(r.campaign_id) || {
+        campaignId: r.campaign_id, campaignName: r.campaign || r.campaign_id,
+        type: TYPE_LABEL[r.campaign_type || ""] || r.campaign_type || "기타", brand: r.brand || "",
+        impressions: 0, clicks: 0, cost: 0, conversions: 0, convValue: 0, days: new Set<string>(),
+      };
+      e.impressions += Number(r.impressions || 0);
+      e.clicks += Number(r.clicks || 0);
+      e.cost += Number(r.cost || 0);
+      e.conversions += Number(r.conversions || 0);
+      e.convValue += Number(r.conversion_value || 0);
+      if (Number(r.cost || 0) > 0 || Number(r.impressions || 0) > 0) e.days.add(r.date);
+      agg.set(r.campaign_id, e);
     }
 
-    // Determine type from campaign name
-    const getType = (name: string): string => {
-      if (name.includes("쇼핑검색") || name.includes("쇼핑")) return "쇼핑검색";
-      if (name.includes("파워링크") || name.includes("파워")) return "파워링크";
-      if (name.includes("벌크")) return "벌크";
-      return "기타";
-    };
-
-    const campaigns = Object.values(agg).map(c => ({
-      campaignId: c.campaignId,
-      campaignName: c.campaignName,
-      type: getType(c.campaignName),
-      impressions: c.impressions,
-      clicks: c.clicks,
-      cost: Math.round(c.cost),
-      conversions: c.conversions,
+    const campaigns = Array.from(agg.values()).map((c) => ({
+      campaignId: c.campaignId, campaignName: c.campaignName, type: c.type, brand: c.brand,
+      impressions: c.impressions, clicks: c.clicks, cost: Math.round(c.cost),
+      conversions: c.conversions, convValue: Math.round(c.convValue),
+      roas: c.cost > 0 ? c.convValue / c.cost : 0,
       ctr: c.impressions > 0 ? (c.clicks / c.impressions) * 100 : 0,
       cpc: c.clicks > 0 ? Math.round(c.cost / c.clicks) : 0,
       days: c.days.size,
-    })).sort((a, b) => b.cost - a.cost);
+    })).filter((c) => c.cost > 0 || c.impressions > 0).sort((a, b) => b.cost - a.cost);
 
     const summary = {
       totalImpressions: campaigns.reduce((s, c) => s + c.impressions, 0),
@@ -102,10 +78,12 @@ export async function GET(request: NextRequest) {
     };
     summary.avgCtr = summary.totalImpressions > 0 ? (summary.totalClicks / summary.totalImpressions) * 100 : 0;
     summary.avgCpc = summary.totalClicks > 0 ? Math.round(summary.totalCost / summary.totalClicks) : 0;
+    const latest = rows.reduce((m, r) => (r.date > m ? r.date : m), "");
 
-    return NextResponse.json({ campaigns, summary });
+    return NextResponse.json({ campaigns, summary, latestCollected: latest || null });
   } catch (error) {
     console.error("Naver campaigns error:", error);
-    return NextResponse.json({ campaigns: [], summary: null }, { status: 500 });
+    const msg = error instanceof Error ? error.message : (error as { message?: string })?.message || String(error);
+    return NextResponse.json({ campaigns: [], summary: null, error: msg }, { status: 500 });
   }
 }

@@ -529,7 +529,7 @@ function AdsPageInner() {
 interface NaverCampaign {
   campaignId: string; campaignName: string; type: string;
   impressions: number; clicks: number; cost: number; conversions: number;
-  ctr: number; cpc: number; days: number;
+  ctr: number; cpc: number; days: number; convValue?: number; roas?: number;
 }
 interface NaverSummary {
   totalImpressions: number; totalClicks: number; totalCost: number;
@@ -537,7 +537,7 @@ interface NaverSummary {
 }
 
 function NaverCampaignsSection({ brand, from, to }: { brand: string; from: string; to: string }) {
-  const { data, loading } = useFetch<{ campaigns: NaverCampaign[]; summary: NaverSummary | null }>(
+  const { data, loading, error } = useFetch<{ campaigns: NaverCampaign[]; summary: NaverSummary | null; latestCollected?: string | null }>(
     `/api/naver-campaigns?brand=${brand}&from=${from}&to=${to}`
   );
   const [sort, setSort] = useState<"cost" | "clicks" | "ctr" | "conversions">("cost");
@@ -580,7 +580,10 @@ function NaverCampaignsSection({ brand, from, to }: { brand: string; from: strin
             </div>
           </div>
           {campaigns.length === 0 ? (
-            <p className="text-sm text-muted-foreground">데이터가 없습니다. (시트 연동 또는 날짜 범위 확인)</p>
+            <p className="text-sm text-muted-foreground">
+              {error ? `불러오지 못했습니다 (${error})` : "이 기간에 집행한 네이버 검색광고 캠페인이 없습니다"}
+              {data?.latestCollected ? ` · 마지막 수집일 ${data.latestCollected}` : ""}
+            </p>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -592,7 +595,9 @@ function NaverCampaignsSection({ brand, from, to }: { brand: string; from: strin
                   <th className="pb-2 pr-4 text-right">클릭</th>
                   <th className="pb-2 pr-4 text-right">CTR</th>
                   <th className="pb-2 pr-4 text-right">CPC</th>
-                  <th className="pb-2 text-right">전환</th>
+                  <th className="pb-2 pr-4 text-right">전환</th>
+                  <th className="pb-2 pr-4 text-right">전환매출</th>
+                  <th className="pb-2 text-right">ROAS <span className="font-normal">(신고)</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -605,7 +610,9 @@ function NaverCampaignsSection({ brand, from, to }: { brand: string; from: strin
                     <td className="py-2 pr-4 text-right">{formatNumber(c.clicks)}</td>
                     <td className="py-2 pr-4 text-right">{c.ctr.toFixed(2)}%</td>
                     <td className="py-2 pr-4 text-right">{formatCurrency(c.cpc)}</td>
-                    <td className="py-2 text-right">{c.conversions}</td>
+                    <td className="py-2 pr-4 text-right">{formatNumber(c.conversions)}</td>
+                    <td className="py-2 pr-4 text-right">{formatCurrency(c.convValue || 0)}</td>
+                    <td className="py-2 text-right">{c.cost > 0 ? `${(c.roas || 0).toFixed(2)}x` : "-"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -623,10 +630,11 @@ interface Creative {
   thumbnail_url: string; spend: number; impressions: number; clicks: number;
   ctr: number; cpc: number; purchases: number; revenue: number; roas: number;
   cac: number; add_to_cart: number; landing_page_views: number;
+  view_content?: number; purchaseTracked?: boolean; campaign?: string;
 }
 
 function CreativesSection({ brand, from, to }: { brand: string; from: string; to: string }) {
-  const { data, loading } = useFetch<{ creatives: Creative[]; error?: string }>(
+  const { data, loading } = useFetch<{ creatives: Creative[]; error?: string; notice?: string; latestCollected?: string | null }>(
     `/api/creatives?brand=${brand}&from=${from}&to=${to}`
   );
   const [sort, setSort] = useState<"spend" | "roas" | "purchases">("spend");
@@ -642,7 +650,9 @@ function CreativesSection({ brand, from, to }: { brand: string; from: string; to
 
   if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">Meta 소재 로딩 중...</CardContent></Card>;
   if (data?.error) return <Card><CardContent className="p-4 text-sm text-amber-600">{data.error}</CardContent></Card>;
-  if (creatives.length === 0) return <Card><CardContent className="p-4 text-sm text-muted-foreground">소재 데이터가 없습니다.</CardContent></Card>;
+  if (creatives.length === 0) return <Card><CardContent className="p-4 text-sm text-muted-foreground">{data?.notice || "이 기간에 집행한 메타 소재가 없습니다"}{data?.latestCollected ? ` · 마지막 수집일 ${data.latestCollected}` : ""}</CardContent></Card>;
+  // 밸런스랩처럼 픽셀 구매가 막힌 계정은 구매·ROAS 가 늘 0 이라 빨간 테두리로 오독된다. 상세조회로 본다.
+  const anyUntracked = creatives.some((c) => c.purchaseTracked === false);
 
   return (
     <>
@@ -656,10 +666,13 @@ function CreativesSection({ brand, from, to }: { brand: string; from: string; to
         ))}
         <span className="text-xs text-muted-foreground ml-auto">{creatives.length}개 소재</span>
       </div>
+      {anyUntracked && (
+        <p className="text-xs text-muted-foreground">밸런스랩 소재는 메타 픽셀의 구매 전환이 막혀 있어 구매·ROAS 대신 <b>상세조회</b>(ViewContent)와 클릭당 상세조회 비율로 표시합니다.</p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {creatives.slice(0, 30).map(c => (
-          <Card key={c.id} className={cn("overflow-hidden", c.roas >= 3 ? "border-green-500/30" : c.roas >= 1 ? "border-yellow-500/30" : c.roas > 0 ? "border-red-500/30" : "")}>
+          <Card key={c.id} className={cn("overflow-hidden", c.purchaseTracked === false ? "" : c.roas >= 3 ? "border-green-500/30" : c.roas >= 1 ? "border-yellow-500/30" : c.roas > 0 ? "border-red-500/30" : "")}>
             <CardContent className="p-3">
               <div className="flex gap-3">
                 {c.thumbnail_url && (
@@ -680,8 +693,13 @@ function CreativesSection({ brand, from, to }: { brand: string; from: string; to
               <div className="grid grid-cols-5 gap-1 mt-2 text-center">
                 <div><p className="text-[10px] text-muted-foreground">광고비</p><p className="text-xs font-medium">₩{c.spend.toLocaleString("ko-KR")}</p></div>
                 <div><p className="text-[10px] text-muted-foreground">노출</p><p className="text-xs font-medium">{formatNumber(c.impressions)}</p></div>
-                <div><p className="text-[10px] text-muted-foreground">ROAS</p><p className={cn("text-xs font-bold", c.roas >= 3 ? "text-green-500" : c.roas >= 1 ? "text-yellow-500" : "text-red-500")}>{c.roas.toFixed(2)}x</p></div>
-                <div><p className="text-[10px] text-muted-foreground">구매</p><p className="text-xs font-medium">{c.purchases}</p></div>
+                {c.purchaseTracked === false ? (<>
+                  <div><p className="text-[10px] text-muted-foreground">상세조회</p><p className="text-xs font-bold">{formatNumber(c.view_content || 0)}</p></div>
+                  <div><p className="text-[10px] text-muted-foreground">클릭당 조회</p><p className="text-xs font-medium">{c.clicks > 0 ? `${(((c.view_content || 0) / c.clicks) * 100).toFixed(0)}%` : "-"}</p></div>
+                </>) : (<>
+                  <div><p className="text-[10px] text-muted-foreground">ROAS</p><p className={cn("text-xs font-bold", c.roas >= 3 ? "text-green-500" : c.roas >= 1 ? "text-yellow-500" : "text-red-500")}>{c.roas.toFixed(2)}x</p></div>
+                  <div><p className="text-[10px] text-muted-foreground">구매</p><p className="text-xs font-medium">{c.purchases}</p></div>
+                </>)}
                 <div><p className="text-[10px] text-muted-foreground">CTR</p><p className="text-xs font-medium">{c.ctr.toFixed(1)}%</p></div>
               </div>
             </CardContent>
