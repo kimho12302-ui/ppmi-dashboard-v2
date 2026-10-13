@@ -5,6 +5,7 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { matchesBrand } from "@/lib/brand-groups";
+import { ProductTrendChart } from "@/components/product-trend-chart";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
@@ -391,6 +392,8 @@ function SalesPageInner() {
           </Card>
         </>
       )}
+
+      <ProductTrendChart brand={brand || "all"} from={from} to={to} />
 
       {(
         <Card>

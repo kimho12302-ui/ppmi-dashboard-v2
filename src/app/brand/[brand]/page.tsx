@@ -12,6 +12,7 @@ import { bucketize, GRAN_LABELS, type Gran } from "@/lib/bucket";
 import { StoreDetailChart } from "@/components/store-detail-chart";
 import { SectionHeading } from "@/components/ui/section";
 import { ProductAdTable } from "@/components/product-ad-table";
+import { ProductTrendChart } from "@/components/product-trend-chart";
 import { AttributionGap } from "@/components/attribution-gap";
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
@@ -307,6 +308,7 @@ function BrandInner({ brand }: { brand: string }) {
 
       <SectionHeading eyebrow="Products" title="제품" note="왼쪽은 판매 원장(매출), 아래는 광고 원장(광고비·ROAS)" />
       {/* 제품별 광고 성과 — 광고 원장(ad_product_performance) 기준 */}
+      <ProductTrendChart brand={brand} from={from} to={to} />
       <ProductAdTable from={from} to={to} brand={brand} />
 
       {/* 제품별 성과 — 판매 원장(product_sales) 기준 */}
