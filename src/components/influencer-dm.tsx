@@ -96,7 +96,10 @@ export function DmEditor({ row, onChanged }: { row: Row; onChanged: () => void }
   const [instr, setInstr] = useState("");
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
-  const sent = !!row["DM 발송"];
+  // 보낸 지 3달(90일)이 안 됐으면 잠근다. 지나면 다시 초안을 쓰고 보낼 수 있다
+  const m = String(row["DM 발송"] || "").match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/);
+  const sinceSent = m ? (Date.now() - Date.parse(m[1].replace(" ", "T") + ":00+09:00")) / 86400000 : null;
+  const sent = sinceSent !== null && sinceSent < 90;
   const dirty = text !== (row["DM 초안"] || "");
 
   async function act(action: string, extra: Record<string, string> = {}) {
@@ -115,6 +118,8 @@ export function DmEditor({ row, onChanged }: { row: Row; onChanged: () => void }
         {row["DM 승인"] && <span className="text-muted-foreground">승인: {row["DM 승인"]}</span>}
         {row["DM 발송"] && <span className="text-muted-foreground">발송: {row["DM 발송"].split(" · ").slice(0, 2).join(" · ")}</span>}
         {row["DM 오류"] && <span className="text-red-500">{row["DM 오류"]}</span>}
+        {sent && <span className="text-muted-foreground">다시 보내기는 {Math.ceil(90 - (sinceSent || 0))}일 뒤</span>}
+        {row["DM 이력"] && <span className="text-muted-foreground">이전 발송: {row["DM 이력"].split(" · ")[0]}</span>}
       </div>
       {row["회신"] && <p className="text-xs rounded bg-emerald-500/10 px-2 py-1">💬 회신: {row["회신"]}</p>}
       {st === "초안 대기" && !row["DM 초안"] ? (

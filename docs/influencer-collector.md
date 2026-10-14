@@ -49,17 +49,18 @@ Register-ScheduledTask -TaskName "PPMI_InfluencerCollector" -Action $a -Trigger 
 
 1. 대시보드에서 후보를 「후보」로 고른다 → 시트 `DM 상태 = 초안 대기`
 2. DM 워커가 그 계정의 소개글·최근 게시물 4개를 aside 로 읽고 `claude -p` 로 맞춤 초안을 쓴다.
-   사실은 `scripts/lib/dm-facts.md`(원장에서 옮김)와 대시보드 「DM 제안 조건」에 적힌 것만 쓴다. 금지 표현이 나오면 한 번 다시 쓴다
+   사실은 `scripts/lib/dm-facts.md`(원장에서 옮김)와 대시보드 「DM 제안 조건」의 「추가로 써도 되는 사실」만 쓴다. 참고 메시지는 김혜윤 실제 발송 양식(2026-10-14). 금지 표현이 나오면 한 번 다시 쓴다
 3. 사람이 대시보드에서 고치고 「발송 승인」 → 워커가 다음 회차에 보낸다. 대시보드는 직접 보내지 않는다
 4. 워커가 보낸 대화방을 다시 열어 상대 답장이 있으면 `DM 상태 = 회신`, 미리보기를 남긴다
 
 ```bash
 node scripts/influencer-dm-worker.mjs --account u0 --expect balancelab_official
 # 하는 일 고르기 --do draft,send,replies / 한 계정만 --only <핸들> / 하루 상한 --daily-cap 10
+# 초안 미리보기(시트에 안 씀): --do draft --only <핸들> --preview
 ```
 
 안전장치: 승인한 행만 · 승인 24시간 지나면 만료 · 하루 상한 10 · 한 회차 최대 3건, 건 사이 2~6분 ·
-같은 사람 재발송 차단(시트 + `~/.ppmi-influencer-collector/dm-state.json`) · 대화방에 이미 밸런스랩·공구 메시지가 있으면 안 보냄(손으로 보낸 제안 포함) ·
+같은 사람에게는 **90일(3달) 텀**(시트 `DM 발송` + `~/.ppmi-influencer-collector/dm-state.json`, 지난 발송은 `DM 이력` 으로) · 대화방에 90일 안의 밸런스랩·공구 메시지가 있으면 안 보냄(손으로 보낸 제안 포함. 날짜를 못 읽으면 보내지 않음) ·
 로그인 계정이 `--expect` 와 다르면 중단. 로그 `~/.ppmi-influencer-collector/dm-worker.log`.
 
 - 첫 DM 은 상대의 **메시지 요청함**에 들어간다(팔로우 관계가 없으면). 2026-10-14 테스트로 확인

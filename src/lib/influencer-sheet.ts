@@ -31,6 +31,14 @@ function sheets() {
 const q = (tab: string) => `'${tab}'`;
 // DM 열이 붙으면 Z 를 넘는다(AA, AB …)
 const col = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : String.fromCharCode(64 + Math.floor(i / 26)) + String.fromCharCode(65 + (i % 26)));
+/** 'DM 발송' 칸 앞의 'YYYY-MM-DD HH:MM' 로부터 며칠 지났는지. 없으면 null */
+export function daysSinceSent(cell: string): number | null {
+  const m = String(cell || "").match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/);
+  return m ? (Date.now() - Date.parse(m[1].replace(" ", "T") + ":00+09:00")) / 86400000 : null;
+}
+/** 같은 사람에게 다시 보낼 수 있는 텀 (2026-10-14 김호: 3달) */
+export const RESEND_DAYS = schema.resendDays;
+
 const kstStamp = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 16).replace("T", " ");
 
 /** 탭이 없으면 만들고, 머리글에 빠진 열(예: 나중에 생긴 DM 열)은 맨 오른쪽에 붙인다 */
@@ -116,7 +124,8 @@ export async function reviewCandidate(handle: string, patch: { 상태?: string; 
   const c = await findCandidate(handle);
   const values: Row = { ...patch, 검토자: who, 검토일: kstStamp() } as Row;
   // 후보로 고르면 PC 의 DM 워커가 다음 회차에 그 계정을 읽고 맞춤 초안을 쓴다
-  if (patch.상태 === "후보" && !c.get("DM 상태")) values["DM 상태"] = "초안 대기";
+  const since = daysSinceSent(c.get("DM 발송"));
+  if (patch.상태 === "후보" && (!c.get("DM 상태") || (since !== null && since >= RESEND_DAYS))) values["DM 상태"] = "초안 대기";
   await c.write(values);
 }
 
@@ -139,7 +148,8 @@ export type DmAction = "save" | "approve" | "cancel" | "redraft";
  */
 export async function dmAction(handle: string, action: DmAction, who: string, text?: string, instruction?: string) {
   const c = await findCandidate(handle);
-  if (c.get("DM 발송")) throw new Error("이미 보낸 계정입니다. 다시 보낼 수 없습니다");
+  const since = daysSinceSent(c.get("DM 발송"));
+  if (since !== null && since < RESEND_DAYS) throw new Error(`${Math.floor(since)}일 전에 보낸 계정입니다. ${RESEND_DAYS}일이 지나야 다시 보낼 수 있습니다`);
   const st = c.get("DM 상태");
   if (action === "save") {
     if (st === "승인") throw new Error("승인된 초안입니다. 고치려면 먼저 승인을 취소하세요");

@@ -35,9 +35,11 @@ const EXPECT = (arg("--expect", process.env.DM_IG_HANDLE || "") || "").replace(/
 const DO = new Set(arg("--do", "draft,send,replies").split(","));
 const ONLY = (arg("--only", "") || "").replace(/^@/, "").toLowerCase();
 const DAILY_CAP = Number(arg("--daily-cap", "10"));
+const PREVIEW = args.includes("--preview"); // --only 계정의 초안을 만들어 화면에만 찍는다(시트에 안 씀, 상태 무관)
 const MAX_DRAFTS = Number(arg("--max-drafts", "5"));
 const MAX_SENDS_PER_RUN = 3;
 const APPROVAL_TTL_H = 24;
+const RESEND_DAYS = 90; // 같은 사람에게 다시 보낼 수 있는 텀 (2026-10-14 김호: 3달)
 const CLAUDE = process.env.CLAUDE_EXE || "C:/Users/harry/.local/bin/claude.exe";
 
 const log = makeLog("dm-worker.log");
@@ -45,10 +47,14 @@ const repl = (body) => asideRepl(ACCOUNT, body);
 const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
 const C = SCHEMA.candidates;
 
-// 하루 발송 수와 보낸 핸들 장부. 시트 쓰기가 실패해도 다시 보내지 않게 이 PC 에도 남긴다
+// 하루 발송 수와 보낸 핸들 장부(핸들 → 보낸 시각). 시트 쓰기가 실패해도 텀 안에 다시 보내지 않게 이 PC 에도 남긴다
 const STATE_FILE = join(STATE_DIR, "dm-state.json");
 let st = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, "utf8")) : {};
-st.sentHandles ||= [];
+st.sent ||= Object.fromEntries((st.sentHandles || []).map((h) => [h, new Date().toISOString()]));
+delete st.sentHandles;
+const daysSince = (ms) => (Date.now() - ms) / 86400000;
+/** 'DM 발송' 칸 앞의 'YYYY-MM-DD HH:MM' → ms */
+const sentAt = (cell) => { const m = String(cell || "").match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/); return m ? Date.parse(m[1].replace(" ", "T") + ":00+09:00") : NaN; };
 if (st.date !== kstDate()) { st.date = kstDate(); st.sentToday = 0; }
 const saveSt = () => writeFileSync(STATE_FILE, JSON.stringify(st, null, 1));
 
@@ -96,7 +102,7 @@ function buildPrompt(row, ctx, cfg, facts) {
     cfg["추가 요청"] ? `추가 요청: ${cfg["추가 요청"]}` : "",
     row["DM 지시"] ? `이번 초안에 대한 담당자 지시(우선 반영): ${row["DM 지시"]}` : "",
   ].filter(Boolean).join("\n");
-  return `너는 밸런스랩 공구 담당자다. 아래 인스타 계정 주인에게 보낼 첫 인스타그램 DM 을 한국어로 쓴다.
+  return `너는 밸런스랩 공구 담당자다. 처음 보는 사람이 읽어도 광고 스팸이 아니라 "내 계정을 보고 쓴 제안"으로 느끼게 쓴다. 아래 인스타 계정 주인에게 보낼 첫 인스타그램 DM 을 한국어로 쓴다.
 
 ## 목표
 처음 연락하는 사람에게 ${cfg["제안 종류"] || "공구"} 를 제안한다. 상대가 '내 계정을 실제로 봤구나' 하고 느끼게, 최근 게시물·소개글에서 구체적인 것 1~2개를 짚는다(예: 진행했던 공구 상품, 자주 다루는 주제, 가족·운동 이야기). 칭찬을 늘어놓지 말고 왜 이 상품이 이 계정 팔로워에게 맞는지로 잇는다.
@@ -124,9 +130,9 @@ ${(ctx.posts || []).map((p, i) => `${i + 1}. ${p.desc}`).join("\n")}
 
 ## 출력
 - DM 본문만 출력한다. 따옴표·제목·설명·마크다운 없이
-- 인스타 DM 이라 짧게, 6~10줄. 줄바꿈으로 읽기 쉽게
+- 길이·구성·이모지는 참고 메시지와 '추가 요청'을 따른다. 줄바꿈으로 읽기 쉽게
 - 상대 이름은 소개글·이름에서 자연스럽게 부를 수 있으면 부르고, 애매하면 "님"으로
-- 이모지는 많아야 1~2개
+- 참고 메시지의 [대괄호] 자리는 이 계정에 맞춰 채우고 대괄호는 남기지 않는다
 - 마지막은 부담 없이 회신을 청하는 한 줄
 - 긴 줄표(—)와 하이픈 두 개(--)를 쓰지 않는다
 - 도구를 쓰지 말고 바로 본문을 출력한다`;
@@ -143,7 +149,7 @@ function callClaude(prompt) {
 
 async function doDrafts(s, cand, cfg) {
   const facts = readFileSync(join(ROOT, "scripts/lib/dm-facts.md"), "utf8");
-  const targets = cand.rows.filter((r) => r.obj["상태"] === "후보" && ["", "초안 대기"].includes(r.obj["DM 상태"]) && !r.obj["DM 발송"])
+  const targets = PREVIEW ? cand.rows.filter((r) => r.obj["핸들"].toLowerCase() === ONLY) : cand.rows.filter((r) => r.obj["상태"] === "후보" && ["", "초안 대기"].includes(r.obj["DM 상태"]) && !(daysSince(sentAt(r.obj["DM 발송"])) < RESEND_DAYS))
     .filter((r) => !ONLY || r.obj["핸들"].toLowerCase() === ONLY).slice(0, MAX_DRAFTS);
   for (const t of targets) {
     const h = t.obj["핸들"];
@@ -157,6 +163,10 @@ async function doDrafts(s, cand, cfg) {
         text = callClaude(`${buildPrompt(t.obj, ctx, cfg, facts)}\n\n## 주의\n앞 초안에 금지 표현이 있었다: ${hit.join(", ")}. 빼고 다시 쓴다.`);
         hit = BANNED.filter((re) => re.test(text)).map(String);
       }
+      if (PREVIEW) { console.log(`
+----- @${h} 초안 미리보기 (시트에 안 씀) -----
+${text}
+----- 금지 표현: ${hit.join(" ") || "없음"}`); continue; }
       await setCells(s, C.tab, cand.header, t.rowNo, { "DM 초안": text, "DM 상태": "초안", "DM 오류": hit.length ? `금지 표현 남음, 손으로 고칠 것: ${hit.join(" ")}` : "" });
       log(`초안: @${h} 완료 (${text.length}자)`);
     } catch (e) {
@@ -170,6 +180,19 @@ async function doDrafts(s, cand, cfg) {
 // 대화 칸 글자 = main 전체에서 왼쪽 '대화 리스트' 를 뺀 것 (브라우저 안에서 평가하는 식)
 const PANE_JS = `(() => { const m = document.querySelector('main'); const nav = m && m.querySelector('[aria-label="대화 리스트"]'); return ((m && m.innerText) || '').replace((nav && nav.innerText) || '', ''); })()`;
 
+// 대화방에 남은 밸런스랩 메시지 중 가장 최근 것이 며칠 전인지 (브라우저 안에서 평가).
+// 손으로 보낸 제안(김혜윤 등)도 여기서 잡힌다. 날짜 표시를 못 읽으면 0일(=보내지 않음)로 본다
+const LAST_CONTACT_JS = String.raw`((t) => {
+  if (!/밸런스랩|큐모발|공구|협찬/.test(t)) return null;
+  const now = new Date(); let best = Infinity;
+  for (const m of t.matchAll(/(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일/g)) best = Math.min(best, (now - new Date(+m[1], m[2] - 1, +m[3])) / 864e5);
+  for (const m of t.matchAll(/(?<!년\s*)(?<!\d)(\d{1,2})월\s*(\d{1,2})일/g)) { let d = new Date(now.getFullYear(), m[1] - 1, +m[2]); if (d > now) d = new Date(now.getFullYear() - 1, m[1] - 1, +m[2]); best = Math.min(best, (now - d) / 864e5); }
+  if (/(^|\s)(월|화|수|목|금|토|일)(요일)?\s+(오전|오후)/m.test(t)) best = Math.min(best, 7);
+  if (/어제/.test(t)) best = Math.min(best, 1);
+  if (/(^|\n)(오전|오후)\s*\d{1,2}:\d{2}/.test(t)) best = Math.min(best, 0);
+  return best === Infinity ? 0 : Math.floor(best);
+})`;
+
 // 대화방은 ig.me/m/<핸들> 로 연다. 팔로우하지 않는 계정 프로필에는 '메시지 보내기' 버튼이 없다(2026-10-14 실측)
 function sendDM(handle, text) {
   const lines = text.replace(/\r/g, "").split("\n");
@@ -179,9 +202,10 @@ function sendDM(handle, text) {
     if (isWall(p.url())) { console.log('@@OUT@@' + JSON.stringify({ wall: p.url() })); return; }
     if (!/\\/direct\\/t\\//.test(p.url())) { const u = p.url(); await closeTab(p); console.log('@@OUT@@' + JSON.stringify({ ok: false, error: '대화방을 열지 못함: ' + u })); return; }
     await pause(2500, 4000);
-    // 이미 우리와 대화한 사람(손으로 보낸 제안 포함)에게는 보내지 않는다
+    // 최근 ${RESEND_DAYS}일 안에 우리와 대화한 사람(손으로 보낸 제안 포함)에게는 보내지 않는다
     const before = await p.evaluate(() => ${PANE_JS});
-    if (/밸런스랩|큐모발|공구|협찬/.test(before)) { const u = p.url(); await closeTab(p); console.log('@@OUT@@' + JSON.stringify({ ok: false, error: '이미 대화 이력이 있음(밸런스랩 메시지 발견). 보내지 않음', url: u })); return; }
+    const lastDays = (${LAST_CONTACT_JS})(before);
+    if (lastDays !== null && lastDays < ${RESEND_DAYS}) { const u = p.url(); await closeTab(p); console.log('@@OUT@@' + JSON.stringify({ ok: false, error: '대화방에 ' + lastDays + '일 전 밸런스랩 메시지가 있음(' + ${RESEND_DAYS} + '일 텀). 보내지 않음', url: u })); return; }
     const box = p.locator('div[role="textbox"][contenteditable="true"]').first();
     if (!(await box.count())) { await closeTab(p); console.log('@@OUT@@' + JSON.stringify({ ok: false, error: '대화 입력칸을 못 찾음', url: p.url() })); return; }
     await box.click();
@@ -217,8 +241,9 @@ async function doSends(s, cand) {
   for (const r of queue) {
     const h = r.obj["핸들"].toLowerCase();
     const at = approvedAt(r.obj["DM 승인"]);
-    if (r.obj["DM 발송"] || st.sentHandles.includes(h)) {
-      await setCells(s, C.tab, cand.header, r.rowNo, { "DM 상태": "실패", "DM 오류": "이미 보낸 계정이라 다시 보내지 않음" });
+    const lastSent = Math.max(sentAt(r.obj["DM 발송"]) || 0, Date.parse(st.sent[h] || "") || 0);
+    if (lastSent && daysSince(lastSent) < RESEND_DAYS) {
+      await setCells(s, C.tab, cand.header, r.rowNo, { "DM 상태": "실패", "DM 오류": `${Math.floor(daysSince(lastSent))}일 전에 보낸 계정. ${RESEND_DAYS}일 뒤 다시 보낼 수 있음` });
       continue;
     }
     if (!(Date.now() - at < APPROVAL_TTL_H * 3600000)) {
@@ -232,8 +257,10 @@ async function doSends(s, cand) {
     try {
       const out = sendDM(h, r.obj["DM 초안"]);
       if (out.ok) {
-        st.sentHandles.push(h); st.sentToday += 1; saveSt();
-        await setCells(s, C.tab, cand.header, r.rowNo, { "DM 상태": "발송됨", "DM 발송": `${kstStamp()} · @${EXPECT} · ${out.url}`, "DM 오류": "", 상태: "컨택함" });
+        st.sent[h] = new Date().toISOString(); st.sentToday += 1; saveSt();
+        // 텀이 지나 다시 보낸 경우 지난 발송 기록은 'DM 이력' 으로 옮긴다
+        const history = r.obj["DM 발송"] ? [r.obj["DM 이력"], r.obj["DM 발송"]].filter(Boolean).join(" / ") : undefined;
+        await setCells(s, C.tab, cand.header, r.rowNo, { "DM 상태": "발송됨", "DM 발송": `${kstStamp()} · @${EXPECT} · ${out.url}`, "DM 오류": "", "회신": "", 상태: "컨택함", "DM 이력": history });
         sent += 1;
         log(`발송: @${h} 완료 ${out.url}`);
       } else {
