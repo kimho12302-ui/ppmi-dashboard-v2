@@ -25,6 +25,7 @@ async function getImpl(req: NextRequest) {
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
   const rawKeys = parseRawKeys(sp.get("raw"));
+  const lean = sp.get("lean") === "1";
 
   try {
     // ── 이전 기간 날짜 계산 (DB 호출 없음) ──
@@ -445,11 +446,36 @@ async function getImpl(req: NextRequest) {
     // /sales 페이지가 재집계해도 오버뷰 헤드라인과 동일한 자체매출이 되도록 함.
     // ★ 원본 행은 요청한 키만 싣는다(2026-10-14 속도 개선). 올해 전체 기준 원본 행이 2.2MB 였고
     //   오버뷰·브랜드 화면은 하나도 쓰지 않았다. 지금 쓰는 곳은 /sales 의 sales·products·prevSales 뿐.
+    //
+    // ★ ?lean=1 (2026-10-14, /sales 전용): 화면이 쓰는 칸·단위로 줄여 보낸다. 숫자는 같다.
+    //   sales     : date·brand·channel·revenue·orders 만 (나머지 칸은 화면이 안 씀)
+    //   products  : (brand·product·channel·lineup) 묶음 합계. 화면은 날짜 없이 이 네 칸으로만 묶는다
+    //               (원래부터 이 조회에 date 칸이 없다). n = 묶인 원본 행 수
+    //   prevSales : 합계 한 줄. 화면은 매출·주문 합계만 쓰고, 날짜·브랜드·판매처는 원래 빈 값이다
+    //   더하는 순서는 원본 행 순서 그대로라 합계가 소수점까지 같다.
+    const leanSales = () => adjSales.map(r => ({ date: r.date, brand: r.brand, channel: r.channel, revenue: r.revenue, orders: r.orders }));
+    const leanProducts = () => {
+      const groups = new Map<string, { brand: string; product: string; channel: string; lineup: string | null; revenue: number; quantity: number; n: number }>();
+      for (const r of prodData || []) {
+        const k = JSON.stringify([r.brand, r.product, r.channel, r.lineup]);
+        const g = groups.get(k) || { brand: r.brand, product: r.product, channel: r.channel, lineup: r.lineup, revenue: 0, quantity: 0, n: 0 };
+        g.revenue += r.revenue || 0;
+        g.quantity += r.quantity || 0;
+        g.n += 1;
+        groups.set(k, g);
+      }
+      return Array.from(groups.values());
+    };
+    const leanPrevSales = () => {
+      let revenue = 0, orders = 0;
+      for (const r of prevSales || []) { revenue += r.revenue || 0; orders += r.orders || 0; }
+      return [{ date: "", brand: "", channel: "", revenue, orders }];
+    };
     const rawRows: Record<RawKey, () => unknown[]> = {
-      sales: () => adjSales,
+      sales: () => (lean ? leanSales() : adjSales),
       ads: () => adSpend || [],
-      products: () => prodData || [],
-      prevSales: () => (prevSales || []).map(r => ({ ...r, date: "", brand: "", channel: "" })),
+      products: () => (lean ? leanProducts() : prodData || []),
+      prevSales: () => (lean ? leanPrevSales() : (prevSales || []).map(r => ({ ...r, date: "", brand: "", channel: "" }))),
       prevAds: () => prevAd || [],
     };
     const raw = Object.fromEntries(rawKeys.map((k) => [k, rawRows[k]()]));
@@ -484,4 +510,4 @@ async function getImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "monthly_targets", "product_costs", "product_sales", "shipping_costs"], ["brand", "from", "raw", "to"]);
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "monthly_targets", "product_costs", "product_sales", "shipping_costs"], ["brand", "from", "lean", "raw", "to"]);

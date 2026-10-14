@@ -12,8 +12,9 @@ export const channelGroupsUrl = (brand: string, from: string, to: string) =>
 export const productSalesUrl = (brand: string, from: string, to: string) =>
   `/api/product-sales?brand=${brand || "all"}&from=${from}&to=${to}&shape=daily`;
 
+// shape=channel: 채널별 합계만(매출 화면 채널 효율 사분면 전용). /ads 화면은 원본 행을 쓴다.
 export const channelAdsUrl = (brand: string, from: string, to: string) =>
-  brand && brand !== "all" ? `/api/ads?from=${from}&to=${to}&brand=${brand}` : `/api/ads?from=${from}&to=${to}`;
+  brand && brand !== "all" ? `/api/ads?from=${from}&to=${to}&brand=${brand}&shape=channel` : `/api/ads?from=${from}&to=${to}&shape=channel`;
 
 export const AD_ALERTS_URL = "/api/ad-alerts";
 

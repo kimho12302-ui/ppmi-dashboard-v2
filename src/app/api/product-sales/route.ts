@@ -2,7 +2,7 @@ import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
-import { tryRpc } from "@/lib/summary-rpc";
+import { groupProductSalesDaily, tryRpc } from "@/lib/summary-rpc";
 import { cachedGET } from "@/lib/api-cache";
 
 async function getImpl(req: NextRequest) {
@@ -30,11 +30,16 @@ async function getImpl(req: NextRequest) {
     //   상품 추이 차트가 이걸 쓴다(다섯 칸 date·brand·product·revenue·quantity 만 씀).
     //   기본값은 옛 응답(원본 행 전체 칸) 그대로다. 크론 dashboard-daily-collect 가 키트 CPA 원장으로
     //   이 API 의 quantity 를 읽고, 판매처·라인업으로 거를 수 있어 모양을 바꾸면 안 된다.
-    //   함수가 없으면(SQL 실행 전) daily 도 옛 경로.
-    const summary = sp.get("shape") === "daily"
-      ? await tryRpc<unknown[]>("product_sales_daily", { p_from: from, p_to: to, p_brands: brand !== "all" ? expandBrands(brand) : null })
-      : null;
-    const data = summary ?? await fetchAll(query);
+    //   함수가 없으면(SQL 실행 전) 같은 묶음을 서버에서 JS 로 만든다(화면으로 가는 양은 같게 준다).
+    if (sp.get("shape") === "daily") {
+      const brands = brand !== "all" ? expandBrands(brand) : null;
+      const summary = await tryRpc<unknown[]>("product_sales_daily", { p_from: from, p_to: to, p_brands: brands });
+      if (summary) return NextResponse.json({ products: summary });
+      let lean = supabase.from("product_sales").select("id,date,brand,product,revenue,quantity").gte("date", from).lte("date", to);
+      if (brands) lean = lean.in("brand", brands);
+      return NextResponse.json({ products: groupProductSalesDaily(await fetchAll(lean)) });
+    }
+    const data = await fetchAll(query);
 
     return NextResponse.json({ products: data });
   } catch (error) {

@@ -35,6 +35,26 @@ async function getImpl(req: NextRequest) {
       prevQuery = prevQuery.neq("brand", "all");
     }
 
+    // ★ ?shape=channel (2026-10-14, /sales 채널 효율 사분면 전용): 채널별 합계만 보낸다.
+    //   그 칸은 채널마다 광고비·클릭·전환·전환매출을 더하기만 하고 이전 기간은 안 쓴다.
+    //   올해 전체 기준 원본 1.08MB(3,500행 × 전 칸)가 채널 수십 줄로 준다. 더하는 순서는 원본 행 순서
+    //   그대로라 합계가 소수점까지 같다. 기본 응답(/ads 화면 등)은 그대로다.
+    if (sp.get("shape") === "channel") {
+      const rows = await fetchAll(query);
+      const byChannel = new Map<string, { channel: string; spend: number; clicks: number; impressions: number; conversions: number; conversion_value: number; n: number }>();
+      for (const r of rows) {
+        const g = byChannel.get(r.channel) || { channel: r.channel, spend: 0, clicks: 0, impressions: 0, conversions: 0, conversion_value: 0, n: 0 };
+        g.spend += r.spend || 0;
+        g.clicks += r.clicks || 0;
+        g.impressions += r.impressions || 0;
+        g.conversions += r.conversions || 0;
+        g.conversion_value += r.conversion_value || 0;
+        g.n += 1;
+        byChannel.set(r.channel, g);
+      }
+      return NextResponse.json({ ads: Array.from(byChannel.values()), prevAds: [] });
+    }
+
     const [ads, prevAds] = await Promise.all([fetchAll(query), fetchAll(prevQuery)]);
 
     return NextResponse.json({ ads, prevAds });
@@ -81,5 +101,5 @@ async function postImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["daily_ad_spend"], ["brand", "from", "to"]);
+export const GET = cachedGET(getImpl, ["daily_ad_spend"], ["brand", "from", "shape", "to"]);
 export const POST = revalidateAfter(postImpl, ["daily_ad_spend"]);

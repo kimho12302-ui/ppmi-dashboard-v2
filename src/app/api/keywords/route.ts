@@ -2,7 +2,7 @@ import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
-import { tryRpc } from "@/lib/summary-rpc";
+import { groupKeywordSummary, tryRpc } from "@/lib/summary-rpc";
 import { cachedGET } from "@/lib/api-cache";
 
 async function getImpl(req: NextRequest) {
@@ -34,7 +34,8 @@ async function getImpl(req: NextRequest) {
 
     // PostgREST 의 db-max-rows(1000)가 클라이언트 range 보다 우선하므로
     // .range(0, 99999) 로는 캡을 넘을 수 없다 → 페이지네이션으로 전량 조회.
-    const data = summary ?? await fetchAll(query);
+    // 함수가 없으면(SQL 실행 전) 같은 묶음을 서버에서 JS 로 만든다. 화면으로 가는 양은 그때도 준다.
+    const data = summary ?? groupKeywordSummary(await fetchAll(query));
 
     return NextResponse.json({ keywords: data, latestCollected: latestRow?.[0]?.date || null });
   } catch (error) {

@@ -144,7 +144,10 @@ export function usePrefetch(urls: (string | null | undefined)[]) {
 // 메모리에 두고, 작은 응답(LAST_STORE_MAX 이하)은 sessionStorage 에도 둬 새로고침(F5) 뒤에도 바로 뜬다.
 // 탭을 닫으면 사라진다. 서버 쪽 5분 캐시와는 별개이고, 이 값은 늘 뒤에서 다시 확인한다.
 const LAST_STORE_PREFIX = "ppmi:last:";
-const LAST_STORE_MAX = 300_000; // 문자 수. 올해 전체 원본 같은 큰 응답은 메모리에만 둔다
+// 문자 수. 브라우저 sessionStorage 는 보통 주소(origin)당 약 5MB(문자 약 250만 자) 라 한 응답에 넉넉히 준다.
+// 차면 다른 주소의 직전 응답을 지우고 한 번 더 넣는다. 그래도 안 들어가면 메모리에만 둔다
+// (메모리는 탭을 닫거나 새로고침(F5) 할 때까지 남는다. 같은 탭 안 화면 이동은 메모리로 바로 뜬다).
+const LAST_STORE_MAX = 1_500_000;
 interface LastResponse { data: unknown; asOf: string | null; tags: string[] }
 const lastResponses = new Map<string, LastResponse>();
 
@@ -174,9 +177,22 @@ function writeLast(url: string, v: LastResponse, text: string) {
     lastResponses.delete(oldest);
   }
   if (typeof window === "undefined" || text.length > LAST_STORE_MAX) return;
+  const key = LAST_STORE_PREFIX + url;
+  const value = JSON.stringify(v);
   try {
-    window.sessionStorage.setItem(LAST_STORE_PREFIX + url, JSON.stringify(v));
-  } catch { /* 저장 공간이 차면 메모리에만 */ }
+    window.sessionStorage.setItem(key, value);
+  } catch {
+    // 저장 공간이 찼다. 내 다른 직전 응답을 지우고 한 번만 더 넣어 본다. 그래도 안 되면 메모리에만.
+    try {
+      const mine: string[] = [];
+      for (let i = 0; i < window.sessionStorage.length; i++) {
+        const k = window.sessionStorage.key(i);
+        if (k && k.startsWith(LAST_STORE_PREFIX) && k !== key) mine.push(k);
+      }
+      mine.forEach((k) => window.sessionStorage.removeItem(k));
+      window.sessionStorage.setItem(key, value);
+    } catch { /* 메모리에만 */ }
+  }
 }
 
 /* ── 데이터 기준 시각·새로고침 (화면 위 DataFreshness 가 구독) ── */

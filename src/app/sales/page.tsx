@@ -4,7 +4,8 @@ import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
-import { productSalesUrl, channelAdsUrl } from "@/lib/api-urls";
+import { channelAdsUrl } from "@/lib/api-urls";
+import { LazyMount } from "@/components/lazy-mount";
 import { matchesBrand } from "@/lib/brand-groups";
 import { ProductTrendChart } from "@/components/product-trend-chart";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
@@ -66,9 +67,10 @@ function SalesPageInner() {
     prevSales: DailySales[];
     gongguSalesTotal?: number;
     brandRevenueTrend?: { date: string; [brand: string]: number | string }[];
-  }>(`/api/dashboard?${params}&raw=sales,products,prevSales`);
-  // 아래 두 칸은 로딩 화면 동안 마운트되지 않으므로, 대시보드 응답을 기다리지 않게 미리 같이 부른다.
-  usePrefetch([productSalesUrl(brand, from, to), channelAdsUrl(brand, from, to)]);
+  }>(`/api/dashboard?${params}&raw=sales,products,prevSales&lean=1`);
+  // 채널 효율 칸은 로딩 화면 동안 마운트되지 않으므로, 대시보드 응답을 기다리지 않게 미리 같이 부른다.
+  // (응답은 채널 수십 줄이라 가볍다. 상품 추이는 보일 때 부르므로 미리 부르지 않는다.)
+  usePrefetch([channelAdsUrl(brand, from, to)]);
   const { brandMap, channelMap } = useConfig();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [tab, setTab] = useState<ViewTab>("trend");
@@ -396,7 +398,11 @@ function SalesPageInner() {
         </>
       )}
 
-      <ProductTrendChart brand={brand || "all"} from={from} to={to} />
+      {/* 상품 추이는 화면 중간 아래다. 올해 전체면 응답이 커서(묶음 4천여 줄) 위쪽 숫자까지 늦췄다.
+          보일 때 부른다(2026-10-14). */}
+      <LazyMount minHeight={420}>
+        <ProductTrendChart brand={brand || "all"} from={from} to={to} />
+      </LazyMount>
 
       {(
         <Card>
