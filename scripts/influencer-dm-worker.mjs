@@ -281,7 +281,7 @@ async function doReplies(s, cand) {
 }
 
 // 대화방에서 메시지가 아닌 화면 글자(읽음 표시·시간 등)
-const UI_NOISE = /^(보냄|읽음|확인함|전송됨|전송 중|Seen|Sent|좋아요|메시지 입력\.*|Enter|(오전|오후) \d{1,2}:\d{2}|\d+(분|시간|일|주)( 전)?|어제|오늘)$/;
+const UI_NOISE = /^(New messages|새 메시지|보냄|읽음|확인함|전송됨|전송 중|Seen|Sent|좋아요|메시지 입력\.*|Enter|(오전|오후) \d{1,2}:\d{2}|\d+(분|시간|일|주)( 전)?|어제|오늘)$/;
 
 async function main() {
   if (!EXPECT) throw new Error("--expect <보내는 인스타 핸들> 이 필요하다");

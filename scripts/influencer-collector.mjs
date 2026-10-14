@@ -19,7 +19,7 @@
  *
  * 사용
  *   node scripts/influencer-collector.mjs --account u1 --expect insadongworker            시트의 대기 태그 수집
- *   node scripts/influencer-collector.mjs --account u1 --expect insadongworker --dry-run --tags "#탈모샴푸공구"
+ *   node scripts/influencer-collector.mjs --account u1 --expect insadongworker --dry-run --tags "#영양제공구"
  *       --dry-run 은 시트에 쓰지 않고 결과를 --out(기본 ./influencer-dry-run.json) 에 남긴다
  *   node scripts/influencer-collector.mjs --expect insadongworker --from-json influencer-dry-run.json
  *       dry-run 결과를 보고 괜찮으면 그대로 시트에 넣는다(인스타를 다시 열지 않는다)

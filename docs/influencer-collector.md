@@ -23,7 +23,7 @@
 node scripts/influencer-collector.mjs --account u1 --expect <수집 계정 핸들>
 
 # 시험: 시트에 안 쓰고 결과를 파일로
-node scripts/influencer-collector.mjs --account u1 --expect <핸들> --dry-run --tags "#탈모샴푸공구" --out dry.json
+node scripts/influencer-collector.mjs --account u1 --expect <핸들> --dry-run --tags "#영양제공구" --out dry.json
 # 그 결과를 그대로 시트에
 node scripts/influencer-collector.mjs --expect <핸들> --from-json dry.json
 ```
@@ -44,6 +44,34 @@ Register-ScheduledTask -TaskName "PPMI_InfluencerCollector" -Action $a -Trigger 
 ```
 
 끄기: `Disable-ScheduledTask PPMI_InfluencerCollector`
+
+## 공구 제안 DM (2026-10-14)
+
+1. 대시보드에서 후보를 「후보」로 고른다 → 시트 `DM 상태 = 초안 대기`
+2. DM 워커가 그 계정의 소개글·최근 게시물 4개를 aside 로 읽고 `claude -p` 로 맞춤 초안을 쓴다.
+   사실은 `scripts/lib/dm-facts.md`(원장에서 옮김)와 대시보드 「DM 제안 조건」에 적힌 것만 쓴다. 금지 표현이 나오면 한 번 다시 쓴다
+3. 사람이 대시보드에서 고치고 「발송 승인」 → 워커가 다음 회차에 보낸다. 대시보드는 직접 보내지 않는다
+4. 워커가 보낸 대화방을 다시 열어 상대 답장이 있으면 `DM 상태 = 회신`, 미리보기를 남긴다
+
+```bash
+node scripts/influencer-dm-worker.mjs --account u0 --expect balancelab_official
+# 하는 일 고르기 --do draft,send,replies / 한 계정만 --only <핸들> / 하루 상한 --daily-cap 10
+```
+
+안전장치: 승인한 행만 · 승인 24시간 지나면 만료 · 하루 상한 10 · 한 회차 최대 3건, 건 사이 2~6분 ·
+같은 사람 재발송 차단(시트 + `~/.ppmi-influencer-collector/dm-state.json`) · 대화방에 이미 밸런스랩·공구 메시지가 있으면 안 보냄(손으로 보낸 제안 포함) ·
+로그인 계정이 `--expect` 와 다르면 중단. 로그 `~/.ppmi-influencer-collector/dm-worker.log`.
+
+- 첫 DM 은 상대의 **메시지 요청함**에 들어간다(팔로우 관계가 없으면). 2026-10-14 테스트로 확인
+- 대화방은 `ig.me/m/<핸들>` 로 연다. 팔로우하지 않는 계정의 프로필에는 메시지 버튼이 없다
+
+작업 스케줄러 (업무시간 1시간마다):
+
+```powershell
+$a = New-ScheduledTaskAction -Execute "node.exe" -Argument "scripts\influencer-dm-worker.mjs --account u0 --expect balancelab_official" -WorkingDirectory "C:\Users\harry\projects\ppmi-dashboard-v2"
+$t = New-ScheduledTaskTrigger -Once -At 09:00 -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Hours 9)
+Register-ScheduledTask -TaskName "PPMI_InfluencerDM" -Action $a -Trigger $t -Description "공구 제안 DM 초안·승인건 발송·회신 확인 (aside). docs/influencer-collector.md"
+```
 
 ## 점수 (0~100)
 
