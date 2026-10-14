@@ -17,10 +17,9 @@ import {
 } from "@/lib/types";
 import { formatCurrency, formatNumber, formatPercent, formatRoas, isRoasUntracked } from "@/lib/utils";
 import {
-  Area, ComposedChart, LineChart, Line, ReferenceLine, BarChart, Bar,
-  XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell, Legend,
+  Area, ComposedChart, LineChart, Line, ReferenceLine, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, Legend,
 } from "recharts";
+import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import Link from "next/link";
 import { PacingSection } from "@/components/pacing-section";
 
@@ -612,7 +611,7 @@ function OverviewInner() {
                 </div>
               )}
             </div>
-            <ResponsiveContainer width="100%" height={260}>
+            <DeferredResponsiveContainer width="100%" height={260}>
               <ComposedChart data={dailyTrend} margin={{ top: 24, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
@@ -620,9 +619,9 @@ function OverviewInner() {
                 <YAxis yAxisId="roas" orientation="right" tick={{ fontSize: 11 }} stroke="#10b981" tickFormatter={(v) => `${v}x`} />
                 <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val, name) => (name === "ROAS" ? `${Number(val).toFixed(2)}x` : formatCurrency(Number(val)))} />
                 <Legend />
-                <Area yAxisId="won" type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} />
-                <Area yAxisId="won" type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} />
-                <Line yAxisId="roas" type="monotone" dataKey="roas" name="ROAS" stroke="#10b981" strokeWidth={2} dot={false} />
+                <Area isAnimationActive={false} yAxisId="won" type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} />
+                <Area isAnimationActive={false} yAxisId="won" type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} />
+                <Line isAnimationActive={false} yAxisId="roas" type="monotone" dataKey="roas" name="ROAS" stroke="#10b981" strokeWidth={2} dot={false} />
                 {events.map(e => (
                   <ReferenceLine key={e.id} yAxisId="won" x={e.date} stroke={e.color} strokeDasharray="4 4" strokeWidth={2}
                     label={(props: { viewBox?: { x: number; y: number; width: number; height: number } }) => {
@@ -639,7 +638,7 @@ function OverviewInner() {
                     }} />
                 ))}
               </ComposedChart>
-            </ResponsiveContainer>
+            </DeferredResponsiveContainer>
           </CardContent>
         </Card>
 
@@ -647,9 +646,9 @@ function OverviewInner() {
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">{shareData.title}</h3>
             {shareData.data.length > 0 ? (
-              <ResponsiveContainer width="100%" height={260}>
+              <DeferredResponsiveContainer width="100%" height={260}>
                 <PieChart>
-                  <Pie data={shareData.data} cx="50%" cy="50%" innerRadius={45} outerRadius={85} dataKey="value" nameKey="name"
+                  <Pie isAnimationActive={false} data={shareData.data} cx="50%" cy="50%" innerRadius={45} outerRadius={85} dataKey="value" nameKey="name"
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     label={({ name, percent }: any) => `${name || ''} ${((percent || 0) * 100).toFixed(0)}%`} labelLine={false}
                   >
@@ -657,7 +656,7 @@ function OverviewInner() {
                   </Pie>
                   <Tooltip formatter={(val) => formatCurrency(Number(val))} />
                 </PieChart>
-              </ResponsiveContainer>
+              </DeferredResponsiveContainer>
             ) : (
               <div className="flex items-center justify-center h-[260px] text-muted-foreground">데이터 없음</div>
             )}
@@ -738,15 +737,15 @@ function OverviewInner() {
                 <span className="text-xs text-muted-foreground">목표: {formatCurrency(targets.revenue_target)}</span>
               )}
             </div>
-            <ResponsiveContainer width="100%" height={260}>
+            <DeferredResponsiveContainer width="100%" height={260}>
               <LineChart data={cumulativeData} margin={{ top: 24, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
                 <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                 <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
                 <Legend />
-                <Line type="monotone" dataKey="cumRevenue" name="누적 매출" stroke="#2563eb" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="cumAdSpend" name="누적 광고비" stroke="#dc2626" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+                <Line isAnimationActive={false} type="monotone" dataKey="cumRevenue" name="누적 매출" stroke="#2563eb" strokeWidth={2} dot={false} />
+                <Line isAnimationActive={false} type="monotone" dataKey="cumAdSpend" name="누적 광고비" stroke="#dc2626" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
                 {targets?.revenue_target && (
                   <ReferenceLine y={targets.revenue_target} stroke="#10b981" strokeDasharray="6 3" label={{ value: "목표", position: "right", fontSize: 10, fill: "#10b981" }} />
                 )}
@@ -766,7 +765,7 @@ function OverviewInner() {
                     }} />
                 ))}
               </LineChart>
-            </ResponsiveContainer>
+            </DeferredResponsiveContainer>
           </CardContent>
         </Card>
       )}
@@ -844,16 +843,16 @@ function OverviewInner() {
                 전환 미연동 제외: {untrackedChannels.map((c) => c.label).join(", ")}
               </p>
             )}
-            <ResponsiveContainer width="100%" height={200}>
+            <DeferredResponsiveContainer width="100%" height={200}>
               <BarChart data={trackedChannelAds.slice(0, 8).map(c => ({ label: c.label, roas: c.roas, color: c.color }))} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis type="number" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v.toFixed(1)}x`} />
                 <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={80} />
                 <ReferenceLine x={1} stroke="#ef4444" strokeDasharray="4 4" />
                 <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} formatter={(val) => `${Number(val).toFixed(2)}x`} />
-                <Bar dataKey="roas" fill="#10b981" radius={[0, 4, 4, 0]} />
+                <Bar isAnimationActive={false} dataKey="roas" fill="#10b981" radius={[0, 4, 4, 0]} />
               </BarChart>
-            </ResponsiveContainer>
+            </DeferredResponsiveContainer>
           </CardContent>
         </Card>
       )}

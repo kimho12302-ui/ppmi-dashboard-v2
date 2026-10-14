@@ -14,10 +14,9 @@ import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { isGonggu as isGongguRow, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
 import { Suspense, useMemo, useState } from "react";
 import {
-  BarChart, Bar, ScatterChart, Scatter, ZAxis,
-  XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, ReferenceLine,
+  BarChart, Bar, ScatterChart, Scatter, ZAxis, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine,
 } from "recharts";
+import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 
 // 탭 제거 — 모든 섹션을 한 페이지에 표시
 type ViewTab = "trend" | "channel" | "category" | "product" | "gonggu";
@@ -272,7 +271,7 @@ function SalesPageInner() {
         <Card>
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">브랜드별 누적 매출 트렌드</h3>
-            <ResponsiveContainer width="100%" height={300}>
+            <DeferredResponsiveContainer width="100%" height={300}>
               <BarChart data={dailyTrend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
@@ -292,7 +291,7 @@ function SalesPageInner() {
                 />
                 <Legend />
                 {activeBrands.map((bl) => (
-                  <Bar
+                  <Bar isAnimationActive={false}
                     key={bl}
                     dataKey={bl}
                     name={bl}
@@ -302,7 +301,7 @@ function SalesPageInner() {
                   />
                 ))}
               </BarChart>
-            </ResponsiveContainer>
+            </DeferredResponsiveContainer>
           </CardContent>
         </Card>
       )}
@@ -321,15 +320,15 @@ function SalesPageInner() {
                 ))}
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={200}>
+            <DeferredResponsiveContainer width="100%" height={200}>
               <BarChart data={periodData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
                 <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                 <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
-                <Bar dataKey="revenue" name="매출" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill="#2563eb" radius={[4, 4, 0, 0]} />
               </BarChart>
-            </ResponsiveContainer>
+            </DeferredResponsiveContainer>
           </CardContent>
         </Card>
       )}
@@ -338,15 +337,15 @@ function SalesPageInner() {
         <Card>
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">카테고리별 매출</h3>
-            <ResponsiveContainer width="100%" height={Math.max(200, byCategory.length * 35)}>
+            <DeferredResponsiveContainer width="100%" height={Math.max(200, byCategory.length * 35)}>
               <BarChart data={byCategory} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                 <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={100} />
                 <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
-                <Bar dataKey="revenue" name="매출" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
               </BarChart>
-            </ResponsiveContainer>
+            </DeferredResponsiveContainer>
           </CardContent>
         </Card>
       )}
@@ -371,7 +370,7 @@ function SalesPageInner() {
           <Card>
             <CardContent className="p-4">
               <h3 className="font-semibold mb-4">판매처별 매출 비교</h3>
-              <ResponsiveContainer width="100%" height={300}>
+              <DeferredResponsiveContainer width="100%" height={300}>
                 <BarChart data={byChannel} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis
@@ -390,9 +389,9 @@ function SalesPageInner() {
                     }}
                     formatter={(val) => formatCurrency(Number(val))}
                   />
-                  <Bar dataKey="revenue" name="매출" fill="#2563eb" radius={[0, 4, 4, 0]} />
+                  <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill="#2563eb" radius={[0, 4, 4, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
+              </DeferredResponsiveContainer>
             </CardContent>
           </Card>
         </>
@@ -492,7 +491,7 @@ function SalesPageInner() {
                 </div>
               </div>
               {balanceTrendData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={260}>
+                <DeferredResponsiveContainer width="100%" height={260}>
                   <BarChart data={balanceTrendData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
@@ -506,10 +505,10 @@ function SalesPageInner() {
                       formatter={(val) => formatCurrency(Number(val))}
                     />
                     <Legend />
-                    <Bar dataKey="self" name="자체매출" stackId="bal" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-                    <Bar dataKey="gonggu" name="공구매출" stackId="bal" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                    <Bar isAnimationActive={false} dataKey="self" name="자체매출" stackId="bal" fill="#3b82f6" radius={[0, 0, 0, 0]} />
+                    <Bar isAnimationActive={false} dataKey="gonggu" name="공구매출" stackId="bal" fill="#a855f7" radius={[4, 4, 0, 0]} />
                   </BarChart>
-                </ResponsiveContainer>
+                </DeferredResponsiveContainer>
               ) : (
                 <p className="text-muted-foreground text-center py-8">밸런스랩 데이터가 없습니다.</p>
               )}
@@ -614,7 +613,7 @@ function ChannelEfficiencySection({ brand, from, to }: { brand: string; from: st
           <span className="text-blue-600 font-medium">● 좌하단: 저CAC + 저ROAS (최적화필요)</span>
           <span className="text-red-500 font-medium">● 우하단: 고CAC + 저ROAS (재검토)</span>
         </div>
-        <ResponsiveContainer width="100%" height={320}>
+        <DeferredResponsiveContainer width="100%" height={320}>
           <ScatterChart margin={{ top: 20, right: 30, bottom: 30, left: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis
@@ -645,7 +644,7 @@ function ChannelEfficiencySection({ brand, from, to }: { brand: string; from: st
               }}
               labelFormatter={(_, payload) => payload?.[0]?.payload?.name || ""}
             />
-            <Scatter
+            <Scatter isAnimationActive={false}
               data={scatterData}
               shape={(props: { cx?: number; cy?: number; fill?: string; payload?: { name: string; spend: number } }) => {
                 const { cx = 0, cy = 0, fill = "#6366f1", payload } = props;
@@ -661,7 +660,7 @@ function ChannelEfficiencySection({ brand, from, to }: { brand: string; from: st
               fill="#6366f1"
             />
           </ScatterChart>
-        </ResponsiveContainer>
+        </DeferredResponsiveContainer>
         <p className="text-xs text-muted-foreground mt-2">
           💡 버블 크기 = 광고비. 전환수 0인 채널은 CAC = 광고비 원금으로 표시.
         </p>
