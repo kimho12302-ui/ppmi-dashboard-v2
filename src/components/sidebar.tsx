@@ -44,7 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/raw", label: "Raw Data", icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" },
 
   // ── 모집: 공구 진행자 찾기 (2026-10-14). 팀 비밀번호 화면 ──
-  { href: "/influencers", label: "공구 인플루언서", icon: "", emoji: "🤝", separator: true, section: "모집" },
+  { href: "/influencers", label: "공구 셀러 발굴", icon: "", emoji: "🤝", separator: true, section: "모집" },
 
   // ── 입력·설정: 매일 하는 일을 '설정' 뒤에 숨기지 않는다 ──
   { href: "/daily", label: "일일 입력", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z", separator: true, section: "입력·설정" },

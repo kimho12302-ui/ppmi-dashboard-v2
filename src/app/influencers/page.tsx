@@ -1,249 +1,210 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section";
 import { formatNumber, cn } from "@/lib/utils";
 
-// 공구 인플루언서 발굴 (2026-10-14). 밸런스랩 공구 재개, 주력 큐모발검사. 병목은 '같이 할 사람 찾기'.
-// 후보 모으기 → 계정 분석(공식 API) → 고른 행을 팀 협찬 리스트 시트에 추가. 정본은 시트다.
-// DM 발송은 다음 단계(첫 DM 은 공식 API 로 불가, aside 워커가 필요).
+// 공구 셀러 발굴 (2026-10-14). 밸런스랩 공구 재개, 주력 큐모발검사. 병목은 '같이 할 셀러 찾기'.
+// 해시태그를 큐에 넣으면 PC 의 aside 수집기가 해시태그 → 올린 사람 → 프로필을 읽어 점수를 매겨
+// 협찬 리스트 시트에 넣는다. 이 화면은 그 시트를 보여 주고 상태(후보·컨택함·제외)를 바꾼다. 정본은 시트다.
 
-const DEFAULT_KEYWORDS = "탈모, 두피, 모발, 헤어, 머리숱, 영양, 건강, 다이어트, 육아, 뷰티, 피부";
+type Row = Record<string, string>;
+interface Board { candidates: Row[]; tags: Row[]; collector: Record<string, string>; sheetUrl: string }
 
-interface Contacts { emails: string[]; kakao: string[]; links: string[] }
-interface Row {
-  handle: string; ok: boolean; error?: string; name?: string; biography?: string;
-  followers?: number; lastPostAt?: string | null; daysSinceLastPost?: number | null;
-  avgLikes?: number | null; avgComments?: number; engagementPct?: number | null;
-  gongguPosts?: number; gongguExamples?: string[]; keywordHits?: Record<string, number>;
-  contacts?: Contacts; score?: number; scoreParts?: Record<string, number>;
-  inSheet?: string | null; source?: string;
-}
-interface Candidate { handle: string; count: number; seeds: string[]; example?: string }
-
-const PART_LABEL: Record<string, string> = {
-  followers: "팔로워(20)", engagement: "참여율(25)", gonggu: "공구 이력(25)",
-  relevance: "주제 관련(20)", recency: "최근 활동(5)", contact: "연락처(5)",
+const STATUSES = ["검토 전", "후보", "컨택함", "제외"] as const;
+const HAIR = /탈모|두피|모발|헤어|샴푸|머리숱|머릿결/;
+const STATUS_STYLE: Record<string, string> = {
+  "검토 전": "bg-muted text-muted-foreground",
+  후보: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  컨택함: "bg-sky-500/15 text-sky-600 dark:text-sky-400",
+  제외: "bg-red-500/10 text-red-500",
 };
 
-const splitList = (s: string) => s.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
-
-async function post<T>(url: string, body: unknown): Promise<T> {
-  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+async function call<T>(url: string, body?: unknown): Promise<T> {
+  const r = await fetch(url, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
-  if (r.status === 401) { window.location.href = `/login?next=/influencers`; throw new Error("로그인이 필요합니다"); }
+  if (r.status === 401) { window.location.href = "/login?next=/influencers"; throw new Error("로그인이 필요합니다"); }
   if (!r.ok) throw new Error(j.error || `요청 실패 (${r.status})`);
   return j as T;
 }
 
 const btn = "rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40";
-const input = "w-full rounded-md border bg-background px-3 py-2 text-sm";
+const num = (s: string) => Number(String(s || "").replace(/,/g, "")) || 0;
+const words = (s: string) => String(s || "").split(/\s+/).filter(Boolean);
 
 export default function InfluencersPage() {
-  const [handlesText, setHandlesText] = useState("");
-  const [seedsText, setSeedsText] = useState("");
-  const [keywords, setKeywords] = useState(DEFAULT_KEYWORDS);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [pickedCand, setPickedCand] = useState<Set<string>>(new Set());
-  const [seedReport, setSeedReport] = useState<{ seed: string; ok: boolean; error?: string; found: number }[]>([]);
-  const [rows, setRows] = useState<Row[]>([]);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState<string>("");
-  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string; link?: string } | null>(null);
-  const [onlyContact, setOnlyContact] = useState(false);
-  const [hideInSheet, setHideInSheet] = useState(true);
+  const [board, setBoard] = useState<Board | null>(null);
+  const [error, setError] = useState("");
+  const [tagText, setTagText] = useState("");
+  const [busy, setBusy] = useState("");
+  const [note, setNote] = useState("");
+  const [status, setStatus] = useState<string>("검토 전");
+  const [minFollowers, setMinFollowers] = useState(1000);
+  const [hairOnly, setHairOnly] = useState(false);
+  const [signalOnly, setSignalOnly] = useState(true);
+  const [tagFilter, setTagFilter] = useState("");
 
-  async function analyze(handles: string[], source: string) {
-    if (!handles.length) return;
-    setBusy("analyze"); setMsg(null);
+  const load = useCallback(async () => {
+    try { setBoard(await call<Board>("/api/influencers/board")); setError(""); }
+    catch (e) { setError((e as Error).message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function addTags() {
+    setBusy("tags"); setNote("");
     try {
-      const all: Row[] = [];
-      // 서버는 한 번에 30개까지. 넘으면 나눠 보낸다
-      for (let i = 0; i < handles.length; i += 30) {
-        const j = await post<{ results: Row[] }>("/api/influencers/analyze", { handles: handles.slice(i, i + 30), keywords: splitList(keywords.replace(/,/g, " ")) });
-        all.push(...j.results.map((r) => ({ ...r, source })));
-      }
-      setRows((prev) => {
-        const map = new Map(prev.map((r) => [r.handle, r]));
-        for (const r of all) map.set(r.handle, { ...r, source: map.get(r.handle)?.source || r.source });
-        return Array.from(map.values());
-      });
-      const ok = all.filter((r) => r.ok).length;
-      setMsg({ kind: "ok", text: `${all.length}개 분석: 성공 ${ok}, 분석 불가 ${all.length - ok}` });
-    } catch (e) {
-      setMsg({ kind: "err", text: (e as Error).message });
-    } finally { setBusy(""); }
+      const j = await call<{ added: string[]; skipped: number }>("/api/influencers/tags", { tags: tagText });
+      setNote(`${j.added.length}개 추가${j.skipped ? `, ${j.skipped}개는 이미 있음` : ""}. 다음 수집 때 돕니다.`);
+      setTagText("");
+      await load();
+    } catch (e) { setNote((e as Error).message); }
+    finally { setBusy(""); }
   }
 
-  async function findMentions() {
-    setBusy("mentions"); setMsg(null);
-    try {
-      const j = await post<{ seeds: typeof seedReport; candidates: Candidate[] }>("/api/influencers/mentions", { seeds: splitList(seedsText) });
-      setSeedReport(j.seeds);
-      setCandidates(j.candidates);
-      setPickedCand(new Set(j.candidates.slice(0, 30).map((c) => c.handle)));
-      setMsg({ kind: "ok", text: `언급된 계정 ${j.candidates.length}개. 위에서부터 30개를 골라 두었습니다.` });
-    } catch (e) {
-      setMsg({ kind: "err", text: (e as Error).message });
-    } finally { setBusy(""); }
+  async function review(handle: string, next: string) {
+    if (!board) return;
+    const prev = board;
+    setBoard({ ...board, candidates: board.candidates.map((c) => (c["핸들"] === handle ? { ...c, 상태: next } : c)) });
+    try { await call("/api/influencers/review", { handle, status: next }); }
+    catch (e) { setBoard(prev); setNote((e as Error).message); }
   }
 
-  async function addToSheet() {
-    const chosen = rows.filter((r) => picked.has(r.handle) && r.ok);
-    if (!chosen.length) return;
-    setBusy("sheet"); setMsg(null);
-    try {
-      const j = await post<{ added: string[]; skipped: { handle: string; reason: string }[]; tab: string; sheetUrl: string }>("/api/influencers/sheet", { rows: chosen });
-      setRows((prev) => prev.map((r) => (j.added.includes(r.handle) ? { ...r, inSheet: j.tab } : r)));
-      setPicked(new Set());
-      const sk = j.skipped.length ? ` / 건너뜀 ${j.skipped.length} (${j.skipped.map((s) => `${s.handle}: ${s.reason}`).join(", ")})` : "";
-      setMsg({ kind: "ok", text: `시트 「${j.tab}」 탭에 ${j.added.length}개 추가${sk}`, link: j.sheetUrl });
-    } catch (e) {
-      setMsg({ kind: "err", text: (e as Error).message });
-    } finally { setBusy(""); }
-  }
+  const counts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of board?.candidates || []) m[c["상태"] || "검토 전"] = (m[c["상태"] || "검토 전"] || 0) + 1;
+    return m;
+  }, [board]);
 
-  const view = useMemo(() => rows
-    .filter((r) => !onlyContact || (r.contacts && (r.contacts.emails.length || r.contacts.kakao.length)))
-    .filter((r) => !hideInSheet || !r.inSheet)
-    .sort((a, b) => Number(b.ok) - Number(a.ok) || (b.score ?? -1) - (a.score ?? -1)), [rows, onlyContact, hideInSheet]);
-  const hiddenInSheet = rows.filter((r) => r.inSheet).length;
+  const allTags = useMemo(() => Array.from(new Set((board?.candidates || []).flatMap((c) => words(c["발견 태그"])))), [board]);
 
-  const toggle = (set: Set<string>, setter: (s: Set<string>) => void, h: string) => {
-    const n = new Set(set); if (n.has(h)) n.delete(h); else n.add(h); setter(n);
-  };
+  const view = useMemo(() => (board?.candidates || [])
+    .filter((c) => status === "전체" || (c["상태"] || "검토 전") === status)
+    .filter((c) => num(c["팔로워"]) >= minFollowers)
+    .filter((c) => !hairOnly || HAIR.test(`${c["관련 키워드"]} ${c["소개글"]} ${c["하이라이트"]} ${c["게시물 캡션"]}`))
+    .filter((c) => !signalOnly || c["공구 신호"])
+    .filter((c) => !tagFilter || words(c["발견 태그"]).includes(tagFilter))
+    .sort((a, b) => num(b["점수"]) - num(a["점수"])), [board, status, minFollowers, hairOnly, signalOnly, tagFilter]);
+
+  const col = board?.collector || {};
 
   return (
-    <PageShell title="공구 인플루언서 발굴" description="밸런스랩 큐모발검사 공구 진행자 찾기 → 계정 분석 → 팀 협찬 리스트 시트에 추가" hideFilters>
+    <PageShell title="공구 셀러 발굴" description="인스타 해시태그로 공구 진행자를 찾아 협찬 리스트 시트에 쌓습니다 (밸런스랩 큐모발검사)" hideFilters>
       <Card>
-        <CardContent className="py-3 text-xs text-muted-foreground space-y-1">
-          <p>· 분석은 인스타 공식 API 로 합니다. <b>비즈니스·크리에이터 계정만</b> 읽히고 개인 계정은 &lsquo;분석 불가&rsquo;로 나옵니다.</p>
-          <p>· 인스타 해시태그 검색 API 는 올린 사람을 알려 주지 않아서, 후보는 ① 직접 붙여넣기 ② 비슷한 브랜드 계정이 캡션에 @태그한 계정으로 모읍니다.</p>
-          <p>· 고른 행은 협찬 리스트 시트의 「인스타_공구후보」 탭에 들어갑니다. 시트에 이미 있는 핸들(제안 리스트·컨택타깃 포함)은 다시 넣지 않습니다. DM 발송은 다음 단계입니다.</p>
+        <CardContent className="py-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+          <span><span className="text-muted-foreground">수집기 마지막 실행</span> <b>{col["마지막 실행"] || "아직 없음"}</b></span>
+          {col["결과"] && <span className="text-muted-foreground">{col["결과"]}</span>}
+          {col["오늘 열람"] && <span><span className="text-muted-foreground">오늘 열람</span> {col["오늘 열람"]}</span>}
+          <span className="text-xs text-muted-foreground">수집은 aside 가 켜진 PC 에서 돕니다. PC 가 꺼져 있으면 태그가 &lsquo;대기&rsquo;로 남습니다.</span>
+          {board?.sheetUrl && <a className="ml-auto underline text-xs" href={board.sheetUrl} target="_blank" rel="noreferrer">시트 열기</a>}
+        </CardContent>
+      </Card>
+      {error && <div className="rounded-md border border-red-500/50 text-red-500 px-3 py-2 text-sm">{error}</div>}
+
+      <SectionHeading eyebrow="1단계" title="수집할 해시태그" note="공구 셀러가 쓰는 태그 · 경쟁 브랜드 공구 태그가 효과가 좋습니다 (예: #탈모샴푸공구 #바이오컴공구)" />
+      <Card>
+        <CardContent className="py-4 space-y-3">
+          <div className="flex gap-2">
+            <input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" placeholder="#탈모샴푸공구 #두피케어공구 (여러 개는 띄어쓰기로)" value={tagText}
+              onChange={(e) => setTagText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && tagText.trim()) addTags(); }} />
+            <button className={btn} style={{ background: "var(--primary)" }} disabled={!!busy || !tagText.trim()} onClick={addTags}>{busy === "tags" ? "추가 중…" : "큐에 추가"}</button>
+          </div>
+          {note && <p className="text-xs text-muted-foreground">{note}</p>}
+          {(board?.tags.length || 0) > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {board!.tags.map((t) => (
+                <span key={t["태그"]} className="text-xs px-2 py-1 rounded border" title={t["오류"] || `추가: ${t["추가한 사람"]} ${t["추가일"]}`}>
+                  {t["태그"]} · <span className={t["상태"] === "오류" ? "text-red-500" : t["상태"] === "완료" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}>{t["상태"] || "대기"}</span>
+                  {t["상태"] === "완료" && <span className="text-muted-foreground"> · 게시물 {t["본 게시물"]} → 새 {t["새 후보"]}</span>}
+                </span>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      <SectionHeading eyebrow="1단계" title="후보 모으기" />
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardContent className="py-4 space-y-2">
-            <p className="text-sm font-medium">핸들 직접 넣기</p>
-            <textarea className={cn(input, "h-28 font-mono")} placeholder={"@handle 또는 instagram.com/handle\n줄바꿈·쉼표로 여러 개"} value={handlesText} onChange={(e) => setHandlesText(e.target.value)} />
-            <button className={btn} style={{ background: "var(--primary)" }} disabled={!!busy || !handlesText.trim()}
-              onClick={() => analyze(splitList(handlesText), "직접 입력")}>
-              {busy === "analyze" ? "분석 중…" : "분석"}
-            </button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 space-y-2">
-            <p className="text-sm font-medium">비슷한 브랜드가 태그한 계정 찾기</p>
-            <input className={cn(input, "font-mono")} placeholder="시드 계정 (예: 탈모샴푸·모발검사·영양제 브랜드), 쉼표로 최대 10개" value={seedsText} onChange={(e) => setSeedsText(e.target.value)} />
-            <button className={btn} style={{ background: "var(--primary)" }} disabled={!!busy || !seedsText.trim()} onClick={findMentions}>
-              {busy === "mentions" ? "찾는 중…" : "언급된 계정 찾기"}
-            </button>
-            {seedReport.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {seedReport.map((s) => `${s.seed}: ${s.ok ? `${s.found}개` : s.error}`).join(" · ")}
-              </p>
-            )}
-            {candidates.length > 0 && (
-              <div className="space-y-2">
-                <div className="max-h-48 overflow-auto rounded-md border p-2 flex flex-wrap gap-1.5">
-                  {candidates.map((c) => (
-                    <label key={c.handle} className={cn("text-xs px-2 py-1 rounded border cursor-pointer font-mono", pickedCand.has(c.handle) ? "bg-muted" : "opacity-60")}>
-                      <input type="checkbox" className="mr-1 align-middle" checked={pickedCand.has(c.handle)} onChange={() => toggle(pickedCand, setPickedCand, c.handle)} />
-                      @{c.handle} <span className="text-muted-foreground">×{c.count}{c.seeds.length > 1 ? ` · 시드 ${c.seeds.length}곳` : ""}</span>
-                    </label>
-                  ))}
-                </div>
-                <button className={btn} style={{ background: "var(--primary)" }} disabled={!!busy || pickedCand.size === 0}
-                  onClick={() => analyze(Array.from(pickedCand), `시드 언급: ${splitList(seedsText).join(",")}`)}>
-                  {busy === "analyze" ? "분석 중…" : `고른 ${pickedCand.size}개 분석`}
-                </button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-      <div className="flex items-center gap-2 text-xs">
-        <span className="text-muted-foreground whitespace-nowrap">관련 키워드</span>
-        <input className={cn(input, "py-1 text-xs")} value={keywords} onChange={(e) => setKeywords(e.target.value)} />
+      <SectionHeading eyebrow="2단계" title="후보 검토" note="점수 = 팔로워(25) + 공구 신호(35) + 탈모·두피 관련(20) + 여러 태그 발견(10) + 연락처(10)" />
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {[...STATUSES, "전체"].map((s) => (
+          <button key={s} onClick={() => setStatus(s)} className={cn("px-2.5 py-1 rounded-full border", status === s ? "bg-foreground text-background" : "")}>
+            {s} {s === "전체" ? board?.candidates.length ?? 0 : counts[s] || 0}
+          </button>
+        ))}
+        <span className="mx-2 h-4 border-l" />
+        <select className="rounded border bg-background px-2 py-1" value={minFollowers} onChange={(e) => setMinFollowers(Number(e.target.value))}>
+          {[0, 1000, 3000, 10000, 50000].map((n) => <option key={n} value={n}>팔로워 {n ? `${formatNumber(n)} 이상` : "전체"}</option>)}
+        </select>
+        <select className="rounded border bg-background px-2 py-1" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
+          <option value="">발견 태그 전체</option>
+          {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <label><input type="checkbox" className="mr-1 align-middle" checked={signalOnly} onChange={(e) => setSignalOnly(e.target.checked)} />공구 신호 있는 것만</label>
+        <label><input type="checkbox" className="mr-1 align-middle" checked={hairOnly} onChange={(e) => setHairOnly(e.target.checked)} />탈모·두피 관련만</label>
+        <button className="ml-auto underline" onClick={load}>새로고침</button>
       </div>
 
-      {msg && (
-        <div className={cn("rounded-md border px-3 py-2 text-sm", msg.kind === "err" ? "border-red-500/50 text-red-500" : "")}>
-          {msg.text} {msg.link && <a className="underline ml-1" href={msg.link} target="_blank" rel="noreferrer">시트 열기</a>}
-        </div>
-      )}
-
-      <SectionHeading eyebrow="2단계" title="분석 결과" note="점수 = 팔로워·참여율·공구 이력·주제 관련·최근 활동·연락처 (마우스를 올리면 항목별)"
-        action={
-          <div className="flex items-center gap-3 text-xs">
-            <label><input type="checkbox" className="mr-1 align-middle" checked={onlyContact} onChange={(e) => setOnlyContact(e.target.checked)} />연락처 있는 것만</label>
-            <label><input type="checkbox" className="mr-1 align-middle" checked={hideInSheet} onChange={(e) => setHideInSheet(e.target.checked)} />시트에 있는 것 숨김{hiddenInSheet ? ` (${hiddenInSheet})` : ""}</label>
-            <button className={btn} style={{ background: "var(--primary)" }} disabled={!!busy || picked.size === 0} onClick={addToSheet}>
-              {busy === "sheet" ? "추가 중…" : `선택 ${picked.size}개 시트에 추가`}
-            </button>
-          </div>
-        } />
       <Card>
         <CardContent className="p-0 overflow-x-auto">
-          {view.length === 0 ? (
-            <p className="text-sm text-muted-foreground px-6 py-8 text-center">아직 분석한 계정이 없습니다.</p>
-          ) : (
+          {!board ? <p className="text-sm text-muted-foreground px-6 py-8 text-center">불러오는 중…</p>
+            : view.length === 0 ? <p className="text-sm text-muted-foreground px-6 py-8 text-center">조건에 맞는 후보가 없습니다.</p>
+            : (
             <table className="w-full text-sm">
               <thead className="text-xs text-muted-foreground border-b">
                 <tr className="text-left">
-                  <th className="px-3 py-2 w-8">
-                    <input type="checkbox" checked={view.filter((r) => r.ok && !r.inSheet).every((r) => picked.has(r.handle)) && picked.size > 0}
-                      onChange={(e) => setPicked(e.target.checked ? new Set(view.filter((r) => r.ok && !r.inSheet).map((r) => r.handle)) : new Set())} />
-                  </th>
-                  <th className="px-3 py-2">계정</th>
                   <th className="px-3 py-2 text-right">점수</th>
+                  <th className="px-3 py-2">계정</th>
                   <th className="px-3 py-2 text-right">팔로워</th>
-                  <th className="px-3 py-2 text-right">참여율</th>
-                  <th className="px-3 py-2 text-right">공구 글</th>
-                  <th className="px-3 py-2">관련 키워드</th>
-                  <th className="px-3 py-2">최근 글</th>
-                  <th className="px-3 py-2">연락처</th>
+                  <th className="px-3 py-2">공구 신호 · 진행 공구</th>
+                  <th className="px-3 py-2">발견 게시물</th>
+                  <th className="px-3 py-2">연락처 · 링크</th>
+                  <th className="px-3 py-2">상태</th>
                 </tr>
               </thead>
               <tbody>
-                {view.map((r) => (
-                  <tr key={r.handle} className={cn("border-b last:border-0 align-top", !r.ok && "opacity-50")}>
-                    <td className="px-3 py-2">
-                      <input type="checkbox" disabled={!r.ok || !!r.inSheet} checked={picked.has(r.handle)} onChange={() => toggle(picked, setPicked, r.handle)} />
-                    </td>
-                    <td className="px-3 py-2 min-w-[180px]">
-                      <a className="font-mono font-medium hover:underline" href={`https://www.instagram.com/${r.handle}/`} target="_blank" rel="noreferrer">@{r.handle}</a>
-                      {r.name && <span className="ml-1 text-xs text-muted-foreground">{r.name}</span>}
-                      {r.inSheet && <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-muted">시트: {r.inSheet}</span>}
-                      {!r.ok && <p className="text-xs text-red-500">{r.error}</p>}
-                      {r.biography && <p className="text-xs text-muted-foreground line-clamp-2 max-w-xs" title={r.biography}>{r.biography}</p>}
-                      {r.source && <p className="text-[10px] text-muted-foreground">경로: {r.source}</p>}
-                    </td>
-                    <td className="px-3 py-2 text-right num font-semibold" title={r.scoreParts ? Object.entries(r.scoreParts).map(([k, v]) => `${PART_LABEL[k] || k}: ${v}`).join("\n") : ""}>{r.score ?? "-"}</td>
-                    <td className="px-3 py-2 text-right num">{r.followers != null ? formatNumber(r.followers) : "-"}</td>
-                    <td className="px-3 py-2 text-right num" title={r.avgLikes == null && r.ok ? "좋아요를 숨긴 계정: 댓글만으로 계산" : `평균 좋아요 ${r.avgLikes ?? "-"} · 댓글 ${r.avgComments ?? "-"}`}>
-                      {r.engagementPct != null ? `${r.engagementPct}%` : "-"}{r.ok && r.avgLikes == null ? "*" : ""}
-                    </td>
-                    <td className="px-3 py-2 text-right num">
-                      {r.gongguPosts ? (
-                        <a className="underline" href={r.gongguExamples?.[0]} target="_blank" rel="noreferrer" title="최근 25개 중 공구 표현이 있는 게시물 수. 누르면 예시">{r.gongguPosts}</a>
-                      ) : r.ok ? 0 : "-"}
-                    </td>
-                    <td className="px-3 py-2 text-xs">{Object.entries(r.keywordHits || {}).map(([k, n]) => `${k}${n}`).join(" ")}</td>
-                    <td className="px-3 py-2 text-xs whitespace-nowrap">{r.daysSinceLastPost != null ? `${r.daysSinceLastPost}일 전` : "-"}</td>
-                    <td className="px-3 py-2 text-xs max-w-[220px] break-all">
-                      {r.contacts?.emails.map((e) => <div key={e}>✉ {e}</div>)}
-                      {r.contacts?.kakao.map((k) => <div key={k}>💬 {k}</div>)}
-                      {r.contacts?.links.map((l) => <div key={l} className="text-muted-foreground">🔗 {l}</div>)}
-                    </td>
-                  </tr>
-                ))}
+                {view.map((c) => {
+                  const h = c["핸들"];
+                  const cur = c["상태"] || "검토 전";
+                  return (
+                    <tr key={h} className="border-b last:border-0 align-top">
+                      <td className="px-3 py-2 text-right num font-semibold">{c["점수"]}</td>
+                      <td className="px-3 py-2 min-w-[200px] max-w-[280px]">
+                        <a className="font-mono font-medium hover:underline" href={c["프로필"] || `https://www.instagram.com/${h}/`} target="_blank" rel="noreferrer">@{h}</a>
+                        <span className="ml-1 text-xs text-muted-foreground">{c["이름"]}</span>
+                        {c["카테고리"] && <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-muted">{c["카테고리"]}</span>}
+                        {c["소개글"] && <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-line" title={c["소개글"]}>{c["소개글"]}</p>}
+                        {c["관련 키워드"] && <p className="text-[10px] text-muted-foreground mt-0.5">키워드: {c["관련 키워드"]}</p>}
+                      </td>
+                      <td className="px-3 py-2 text-right num">{c["팔로워"] ? formatNumber(num(c["팔로워"])) : "-"}</td>
+                      <td className="px-3 py-2 text-xs max-w-[240px]">
+                        <div className="flex flex-wrap gap-1">{(c["공구 신호"] || "").split(", ").filter(Boolean).map((s) => <span key={s} className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400">{s}</span>)}</div>
+                        {c["진행·예정 공구"] && <p className="mt-1">{c["진행·예정 공구"]}</p>}
+                        {c["하이라이트"] && <p className="mt-1 text-muted-foreground line-clamp-2" title={c["하이라이트"]}>하이라이트: {c["하이라이트"]}</p>}
+                      </td>
+                      <td className="px-3 py-2 text-xs max-w-[240px]">
+                        <p className="text-muted-foreground">{c["발견 태그"]}</p>
+                        {c["게시물 캡션"] && <p className="line-clamp-3" title={c["게시물 캡션"]}>{c["게시물 캡션"]}</p>}
+                        {words(c["발견 게시물"]).slice(0, 2).map((u, i) => <a key={u} className="underline mr-2" href={u} target="_blank" rel="noreferrer">게시물{i + 1}</a>)}
+                      </td>
+                      <td className="px-3 py-2 text-xs max-w-[200px] break-all">
+                        {words(c["이메일"]).map((e) => <div key={e}>✉ {e}</div>)}
+                        {c["카카오"] && <div>💬 {c["카카오"]}</div>}
+                        {words(c["판매 링크"]).map((l) => <div key={l} className="text-muted-foreground">🔗 {l}</div>)}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-col gap-1 min-w-[72px]">
+                          {STATUSES.map((s) => (
+                            <button key={s} onClick={() => s !== cur && review(h, s)}
+                              className={cn("text-xs px-2 py-0.5 rounded", s === cur ? STATUS_STYLE[s] + " font-semibold" : "text-muted-foreground hover:bg-muted")}>
+                              {s}
+                            </button>
+                          ))}
+                          {c["검토자"] && <span className="text-[10px] text-muted-foreground">{c["검토자"]} {c["검토일"]?.slice(5)}</span>}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
