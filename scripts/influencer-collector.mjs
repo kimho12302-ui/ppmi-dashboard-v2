@@ -27,17 +27,11 @@
  * 필요: 이 PC 에 aside 가 켜져 있고 수집 계정이 그 프로필에 로그인돼 있을 것.
  *       구글 서비스계정 키 ~/.naver-searchad/google-service-account.json (GOOGLE_SA_KEY_FILE 로 바꿀 수 있음)
  */
-import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { google } from "googleapis";
+import { SCHEMA, SHEET, STATE_DIR, WallError, ensureTab, kstDate, kstStamp, loggedInHandle, makeLog, normHandle, q, readTab, repl as asideRepl, setCells, sheetsClient, upsertStatus } from "./lib/ig-shared.mjs";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const SCHEMA = JSON.parse(readFileSync(join(ROOT, "src/lib/influencer-schema.json"), "utf8"));
-const ASIDE = process.env.ASIDE_EXE || "C:/Users/harry/AppData/Local/Aside/CLI/current/aside.exe";
-const STATE_DIR = join(homedir(), ".ppmi-influencer-collector");
 const STATE_FILE = join(STATE_DIR, "state.json");
 const LOCK_FILE = join(STATE_DIR, "run.lock");
 
@@ -57,17 +51,9 @@ const OUT = arg("--out", "influencer-dry-run.json");
 const TAGS_ARG = arg("--tags", "");
 const FROM = arg("--from-json", ""); // 앞선 dry-run 결과를 브라우저 없이 시트에 넣는다
 
-// 작업 스케줄러로 돌면 화면 출력이 남지 않아 파일에도 쓴다 (~/.ppmi-influencer-collector/collector.log)
-const log = (...a) => {
-  const line = [new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 19).replace("T", " "), ...a].join(" ");
-  console.log(line);
-  try { appendFileSync(join(STATE_DIR, "collector.log"), line + "\n"); } catch { /* 로그 실패로 수집을 멈추지 않는다 */ }
-};
-const kstDate = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
-const kstStamp = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 16).replace("T", " ");
+const log = makeLog("collector.log");
 
 // ── 하루 열람 예산 ──
-mkdirSync(STATE_DIR, { recursive: true });
 let state = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, "utf8")) : {};
 if (state.date !== kstDate()) state = { date: kstDate(), pages: 0 };
 const saveState = () => writeFileSync(STATE_FILE, JSON.stringify(state));
@@ -75,38 +61,8 @@ const left = () => MAX_PAGES - state.pages;
 function spend(n) { state.pages += n; saveState(); }
 
 class BudgetError extends Error {}
-class WallError extends Error {}
-
-// ── aside ──
-// 한 번 부를 때마다 새 REPL 세션이다(앞 호출의 탭은 남지 않는다). 그래서 매번 openTab 으로 시작하고
-// 끝나면 닫는다. 결과는 '@@OUT@@' 줄로 받는다.
-function repl(body) {
-  const code = `await (async () => {
-    const pause = (a, b) => sleep(a + Math.floor(Math.random() * (b - a)));
-    const isWall = (u) => /accounts\\/login|challenge|suspended/.test(u);
-    ${body}
-  })();`;
-  const r = spawnSync(ASIDE, ["repl", "--account", ACCOUNT, code], { encoding: "utf8", timeout: 140000, windowsHide: true, maxBuffer: 20 * 1024 * 1024 });
-  const text = `${r.stdout || ""}\n${r.stderr || ""}`;
-  const line = text.split(/\r?\n/).reverse().find((l) => l.startsWith("@@OUT@@"));
-  if (!line) throw new Error(`aside 응답 없음 (exit ${r.status}): ${text.replace(/\s+/g, " ").slice(-400)}`);
-  const out = JSON.parse(line.slice(7));
-  if (out.wall) throw new WallError(`인스타가 로그인·확인 화면을 띄웠다: ${out.wall}`);
-  return out;
-}
-
-function checkAccount() {
-  const out = repl(`
-    const p = await openTab('https://www.instagram.com/accounts/edit/');
-    await pause(2000, 3000);
-    const url = p.url();
-    const alts = isWall(url) ? [] : await p.locator('img[alt$="님의 프로필 사진"]').evaluateAll(xs => xs.map(x => x.getAttribute('alt')));
-    await closeTab(p);
-    console.log('@@OUT@@' + JSON.stringify({ url, alts, wall: isWall(url) ? url : null }));`);
-  spend(1);
-  const handles = Array.from(new Set(out.alts.map((a) => a.replace(/님의 프로필 사진$/, "").toLowerCase())));
-  return handles.length === 1 ? handles[0] : null;
-}
+const repl = (body) => asideRepl(ACCOUNT, body);
+function checkAccount() { const h = loggedInHandle(ACCOUNT); spend(1); return h; }
 
 function listTagPosts(tag) {
   if (left() < 1) throw new BudgetError();
@@ -190,8 +146,10 @@ function parseCount(s) {
   return Math.round(n * mul);
 }
 
-const HAIR = ["탈모", "두피", "모발", "헤어", "샴푸", "머리숱", "머릿결"];
-const NEAR = ["건강", "영양", "다이어트", "이너뷰티", "육아", "맘", "뷰티", "피부"];
+// 큐모발은 모발로 몸의 미네랄·중금속을 보는 검사다(탈모 검사가 아니다). 맞는 셀러는 건강식품·영양제 공구를
+// 해 본 생활·육아·운동 계정이다(공구-인플루언서-장부 2026-10-13: 바이오컴 미네랄·검사 공구 셀러가 그 결).
+const CORE = ["영양제", "건강식품", "유산균", "비타민", "미네랄", "중금속", "모발검사", "영양", "롱제비티", "대사", "혈당", "다이어트", "검사"];
+const NEAR = ["건강", "육아", "맘", "아이", "운동", "헬스", "필라테스", "이너뷰티", "식단"];
 const SELL_LINK = /inpock|linkbio|instabio|litt\.ly|linktr\.ee|lnk\.bio|smartstore|link\.me|bit\.ly/i;
 
 export function analyzeProfile(p, found) {
@@ -228,7 +186,7 @@ export function analyzeProfile(p, found) {
   });
 
   const corpus = `${bio} ${highlights} ${captions} ${category}`;
-  const hairHits = HAIR.filter((k) => corpus.includes(k));
+  const coreHits = CORE.filter((k) => corpus.includes(k));
   const nearHits = NEAR.filter((k) => corpus.includes(k));
   const emails = Array.from(new Set((bio.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).map((e) => e.toLowerCase())));
   const kakao = Array.from(new Set([
@@ -240,7 +198,7 @@ export function analyzeProfile(p, found) {
   const f = followers || 0;
   const sFollow = f < 1000 ? 0 : f < 3000 ? 8 : f <= 100000 ? 25 : f <= 300000 ? 15 : 5;
   const sSignal = [0, 15, 25, 30, 35, 35][Math.min(signals.length, 5)];
-  const sRel = hairHits.length ? 20 : nearHits.length ? 10 : 0;
+  const sRel = coreHits.length ? 20 : nearHits.length ? 10 : 0;
   const sTags = Math.min(10, (new Set(found.map((x) => x.tag)).size - 1) * 5);
   const sContact = emails.length || kakao.length ? 10 : 0;
   // "공구 제안 안받습니다" 같은 계정은 컨택해도 헛걸음이라 크게 깎는다(2026-10-14 첫 수집에서 11만 계정이 50점으로 떴다)
@@ -251,7 +209,7 @@ export function analyzeProfile(p, found) {
   return {
     핸들: p.u, 상태: "검토 전", 점수: score, 팔로워: followers ?? "", 이름: name, 카테고리: category,
     "공구 신호": signals.join(", "), "진행·예정 공구": sched.join(" / ").slice(0, 300),
-    "관련 키워드": [...hairHits, ...nearHits].join(" "), 소개글: bio.slice(0, 500),
+    "관련 키워드": [...coreHits, ...nearHits].join(" "), 소개글: bio.slice(0, 500),
     "판매 링크": links.join(" "), 이메일: emails.join(" "), 카카오: kakao.join(" "), 하이라이트: highlights,
     "발견 태그": Array.from(new Set(found.map((x) => x.tag))).join(" "),
     "발견 게시물": found.map((x) => `https://www.instagram.com${x.href}`).slice(0, 3).join(" "),
@@ -261,37 +219,9 @@ export function analyzeProfile(p, found) {
 }
 
 // ── 시트 ──
-function sheetsClient() {
-  const file = process.env.GOOGLE_SA_KEY_FILE || join(homedir(), ".naver-searchad", "google-service-account.json");
-  const credentials = JSON.parse(readFileSync(file, "utf8").replace(/^\uFEFF/, ""));
-  const auth = new google.auth.GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
-  return google.sheets({ version: "v4", auth });
-}
-const SHEET = SCHEMA.sheetId;
-const q = (tab) => `'${tab}'`;
-
 async function ensureTabs(s) {
-  const meta = await s.spreadsheets.get({ spreadsheetId: SHEET, fields: "sheets.properties.title" });
-  const have = new Set(meta.data.sheets.map((x) => x.properties.title));
-  for (const t of [SCHEMA.candidates, SCHEMA.tags, SCHEMA.status]) {
-    if (have.has(t.tab)) continue;
-    await s.spreadsheets.batchUpdate({ spreadsheetId: SHEET, requestBody: { requests: [{ addSheet: { properties: { title: t.tab, gridProperties: { frozenRowCount: 1 } } } }] } });
-    await s.spreadsheets.values.update({ spreadsheetId: SHEET, range: `${q(t.tab)}!A1`, valueInputOption: "RAW", requestBody: { values: [t.header] } });
-    log(`시트 탭 생성: ${t.tab}`);
-  }
+  for (const t of [SCHEMA.candidates, SCHEMA.tags, SCHEMA.status]) await ensureTab(s, t);
 }
-
-async function readTab(s, tab) {
-  const r = await s.spreadsheets.values.get({ spreadsheetId: SHEET, range: `${q(tab)}!A1:Z` }).catch(() => ({ data: { values: [] } }));
-  const [header = [], ...rows] = r.data.values || [];
-  return { header, rows: rows.map((row, i) => ({ rowNo: i + 2, obj: Object.fromEntries(header.map((h, j) => [h, row[j] ?? ""])) })) };
-}
-
-const normHandle = (cell) => {
-  const m = String(cell || "").match(/instagram\.com\/([A-Za-z0-9._]+)/i);
-  const h = (m ? m[1] : String(cell || "")).replace(/^@/, "").replace(/\/+$/, "").toLowerCase();
-  return /^[a-z0-9._]{1,30}$/.test(h) ? h : null;
-};
 
 async function knownHandles(s) {
   const out = new Set();
@@ -304,17 +234,7 @@ async function knownHandles(s) {
   return out;
 }
 
-const colLetter = (i) => String.fromCharCode(65 + i);
-async function setCells(s, tab, header, rowNo, patch) {
-  const data = Object.entries(patch).filter(([k]) => header.includes(k))
-    .map(([k, v]) => ({ range: `${q(tab)}!${colLetter(header.indexOf(k))}${rowNo}`, values: [[v]] }));
-  if (data.length) await s.spreadsheets.values.batchUpdate({ spreadsheetId: SHEET, requestBody: { valueInputOption: "RAW", data } });
-}
-
-async function heartbeat(s, items) {
-  const values = [SCHEMA.status.header, ...Object.entries(items)];
-  await s.spreadsheets.values.update({ spreadsheetId: SHEET, range: `${q(SCHEMA.status.tab)}!A1`, valueInputOption: "RAW", requestBody: { values } });
-}
+const heartbeat = (s, items) => upsertStatus(s, items);
 
 // ── 실행 ──
 async function main() {

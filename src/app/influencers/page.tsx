@@ -1,20 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionHeading } from "@/components/ui/section";
 import { formatNumber, cn } from "@/lib/utils";
+import { DmEditor, DmSettingsPanel, type Setting } from "@/components/influencer-dm";
 
 // 공구 셀러 발굴 (2026-10-14). 밸런스랩 공구 재개, 주력 큐모발검사. 병목은 '같이 할 셀러 찾기'.
 // 해시태그를 큐에 넣으면 PC 의 aside 수집기가 해시태그 → 올린 사람 → 프로필을 읽어 점수를 매겨
 // 협찬 리스트 시트에 넣는다. 이 화면은 그 시트를 보여 주고 상태(후보·컨택함·제외)를 바꾼다. 정본은 시트다.
+// 후보로 고르면 PC 의 DM 워커가 그 계정을 읽고 맞춤 제안 DM 초안을 쓴다. 사람이 고치고 「발송 승인」 하면 워커가 aside 로 보낸다.
 
 type Row = Record<string, string>;
-interface Board { candidates: Row[]; tags: Row[]; collector: Record<string, string>; sheetUrl: string }
+interface Board { candidates: Row[]; tags: Row[]; collector: Record<string, string>; settings: Setting[]; sheetUrl: string }
 
 const STATUSES = ["검토 전", "후보", "컨택함", "제외"] as const;
-const HAIR = /탈모|두피|모발|헤어|샴푸|머리숱|머릿결/;
+const FIT = /영양제|건강식품|유산균|비타민|미네랄|중금속|모발검사|영양|롱제비티|대사|혈당|다이어트/;
 const STATUS_STYLE: Record<string, string> = {
   "검토 전": "bg-muted text-muted-foreground",
   후보: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
@@ -42,7 +44,7 @@ export default function InfluencersPage() {
   const [note, setNote] = useState("");
   const [status, setStatus] = useState<string>("검토 전");
   const [minFollowers, setMinFollowers] = useState(1000);
-  const [hairOnly, setHairOnly] = useState(false);
+  const [fitOnly, setFitOnly] = useState(false);
   const [signalOnly, setSignalOnly] = useState(true);
   const [tagFilter, setTagFilter] = useState("");
 
@@ -66,7 +68,7 @@ export default function InfluencersPage() {
   async function review(handle: string, next: string) {
     if (!board) return;
     const prev = board;
-    setBoard({ ...board, candidates: board.candidates.map((c) => (c["핸들"] === handle ? { ...c, 상태: next } : c)) });
+    setBoard({ ...board, candidates: board.candidates.map((c) => (c["핸들"] === handle ? { ...c, 상태: next, "DM 상태": next === "후보" && !c["DM 상태"] ? "초안 대기" : c["DM 상태"] } : c)) });
     try { await call("/api/influencers/review", { handle, status: next }); }
     catch (e) { setBoard(prev); setNote((e as Error).message); }
   }
@@ -82,10 +84,10 @@ export default function InfluencersPage() {
   const view = useMemo(() => (board?.candidates || [])
     .filter((c) => status === "전체" || (c["상태"] || "검토 전") === status)
     .filter((c) => num(c["팔로워"]) >= minFollowers)
-    .filter((c) => !hairOnly || HAIR.test(`${c["관련 키워드"]} ${c["소개글"]} ${c["하이라이트"]} ${c["게시물 캡션"]}`))
+    .filter((c) => !fitOnly || FIT.test(`${c["관련 키워드"]} ${c["소개글"]} ${c["하이라이트"]} ${c["게시물 캡션"]}`))
     .filter((c) => !signalOnly || c["공구 신호"])
     .filter((c) => !tagFilter || words(c["발견 태그"]).includes(tagFilter))
-    .sort((a, b) => num(b["점수"]) - num(a["점수"])), [board, status, minFollowers, hairOnly, signalOnly, tagFilter]);
+    .sort((a, b) => num(b["점수"]) - num(a["점수"])), [board, status, minFollowers, fitOnly, signalOnly, tagFilter]);
 
   const col = board?.collector || {};
 
@@ -96,17 +98,18 @@ export default function InfluencersPage() {
           <span><span className="text-muted-foreground">수집기 마지막 실행</span> <b>{col["마지막 실행"] || "아직 없음"}</b></span>
           {col["결과"] && <span className="text-muted-foreground">{col["결과"]}</span>}
           {col["오늘 열람"] && <span><span className="text-muted-foreground">오늘 열람</span> {col["오늘 열람"]}</span>}
-          <span className="text-xs text-muted-foreground">수집은 aside 가 켜진 PC 에서 돕니다. PC 가 꺼져 있으면 태그가 &lsquo;대기&rsquo;로 남습니다.</span>
+          {col["DM 워커 마지막 실행"] && <span><span className="text-muted-foreground">DM 워커</span> {col["DM 워커 마지막 실행"]} · 오늘 발송 {col["오늘 발송"]} · {col["DM 발송 계정"]}</span>}
+          <span className="text-xs text-muted-foreground">수집·초안·발송은 aside 가 켜진 PC 에서 돕니다. PC 가 꺼져 있으면 &lsquo;대기&rsquo;·&lsquo;승인&rsquo;으로 남습니다.</span>
           {board?.sheetUrl && <a className="ml-auto underline text-xs" href={board.sheetUrl} target="_blank" rel="noreferrer">시트 열기</a>}
         </CardContent>
       </Card>
       {error && <div className="rounded-md border border-red-500/50 text-red-500 px-3 py-2 text-sm">{error}</div>}
 
-      <SectionHeading eyebrow="1단계" title="수집할 해시태그" note="공구 셀러가 쓰는 태그 · 경쟁 브랜드 공구 태그가 효과가 좋습니다 (예: #탈모샴푸공구 #바이오컴공구)" />
+      <SectionHeading eyebrow="1단계" title="수집할 해시태그" note="공구 셀러가 쓰는 태그 · 경쟁 브랜드 공구 태그가 효과가 좋습니다 (예: #영양제공구 #바이오컴공구 #모발검사)" />
       <Card>
         <CardContent className="py-4 space-y-3">
           <div className="flex gap-2">
-            <input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" placeholder="#탈모샴푸공구 #두피케어공구 (여러 개는 띄어쓰기로)" value={tagText}
+            <input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" placeholder="#영양제공구 #건강식품공구 #모발검사 (여러 개는 띄어쓰기로)" value={tagText}
               onChange={(e) => setTagText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && tagText.trim()) addTags(); }} />
             <button className={btn} style={{ background: "var(--primary)" }} disabled={!!busy || !tagText.trim()} onClick={addTags}>{busy === "tags" ? "추가 중…" : "큐에 추가"}</button>
           </div>
@@ -124,7 +127,9 @@ export default function InfluencersPage() {
         </CardContent>
       </Card>
 
-      <SectionHeading eyebrow="2단계" title="후보 검토" note="점수 = 팔로워(25) + 공구 신호(35) + 탈모·두피 관련(20) + 여러 태그 발견(10) + 연락처(10)" />
+      {board && <DmSettingsPanel key={board.settings.map((x) => x.값).join("|").length} settings={board.settings} onSaved={load} />}
+
+      <SectionHeading eyebrow="2단계" title="후보 검토" note="점수 = 팔로워(25) + 공구 신호(35) + 건강·영양 관련(20) + 여러 태그 발견(10) + 연락처(10)" />
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {[...STATUSES, "전체"].map((s) => (
           <button key={s} onClick={() => setStatus(s)} className={cn("px-2.5 py-1 rounded-full border", status === s ? "bg-foreground text-background" : "")}>
@@ -140,7 +145,7 @@ export default function InfluencersPage() {
           {allTags.map((t) => <option key={t} value={t}>{t}</option>)}
         </select>
         <label><input type="checkbox" className="mr-1 align-middle" checked={signalOnly} onChange={(e) => setSignalOnly(e.target.checked)} />공구 신호 있는 것만</label>
-        <label><input type="checkbox" className="mr-1 align-middle" checked={hairOnly} onChange={(e) => setHairOnly(e.target.checked)} />탈모·두피 관련만</label>
+        <label><input type="checkbox" className="mr-1 align-middle" checked={fitOnly} onChange={(e) => setFitOnly(e.target.checked)} />건강·영양 관련만</label>
         <button className="ml-auto underline" onClick={load}>새로고침</button>
       </div>
 
@@ -165,8 +170,10 @@ export default function InfluencersPage() {
                 {view.map((c) => {
                   const h = c["핸들"];
                   const cur = c["상태"] || "검토 전";
+                  const showDm = cur === "후보" || !!c["DM 상태"];
                   return (
-                    <tr key={h} className="border-b last:border-0 align-top">
+                    <Fragment key={h}>
+                    <tr className={cn("align-top", !showDm && "border-b last:border-0")}>
                       <td className="px-3 py-2 text-right num font-semibold">{c["점수"]}</td>
                       <td className="px-3 py-2 min-w-[200px] max-w-[280px]">
                         <a className="font-mono font-medium hover:underline" href={c["프로필"] || `https://www.instagram.com/${h}/`} target="_blank" rel="noreferrer">@{h}</a>
@@ -203,6 +210,15 @@ export default function InfluencersPage() {
                         </div>
                       </td>
                     </tr>
+                    {showDm && (
+                      <tr className="border-b last:border-0">
+                        <td />
+                        <td colSpan={6} className="px-3 pb-4">
+                          <DmEditor key={`${c["DM 상태"]}|${c["DM 초안"]}`} row={c} onChanged={load} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
