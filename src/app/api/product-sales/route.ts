@@ -26,10 +26,14 @@ async function getImpl(req: NextRequest) {
     // PostgREST 의 db-max-rows(1000)가 클라이언트 range 보다 우선하므로
     // .range(0, 99999) 로는 캡을 넘을 수 없다 → 페이지네이션으로 전량 조회.
     // (실측: 2026년 전체 조회 시 3,619행 중 1,000행만 반환돼 매출 72% 누락)
-    // ★ DB 합산 함수가 있으면 (날짜, 브랜드, 상품) 묶음만 받는다(2026-10-14). 이 API 를 쓰는 곳은
-    //   상품 추이 차트 하나이고 그 차트는 이 다섯 칸(date·brand·product·revenue·quantity)만 쓴다.
-    //   함수가 없으면(SQL 실행 전) 옛 경로.
-    const summary = await tryRpc<unknown[]>("product_sales_daily", { p_from: from, p_to: to, p_brands: brand !== "all" ? expandBrands(brand) : null });
+    // ★ ?shape=daily 일 때만 DB 합산 함수로 (날짜, 브랜드, 상품) 묶음을 받는다(2026-10-14).
+    //   상품 추이 차트가 이걸 쓴다(다섯 칸 date·brand·product·revenue·quantity 만 씀).
+    //   기본값은 옛 응답(원본 행 전체 칸) 그대로다. 크론 dashboard-daily-collect 가 키트 CPA 원장으로
+    //   이 API 의 quantity 를 읽고, 판매처·라인업으로 거를 수 있어 모양을 바꾸면 안 된다.
+    //   함수가 없으면(SQL 실행 전) daily 도 옛 경로.
+    const summary = sp.get("shape") === "daily"
+      ? await tryRpc<unknown[]>("product_sales_daily", { p_from: from, p_to: to, p_brands: brand !== "all" ? expandBrands(brand) : null })
+      : null;
     const data = summary ?? await fetchAll(query);
 
     return NextResponse.json({ products: data });
@@ -40,4 +44,4 @@ async function getImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["product_sales"]);
+export const GET = cachedGET(getImpl, ["product_sales"], ["brand", "from", "shape", "to"]);

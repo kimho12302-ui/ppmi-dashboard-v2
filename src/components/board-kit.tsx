@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
+import { freshFetch } from "@/lib/fresh-fetch";
 
 // ---------- 콘텐츠 보드 공용 뼈대 ----------
 //
@@ -33,7 +34,7 @@ export function useBoard<T>(section: "naver" | "research" | "magazine" | "topics
   const [snap, setSnap] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch(`/api/content-board?section=${section}`, { cache: "no-store" })
+    freshFetch(`/api/content-board?section=${section}`, { cache: "no-store" })
       .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || String(r.status)); return d; })
       .then((d) => { if (!alive) return; setRows(d.items || []); setSnap(d.source === "snapshot" ? d.generatedAt || "" : null); })
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)); });

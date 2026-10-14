@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { freshFetch } from "@/lib/fresh-fetch";
 import { useFilterParams } from "@/hooks/use-dashboard-data";  // used in useEvents()
 
 export interface MarketingEvent {
@@ -23,7 +24,7 @@ export function useEvents() {
     if (to) params.set("to", to);
     // brand "all"이면 전체 조회
     if (brand && brand !== "all") params.set("brand", brand);
-    fetch(`/api/events?${params}`)
+    freshFetch(`/api/events?${params}`)
       .then((r) => r.json())
       .then((d) => setEvents(d.events || []))
       .catch(() => setEvents([]));

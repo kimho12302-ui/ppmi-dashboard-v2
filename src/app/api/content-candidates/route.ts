@@ -325,6 +325,6 @@ async function patchImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["content_candidates"]);
+export const GET = cachedGET(getImpl, ["content_candidates"], ["channel", "week"]);
 export const POST = revalidateAfter(postImpl, ["content_candidates"]);
 export const PATCH = revalidateAfter(patchImpl, ["content_candidates"]);

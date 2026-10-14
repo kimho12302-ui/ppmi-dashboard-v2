@@ -9,6 +9,7 @@ import { EventManagerPanel } from "@/components/event-markers";
 import { SalesCoverage } from "@/components/sales-coverage";
 import { OpsStatusPanel } from "@/components/ops-status-panel";
 import { ManualEntries } from "@/components/manual-entries";
+import { freshFetch } from "@/lib/fresh-fetch";
 
 const API = "/api/settings";
 
@@ -275,7 +276,7 @@ function DataStatusPanel({ refreshKey }: { refreshKey?: number }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/data-status");
+      const res = await freshFetch("/api/data-status");
       const d = await res.json();
       setSources(d.sources || []);
       setRefDate(d.referenceDate || "");
@@ -340,7 +341,7 @@ function DataStatusCard() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/data-status");
+      const res = await freshFetch("/api/data-status");
       setData(await res.json());
     } finally { setLoading(false); }
   }, []);
@@ -468,7 +469,7 @@ function MissingDatesBanner({ refreshKey }: { refreshKey?: number }) {
   const [gaps, setGaps] = useState<MissingGap[]>([]);
 
   useEffect(() => {
-    fetch("/api/missing-dates").then(r => r.json()).then(d => setGaps(d.gaps || []));
+    freshFetch("/api/missing-dates").then(r => r.json()).then(d => setGaps(d.gaps || []));
   }, [refreshKey]);
 
   if (gaps.length === 0) return null;
@@ -518,7 +519,7 @@ function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
     { cafe24: [], smartstore: [], coupang_funnel: [] }
   );
   useEffect(() => {
-    fetch("/api/missing-dates").then(r => r.json()).then(d => setMissing({
+    freshFetch("/api/missing-dates").then(r => r.json()).then(d => setMissing({
       cafe24: d.cafe24 || [], smartstore: d.smartstore || [], coupang_funnel: d.coupang_funnel || [],
     })).catch(() => {});
   }, [refreshKey]);
@@ -768,7 +769,7 @@ function EventInputCard() {
   const [events, setEvents] = useState<{ id: number; date: string; brand: string; title: string; description?: string; color: string }[]>([]);
 
   useEffect(() => {
-    fetch(`/api/events?from=${today}&to=${today}`)
+    freshFetch(`/api/events?from=${today}&to=${today}`)
       .then(r => r.json()).then(d => setEvents(d.events || []));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -872,7 +873,7 @@ function BrandConfigTab() {
   const [form, setForm] = useState({ key: "", label: "", color: "#6b7280", order: 0, active: true, category: "" });
 
   const load = useCallback(async () => {
-    const res = await fetch(`${API}?type=brand_config`);
+    const res = await freshFetch(`${API}?type=brand_config`);
     const json = await res.json();
     setBrands(json.brandConfig || []);
   }, []);
@@ -961,7 +962,7 @@ function ChannelConfigTab() {
   const [form, setForm] = useState({ key: "", label: "", color: "#6b7280", type: "ad", auto: false, order: 0, active: true });
 
   const load = useCallback(async () => {
-    const res = await fetch(`${API}?type=channel_config`);
+    const res = await freshFetch(`${API}?type=channel_config`);
     const json = await res.json();
     setChannels(json.channelConfig || []);
   }, []);
@@ -1070,15 +1071,15 @@ function CostTab() {
 
   const loadCosts = useCallback(async () => {
     const [costsRes, allRes] = await Promise.all([
-      fetch(`${API}?type=product_costs`).then(r => r.json()),
-      fetch(API).then(r => r.json()),
+      freshFetch(`${API}?type=product_costs`).then(r => r.json()),
+      freshFetch(API).then(r => r.json()),
     ]);
     setCosts(costsRes.productCosts || []);
     setMissing(allRes.missingProducts || []);
   }, []);
 
   const loadShipping = useCallback(async () => {
-    const res = await fetch(`${API}?type=shipping_costs`).then(r => r.json());
+    const res = await freshFetch(`${API}?type=shipping_costs`).then(r => r.json());
     setShips(res.shippingCosts || []);
   }, []);
 
@@ -1275,7 +1276,7 @@ function TargetsTab() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/targets");
+      const res = await freshFetch("/api/targets");
       if (!res.ok) { setTableExists(false); return; }
       const json = await res.json();
       setTargets(json.targets || {});
@@ -1502,7 +1503,7 @@ function UploadTab() {
   const [coupangAdsUploading, setCoupangAdsUploading] = useState(false);
 
   const refreshMissing = useCallback(() => {
-    fetch("/api/missing-dates")
+    freshFetch("/api/missing-dates")
       .then(r => r.json())
       .then(d => {
         setMissingSales(d.sales || []);
@@ -1518,7 +1519,7 @@ function UploadTab() {
   // + 대시보드/통계시트 반영 시점 안내로 "안 들어갔다" 착시 제거.
   const verifyUpload = async (sourceId: string): Promise<string> => {
     try {
-      const r = await fetch("/api/data-status");
+      const r = await freshFetch("/api/data-status");
       if (!r.ok) return "";
       const d = await r.json();
       const s = (d.sources || []).find((x: { id: string }) => x.id === sourceId);

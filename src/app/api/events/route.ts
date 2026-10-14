@@ -55,6 +55,6 @@ async function deleteImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["marketing_events"]);
+export const GET = cachedGET(getImpl, ["marketing_events"], ["brand", "from", "to"]);
 export const POST = revalidateAfter(postImpl, ["marketing_events"]);
 export const DELETE = revalidateAfter(deleteImpl, ["marketing_events"]);

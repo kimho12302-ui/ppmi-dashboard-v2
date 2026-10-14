@@ -81,5 +81,5 @@ async function postImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["daily_ad_spend"]);
+export const GET = cachedGET(getImpl, ["daily_ad_spend"], ["brand", "from", "to"]);
 export const POST = revalidateAfter(postImpl, ["daily_ad_spend"]);

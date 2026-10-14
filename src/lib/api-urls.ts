@@ -8,8 +8,9 @@ export const pacingUrl = (brand: string) => `/api/pacing?brand=${brand || "all"}
 export const channelGroupsUrl = (brand: string, from: string, to: string) =>
   `/api/channel-groups?brand=${brand}&from=${from}&to=${to}`;
 
+// shape=daily: (날짜, 브랜드, 상품) 합계만. 상품 추이 차트 전용. 기본 응답(원본 행)은 크론이 쓴다.
 export const productSalesUrl = (brand: string, from: string, to: string) =>
-  `/api/product-sales?brand=${brand || "all"}&from=${from}&to=${to}`;
+  `/api/product-sales?brand=${brand || "all"}&from=${from}&to=${to}&shape=daily`;
 
 export const channelAdsUrl = (brand: string, from: string, to: string) =>
   brand && brand !== "all" ? `/api/ads?from=${from}&to=${to}&brand=${brand}` : `/api/ads?from=${from}&to=${to}`;

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { freshFetch } from "@/lib/fresh-fetch";
 
 // 이번 주 쓰레드 후보. 규칙은 /api/content-candidates 주석과 볼트 콘텐츠-자동화-대시보드-요구사항.md.
 // 로컬이 게이트를 통과한 후보만 올린다. 여기서는 고르고, 버리고, 복사만 한다.
@@ -53,7 +54,7 @@ export function ThreadsCandidates({ only }: { only?: "balancelab" | "pet" } = {}
 
   const load = useCallback(async (w: string | null) => {
     try {
-      const r = await fetch(`/api/content-candidates?channel=threads${w ? `&week=${w}` : ""}`, { cache: "no-store" });
+      const r = await freshFetch(`/api/content-candidates?channel=threads${w ? `&week=${w}` : ""}`, { cache: "no-store" });
       const d: Resp = await r.json();
       if (!r.ok) throw new Error(d.error || String(r.status));
       setData(d);

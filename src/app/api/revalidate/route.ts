@@ -9,11 +9,12 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { ALL_TAG, revalidateTags } from "@/lib/api-cache";
+import { ALL_TAG, revalidateTagsNow, secretMatches } from "@/lib/api-cache";
 
 export async function POST(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  const auth = req.headers.get("authorization") || "";
+  const given = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  if (!secretMatches(given, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   let tags: string[] = [ALL_TAG];
@@ -26,7 +27,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "본문은 {\"tags\":[...]} JSON 이어야 합니다" }, { status: 400 });
     }
   }
-  const done = revalidateTags(tags);
+  // 실제로 지워진 뒤에 응답한다. 응답을 받은 수집기가 바로 조회해도 새 값이 나온다.
+  const done = await revalidateTagsNow(tags);
   const skipped = tags.filter((t) => !done.includes(t));
   return NextResponse.json({ revalidated: done, skipped, at: new Date().toISOString() }, { status: done.length ? 200 : 400 });
 }

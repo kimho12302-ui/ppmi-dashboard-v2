@@ -487,6 +487,6 @@ async function deleteImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"]);
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"], ["type"]);
 export const POST = revalidateAfter(postImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"]);
 export const DELETE = revalidateAfter(deleteImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"]);

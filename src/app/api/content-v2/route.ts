@@ -92,4 +92,4 @@ async function getImpl(request: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["content_performance"]);
+export const GET = cachedGET(getImpl, ["content_performance"], ["brand", "from", "to"]);

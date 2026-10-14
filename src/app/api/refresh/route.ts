@@ -6,23 +6,27 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { ALL_TAG, isKnownTag, revalidateTags } from "@/lib/api-cache";
+import { ALL_TAG, DATA_TAGS, isKnownTag, revalidateTagsNow } from "@/lib/api-cache";
 
 const MIN_INTERVAL_MS = 10_000;
+const MAX_TAGS = DATA_TAGS.length; // 한 번에 받는 태그 수 상한
 const lastRun = new Map<string, number>();
 
 export async function POST(req: NextRequest) {
   let tags: string[] = [];
   try {
     const body = (await req.json()) as { tags?: unknown };
-    if (Array.isArray(body.tags)) tags = body.tags.map(String);
+    if (Array.isArray(body.tags)) tags = body.tags.slice(0, MAX_TAGS + 1).map(String);
   } catch {
     return NextResponse.json({ error: "본문은 {\"tags\":[...]} JSON 이어야 합니다" }, { status: 400 });
+  }
+  if (tags.length > MAX_TAGS) {
+    return NextResponse.json({ error: `태그는 한 번에 ${MAX_TAGS}개까지` }, { status: 400 });
   }
   const now = Date.now();
   const wanted = Array.from(new Set(tags)).filter((t) => t !== ALL_TAG && isKnownTag(t));
   const due = wanted.filter((t) => now - (lastRun.get(t) || 0) >= MIN_INTERVAL_MS);
   for (const t of due) lastRun.set(t, now);
-  const done = revalidateTags(due);
+  const done = await revalidateTagsNow(due);
   return NextResponse.json({ revalidated: done, throttled: wanted.filter((t) => !due.includes(t)) });
 }

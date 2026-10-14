@@ -4,7 +4,8 @@
 //
 // 서버는 읽기 응답을 5분까지 들고 있다(src/lib/api-cache.ts). 그래서 지금 보는 숫자가
 // 언제 것인지 보여 주고, 기다리기 싫으면 바로 새로 받을 수 있게 버튼을 둔다.
-// 시각은 이 화면이 받은 응답 중 가장 오래된 것. 직전 응답을 먼저 그리고 뒤에서 다시 받는 동안은 "갱신 중".
+// 시각은 이 화면이 받은 응답 중 가장 오래된 것. 직전 응답을 먼저 그리고 뒤에서 다시 받는 동안은 "갱신 중",
+// 다시 받기가 실패하면 "갱신 실패 · 직전 값 표시 중". 버튼은 서버 캐시를 건너뛰고 DB 에서 바로 읽는다.
 import { useState, useSyncExternalStore } from "react";
 import { getFreshnessServerSnapshot, getFreshnessSnapshot, refreshVisibleData, subscribeFreshness } from "@/hooks/use-dashboard-data";
 
@@ -39,6 +40,11 @@ export function DataFreshness() {
         <span className="inline-flex items-center gap-1" aria-live="polite">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" aria-hidden />
           갱신 중
+        </span>
+      ) : snap.failed ? (
+        <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400" role="status" title="새 값을 받지 못해 직전에 받은 숫자를 보여 주고 있습니다. 새로고침을 눌러 다시 받아 보세요.">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500" aria-hidden />
+          갱신 실패 · 직전 값 표시 중{snap.oldestAsOf ? ` (${kstClock(snap.oldestAsOf)})` : ""}
         </span>
       ) : snap.oldestAsOf ? (
         <span title="서버가 이 숫자를 DB 에서 읽은 시각입니다. 최대 5분 지난 값일 수 있고, 수집·업로드가 끝나면 바로 새로 읽습니다.">

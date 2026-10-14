@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { freshFetch } from "@/lib/fresh-fetch";
 
 import {
   useBoard,
@@ -169,7 +170,7 @@ function useResearchVerdicts() {
   const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    fetch("/api/content-candidates?channel=research&week=recent", { cache: "no-store" })
+    freshFetch("/api/content-candidates?channel=research&week=recent", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => {
         const m = new Map<string, Verdict>();

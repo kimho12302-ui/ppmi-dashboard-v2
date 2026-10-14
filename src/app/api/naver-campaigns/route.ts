@@ -90,4 +90,4 @@ async function getImpl(request: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["naver_campaign_daily"]);
+export const GET = cachedGET(getImpl, ["naver_campaign_daily"], ["brand", "from", "to"]);

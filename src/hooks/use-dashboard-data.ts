@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { freshFetch } from "@/lib/fresh-fetch";
 import { getDateRangeFromPreset, type DatePreset } from "@/lib/utils";
 
 /* ── URL 기반 필터 상태 ── */
@@ -182,12 +183,12 @@ function writeLast(url: string, v: LastResponse, text: string) {
 //
 // 지금 화면에 붙어 있는 useFetch 들이 각자 받은 응답의 기준 시각(서버 캐시를 만든 시각, X-Data-As-Of)과
 // 태그(X-Cache-Tags)를 여기 올린다. 화면은 그중 **가장 오래된 시각**을 "데이터 기준"으로 보여 준다.
-interface FreshnessEntry { asOf: string | null; tags: string[]; refreshing: boolean; refetch: () => Promise<void> }
-interface FreshnessSnapshot { version: number; oldestAsOf: string | null; refreshing: boolean; tags: string[] }
+interface FreshnessEntry { asOf: string | null; tags: string[]; refreshing: boolean; failed: boolean; refetch: () => Promise<void> }
+interface FreshnessSnapshot { version: number; oldestAsOf: string | null; refreshing: boolean; failed: boolean; tags: string[] }
 const freshEntries = new Map<number, FreshnessEntry>();
 const freshListeners = new Set<() => void>();
 let freshVersion = 0;
-let freshSnapshot: FreshnessSnapshot = { version: 0, oldestAsOf: null, refreshing: false, tags: [] };
+let freshSnapshot: FreshnessSnapshot = { version: 0, oldestAsOf: null, refreshing: false, failed: false, tags: [] };
 let nextFreshId = 1;
 
 function setFreshEntry(id: number, e: FreshnessEntry | null) {
@@ -206,20 +207,22 @@ export function getFreshnessSnapshot(): FreshnessSnapshot {
   if (freshSnapshot.version === freshVersion) return freshSnapshot;
   let oldest: string | null = null;
   let refreshing = false;
+  let failed = false;
   const tags = new Set<string>();
   freshEntries.forEach((e) => {
     if (e.refreshing) refreshing = true;
+    if (e.failed) failed = true;
     if (e.asOf && (oldest === null || e.asOf < oldest)) oldest = e.asOf;
     e.tags.forEach((t) => tags.add(t));
   });
-  freshSnapshot = { version: freshVersion, oldestAsOf: oldest, refreshing, tags: Array.from(tags).sort() };
+  freshSnapshot = { version: freshVersion, oldestAsOf: oldest, refreshing, failed, tags: Array.from(tags).sort() };
   return freshSnapshot;
 }
 
-const EMPTY_FRESHNESS: FreshnessSnapshot = { version: -1, oldestAsOf: null, refreshing: false, tags: [] };
+const EMPTY_FRESHNESS: FreshnessSnapshot = { version: -1, oldestAsOf: null, refreshing: false, failed: false, tags: [] };
 export const getFreshnessServerSnapshot = () => EMPTY_FRESHNESS;
 
-/** "새로고침": 이 화면이 읽은 태그의 서버 캐시를 지우고, 붙어 있는 조회를 전부 다시 부른다. */
+/** "새로고침": 이 화면이 읽은 태그의 서버 캐시를 지우고, 붙어 있는 조회를 전부 캐시를 건너뛰어 다시 부른다. */
 export async function refreshVisibleData() {
   const { tags } = getFreshnessSnapshot();
   if (tags.length > 0) {
@@ -252,7 +255,9 @@ export function useFetch<T>(url: string) {
   const seqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetchData = useCallback(async (allowPrefetched = false) => {
+  // bypass=true: 서버 5분 캐시를 건너뛴다(저장 직후 refetch·새로고침 버튼). 첫 조회는 캐시를 쓴다.
+  const fetchData = useCallback(async (allowPrefetched = false, bypass = false) => {
+    const get = (signal: AbortSignal) => (bypass ? freshFetch(url, { signal }) : fetch(url, { signal }));
     const seq = ++seqRef.current;
     abortRef.current?.abort();
     const ac = new AbortController();
@@ -274,13 +279,13 @@ export function useFetch<T>(url: string) {
       // 화면이 "기간 내 판매 없음" 같은 빈 상태로 그려졌다(2026-10-13, 밸런스랩 상세 매출 구성).
       const pre = allowPrefetched ? takePrefetched(url) : null;
       let res = pre
-        ? await pre.catch(() => fetch(url, { signal: ac.signal }))
-        : await fetch(url, { signal: ac.signal });
+        ? await pre.catch(() => get(ac.signal))
+        : await get(ac.signal);
       if (ac.signal.aborted || seq !== seqRef.current) return;
       if (res.status >= 500 && !ac.signal.aborted) {
         await new Promise((r) => setTimeout(r, 700));
         if (ac.signal.aborted || seq !== seqRef.current) return;
-        res = await fetch(url, { signal: ac.signal });
+        res = await get(ac.signal);
       }
       if (!res.ok) {
         // 라우트가 { error } 를 실어 보내면 그 문구를 그대로 노출 (HTTP 500 보다 원인이 보인다)
@@ -323,13 +328,14 @@ export function useFetch<T>(url: string) {
     fetchData(true);
   }, [fetchData]);
 
-  // 다시 불러오기(저장 직후 등)는 미리 부른 응답을 쓰지 않고 항상 새로 부른다.
-  const refetch = useCallback(() => fetchData(false), [fetchData]);
+  // 다시 불러오기(저장 직후 등)는 미리 부른 응답도, 서버 5분 캐시도 쓰지 않고 DB 에서 바로 읽는다.
+  const refetch = useCallback(() => fetchData(false, true), [fetchData]);
 
   // 화면 위 "데이터 기준 시각·새로고침" 에 내 상태를 올린다. 화면에서 빠지면 지운다.
   useEffect(() => {
-    setFreshEntry(idRef.current, { asOf: meta.asOf, tags: meta.tags, refreshing, refetch });
-  }, [meta, refreshing, refetch]);
+    // 직전 값을 보여 주는 중에 다시 받기가 실패하면 화면 위에 "갱신 실패" 를 띄운다(옛 숫자를 새 것으로 오해하지 않게).
+    setFreshEntry(idRef.current, { asOf: meta.asOf, tags: meta.tags, refreshing, failed: !!error && data !== null, refetch });
+  }, [meta, refreshing, refetch, error, data]);
   useEffect(() => {
     const id = idRef.current;
     return () => setFreshEntry(id, null);
