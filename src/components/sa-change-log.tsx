@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
+import { saChangesUrl } from "@/lib/api-urls";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 
 interface Change {
@@ -34,7 +35,7 @@ function adjust(c: Change) {
 }
 
 export function SaChangeLog({ brand }: { brand: string }) {
-  const { data, loading, error } = useFetch<Resp>(`/api/sa-changes?brand=${brand}`);
+  const { data, loading, error } = useFetch<Resp>(saChangesUrl(brand));
   const [onlyDue, setOnlyDue] = useState(false);
   const today = data?.today || "";
 

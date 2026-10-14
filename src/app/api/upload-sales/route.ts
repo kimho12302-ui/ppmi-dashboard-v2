@@ -4,6 +4,7 @@ import { google, sheets_v4 } from "googleapis";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import { triggerSheetSync } from "@/lib/github-dispatch";
+import { revalidateAfter } from "@/lib/api-cache";
 
 export const maxDuration = 60;
 
@@ -123,7 +124,7 @@ async function verifySalesSheet(sheets: SheetsClient, rows: { date: string; reve
   return mismatch;
 }
 
-export async function POST(request: NextRequest) {
+async function postImpl(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;
@@ -648,3 +649,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const POST = revalidateAfter(postImpl, ["daily_sales", "product_sales"]);

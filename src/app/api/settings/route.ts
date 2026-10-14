@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { google } from "googleapis";
 import { triggerSheetSync } from "@/lib/github-dispatch";
+import { cachedGET, revalidateAfter } from "@/lib/api-cache";
 
 const STATS_SHEET_ID = "1FzxDCyR9FyAIduf7Q0lfUIOzvSqVlod21eOFqaPrXio";
 
@@ -100,7 +101,7 @@ async function syncSmartstoreRowToSheet(date: string) {
 }
 
 // ─── GET ─────────────────────────────────────────────
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   try {
     const type = req.nextUrl.searchParams.get("type");
 
@@ -177,7 +178,7 @@ export async function GET(req: NextRequest) {
 }
 
 // ─── POST ────────────────────────────────────────────
-export async function POST(req: NextRequest) {
+async function postImpl(req: NextRequest) {
   try {
     const body = await req.json();
     const { type, data, forceOverride, extra } = body;
@@ -454,7 +455,7 @@ export async function POST(req: NextRequest) {
 }
 
 // ─── DELETE ──────────────────────────────────────────
-export async function DELETE(req: NextRequest) {
+async function deleteImpl(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const type = sp.get("type");
@@ -484,3 +485,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "삭제 실패" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"]);
+export const POST = revalidateAfter(postImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"]);
+export const DELETE = revalidateAfter(deleteImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"]);

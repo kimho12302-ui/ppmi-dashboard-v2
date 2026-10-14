@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { expandBrands } from "@/lib/brand-groups";
+import { cachedGET } from "@/lib/api-cache";
 
 // 네이버 검색광고 캠페인별 성과. 2026-10-13 원천 교체.
 //
@@ -22,7 +23,7 @@ interface Row {
   impressions: number; clicks: number; cost: number; conversions: number; conversion_value: number;
 }
 
-export async function GET(request: NextRequest) {
+async function getImpl(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
@@ -87,3 +88,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ campaigns: [], summary: null, error: msg }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["naver_campaign_daily"]);

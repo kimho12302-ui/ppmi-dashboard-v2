@@ -2,6 +2,7 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
+import { AD_ALERTS_URL } from "@/lib/api-urls";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 
 // 광고 분석 페이지 맨 위. 예전 aside 네이버 광고 루틴이 내던 판단(전일 대비 급변, 비용 썼는데 전환 0)을
@@ -18,7 +19,7 @@ interface Resp {
 }
 
 export function AdAlerts() {
-  const { data, loading } = useFetch<Resp>("/api/ad-alerts");
+  const { data, loading } = useFetch<Resp>(AD_ALERTS_URL);
   if (loading || !data) return null;
   if (data.error) {
     return <Card><CardContent className="p-4 text-sm" style={{ color: "var(--sig-danger)" }}>광고 이상 신호를 불러오지 못했습니다: {data.error}</CardContent></Card>;

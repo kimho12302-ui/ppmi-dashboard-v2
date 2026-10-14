@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
+import { channelGroupsUrl } from "@/lib/api-urls";
 import { formatCurrency, cn } from "@/lib/utils";
 import { bucketize, GRAN_LABELS, type Gran } from "@/lib/bucket";
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -18,7 +19,7 @@ interface Resp {
 }
 
 export function StoreDetailChart({ brand, from, to }: { brand: string; from: string; to: string }) {
-  const { data } = useFetch<Resp>(`/api/channel-groups?brand=${brand}&from=${from}&to=${to}`);
+  const { data } = useFetch<Resp>(channelGroupsUrl(brand, from, to));
   const [store, setStore] = useState<string | null>(null);
   const [gran, setGran] = useState<Gran>("day");
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { cachedGET, revalidateAfter } from "@/lib/api-cache";
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const from = sp.get("from");
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function postImpl(req: NextRequest) {
   try {
     const { date, brand, title, description, color } = await req.json();
     if (!title?.trim()) {
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function DELETE(req: NextRequest) {
+async function deleteImpl(req: NextRequest) {
   try {
     const id = req.nextUrl.searchParams.get("id");
     if (!id) return NextResponse.json({ error: "id 필요" }, { status: 400 });
@@ -52,3 +53,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "삭제 실패" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["marketing_events"]);
+export const POST = revalidateAfter(postImpl, ["marketing_events"]);
+export const DELETE = revalidateAfter(deleteImpl, ["marketing_events"]);

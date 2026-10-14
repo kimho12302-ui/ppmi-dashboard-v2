@@ -1,9 +1,10 @@
 import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { cachedGET } from "@/lib/api-cache";
 type Brand = string;
 
-export async function GET(request: NextRequest) {
+async function getImpl(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const brand = (sp.get("brand") || "all") as Brand;
   const from = sp.get("from") || "";
@@ -89,3 +90,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Failed" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["content_performance"]);

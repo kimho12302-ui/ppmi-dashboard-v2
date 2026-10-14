@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { cachedGET } from "@/lib/api-cache";
 
 // 사람이 넣은 값. 2026-09-18 신설. 수기입력 정본 7절 "사람이 일부러 덮어쓴 건 표시를 남긴다".
 // 자동 수집(aside)이 채우는 칸에 사람이 입력 폼·엑셀로 넣은 값을 최근 30일만 보여 준다.
@@ -7,7 +8,7 @@ import { supabase } from "@/lib/supabase";
 
 const DAYS = 30;
 
-export async function GET() {
+async function getImpl() {
   const since = new Date(Date.now() - DAYS * 86400000).toISOString().slice(0, 10);
   const [funnel, ads] = await Promise.all([
     supabase.from("daily_funnel").select("date,brand,channel,entered_at")
@@ -24,3 +25,6 @@ export async function GET() {
   ].sort((a, b) => (a.date < b.date ? 1 : -1));
   return NextResponse.json({ since, items });
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel"]);

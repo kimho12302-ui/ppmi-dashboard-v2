@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { Filters } from "./filters";
 import { DataStatusRail } from "./data-status-rail";
+import { DataFreshness } from "./data-freshness";
 import { useFilterParams } from "@/hooks/use-dashboard-data";
 
 interface PageShellProps {
@@ -36,12 +37,15 @@ function PageShellInner({ title, description, children, hideFilters, hideAllBran
             <p className="text-xs sm:text-sm text-muted-foreground mt-1.5">{description}</p>
           )}
         </div>
-        {!hideFilters && from && to && (
-          <span className="num inline-flex items-center gap-1.5 self-start sm:self-auto px-2.5 py-1 rounded-md text-xs font-medium border bg-muted/60 text-muted-foreground whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--primary)" }} aria-hidden />
-            {from} ~ {to}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <DataFreshness />
+          {!hideFilters && from && to && (
+            <span className="num inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border bg-muted/60 text-muted-foreground whitespace-nowrap">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--primary)" }} aria-hidden />
+              {from} ~ {to}
+            </span>
+          )}
+        </div>
       </div>
       {showStatusRail && <DataStatusRail />}
       {!hideFilters && (

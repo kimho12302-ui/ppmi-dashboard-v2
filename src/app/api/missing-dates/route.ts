@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { INACTIVE_SOURCE_IDS } from "@/lib/data-sources";
+import { cachedGET } from "@/lib/api-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 // 실제보다 작아 보인다. 한 달치를 본다.
 const LOOKBACK_DAYS = 30;
 
-export async function GET() {
+async function getImpl() {
   try {
     const now = new Date(Date.now() + 32400000); // KST
     const days: string[] = [];
@@ -106,3 +107,6 @@ export async function GET() {
     return NextResponse.json({ error: "미입력 날짜를 불러오지 못했습니다" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales"]);

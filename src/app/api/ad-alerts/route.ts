@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { cachedGET } from "@/lib/api-cache";
 
 // 광고 이상 신호. 2026-09-18 신설.
 // 예전 aside 루틴(네이버 광고 일별 리포트)이 내던 판단을 대시보드로 옮겼다. 루틴은 김호가 껐다.
@@ -92,7 +93,7 @@ function judge(series: CampaignSeries[]) {
   return { asOf, spikes, zeroConv };
 }
 
-export async function GET() {
+async function getImpl() {
   try {
     // 기준일을 모르므로 넉넉히 21일을 받아 각 원천의 마지막 날부터 거꾸로 센다.
     const since = daysBefore(new Date().toISOString().slice(0, 10), 21);
@@ -113,3 +114,6 @@ export async function GET() {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["raw_coupang_keyword", "raw_gfa_campaign"]);

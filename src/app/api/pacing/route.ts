@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { isGongguInDailySales } from "@/lib/gonggu";
+import { cachedGET } from "@/lib/api-cache";
 
 // 목표 대비 페이싱 (통계시트 "광고 예산안" 재현)
 // 현재 월에 대해 엔티티별: 날짜진행률 vs 매출/광고비/ROAS/광고비비중 목표·현황·달성률 + 잔여 + 필요 일런레이트
@@ -12,7 +13,7 @@ import { isGongguInDailySales } from "@/lib/gonggu";
 
 const BRANDS = ["nutty", "ironpet", "saip", "balancelab"];
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
   // 현재 월(KST) 기본
@@ -194,3 +195,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch pacing" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_sales", "monthly_targets", "product_sales"]);

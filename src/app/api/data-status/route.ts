@@ -2,11 +2,12 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { getSourceStatuses, sourceEntryLink } from "@/lib/data-sources";
+import { cachedGET, DATA_TAGS } from "@/lib/api-cache";
 
 // 소스 정의·신선도 판정은 @/lib/data-sources 에 있다 (watchdog 과 공유).
 // 이 라우트는 화면이 바로 쓸 수 있게 3분류 요약과 오염된 지표 목록까지 계산해서 내린다.
 
-export async function GET() {
+async function getImpl() {
   try {
     const { sources, collectors, referenceDate } = await getSourceStatuses();
 
@@ -49,3 +50,6 @@ export async function GET() {
     return NextResponse.json({ error: "데이터 수집 현황을 불러오지 못했습니다" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, [...DATA_TAGS]);

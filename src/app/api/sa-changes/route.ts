@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
+import { cachedGET } from "@/lib/api-cache";
 
 // 밸런스랩 검색광고 직접 조정 이력 + 조정 전·후 성과. 2026-10-13 신설.
 //
@@ -28,7 +29,7 @@ const addDays = (d: string, n: number) => {
   const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10);
 };
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const brand = req.nextUrl.searchParams.get("brand") || "balancelab";
   if (brand !== "balancelab" && brand !== "all") {
     return NextResponse.json({ changes: [], note: "직접 조정은 밸런스랩 계정만 한다. 펫 계정은 대행사 집행" });
@@ -82,3 +83,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ changes: [], error: msg }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["keyword_performance", "sa_change_log"]);

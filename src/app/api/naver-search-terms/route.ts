@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { cachedGET } from "@/lib/api-cache";
 
 // 네이버 검색광고 실제 검색어. 2026-09-18 신설, 2026-09-30 브랜드 축으로 전환.
 // 원천 raw_naver_search_term(수집기 marketing-dashboard scripts/sync_naver_search_terms.py, daily-sync).
@@ -49,7 +50,7 @@ interface Entry {
 }
 const SUM_KEYS = ["impressions", "clicks", "cost", "purchases", "purchase_value", "cart_adds"] as const;
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
   const from = sp.get("from") || "";
@@ -114,3 +115,6 @@ export async function GET(req: NextRequest) {
     { headers: { "Cache-Control": "s-maxage=600, stale-while-revalidate=3600" } },
   );
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "raw_naver_search_term"]);

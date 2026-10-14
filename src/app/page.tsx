@@ -7,7 +7,8 @@ import { KpiCard, type KpiConfidence } from "@/components/ui/kpi-card";
 import { SectionHeading } from "@/components/ui/section";
 import { AttributionGap } from "@/components/attribution-gap";
 import { Card, CardContent } from "@/components/ui/card";
-import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
+import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
+import { pacingUrl, channelGroupsUrl, brandDetailUrl } from "@/lib/api-urls";
 import { useDataStatus } from "@/hooks/use-data-status";
 import { useConfig } from "@/hooks/use-config";
 import {
@@ -67,6 +68,12 @@ function OverviewInner() {
   const { brand, from, to } = useFilterParams();
   const { brandMap, channelMap } = useConfig();
   const { data, loading } = useFetch<DashboardData>(`/api/dashboard?from=${from}&to=${to}&brand=${brand || "all"}`);
+  // 페이싱·판매처 차트·브랜드 상세는 로딩 화면 동안 마운트되지 않는다. 대시보드 응답을 기다리지 않게 같이 부른다.
+  usePrefetch([
+    pacingUrl(brand || "all"),
+    channelGroupsUrl(brand || "all", from, to),
+    brand && brand !== "all" ? brandDetailUrl(brand, from, to) : null,
+  ]);
   const { data: status } = useDataStatus();
   const [selectedKpi, setSelectedKpi] = useState<KpiKey>(null);
 
@@ -902,7 +909,7 @@ function BrandDetailSection({ brand, from, to }: { brand: string; from: string; 
     gongguSales: { seller: string; revenue: number; orders: number }[];
     gongguSalesTotal: number;
     selfSalesTotal: number;
-  }>(`/api/brand-detail?brand=${brand}&from=${from}&to=${to}`);
+  }>(brandDetailUrl(brand, from, to));
 
   const lineups = data?.lineupBreakdown || [];
   const tops = data?.topProducts || [];

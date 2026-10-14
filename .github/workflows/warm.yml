@@ -1,0 +1,44 @@
+# 대시보드 깨워 두기 (2026-10-14)
+#
+# 왜: Vercel 무료(Hobby) 함수는 몇 분 안 쓰면 잠들고, 잠든 뒤 첫 화면은 1.4~2초가 더 걸렸다
+#     (2026-10-14 실측: 같은 API 첫 호출 1.7~2.0초, 두 번째 0.2~0.5초).
+#     업무 시간에 10분마다 메인 화면이 부르는 API 를 몇 개 불러 함수를 깨워 둔다.
+#     5분 서버 캐시는 핑 간격(10분)보다 짧아 늘 채워 두지는 못한다. 만료된 캐시는 다음 조회 때
+#     직전 값을 먼저 주고 뒤에서 새로 읽는다. 기본 브랜치(master)에 있어야 예약이 돈다.
+# 무엇: GET 만 한다. DB 에 쓰지 않는다. 실패해도 아무 일 없다(알림 없음).
+# 언제: 평일 KST 08:00~20:00, 10분마다. GitHub 크론은 UTC 이고 몇 분씩 늦게 돌 수 있다.
+# 비용: 공개 저장소라 Actions 시간 무료. 공개 저장소 예약 작업은 60일 동안 커밋이 없으면
+#       GitHub 가 끈다. 꺼지면 Actions 탭에서 Enable 을 누르면 된다.
+# 끄기: Actions > warm > ··· > Disable workflow
+name: warm
+
+on:
+  schedule:
+    - cron: "*/10 23 * * 0-4"   # KST 월~금 08:00~08:50 (UTC 전날 23시)
+    - cron: "*/10 0-10 * * 1-5" # KST 월~금 09:00~19:50
+    - cron: "0 11 * * 1-5"      # KST 월~금 20:00
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 메인 화면 API 깨우기
+        env:
+          BASE: https://ppmi-dashboard-kappa.vercel.app
+        run: |
+          # 화면 기본 기간 "이번 달"과 같은 주소(1일~어제, KST). src/lib/utils.ts getDateRangeFromPreset 과 같다.
+          TO=$(TZ=Asia/Seoul date -d "yesterday" +%F)
+          FROM=$(TZ=Asia/Seoul date +%Y-%m-01)
+          if [[ "$FROM" > "$TO" ]]; then FROM="$TO"; fi
+          for p in \
+            "/api/settings" \
+            "/api/data-status" \
+            "/api/dashboard?from=$FROM&to=$TO&brand=all" \
+            "/api/pacing?brand=all" \
+            "/api/channel-groups?brand=all&from=$FROM&to=$TO"; do
+            curl -s -o /dev/null --max-time 30 -w "%{http_code} %{time_total}s $p\n" "$BASE$p" || echo "실패 $p"
+          done

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { cachedGET, revalidateAfter } from "@/lib/api-cache";
 
 // 콘텐츠 후보(쓰레드 주간 후보 등). 2026-09-18 신설. SQL: docs/sql/content-candidates.sql
 //
@@ -88,7 +89,7 @@ function validate(items: unknown[]): { rows?: Candidate[]; error?: string } {
   return { rows };
 }
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const channel = req.nextUrl.searchParams.get("channel") || "threads";
   const week = req.nextUrl.searchParams.get("week");
   if (!CHANNELS.has(channel)) return NextResponse.json({ error: `모르는 channel: ${channel}` }, { status: 400 });
@@ -115,7 +116,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ weeks, week: recent ? "recent" : target, items: data || [] });
 }
 
-export async function POST(req: NextRequest) {
+async function postImpl(req: NextRequest) {
   let body: { items?: unknown[] };
   try {
     body = await req.json();
@@ -165,7 +166,7 @@ export async function POST(req: NextRequest) {
 // {YYYY-MM-DD}-{영문 소문자 주제어}. threads-candidates.mjs 의 SLUG_RE 와 같은 식이다. 한쪽만 고치면 어긋난다.
 const SLUG_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export async function PATCH(req: NextRequest) {
+async function patchImpl(req: NextRequest) {
   let body: { id?: string; action?: string; notion_url?: string; slug?: string };
   try {
     body = await req.json();
@@ -322,3 +323,8 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json({ error: `모르는 action: ${String(body.action)}` }, { status: 400 });
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["content_candidates"]);
+export const POST = revalidateAfter(postImpl, ["content_candidates"]);
+export const PATCH = revalidateAfter(patchImpl, ["content_candidates"]);

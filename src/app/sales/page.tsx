@@ -3,7 +3,8 @@
 import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
-import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
+import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
+import { productSalesUrl, channelAdsUrl } from "@/lib/api-urls";
 import { matchesBrand } from "@/lib/brand-groups";
 import { ProductTrendChart } from "@/components/product-trend-chart";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
@@ -65,7 +66,9 @@ function SalesPageInner() {
     prevSales: DailySales[];
     gongguSalesTotal?: number;
     brandRevenueTrend?: { date: string; [brand: string]: number | string }[];
-  }>(`/api/dashboard?${params}`);
+  }>(`/api/dashboard?${params}&raw=sales,products,prevSales`);
+  // 아래 두 칸은 로딩 화면 동안 마운트되지 않으므로, 대시보드 응답을 기다리지 않게 미리 같이 부른다.
+  usePrefetch([productSalesUrl(brand, from, to), channelAdsUrl(brand, from, to)]);
   const { brandMap, channelMap } = useConfig();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [tab, setTab] = useState<ViewTab>("trend");
@@ -559,8 +562,7 @@ const CH_LABELS: Record<string, string> = {
 };
 
 function ChannelEfficiencySection({ brand, from, to }: { brand: string; from: string; to: string }) {
-  const params = brand && brand !== "all" ? `from=${from}&to=${to}&brand=${brand}` : `from=${from}&to=${to}`;
-  const { data } = useFetch<{ ads: ChannelAdData[] }>(`/api/ads?${params}`);
+  const { data } = useFetch<{ ads: ChannelAdData[] }>(channelAdsUrl(brand, from, to));
 
   const scatterData = useMemo(() => {
     const ads = data?.ads || [];

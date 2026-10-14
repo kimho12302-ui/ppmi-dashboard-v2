@@ -4,8 +4,9 @@ import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
+import { cachedGET } from "@/lib/api-cache";
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
   const from = sp.get("from") || "";
@@ -303,3 +304,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch funnel data" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales"]);

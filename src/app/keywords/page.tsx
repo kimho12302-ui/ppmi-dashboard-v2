@@ -4,7 +4,8 @@ import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
-import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
+import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
+import { saChangesUrl } from "@/lib/api-urls";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import {
   ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -46,6 +47,8 @@ function KeywordsInner() {
   const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr" | "roas" | "waste">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [tab, setTab] = useState<"keywords" | "gsc" | "coupang" | "naver">("keywords");
+  // SA 조정 이력 칸은 키워드 응답이 올 때까지 마운트되지 않는다. 기다리지 않게 같이 부른다.
+  usePrefetch([(tab === "keywords" || tab === "naver") && (brand === "balancelab" || brand === "all") ? saChangesUrl(brand) : null]);
 
   const keywords = useMemo(() => data?.keywords || [], [data]);
 
@@ -108,7 +111,8 @@ function KeywordsInner() {
       convValue,
       hasConvValue,
       roas: cost > 0 ? convValue / cost : 0,
-      wasted: filtered.reduce((s, k) => s + ((k.conversion_value || 0) === 0 ? (k.cost || 0) : 0), 0),
+      // 낭비 광고비는 **원본 행(하루)마다** 전환매출 0 인 날의 광고비. DB 합산 응답은 묶기 전에 더한 wasted_cost 를 준다.
+      wasted: filtered.reduce((s, k) => s + (k.wasted_cost ?? ((k.conversion_value || 0) === 0 ? (k.cost || 0) : 0)), 0),
     };
   }, [keywords, platformFilter]);
 

@@ -4,8 +4,9 @@ import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { isGonggu, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
 import { masterByProduct } from "@/lib/product-master";
+import { cachedGET } from "@/lib/api-cache";
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
   const from = sp.get("from") || "";
@@ -190,3 +191,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["product_sales"]);

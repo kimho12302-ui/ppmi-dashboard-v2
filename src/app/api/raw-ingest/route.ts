@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { revalidateAfter } from "@/lib/api-cache";
 
 // 원천(raw) 수집 값을 받는 자리. 2026-09-17 신설.
 //
@@ -46,7 +47,7 @@ const TARGET: Record<Source, { table: string; onConflict: string }> = {
 // 한 번에 너무 많이 받으면 요청이 죽는다. 나눠 넣는다.
 const CHUNK = 500;
 
-export async function POST(req: NextRequest) {
+async function postImpl(req: NextRequest) {
   let body: { source?: string; rows?: unknown[] };
   try {
     body = await req.json();
@@ -88,3 +89,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "저장 실패", message: msg, table }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const POST = revalidateAfter(postImpl, ["raw_coupang_keyword", "raw_gfa_campaign"]);

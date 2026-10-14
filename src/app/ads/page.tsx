@@ -4,7 +4,8 @@ import Image from "next/image";
 import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
-import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
+import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
+import { AD_ALERTS_URL } from "@/lib/api-urls";
 import { AdAlerts } from "@/components/ad-alerts";
 import { CHANNEL_LABELS, CHANNEL_COLORS, type DailyAdSpend } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
@@ -49,6 +50,8 @@ function AdsPageInner() {
   const params = brand && brand !== "all" ? `from=${from}&to=${to}&brand=${brand}` : `from=${from}&to=${to}`;
   const { data, loading } = useFetch<{ ads: DailyAdSpend[]; prevAds: DailyAdSpend[] }>(`/api/ads?${params}`);
   const [tab, setTab] = useState<ViewTab>("overview");
+  // 광고 경보 칸은 광고 응답이 올 때까지 마운트되지 않는다. 기다리지 않게 같이 부른다.
+  usePrefetch([AD_ALERTS_URL]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ads = useMemo(() => data?.ads || [], [data]);

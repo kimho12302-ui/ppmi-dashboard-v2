@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
 import { triggerSheetSync } from "@/lib/github-dispatch";
+import { revalidateAfter } from "@/lib/api-cache";
 
 function safeNum(val: unknown): number {
   if (val === null || val === undefined || val === "") return 0;
@@ -37,7 +38,7 @@ function parseRowDate(val: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function POST(req: NextRequest) {
+async function postImpl(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File;
@@ -169,3 +170,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `업로드 실패: ${msg}` }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const POST = revalidateAfter(postImpl, ["daily_funnel"]);

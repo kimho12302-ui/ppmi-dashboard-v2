@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { isGongguInDailySales } from "@/lib/gonggu";
+import { cachedGET } from "@/lib/api-cache";
 
 // 채널(판매처) 성과 — 판매처별 매출 vs 그 판매처를 끌어온 광고비.
 // ★ 브랜드 판매처 구조 반영(2026-06 수정):
@@ -108,7 +109,7 @@ async function periodData(from: string, to: string, brand: string) {
   return { revByCh, adByCh, blMG, byDate };
 }
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
@@ -180,3 +181,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch channel groups" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_sales", "product_sales"]);

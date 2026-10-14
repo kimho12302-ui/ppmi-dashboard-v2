@@ -4,8 +4,9 @@ import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
+import { cachedGET, revalidateAfter } from "@/lib/api-cache";
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function postImpl(req: NextRequest) {
   try {
     const body = await req.json();
     const { date, brand, channel, spend, impressions, clicks, conversions, conversion_value } = body;
@@ -78,3 +79,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "저장 실패" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_ad_spend"]);
+export const POST = revalidateAfter(postImpl, ["daily_ad_spend"]);

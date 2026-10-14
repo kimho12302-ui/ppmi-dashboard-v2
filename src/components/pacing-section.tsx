@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useFetch } from "@/hooks/use-dashboard-data";
+import { pacingUrl } from "@/lib/api-urls";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
 import { BRAND_LABELS } from "@/lib/types";
@@ -59,7 +60,7 @@ function ProgressBar({ value, marker, color }: { value: number; marker?: number;
 export function PacingSection({ brand, from, to }: { brand: string; from?: string; to?: string }) {
   const b = brand || "all";
   const [open, setOpen] = useState(true);
-  const { data, loading } = useFetch<PacingData>(`/api/pacing?brand=${b}`);
+  const { data, loading } = useFetch<PacingData>(pacingUrl(b));
 
   if (loading) {
     return <Card className="animate-pulse"><CardContent className="p-5"><div className="h-5 w-40 bg-muted rounded mb-3" /><div className="h-24 bg-muted rounded" /></CardContent></Card>;

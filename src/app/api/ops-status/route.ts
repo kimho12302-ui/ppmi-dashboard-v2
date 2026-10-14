@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { cachedGET, revalidateAfter } from "@/lib/api-cache";
 
 // 팀용 운영 상태(수집·콘텐츠·보고). 2026-09-18 신설. SQL: docs/sql/ops-status.sql
 //
@@ -48,7 +49,7 @@ function validate(items: unknown[]): { rows?: Item[]; error?: string } {
   return { rows };
 }
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const section = req.nextUrl.searchParams.get("section");
   let q = supabase.from("ops_status").select("*").order("sort_order");
   if (section) {
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ items: data || [] });
 }
 
-export async function POST(req: NextRequest) {
+async function postImpl(req: NextRequest) {
   let body: { section?: string; items?: unknown[] };
   try {
     body = await req.json();
@@ -90,3 +91,7 @@ export async function POST(req: NextRequest) {
   }
   return NextResponse.json({ ok: true, section, written: rows.length, reportedAt });
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["ops_status"]);
+export const POST = revalidateAfter(postImpl, ["ops_status"]);

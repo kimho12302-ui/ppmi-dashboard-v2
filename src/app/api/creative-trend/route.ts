@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cachedGET } from "@/lib/api-cache";
 
 const META_TOKEN = process.env.META_ADS_TOKEN || "";
 
-export async function GET(request: NextRequest) {
+async function getImpl(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const adId = sp.get("ad_id") || "";
   const from = sp.get("from") || "";
@@ -56,3 +57,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ trend: [], error: "Failed to fetch trend" });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["ext_meta"]);

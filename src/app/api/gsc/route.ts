@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
+import { cachedGET } from "@/lib/api-cache";
 
 const SA_KEY_PATH = process.env.GOOGLE_SA_KEY_PATH || "";
 const SITE_URL = "https://ironpet.store/";
@@ -14,7 +15,7 @@ async function getAuth() {
   return auth;
 }
 
-export async function GET(request: NextRequest) {
+async function getImpl(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
@@ -96,3 +97,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "GSC API failed", detail: errMsg }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["ext_gsc"]);

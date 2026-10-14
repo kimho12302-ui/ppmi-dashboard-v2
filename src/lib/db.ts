@@ -29,17 +29,35 @@ const MAX_PAGES = 100;
  * @param baseQuery Supabase 쿼리 빌더
  * @param tieBreak  전순서를 만들 유니크 컬럼 (기본 "id"). 해당 컬럼이 없는 테이블이면 명시적으로 넘길 것.
  */
+// 첫 페이지가 꽉 차면 다음 페이지들을 이만큼씩 동시에 부른다(2026-10-14 속도 개선).
+// 예전엔 1,000행마다 한 번씩 차례로 왕복해 올해 product_sales(5,585행)는 6번을 기다렸다.
+// 빈 페이지를 최대 WAVE-1 번 더 부를 수 있지만 결과 행은 같다(같은 정렬, 같은 offset).
+const WAVE = 4;
+
+type PageResult<T> = { data: T[] | null; error: unknown };
+
 export async function fetchAll<T = any>(baseQuery: any, tieBreak: string | null = "id"): Promise<T[]> {
   const q = tieBreak ? baseQuery.order(tieBreak, { ascending: true }) : baseQuery;
-  let from = 0;
-  const all: T[] = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const { data, error } = await q.range(from, from + PAGE - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) return all;
-    all.push(...(data as T[]));
-    if (data.length < PAGE) return all;
-    from += PAGE;
+  // ★ 빌더는 range() 가 자기 URL 을 고친다(한 객체 공유). then() 이 그 자리에서 URL 문자열을 떠서
+  //   요청을 보내므로, range 직후 바로 then 을 불러 페이지마다 자기 주소로 나가게 한다.
+  //   await 나 Promise.resolve 로 감싸면 then 이 나중에 불려 모든 페이지가 마지막 range 로 나간다.
+  const page = (from: number) =>
+    new Promise<PageResult<T>>((resolve, reject) => q.range(from, from + PAGE - 1).then(resolve, reject));
+
+  const first = await page(0);
+  if (first.error) throw first.error;
+  const all: T[] = [...(first.data || [])];
+  if (all.length < PAGE) return all;
+
+  for (let start = 1; start < MAX_PAGES; start += WAVE) {
+    const idx = Array.from({ length: Math.min(WAVE, MAX_PAGES - start) }, (_, i) => start + i);
+    const results = await Promise.all(idx.map((n) => page(n * PAGE)));
+    for (const r of results) {
+      if (r.error) throw r.error;
+      const rows = r.data || [];
+      all.push(...rows);
+      if (rows.length < PAGE) return all; // 이 페이지가 끝. 뒤 페이지는 비어 있다
+    }
   }
   throw new Error(`fetchAll: ${MAX_PAGES}페이지(${MAX_PAGES * PAGE}행) 초과 — 쿼리 필터를 확인하세요`);
 }

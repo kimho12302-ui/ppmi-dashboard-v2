@@ -6,12 +6,25 @@ import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { masterByProduct } from "@/lib/product-master";
 import { isGonggu, isGongguAggregate, gongguSeller, isGongguInDailySales } from "@/lib/gonggu";
+import { cachedGET } from "@/lib/api-cache";
 
-export async function GET(req: NextRequest) {
+const RAW_KEYS = ["sales", "ads", "products", "prevSales", "prevAds"] as const;
+type RawKey = (typeof RAW_KEYS)[number];
+
+/** `?raw=sales,products` → 그 키만, `?raw=1` → 전부(옛 응답과 같음), 없으면 빈 목록. */
+function parseRawKeys(param: string | null): RawKey[] {
+  if (!param) return [];
+  if (param === "1" || param === "all") return [...RAW_KEYS];
+  const asked = new Set(param.split(",").map((s) => s.trim()));
+  return RAW_KEYS.filter((k) => asked.has(k));
+}
+
+async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
+  const rawKeys = parseRawKeys(sp.get("raw"));
 
   try {
     // ── 이전 기간 날짜 계산 (DB 호출 없음) ──
@@ -428,17 +441,21 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Raw data for sales/ads pages (backward compat)
-    const prevSalesRaw = (prevSales || []).map(r => ({ ...r, date: "", brand: "", channel: "" }));
+    // Raw data — sales는 form-A 공구 차감본(adjSales)으로 반환해
+    // /sales 페이지가 재집계해도 오버뷰 헤드라인과 동일한 자체매출이 되도록 함.
+    // ★ 원본 행은 요청한 키만 싣는다(2026-10-14 속도 개선). 올해 전체 기준 원본 행이 2.2MB 였고
+    //   오버뷰·브랜드 화면은 하나도 쓰지 않았다. 지금 쓰는 곳은 /sales 의 sales·products·prevSales 뿐.
+    const rawRows: Record<RawKey, () => unknown[]> = {
+      sales: () => adjSales,
+      ads: () => adSpend || [],
+      products: () => prodData || [],
+      prevSales: () => (prevSales || []).map(r => ({ ...r, date: "", brand: "", channel: "" })),
+      prevAds: () => prevAd || [],
+    };
+    const raw = Object.fromEntries(rawKeys.map((k) => [k, rawRows[k]()]));
 
     return NextResponse.json({
-      // Raw data (for sales/ads pages) — sales는 form-A 공구 차감본(adjSales)으로 반환해
-      // /sales 페이지가 재집계해도 오버뷰 헤드라인과 동일한 자체매출이 되도록 함.
-      sales: adjSales,
-      ads: adSpend || [],
-      products: (prodData || []),
-      prevSales: prevSalesRaw,
-      prevAds: (prevAd || []),
+      ...raw,
       // Computed KPI
       kpi: {
         revenue: totalRevenue, revenuePrev: prevRevenue,
@@ -465,3 +482,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch dashboard data" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "monthly_targets", "product_costs", "product_sales", "shipping_costs"]);

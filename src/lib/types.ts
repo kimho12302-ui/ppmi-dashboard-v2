@@ -99,6 +99,10 @@ export interface KeywordPerformance {
   conversions: number;
   conversion_value?: number;
   avg_rank?: number;
+  /** DB 합산 응답에만: 묶기 전 행마다 전환매출 0 인 날의 광고비 합 */
+  wasted_cost?: number;
+  /** DB 합산 응답에만: 묶인 원본 행 수 */
+  n?: number;
 }
 
 export interface MonthlyTarget {

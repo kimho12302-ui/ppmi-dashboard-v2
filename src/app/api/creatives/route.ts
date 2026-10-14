@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { expandBrands } from "@/lib/brand-groups";
+import { cachedGET } from "@/lib/api-cache";
 
 // 메타 소재별 성과. 2026-10-13 원천 교체.
 //
@@ -20,7 +21,7 @@ interface Row {
   purchases: number; purchase_value: number; add_to_cart: number; view_content: number;
 }
 
-export async function GET(request: NextRequest) {
+async function getImpl(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
   const from = sp.get("from") || "";
@@ -81,3 +82,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ creatives: [], total: 0, error: `메타 소재를 불러오지 못했습니다: ${msg}` }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["meta_ad_daily"]);

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { cachedGET, revalidateAfter } from "@/lib/api-cache";
 
-export async function GET() {
+async function getImpl() {
   try {
     const { data } = await supabase.from("monthly_targets").select("*");
     const targets: Record<string, unknown> = {};
@@ -16,7 +17,7 @@ export async function GET() {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function postImpl(req: NextRequest) {
   try {
     const { month, brand, revenue_target, ad_budget_target, roas_target, cac_target, note } = await req.json();
     const { error } = await supabase.from("monthly_targets").upsert(
@@ -38,3 +39,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "저장 실패" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["monthly_targets"]);
+export const POST = revalidateAfter(postImpl, ["monthly_targets"]);

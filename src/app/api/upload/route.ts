@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
+import { revalidateAfter } from "@/lib/api-cache";
 
 function mapBrand(brandStr: string): string {
   const lower = String(brandStr).toLowerCase();
@@ -25,7 +26,7 @@ function cleanRevenue(revStr: any): number {
   return parseInt(String(revStr).replace(/[,원]/g, "").trim()) || 0;
 }
 
-export async function POST(req: NextRequest) {
+async function postImpl(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File;
@@ -125,3 +126,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "업로드 실패" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const POST = revalidateAfter(postImpl, ["product_costs", "product_sales"]);

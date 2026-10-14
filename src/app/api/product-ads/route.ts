@@ -6,6 +6,7 @@ import { fetchAll } from "@/lib/db";
 import { expandBrands } from "@/lib/brand-groups";
 import { masterByPid } from "@/lib/product-master";
 import { classifyBlProduct } from "@/lib/brand-groups";
+import { cachedGET } from "@/lib/api-cache";
 
 /**
  * 제품(상품) 단위 광고 성과.
@@ -14,7 +15,7 @@ import { classifyBlProduct } from "@/lib/brand-groups";
  * 원장이고(매출·ROAS·페이싱이 전부 거기 걸려 있다), 여기는 드릴다운 전용이다.
  * 한 테이블에 섞으면 /api/ads 가 행 단위로 합산해 무조건 이중계상된다.
  */
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const from = sp.get("from") || "";
   const to = sp.get("to") || "";
@@ -137,3 +138,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "제품별 광고 성과를 불러오지 못했습니다" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["ad_product_performance", "product_sales"]);

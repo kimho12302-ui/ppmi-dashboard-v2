@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { kstDate } from "@/lib/date";
+import { cachedGET } from "@/lib/api-cache";
 
 const BRANDS = ["nutty", "ironpet", "saip", "balancelab"];
 const WINDOW_DAYS = 14;
@@ -23,7 +24,7 @@ const WINDOW_DAYS = 14;
  */
 export type CoverageState = "filled" | "zero" | "brand_missing" | "not_uploaded";
 
-export async function GET() {
+async function getImpl() {
   try {
     const days: string[] = [];
     for (let i = WINDOW_DAYS - 1; i >= 0; i--) days.push(kstDate(-i));
@@ -82,3 +83,6 @@ export async function GET() {
     return NextResponse.json({ error: "판매 업로드 현황을 불러오지 못했습니다" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_sales"]);

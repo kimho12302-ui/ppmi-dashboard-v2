@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import snapshot from "@/data/content-board/snapshot.json";
+import { cachedGET, revalidateAfter } from "@/lib/api-cache";
 
 // 콘텐츠 탭 보드. 2026-09-18 신설. SQL: docs/sql/content-board.sql
 //
@@ -16,7 +17,7 @@ const SECTIONS = ["naver", "research", "magazine", "topics"] as const;
 type Section = (typeof SECTIONS)[number];
 const MAX_ITEMS = 200;
 
-export async function GET(req: NextRequest) {
+async function getImpl(req: NextRequest) {
   const section = req.nextUrl.searchParams.get("section");
   if (!section || !SECTIONS.includes(section as Section)) {
     return NextResponse.json({ error: `section 은 ${SECTIONS.join("/")}` }, { status: 400 });
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
+async function postImpl(req: NextRequest) {
   let body: { section?: string; items?: { item_key?: string; data?: unknown }[] };
   try {
     body = await req.json();
@@ -72,3 +73,7 @@ export async function POST(req: NextRequest) {
   }
   return NextResponse.json({ ok: true, section, written: rows.length, reportedAt });
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["content_board"]);
+export const POST = revalidateAfter(postImpl, ["content_board"]);

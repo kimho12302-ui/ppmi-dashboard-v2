@@ -87,12 +87,161 @@ export function useDateRange(initialDays: number = 30) {
   return { from, to, days, setDays };
 }
 
+/* ── 미리 부르기 (2026-10-14 속도 개선) ── */
+//
+// 화면이 대시보드 응답을 기다리는 동안 로딩 화면만 그리면, 그 아래 칸(페이싱·판매처 차트 등)은
+// 아직 마운트되지 않아 요청도 안 나간다. 응답이 온 뒤에야 칸이 붙고 그때 두 번째 요청이 나가
+// 왕복이 한 번 더 쌓였다(실측: 오버뷰 0.3~0.66초, 매출 화면 0.6~2.8초).
+// 부모 화면이 칸의 주소를 미리 불러 두고, 칸이 마운트될 때 그 요청을 넘겨받는다.
+//
+// ★ 데이터 캐시가 아니다. 응답은 한 번 넘겨주면 지우고, 아무도 안 가져가면 PREFETCH_TTL_MS 뒤 버린다.
+//   "수기 업로드 직후 바로 반영" 원칙은 그대로다. 같은 화면을 여는 그 순간 부른 응답만 쓴다.
+const PREFETCH_TTL_MS = 30_000;
+const prefetched = new Map<string, { res: Promise<Response>; at: number }>();
+
+function dropExpiredPrefetches(now: number) {
+  prefetched.forEach((v, k) => {
+    if (now - v.at > PREFETCH_TTL_MS) prefetched.delete(k);
+  });
+}
+
+/** 미리 부른 요청이 있으면 꺼내 준다(한 번만). 없거나 오래됐으면 null. */
+function takePrefetched(url: string): Promise<Response> | null {
+  const hit = prefetched.get(url);
+  if (!hit) return null;
+  prefetched.delete(url);
+  return Date.now() - hit.at > PREFETCH_TTL_MS ? null : hit.res;
+}
+
+/**
+ * 아직 마운트되지 않은 칸의 API 를 지금 같이 부른다. 주소는 `@/lib/api-urls` 의 함수로 만들어
+ * 칸이 실제로 부르는 주소와 글자까지 같게 할 것(다르면 넘겨받지 못하고 한 번 더 부른다).
+ * 렌더 중에 호출하는 이유: useEffect 는 자식 → 부모 순서로 돌아서, 자식이 이미 마운트된 경우
+ * 부모 effect 가 뒤늦게 같은 요청을 한 번 더 보내게 된다. 주소 묶음이 바뀔 때만 1회 부른다.
+ */
+export function usePrefetch(urls: (string | null | undefined)[]) {
+  const list = urls.filter((u): u is string => !!u);
+  const key = list.join("|");
+  const doneRef = useRef<string | null>(null);
+  if (typeof window !== "undefined" && doneRef.current !== key) {
+    doneRef.current = key;
+    const now = Date.now();
+    dropExpiredPrefetches(now);
+    for (const u of list) {
+      if (prefetched.has(u)) continue;
+      const res = fetch(u);
+      res.catch(() => { /* 넘겨받는 쪽이 다시 부른다 */ });
+      prefetched.set(u, { res, at: now });
+    }
+  }
+}
+
+/* ── 직전 응답 즉시 표시 (2026-10-14, SWR 방식) ── */
+//
+// 같은 주소를 이 탭에서 한 번이라도 받았으면, 다시 열 때 그 응답을 **바로 그리고** 뒤에서 새로 부른다.
+// 새 응답이 오면 갈아 끼운다. 그동안 화면 위 "갱신 중" 이 뜬다(DataFreshness).
+// 메모리에 두고, 작은 응답(LAST_STORE_MAX 이하)은 sessionStorage 에도 둬 새로고침(F5) 뒤에도 바로 뜬다.
+// 탭을 닫으면 사라진다. 서버 쪽 5분 캐시와는 별개이고, 이 값은 늘 뒤에서 다시 확인한다.
+const LAST_STORE_PREFIX = "ppmi:last:";
+const LAST_STORE_MAX = 300_000; // 문자 수. 올해 전체 원본 같은 큰 응답은 메모리에만 둔다
+interface LastResponse { data: unknown; asOf: string | null; tags: string[] }
+const lastResponses = new Map<string, LastResponse>();
+
+function readLast(url: string): LastResponse | null {
+  const hit = lastResponses.get(url);
+  if (hit) return hit;
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(LAST_STORE_PREFIX + url);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as LastResponse;
+    lastResponses.set(url, v);
+    return v;
+  } catch {
+    return null;
+  }
+}
+
+const LAST_MEMORY_MAX = 40; // 주소 개수. 넘치면 가장 오래 안 쓴 것부터 버린다
+
+function writeLast(url: string, v: LastResponse, text: string) {
+  lastResponses.delete(url);
+  lastResponses.set(url, v);
+  while (lastResponses.size > LAST_MEMORY_MAX) {
+    const oldest = lastResponses.keys().next().value;
+    if (oldest === undefined) break;
+    lastResponses.delete(oldest);
+  }
+  if (typeof window === "undefined" || text.length > LAST_STORE_MAX) return;
+  try {
+    window.sessionStorage.setItem(LAST_STORE_PREFIX + url, JSON.stringify(v));
+  } catch { /* 저장 공간이 차면 메모리에만 */ }
+}
+
+/* ── 데이터 기준 시각·새로고침 (화면 위 DataFreshness 가 구독) ── */
+//
+// 지금 화면에 붙어 있는 useFetch 들이 각자 받은 응답의 기준 시각(서버 캐시를 만든 시각, X-Data-As-Of)과
+// 태그(X-Cache-Tags)를 여기 올린다. 화면은 그중 **가장 오래된 시각**을 "데이터 기준"으로 보여 준다.
+interface FreshnessEntry { asOf: string | null; tags: string[]; refreshing: boolean; refetch: () => Promise<void> }
+interface FreshnessSnapshot { version: number; oldestAsOf: string | null; refreshing: boolean; tags: string[] }
+const freshEntries = new Map<number, FreshnessEntry>();
+const freshListeners = new Set<() => void>();
+let freshVersion = 0;
+let freshSnapshot: FreshnessSnapshot = { version: 0, oldestAsOf: null, refreshing: false, tags: [] };
+let nextFreshId = 1;
+
+function setFreshEntry(id: number, e: FreshnessEntry | null) {
+  if (e) freshEntries.set(id, e);
+  else freshEntries.delete(id);
+  freshVersion += 1;
+  freshListeners.forEach((l) => l());
+}
+
+export function subscribeFreshness(l: () => void) {
+  freshListeners.add(l);
+  return () => { freshListeners.delete(l); };
+}
+
+export function getFreshnessSnapshot(): FreshnessSnapshot {
+  if (freshSnapshot.version === freshVersion) return freshSnapshot;
+  let oldest: string | null = null;
+  let refreshing = false;
+  const tags = new Set<string>();
+  freshEntries.forEach((e) => {
+    if (e.refreshing) refreshing = true;
+    if (e.asOf && (oldest === null || e.asOf < oldest)) oldest = e.asOf;
+    e.tags.forEach((t) => tags.add(t));
+  });
+  freshSnapshot = { version: freshVersion, oldestAsOf: oldest, refreshing, tags: Array.from(tags).sort() };
+  return freshSnapshot;
+}
+
+const EMPTY_FRESHNESS: FreshnessSnapshot = { version: -1, oldestAsOf: null, refreshing: false, tags: [] };
+export const getFreshnessServerSnapshot = () => EMPTY_FRESHNESS;
+
+/** "새로고침": 이 화면이 읽은 태그의 서버 캐시를 지우고, 붙어 있는 조회를 전부 다시 부른다. */
+export async function refreshVisibleData() {
+  const { tags } = getFreshnessSnapshot();
+  if (tags.length > 0) {
+    try {
+      await fetch("/api/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tags }) });
+    } catch { /* 지우기에 실패해도 다시 부르기는 한다(5분 안의 값이 올 수 있음) */ }
+  }
+  const jobs: Promise<void>[] = [];
+  freshEntries.forEach((e) => jobs.push(e.refetch()));
+  await Promise.all(jobs);
+}
+
 /* ── 범용 fetch 훅 ── */
 
 export function useFetch<T>(url: string) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [meta, setMeta] = useState<{ asOf: string | null; tags: string[] }>({ asOf: null, tags: [] });
+  const idRef = useRef(0);
+  if (idRef.current === 0) idRef.current = nextFreshId++;
 
   // ★ 응답 경합 가드 (2026-09-30).
   //   브랜드 칩을 누르면 URL 이 바뀌며 새 요청이 나가는데, 먼저 나간 요청이 늦게 끝나면
@@ -103,18 +252,31 @@ export function useFetch<T>(url: string) {
   const seqRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (allowPrefetched = false) => {
     const seq = ++seqRef.current;
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
 
-    setLoading(true);
+    // 같은 주소의 직전 응답이 있으면 먼저 그린다. 로딩 화면 대신 "갱신 중".
+    const last = readLast(url);
+    if (last) {
+      setData(last.data as T);
+      setMeta({ asOf: last.asOf, tags: last.tags });
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+    setRefreshing(true);
     setError(null);
     try {
       // 5xx 는 한 번 더 부른다. DB 게이트웨이 타임아웃이 순간적으로 나는데, 그걸 그대로 받으면
       // 화면이 "기간 내 판매 없음" 같은 빈 상태로 그려졌다(2026-10-13, 밸런스랩 상세 매출 구성).
-      let res = await fetch(url, { signal: ac.signal });
+      const pre = allowPrefetched ? takePrefetched(url) : null;
+      let res = pre
+        ? await pre.catch(() => fetch(url, { signal: ac.signal }))
+        : await fetch(url, { signal: ac.signal });
+      if (ac.signal.aborted || seq !== seqRef.current) return;
       if (res.status >= 500 && !ac.signal.aborted) {
         await new Promise((r) => setTimeout(r, 700));
         if (ac.signal.aborted || seq !== seqRef.current) return;
@@ -134,8 +296,15 @@ export function useFetch<T>(url: string) {
       //   **안내**를 의도적으로 200 + { data: [], error } 로 내리고, 화면이 그 문구를 배너로 띄운다.
       //   이를 throw 하면 안내가 "소재 데이터가 없습니다"로 둔갑한다(2026-08 회귀).
       //   실제 장애는 위에서 4xx/5xx 로 걸러진다(감시 라우트는 fail-closed 로 500 반환).
-      const json = await res.json();
+      const text = await res.text();
+      const json = JSON.parse(text);
       if (seq !== seqRef.current) return; // 뒤처진 응답 — 버린다
+      const next = {
+        asOf: res.headers.get("x-data-as-of"),
+        tags: (res.headers.get("x-cache-tags") || "").split(",").filter(Boolean),
+      };
+      writeLast(url, { data: json, ...next }, text);
+      setMeta(next);
       setData(json);
     } catch (err) {
       // 내가 취소한 요청은 오류가 아니다. 뒤처진 요청의 오류도 최신 화면에 띄우지 않는다.
@@ -143,13 +312,28 @@ export function useFetch<T>(url: string) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       // 최신 요청만 로딩을 내린다. 뒤처진 요청이 내리면 아직 받는 중인데 다 받은 것처럼 보인다.
-      if (seq === seqRef.current) setLoading(false);
+      if (seq === seqRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [url]);
 
   useEffect(() => {
-    fetchData();
+    fetchData(true);
   }, [fetchData]);
 
-  return { data, loading, error, refetch: fetchData };
+  // 다시 불러오기(저장 직후 등)는 미리 부른 응답을 쓰지 않고 항상 새로 부른다.
+  const refetch = useCallback(() => fetchData(false), [fetchData]);
+
+  // 화면 위 "데이터 기준 시각·새로고침" 에 내 상태를 올린다. 화면에서 빠지면 지운다.
+  useEffect(() => {
+    setFreshEntry(idRef.current, { asOf: meta.asOf, tags: meta.tags, refreshing, refetch });
+  }, [meta, refreshing, refetch]);
+  useEffect(() => {
+    const id = idRef.current;
+    return () => setFreshEntry(id, null);
+  }, []);
+
+  return { data, loading, error, refetch, refreshing, asOf: meta.asOf };
 }

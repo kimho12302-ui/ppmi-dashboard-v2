@@ -4,11 +4,21 @@ import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
+import { tryRpc } from "@/lib/summary-rpc";
+
+/** monthly_summary_parts 응답. 각 행은 묶인 원본의 합계이고 n 은 묶인 원본 행 수. */
+interface MonthlyParts {
+  sales: { month: string; revenue: number; orders: number; n: number }[];
+  ads: { month: string; channel: string; spend: number; conversion_value: number; n: number }[];
+  gonggu: { month: string; channel: string; lineup: string | null; product: string; revenue: number; n: number }[];
+  cogs: { month: string; product: string; brand: string; channel: string; lineup: string | null; quantity: number; n: number }[];
+}
 import { isGongguInDailySales } from "@/lib/gonggu";
 import { kstDate, kstNow } from "@/lib/date";
+import { cachedGET } from "@/lib/api-cache";
 
 // Supabase anon key has max-rows=1000 per request. Use pagination to fetch all rows.
-export async function GET(request: NextRequest) {
+async function getImpl(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
   const year = sp.get("year") || kstNow().getUTCFullYear().toString();
@@ -22,54 +32,74 @@ export async function GET(request: NextRequest) {
     const todayStr = kstDate();
     const toDate = yearEnd < todayStr ? yearEnd : todayStr;
 
+    // ★ 아래 조회 6개는 서로 기다릴 이유가 없어 한 번에 동시에 보낸다(2026-10-14 속도 개선).
+    //   예전엔 7번을 차례로 기다려 다시 열어도 0.76~1.06초가 걸렸다. 조건·컬럼은 그대로다.
+
     // 자체매출만 집계: 공구(공동구매) 채널 제외. 공구는 별도 섹션에서만 표시.
     let salesQ = supabase.from("daily_sales").select("date,revenue,orders").gte("date", fromDate).lte("date", toDate).neq("channel", "total").not("channel", "like", "공구%");
     if (brand !== "all") { salesQ = salesQ.in("brand", expandBrands(brand)); }
     else { salesQ = salesQ.neq("brand", "all"); }
-    const sales = await fetchAll(salesQ);
 
     let adQ = supabase.from("daily_ad_spend").select("date,channel,spend,conversion_value").gte("date", fromDate).lte("date", toDate).not("channel", "like", "ga4_%");
     if (brand !== "all") { adQ = adQ.in("brand", expandBrands(brand)); }
     else { adQ = adQ.neq("brand", "all"); }
-    const ads = await fetchAll(adQ);
 
     // Fetch misc costs (dashboard API와 동일 테이블 사용: misc_costs)
     let miscQ = supabase.from("misc_costs").select("date,brand,amount").gte("date", fromDate).lte("date", toDate);
     if (brand !== "all") miscQ = miscQ.in("brand", expandBrands(brand));
-    const { data: miscData } = await miscQ;
 
     // Fetch shipping costs (dashboard API와 동일 테이블 사용: shipping_costs)
     let shipQ = supabase.from("shipping_costs").select("month,brand,total_cost").gte("month", fromDate.slice(0, 7)).lte("month", toDate.slice(0, 7));
     if (brand !== "all") shipQ = shipQ.in("brand", expandBrands(brand));
-    const { data: shipData } = await shipQ;
 
     // 공구 매출은 자체매출 집계에서 제외 (사용자 결정 2026-06-10: 자체만 합산, 공구 별도 표시).
     // 형식-A 공구(셀러가 smartstore로 판 공구)는 daily_sales에 smartstore로 섞여 channel 필터로 못 걸러짐
     // → product_sales(lineup 보유)에서 월별로 구해 차감.
     const needGonggu = brand === "balancelab" || brand === "all";
+
+    // Fetch product_sales for COGS matching
+    let cogsProdQ = supabase.from("product_sales").select("date,product,brand,quantity,channel,lineup").gte("date", fromDate).lte("date", toDate);
+    if (brand !== "all") cogsProdQ = cogsProdQ.in("brand", expandBrands(brand));
+
+    // ★ DB 합산 함수가 있으면 원본 행 네 묶음(매출·광고비·공구·원가)을 월 단위 합계로 한 번에 받는다
+    //   (2026-10-14). 필터·묶는 칸은 아래 옛 경로와 같고 날짜는 그 달 1일로 바꿔 아래 계산을 그대로 탄다.
+    //   함수가 없으면(SQL 실행 전) 옛 경로. 대조: scripts/verify-summary-rpc.mjs
+    const brandsParam = brand !== "all" ? expandBrands(brand) : null;
+    const [parts, miscRes, shipRes, productCostsRes] = await Promise.all([
+      tryRpc<MonthlyParts>("monthly_summary_parts", { p_from: fromDate, p_to: toDate, p_brands: brandsParam }),
+      miscQ,
+      shipQ,
+      // Fetch product costs for COGS
+      supabase.from("product_costs").select("product,brand,cost_price,manufacturing_cost,shipping_cost"),
+    ]);
+    const asRows = <T extends { month: string }>(rows: T[]) => rows.map((r) => ({ ...r, date: `${r.month}-01` }));
+    const [sales, ads, ps, cogsProdData] = parts
+      ? [asRows(parts.sales), asRows(parts.ads), needGonggu ? asRows(parts.gonggu) : [], asRows(parts.cogs)]
+      : await Promise.all([
+          fetchAll(salesQ),
+          fetchAll(adQ),
+          needGonggu
+            ? fetchAll(supabase.from("product_sales").select("date,channel,lineup,product,revenue").gte("date", fromDate).lte("date", toDate).eq("brand", "balancelab"))
+            : Promise.resolve([] as unknown[]),
+          fetchAll(cogsProdQ),
+        ]);
+    const miscData = miscRes.data;
+    const shipData = shipRes.data;
+    const productCostsData = productCostsRes.data;
+
     const formAByMonth = new Map<string, number>();
-    if (needGonggu) {
-      const ps = await fetchAll(supabase.from("product_sales").select("date,channel,lineup,product,revenue").gte("date", fromDate).lte("date", toDate).eq("brand", "balancelab"));
-      for (const r of ps as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
-        if (isGongguInDailySales(r)) {
-          const m = r.date.slice(0, 7);
-          formAByMonth.set(m, (formAByMonth.get(m) || 0) + Number(r.revenue || 0));
-        }
+    for (const r of ps as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
+      if (isGongguInDailySales(r)) {
+        const m = r.date.slice(0, 7);
+        formAByMonth.set(m, (formAByMonth.get(m) || 0) + Number(r.revenue || 0));
       }
     }
 
-    // Fetch product costs for COGS
-    const { data: productCostsData } = await supabase.from("product_costs").select("product,brand,cost_price,manufacturing_cost,shipping_cost");
     const costMap = new Map<string, number>();
     for (const pc of productCostsData || []) {
       // manufacturing_cost = 실제 원가 (cost_price는 판매가)
       costMap.set(`${pc.product}__${pc.brand}`, Number(pc.manufacturing_cost || 0));
     }
-
-    // Fetch product_sales for COGS matching
-    let cogsProdQ = supabase.from("product_sales").select("date,product,brand,quantity,channel,lineup").gte("date", fromDate).lte("date", toDate);
-    if (brand !== "all") cogsProdQ = cogsProdQ.in("brand", expandBrands(brand));
-    const cogsProdData = await fetchAll(cogsProdQ);
 
     // Group by month
     const months = new Map<string, { revenue: number; orders: number; adSpend: number; cv: number; miscCost: number; shipCost: number; cogs: number }>();
@@ -212,3 +242,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Failed to fetch monthly summary" }, { status: 500 });
   }
 }
+
+// 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_sales", "misc_costs", "product_costs", "product_sales", "shipping_costs"]);

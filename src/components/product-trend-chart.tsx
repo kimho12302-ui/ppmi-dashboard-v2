@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
+import { productSalesUrl } from "@/lib/api-urls";
 import { isGongguAggregate } from "@/lib/gonggu";
 import { bucketKey, bucketLabel, GRAN_LABELS, type Gran } from "@/lib/bucket";
 import { BRAND_LABELS } from "@/lib/types";
@@ -42,9 +43,7 @@ function daysBetween(from: string, to: string): string[] {
 }
 
 export function ProductTrendChart({ brand, from, to }: { brand: string; from: string; to: string }) {
-  const { data, loading, error } = useFetch<{ products: Row[] }>(
-    `/api/product-sales?brand=${brand || "all"}&from=${from}&to=${to}`,
-  );
+  const { data, loading, error } = useFetch<{ products: Row[] }>(productSalesUrl(brand, from, to));
   const [metric, setMetric] = useState<"revenue" | "quantity">("revenue");
   const span = daysBetween(from, to).length;
   const [gran, setGran] = useState<Gran | null>(null);
