@@ -51,7 +51,8 @@ async function getImpl(req: NextRequest) {
     if (brand !== "all") adQuery = adQuery.in("brand", expandBrands(brand));
     else adQuery = adQuery.neq("brand", "all");
 
-    let prevSalesQ = supabase.from("daily_sales").select("revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total").not("channel", "like", "공구%");
+    // 직전기간도 형식-A 공구를 날짜별로 빼려면 date·brand 가 필요하다(2026-10-15).
+    let prevSalesQ = supabase.from("daily_sales").select("date, brand, revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total").not("channel", "like", "공구%");
     if (brand !== "all") prevSalesQ = prevSalesQ.in("brand", expandBrands(brand));
     else prevSalesQ = prevSalesQ.neq("brand", "all");
 
@@ -73,10 +74,15 @@ async function getImpl(req: NextRequest) {
       ? fetchAll(supabase.from("product_sales").select("date,channel,lineup,product,revenue,quantity").gte("date", from).lte("date", to).eq("brand", "balancelab"))
       : Promise.resolve([] as unknown[]);
 
+    // 직전기간 형식-A 공구 원천: 이번 기간 gongguData 와 같은 조회를 직전기간으로(밸런스랩/전체일 때만).
+    const prevGongguPromise = (brand === "balancelab" || brand === "all")
+      ? fetchAll(supabase.from("product_sales").select("date,channel,lineup,product,revenue").gte("date", prevFrom).lte("date", prevTo).eq("brand", "balancelab"))
+      : Promise.resolve([] as unknown[]);
+
     // ── 모든 DB 호출을 1회 병렬 배치로 실행 (이전: 순차 12회 왕복) ──
     const [
       sales, adSpend, prevSales, prevAd, cogsProdData, prodData, gongguData,
-      productCostsRes, shippingRes, miscRes, funnelRes, targetRes,
+      productCostsRes, shippingRes, miscRes, funnelRes, targetRes, prevGongguData,
     ] = await Promise.all([
       fetchAll(salesQuery),
       fetchAll(adQuery),
@@ -90,6 +96,7 @@ async function getImpl(req: NextRequest) {
       supabase.from("misc_costs").select("*").gte("date", from).lte("date", to),
       supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to),
       supabase.from("monthly_targets").select("*").eq("month", currentMonth),
+      prevGongguPromise,
     ]);
     const productCostsData = productCostsRes.data;
     const shippingData = shippingRes.data;
@@ -185,13 +192,23 @@ async function getImpl(req: NextRequest) {
       if (isGongguInDailySales(r)) formAByDate.set((r as { date: string }).date, (formAByDate.get((r as { date: string }).date) || 0) + Number((r as { revenue: number }).revenue || 0));
     }
     // 헤드라인/트렌드/브랜드 집계에 쓰는 자체매출 보정본 (raw sales 반환값은 그대로 유지)
-    const adjSales = (sales || []).map((r) => {
-      if (r.brand === "balancelab") {
-        const g = formAByDate.get(r.date) || 0;
-        if (g > 0) return { ...r, revenue: Math.max(0, Number(r.revenue) - g) };
-      }
-      return r;
-    });
+    const subtractFormA = <T extends { brand: string; date: string; revenue: number }>(rows: T[], byDate: Map<string, number>): T[] =>
+      rows.map((r) => {
+        if (r.brand === "balancelab") {
+          const g = byDate.get(r.date) || 0;
+          if (g > 0) return { ...r, revenue: Math.max(0, Number(r.revenue) - g) };
+        }
+        return r;
+      });
+    const adjSales = subtractFormA(sales || [], formAByDate);
+
+    // ★ 직전기간도 같은 규칙으로 뺀다(2026-10-15 김호 결정). 예전엔 이번 기간만 빼서 밸런스랩 전기 대비가
+    //   공구가 많던 달 기준으로 부풀려 비교됐다. 같은 판정 함수(isGongguInDailySales)·같은 날짜 매칭.
+    const prevFormAByDate = new Map<string, number>();
+    for (const r of (prevGongguData || []) as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
+      if (isGongguInDailySales(r)) prevFormAByDate.set(r.date, (prevFormAByDate.get(r.date) || 0) + Number(r.revenue || 0));
+    }
+    const adjPrevSales = subtractFormA(prevSales || [], prevFormAByDate);
 
     // ── KPI 계산 ──
     // gongguSalesTotal은 더하지 않음: lineup 기반 공구 매출은 daily_sales smartstore에 이미 포함
@@ -211,7 +228,7 @@ async function getImpl(req: NextRequest) {
     const mer = totalMarketingCost > 0 ? totalRevenue / totalMarketingCost : 0; // MER = 매출/총마케팅비(매체+잡비)
     const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
-    const prevRevenue = (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0);
+    const prevRevenue = adjPrevSales.reduce((s, r) => s + Number(r.revenue), 0);
     const prevOrders = (prevSales || []).reduce((s, r) => s + Number(r.orders), 0);
     const prevNonGa4Ad = (prevAd || []).filter(r => !r.channel.startsWith("ga4_"));
     const prevAdSpendTotal = prevNonGa4Ad.reduce((s, r) => s + Number(r.spend), 0);
@@ -468,14 +485,14 @@ async function getImpl(req: NextRequest) {
     };
     const leanPrevSales = () => {
       let revenue = 0, orders = 0;
-      for (const r of prevSales || []) { revenue += r.revenue || 0; orders += r.orders || 0; }
+      for (const r of adjPrevSales) { revenue += r.revenue || 0; orders += r.orders || 0; }
       return [{ date: "", brand: "", channel: "", revenue, orders }];
     };
     const rawRows: Record<RawKey, () => unknown[]> = {
       sales: () => (lean ? leanSales() : adjSales),
       ads: () => adSpend || [],
       products: () => (lean ? leanProducts() : prodData || []),
-      prevSales: () => (lean ? leanPrevSales() : (prevSales || []).map(r => ({ ...r, date: "", brand: "", channel: "" }))),
+      prevSales: () => (lean ? leanPrevSales() : adjPrevSales.map(r => ({ ...r, date: "", brand: "", channel: "" }))),
       prevAds: () => prevAd || [],
     };
     const raw = Object.fromEntries(rawKeys.map((k) => [k, rawRows[k]()]));
