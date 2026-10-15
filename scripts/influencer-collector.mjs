@@ -46,6 +46,8 @@ const arg = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] :
 const ACCOUNT = arg("--account", "u1");
 const EXPECT = (arg("--expect", process.env.COLLECTOR_IG_HANDLE || "") || "").replace(/^@/, "").toLowerCase();
 const MAX_PAGES = Number(arg("--max-pages", "300"));
+// 하루에 새로 찾는 후보 수 상한 (2026-10-15 김호: 하루 30개, balancelab_official 로 수집)
+const MAX_NEW = Number(arg("--max-new", "30"));
 const DRY = args.includes("--dry-run");
 const OUT = arg("--out", "influencer-dry-run.json");
 const TAGS_ARG = arg("--tags", "");
@@ -55,7 +57,9 @@ const log = makeLog("collector.log");
 
 // ── 하루 열람 예산 ──
 let state = existsSync(STATE_FILE) ? JSON.parse(readFileSync(STATE_FILE, "utf8")) : {};
-if (state.date !== kstDate()) state = { date: kstDate(), pages: 0 };
+if (state.date !== kstDate()) state = { date: kstDate(), pages: 0, fresh: 0 };
+state.fresh ||= 0;
+const newLeft = () => MAX_NEW - state.fresh;
 const saveState = () => writeFileSync(STATE_FILE, JSON.stringify(state));
 const left = () => MAX_PAGES - state.pages;
 function spend(n) { state.pages += n; saveState(); }
@@ -247,6 +251,7 @@ async function main() {
   let summary = "";
   try {
     if (!DRY) await ensureTabs(s);
+    if (!FROM && newLeft() <= 0) { summary = `오늘 새 후보 상한(${MAX_NEW}) 채움`; return; }
     if (!FROM && left() <= 0) { summary = `오늘 열람 상한(${MAX_PAGES}) 소진`; return; }
 
     const tagTab = await readTab(s, SCHEMA.tags.tab);
@@ -279,6 +284,8 @@ async function main() {
     log(`시트에 이미 있는 핸들 ${known.size}개`);
     const found = new Map(); // handle → [{tag, href, caption, date}]
     for (const job of jobs) {
+      // 오늘 새 후보 상한을 이미 채울 만큼 모였으면 남은 태그는 대기로 둔다(다음 회차·다음 날)
+      if (found.size >= newLeft()) { log(`오늘 새 후보 상한(${MAX_NEW}) 만큼 모여 남은 태그는 다음에`); break; }
       try {
         if (job.row && !DRY) await setCells(s, SCHEMA.tags.tab, tagTab.header, job.row, { 상태: "수집 중", 오류: "" });
         const hrefs = listTagPosts(job.tag);
@@ -302,7 +309,7 @@ async function main() {
 
     const handles = Array.from(found.keys());
     let profiles = [];
-    try { profiles = readProfiles(handles.slice(0, Math.max(0, left()))); }
+    try { profiles = readProfiles(handles.slice(0, Math.max(0, Math.min(left(), newLeft())))); }
     catch (e) { log(`프로필 읽기 중단: ${e.message}`); if (!(e instanceof BudgetError || e instanceof WallError)) throw e; }
     rows = profiles.filter((p) => p.d).map((p) => analyzeProfile(p, found.get(p.u)));
     rows.sort((a, b) => b.점수 - a.점수);
@@ -329,6 +336,7 @@ async function main() {
           : { 상태: "완료", 오류: "", "마지막 수집": kstStamp(), "본 게시물": t.posts, "새 후보": added });
       }
     }
+    if (!DRY) { state.fresh += rows.length; saveState(); }
     summary = `태그 ${perTag.length}개, 새 후보 ${rows.length}명`;
   } catch (e) {
     summary = `실패: ${e.message}`;
@@ -336,7 +344,7 @@ async function main() {
     process.exitCode = 1;
   } finally {
     rmSync(LOCK_FILE, { force: true });
-    if (!DRY) await heartbeat(s, { "마지막 실행": kstStamp(), 결과: summary, "오늘 열람": `${state.pages}/${MAX_PAGES}`, "수집 계정": EXPECT, PC: process.env.COMPUTERNAME || "" }).catch((e) => log(`상태 기록 실패: ${e.message}`));
+    if (!DRY) await heartbeat(s, { "마지막 실행": kstStamp(), 결과: summary, "오늘 열람": `${state.pages}/${MAX_PAGES}`, "오늘 새 후보": `${state.fresh}/${MAX_NEW}`, "수집 계정": EXPECT, PC: process.env.COMPUTERNAME || "" }).catch((e) => log(`상태 기록 실패: ${e.message}`));
     log(`끝: ${summary} (오늘 열람 ${state.pages}/${MAX_PAGES})`);
   }
 }

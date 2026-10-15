@@ -98,8 +98,9 @@ export default function InfluencersPage() {
           <span><span className="text-muted-foreground">수집기 마지막 실행</span> <b>{col["마지막 실행"] || "아직 없음"}</b></span>
           {col["결과"] && <span className="text-muted-foreground">{col["결과"]}</span>}
           {col["오늘 열람"] && <span><span className="text-muted-foreground">오늘 열람</span> {col["오늘 열람"]}</span>}
+          {col["오늘 새 후보"] && <span><span className="text-muted-foreground">오늘 새 후보</span> {col["오늘 새 후보"]}</span>}
           {col["DM 워커 마지막 실행"] && <span><span className="text-muted-foreground">DM 워커</span> {col["DM 워커 마지막 실행"]} · 오늘 발송 {col["오늘 발송"]} · {col["DM 발송 계정"]}</span>}
-          <span className="text-xs text-muted-foreground">수집·초안·발송은 aside 가 켜진 PC 에서 돕니다. PC 가 꺼져 있으면 &lsquo;대기&rsquo;·&lsquo;승인&rsquo;으로 남습니다.</span>
+          <span className="text-xs text-muted-foreground">수집은 평일 10시·15시(하루 새 후보 30명까지), 초안·발송·회신은 평일 9~18시 매시 PC 에서 돕니다. PC 가 꺼져 있으면 &lsquo;대기&rsquo;·&lsquo;승인&rsquo;으로 남습니다.</span>
           {board?.sheetUrl && <a className="ml-auto underline text-xs" href={board.sheetUrl} target="_blank" rel="noreferrer">시트 열기</a>}
         </CardContent>
       </Card>
