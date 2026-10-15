@@ -64,6 +64,7 @@ function SalesPageInner() {
     sales: DailySales[];
     products: ProductSales[];
     prevSales: DailySales[];
+    blDaily?: { date: string; self: number; gonggu: number }[];
     gongguSalesTotal?: number;
     brandRevenueTrend?: { date: string; [brand: string]: number | string }[];
   }>(`/api/dashboard?${params}&raw=sales,products,prevSales&lean=1`);
@@ -86,11 +87,10 @@ function SalesPageInner() {
     return all.filter((r) => matchesBrand(r.brand, brand));
   }, [data, brand]);
 
-  const prevSales = useMemo(() => {
-    const all = data?.prevSales || [];
-    if (!brand || brand === "all") return all;
-    return all.filter((r) => matchesBrand(r.brand, brand));
-  }, [data, brand]);
+  // 직전 기간 매출은 서버가 이미 선택 브랜드로 걸러 보낸다(prevSalesQ: 같은 brand 파라미터, expandBrands).
+  // 서버는 이 행의 날짜·브랜드·판매처를 빈 값으로 보내므로, 여기서 브랜드로 다시 거르면 전부 빠져
+  // 브랜드를 고를 때마다 직전 기간이 0 이 됐다(2026-10-15 수정). 다시 거르지 않는다.
+  const prevSales = useMemo(() => data?.prevSales || [], [data]);
 
   /* KPI */
   const calcSalesKpi = (s: DailySales[]) => {
@@ -178,12 +178,20 @@ function SalesPageInner() {
   const [balanceTrendMode, setBalanceTrendMode] = useState<"daily" | "weekly" | "monthly">("weekly");
   const balanceTrendData = useMemo(() => {
     const map: Record<string, { self: number; gonggu: number }> = {};
-    for (const r of products) {
-      if (!r || r.brand !== "balancelab") continue;
-      const date = typeof r.date === "string" ? r.date : "";
+    // 날짜별 자체·공구 합계. 서버가 날짜 있는 밸런스랩 상품 행으로 미리 나눠 보낸다(blDaily, 2026-10-15).
+    // 예전에는 날짜 칸이 없는 상품 행으로 묶으려다 전부 건너뛰어 차트가 늘 비어 있었다.
+    // 공구 판정은 서버도 isGonggu(=isGongguRow) || isGongguAggregate 로 같다.
+    const days: { date: string; self: number; gonggu: number }[] = data?.blDaily
+      ?? products
+        .filter((r) => r && r.brand === "balancelab" && typeof r.date === "string")
+        .map((r) => {
+          const rev = Number(r.revenue) || 0;
+          const isG = isGongguRow(r) || isGongguAggregate(r);
+          return { date: r.date, self: isG ? 0 : rev, gonggu: isG ? rev : 0 };
+        });
+    for (const day of days) {
+      const date = day.date;
       if (!/^\d{4}-\d{2}-\d{2}/.test(date)) continue;
-      // 공구 분류: 셀러 row(A/B/D) + "공구 합계" 일별 row(C) 모두 공구로
-      const isG = isGongguRow(r) || isGongguAggregate(r);
       let key: string;
       if (balanceTrendMode === "monthly") {
         key = date.slice(0, 7);
@@ -197,12 +205,11 @@ function SalesPageInner() {
         key = date.slice(5);
       }
       if (!map[key]) map[key] = { self: 0, gonggu: 0 };
-      const rev = Number(r.revenue) || 0;
-      if (isG) map[key].gonggu += rev;
-      else map[key].self += rev;
+      map[key].gonggu += day.gonggu;
+      map[key].self += day.self;
     }
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([period, v]) => ({ period, ...v }));
-  }, [products, balanceTrendMode]);
+  }, [data?.blDaily, products, balanceTrendMode]);
 
   /* 공구별 (밸런스랩) */
   const gongguData = useMemo(() => {

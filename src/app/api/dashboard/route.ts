@@ -480,8 +480,29 @@ async function getImpl(req: NextRequest) {
     };
     const raw = Object.fromEntries(rawKeys.map((k) => [k, rawRows[k]()]));
 
+    // ★ 밸런스랩 자체 vs 공구 일별 합계 (2026-10-15, lean 일 때만, /sales 차트용).
+    //   그 차트는 상품 행의 날짜로 주·월을 묶는데, 위 상품 조회(prodQ)에는 date 칸이 없어 늘 비어 있었다.
+    //   날짜가 있는 밸런스랩 상품 행(gongguData: product_sales, brand=balancelab, 같은 기간)으로
+    //   날짜마다 자체·공구 매출만 더해 보낸다. 공구 판정은 화면과 같은 isGonggu || isGongguAggregate.
+    //   브랜드가 밸런스랩·전체가 아니면 gongguData 가 비어 빈 배열이다(화면도 원래 밸런스랩 행만 그린다).
+    const blDaily = lean
+      ? (() => {
+          const m = new Map<string, { date: string; self: number; gonggu: number }>();
+          for (const r of (gongguData || []) as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
+            if (typeof r.date !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(r.date)) continue;
+            const g = m.get(r.date) || { date: r.date, self: 0, gonggu: 0 };
+            const rev = Number(r.revenue) || 0;
+            if (isGonggu(r) || isGongguAggregate(r)) g.gonggu += rev;
+            else g.self += rev;
+            m.set(r.date, g);
+          }
+          return Array.from(m.values()).sort((a, b) => a.date.localeCompare(b.date));
+        })()
+      : undefined;
+
     return NextResponse.json({
       ...raw,
+      ...(blDaily ? { blDaily } : {}),
       // Computed KPI
       kpi: {
         revenue: totalRevenue, revenuePrev: prevRevenue,
