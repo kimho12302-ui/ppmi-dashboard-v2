@@ -29,7 +29,7 @@ node scripts/influencer-collector.mjs --expect <핸들> --from-json dry.json
 ```
 
 - `--expect`: 로그인된 인스타 계정이 이것과 다르면 멈춘다. 브랜드 계정으로 긁는 사고를 막는다
-- 하루 열람 상한 300페이지(`--max-pages`). 태그 하나에 약 40페이지, 약 4분
+- 하루 새 후보 30명(`--max-new`, 2026-10-15 김호), 하루 열람 80페이지(`--max-pages 80`). 수집 계정은 balancelab_official(aside u0, 김호 결정). 태그 하나에 약 40페이지, 약 4분
 - 상태·로그: `~/.ppmi-influencer-collector/` (`state.json`, `collector.log`)
 - 서비스계정 키: `~/.naver-searchad/google-service-account.json`
 
