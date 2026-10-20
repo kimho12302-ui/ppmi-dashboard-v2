@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { SortTable, type SortCol } from "@/components/sort-table";
+import { NaverAddKeywordCard } from "@/components/add-keyword-candidates";
 
 // 키워드 탭 > 네이버 검색어. 사람들이 실제로 친 검색어(등록 키워드가 아님). 2026-09-18 신설.
 // 네이버는 **파워링크 검색어 단위 전환을 주지 않는다.** 구매·ROAS 는 쇼핑검색에만 있다. 파워링크 전환은
@@ -185,6 +186,9 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
                   cols={[nameCol("검색어"), { key: "sub", label: "상품", value: (r) => r.sub || "", render: (r) => r.sub || "", left: true }, ...METRIC_COLS]} />
               </CardContent></Card>
             )}
+
+            {/* 추가할 검색어(2026-10-20). 위 유형·상품 선택과 무관하게 이 브랜드 전체를 본다. */}
+            <NaverAddKeywordCard brand={effective} from={from} to={to} />
 
             <div ref={kwRef} className="scroll-mt-4">
               <Card><CardContent className="p-4 space-y-3">

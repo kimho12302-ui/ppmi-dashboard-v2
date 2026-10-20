@@ -5,6 +5,7 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
+import { CoupangAddKeywordCard } from "@/components/add-keyword-candidates";
 
 // 키워드 탭 > 쿠팡 광고 키워드. 원천 raw_coupang_keyword(쿠팡 예약 일간 보고서, 매일 07:36 수집).
 // 쿠팡은 1일·14일 두 기준으로 전환을 준다. 1일은 광고 직후 산 것, 14일은 2주 안에 산 것까지다.
@@ -155,6 +156,9 @@ export function CoupangKeywordSection({ brand, from, to }: { brand: string; from
               <SortTable rows={waste} cols={[nameCol("키워드"), ...METRIC_COLS]} initial="spend" maxHeight={320} />
             </CardContent></Card>
           )}
+
+          {/* 추가할 키워드(2026-10-20). 위 상품 선택과 무관하게 검색 영역 전체를 본다. */}
+          <CoupangAddKeywordCard from={from} to={to} />
 
           <div ref={kwRef} className="scroll-mt-4">
             <Card><CardContent className="p-4 space-y-3">
