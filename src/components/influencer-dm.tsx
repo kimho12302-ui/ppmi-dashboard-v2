@@ -4,6 +4,7 @@
 // - DmSettingsPanel: 제안 조건(공구/협찬, 공구가·수수료 언급 여부와 값, 참고 메시지). PC 의 DM 워커가 초안을 쓸 때 읽는다
 // - DmEditor: 후보 한 명의 맞춤 초안을 고치고 「발송 승인」 한다. 대시보드는 직접 보내지 않는다.
 //   승인된 행만 PC 워커가 aside 로 보낸다(승인 후 24시간 안, 하루 상한, 같은 사람 재발송 차단).
+// - 「바로 고치기」(2026-10-21): Claude API 로 그 자리에서 고친다(src/lib/dm-fix.ts). 키가 없으면 PC 워커가 다음 정시에 다시 쓴다.
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -16,7 +17,11 @@ async function post(url: string, body: unknown) {
   const j = await r.json().catch(() => ({}));
   if (r.status === 401) { window.location.href = "/login?next=/influencers"; throw new Error("로그인이 필요합니다"); }
   if (!r.ok) throw new Error(j.error || `요청 실패 (${r.status})`);
+  return j;
 }
+
+// 인스타 DM 입력칸은 공백 포함 1,000자에서 자른다(scripts/lib/dm-rules.mjs 의 IG_DM_MAX 와 같은 값)
+const IG_DM_MAX = 1000;
 
 const btn = "rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-40";
 const YESNO = ["체험 키트 제공", "공구가 언급", "수수료 언급"];
@@ -91,16 +96,33 @@ const DM_STYLE: Record<string, string> = {
 
 export function DmEditor({ row, onChanged }: { row: Row; onChanged: () => void }) {
   const h = row["핸들"];
-  const st = row["DM 상태"] || (row["상태"] === "후보" ? "초안 대기" : "");
+  const [stLocal, setStLocal] = useState("");
+  const st = stLocal || row["DM 상태"] || (row["상태"] === "후보" ? "초안 대기" : "");
   const [text, setText] = useState(row["DM 초안"] || "");
   const [instr, setInstr] = useState("");
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
+  const [note, setNote] = useState("");
   // 보낸 지 3달(90일)이 안 됐으면 잠근다. 지나면 다시 초안을 쓰고 보낼 수 있다
   const m = String(row["DM 발송"] || "").match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/);
   const sinceSent = m ? (Date.now() - Date.parse(m[1].replace(" ", "T") + ":00+09:00")) / 86400000 : null;
   const sent = sinceSent !== null && sinceSent < 90;
   const dirty = text !== (row["DM 초안"] || "");
+  const tooLong = text.length > IG_DM_MAX;
+
+  // Claude API 로 그 자리에서 고친다. 키가 없으면 서버가 지시만 남기고 PC 워커가 다음 정시에 다시 쓴다
+  async function fixNow() {
+    setBusy("fix"); setMsg(""); setNote("");
+    try {
+      const j = await post("/api/influencers/dm", { handle: h, action: "fix", instruction: instr, ...(text ? { text } : {}) });
+      // 대체 경로에서는 목록을 다시 읽지 않는다(다시 읽으면 이 칸이 새로 그려져 안내 문구가 사라진다). 상태만 여기서 바꿔 보여 준다
+      if (j.fallback) { setNote(j.message || "API 키가 없어 다음 정시에 다시 씁니다"); setStLocal("초안 대기"); return; }
+      setText(j.text || "");
+      if (j.errors) setMsg(j.errors);
+      onChanged();
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setBusy(""); }
+  }
 
   async function act(action: string, extra: Record<string, string> = {}) {
     if (action === "approve" && !window.confirm(`@${h} 에게 이 메시지를 보내도록 승인할까요?\n\nPC 의 DM 워커가 다음 회차에 aside 로 보냅니다. 보낸 뒤에는 되돌릴 수 없습니다.`)) return;
@@ -125,8 +147,16 @@ export function DmEditor({ row, onChanged }: { row: Row; onChanged: () => void }
       {st === "초안 대기" && !row["DM 초안"] ? (
         <p className="text-xs text-muted-foreground">PC 의 DM 워커가 다음 회차에 이 계정의 소개글·최근 게시물을 읽고 맞춤 초안을 씁니다.</p>
       ) : (
-        <textarea className="w-full min-h-[160px] rounded border bg-background px-2 py-1.5 text-sm leading-relaxed" value={text}
-          onChange={(e) => setText(e.target.value)} disabled={sent || st === "승인"} />
+        <div className="space-y-1">
+          <textarea className="w-full min-h-[160px] rounded border bg-background px-2 py-1.5 text-sm leading-relaxed" value={text}
+            onChange={(e) => setText(e.target.value)} disabled={sent || st === "승인" || busy === "fix"} />
+          <p className={cn("text-xs text-right tabular-nums", tooLong ? "text-red-500 font-medium" : "text-muted-foreground")}>
+            {text.length.toLocaleString()}/{IG_DM_MAX.toLocaleString()}자{tooLong && " · 인스타 DM 은 1,000자에서 잘려 보낼 수 없습니다. 줄여 주세요"}
+          </p>
+        </div>
+      )}
+      {st === "초안 대기" && row["DM 초안"] && !note && (
+        <p className="text-xs text-muted-foreground">PC 의 DM 워커가 다음 정시에 프로필을 다시 읽고 초안을 새로 씁니다.</p>
       )}
       {!sent && (
         <div className="flex flex-wrap items-center gap-2">
@@ -134,19 +164,30 @@ export function DmEditor({ row, onChanged }: { row: Row; onChanged: () => void }
             <button className={cn(btn, "border")} disabled={!!busy || !dirty} onClick={() => act("save", { text })}>{busy === "save" ? "저장 중…" : "초안 저장"}</button>
           )}
           {st !== "승인" && text && row["상태"] === "후보" && (
-            <button className={cn(btn, "text-white")} style={{ background: "var(--primary)" }} disabled={!!busy} onClick={() => act("approve", { text })}>
+            <button className={cn(btn, "text-white")} style={{ background: "var(--primary)" }} disabled={!!busy || tooLong}
+              title={tooLong ? "1,000자를 넘으면 보낼 수 없습니다" : undefined} onClick={() => act("approve", { text })}>
               {busy === "approve" ? "승인 중…" : "발송 승인"}
             </button>
           )}
           {st === "승인" && <button className={cn(btn, "border")} disabled={!!busy} onClick={() => act("cancel")}>승인 취소</button>}
           {st !== "승인" && (
             <>
-              <input className="flex-1 min-w-[180px] rounded border bg-background px-2 py-1 text-xs" placeholder="다시 쓸 때 지시 (예: 육아 얘기로 시작, 더 짧게)" value={instr} onChange={(e) => setInstr(e.target.value)} />
-              <button className={cn(btn, "border")} disabled={!!busy} onClick={() => act("redraft", { instruction: instr })}>초안 다시 쓰기</button>
+              <input className="flex-1 min-w-[180px] rounded border bg-background px-2 py-1 text-xs" placeholder="고칠 지시 (예: 육아 얘기로 시작, 더 짧게)" value={instr} onChange={(e) => setInstr(e.target.value)} />
+              {text && (
+                <button className={cn(btn, "border border-violet-500/50 text-violet-700 dark:text-violet-400")} disabled={!!busy} onClick={fixNow}
+                  title="지금 초안과 시트에 있는 계정 정보로 Claude 가 바로 고칩니다. 프로필은 다시 읽지 않습니다">
+                  {busy === "fix" ? "고치는 중…" : "바로 고치기"}
+                </button>
+              )}
+              <button className={cn(btn, "border")} disabled={!!busy} onClick={() => act("redraft", { instruction: instr })}
+                title="PC 의 DM 워커가 다음 정시에 인스타 프로필을 다시 읽고 새로 씁니다">
+                {text ? "프로필 다시 읽고 새로 쓰기 (다음 정시)" : "초안 다시 쓰기"}
+              </button>
             </>
           )}
         </div>
       )}
+      {note && <p className="text-xs text-amber-700 dark:text-amber-400">{note}</p>}
       {msg && <p className="text-xs text-red-500">{msg}</p>}
     </div>
   );

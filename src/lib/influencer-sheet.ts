@@ -111,12 +111,13 @@ async function findCandidate(handle: string) {
   const idx = rows.findIndex((row) => (row[header.indexOf("핸들")] || "").toLowerCase() === handle.toLowerCase());
   if (idx < 0) throw new Error(`시트에서 ${handle} 을 찾지 못했습니다`);
   const get = (k: string) => rows[idx][header.indexOf(k)] || "";
+  const row: Row = Object.fromEntries(header.map((h, i) => [h, rows[idx][i] ?? ""]));
   const write = async (patch: Row) => {
     const data = Object.entries(patch).filter(([k, v]) => v !== undefined && header.includes(k))
       .map(([k, v]) => ({ range: `${q(tab)}!${col(header.indexOf(k))}${idx + 2}`, values: [[v]] }));
     await sheets().spreadsheets.values.batchUpdate({ spreadsheetId: SHEET_ID, requestBody: { valueInputOption: "RAW", data } });
   };
-  return { get, write };
+  return { get, write, row };
 }
 
 /** 후보 한 명의 상태·메모를 바꾼다. */
@@ -140,6 +141,40 @@ export async function saveSettings(items: { 항목: string; 값: string }[]) {
 }
 
 export type DmAction = "save" | "approve" | "cancel" | "redraft";
+
+/** 「DM_설정」 항목 → 값. 탭이 없거나 항목이 없으면 기본값 */
+export async function readDmSettings(): Promise<Record<string, string>> {
+  const tab = schema.dmSettings.tab;
+  const meta = await sheets().spreadsheets.get({ spreadsheetId: SHEET_ID, fields: "sheets.properties.title" });
+  const saved: Record<string, string> = {};
+  if ((meta.data.sheets || []).some((x) => x.properties?.title === tab)) {
+    const r = await sheets().spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${q(tab)}!A1:C` });
+    const [header = [], ...rows] = (r.data.values || []) as string[][];
+    const ki = header.indexOf("항목"), vi = header.indexOf("값");
+    for (const row of rows) if (row[ki]) saved[row[ki]] = row[vi] ?? "";
+  }
+  return Object.fromEntries(schema.dmSettings.defaults.map(([k, v]) => [k, k in saved ? saved[k] : v]));
+}
+
+export type Candidate = Awaited<ReturnType<typeof findCandidate>>;
+
+/** 「바로 고치기」 준비. 90일 잠금을 확인하고 그 행(전체 칸)을 돌려준다 */
+export async function loadForFix(handle: string): Promise<Candidate> {
+  const c = await findCandidate(handle);
+  const since = daysSinceSent(c.get("DM 발송"));
+  if (since !== null && since < RESEND_DAYS) throw new Error(`${Math.floor(since)}일 전에 보낸 계정입니다. ${RESEND_DAYS}일이 지나야 다시 보낼 수 있습니다`);
+  return c;
+}
+
+/** 「바로 고치기」 결과 저장. 고친 글은 다시 승인해야 보내므로 승인 표시를 지우고 「초안」 으로 둔다 */
+export async function saveFixedDraft(c: Candidate, text: string, instruction: string, errors: string) {
+  return c.write({ "DM 초안": text.slice(0, 2000), "DM 상태": "초안", "DM 승인": "", "DM 지시": instruction.slice(0, 300), "DM 오류": errors });
+}
+
+/** 「바로 고치기」 를 못 할 때(API 키 없음): 지시만 남기고 PC 워커가 다음 정시에 다시 쓴다. 승인이 있으면 지운다 */
+export async function queueRedraft(c: Candidate, instruction: string) {
+  return c.write({ "DM 상태": "초안 대기", "DM 승인": "", "DM 지시": instruction.slice(0, 300), "DM 오류": "" });
+}
 
 /**
  * 후보 한 명의 DM 을 고친다.
