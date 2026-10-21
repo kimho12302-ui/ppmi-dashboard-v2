@@ -39,6 +39,10 @@ const PREVIEW = args.includes("--preview"); // --only 계정의 초안을 만들
 const MAX_DRAFTS = Number(arg("--max-drafts", "5"));
 const MAX_SENDS_PER_RUN = 3;
 const APPROVAL_TTL_H = 24;
+// 인스타 DM 입력칸은 공백·줄바꿈 포함 1,000자에서 자른다(2026-10-20 실패 6건이 전부 정확히 1,000자에서 끊김).
+// 초안은 900자 안으로 쓰게 하고, 1,000자를 넘는 초안은 보내지 않고 다시 쓰게 돌린다
+const IG_DM_MAX = 1000;
+const DRAFT_TARGET = 900;
 const RESEND_DAYS = 90; // 같은 사람에게 다시 보낼 수 있는 텀 (2026-10-14 김호: 3달)
 const CLAUDE = process.env.CLAUDE_EXE || "C:/Users/harry/.local/bin/claude.exe";
 
@@ -130,7 +134,8 @@ ${(ctx.posts || []).map((p, i) => `${i + 1}. ${p.desc}`).join("\n")}
 
 ## 출력
 - DM 본문만 출력한다. 따옴표·제목·설명·마크다운 없이
-- 길이·구성·이모지는 참고 메시지와 '추가 요청'을 따른다. 줄바꿈으로 읽기 쉽게
+- 길이: 공백·줄바꿈 포함 ${DRAFT_TARGET}자 이내. 인스타 DM 은 ${IG_DM_MAX}자를 넘으면 잘려서 보낼 수 없다. 참고 메시지가 더 길어도 이 길이를 지킨다
+- 구성·이모지는 참고 메시지와 '추가 요청'을 따른다. 줄바꿈으로 읽기 쉽게
 - 상대 이름은 소개글·이름에서 자연스럽게 부를 수 있으면 부르고, 애매하면 "님"으로
 - 참고 메시지의 [대괄호] 자리는 이 계정에 맞춰 채우고 대괄호는 남기지 않는다
 - 마지막은 부담 없이 회신을 청하는 한 줄
@@ -149,6 +154,17 @@ function callClaude(prompt) {
 
 async function doDrafts(s, cand, cfg) {
   const facts = readFileSync(join(ROOT, "scripts/lib/dm-facts.md"), "utf8");
+  // 승인 전 초안 중 1,000자를 넘는 것은 그대로 승인해도 못 보낸다. 다시 쓰도록 「초안 대기」로 돌린다
+  if (!PREVIEW) {
+    for (const r of cand.rows) {
+      const d = r.obj["DM 초안"] || "";
+      if (r.obj["DM 상태"] === "초안" && d.length > IG_DM_MAX) {
+        await setCells(s, C.tab, cand.header, r.rowNo, { "DM 상태": "초안 대기", "DM 오류": `초안이 ${d.length}자라 인스타 DM(${IG_DM_MAX}자)에 다 안 들어감. 다시 씀` });
+        r.obj["DM 상태"] = "초안 대기";
+        log(`초안: @${r.obj["핸들"]} ${d.length}자 → 다시 쓰도록 돌림`);
+      }
+    }
+  }
   const targets = PREVIEW ? cand.rows.filter((r) => r.obj["핸들"].toLowerCase() === ONLY) : cand.rows.filter((r) => r.obj["상태"] === "후보" && ["", "초안 대기"].includes(r.obj["DM 상태"]) && !(daysSince(sentAt(r.obj["DM 발송"])) < RESEND_DAYS))
     .filter((r) => !ONLY || r.obj["핸들"].toLowerCase() === ONLY).slice(0, MAX_DRAFTS);
   for (const t of targets) {
@@ -163,11 +179,22 @@ async function doDrafts(s, cand, cfg) {
         text = callClaude(`${buildPrompt(t.obj, ctx, cfg, facts)}\n\n## 주의\n앞 초안에 금지 표현이 있었다: ${hit.join(", ")}. 빼고 다시 쓴다.`);
         hit = BANNED.filter((re) => re.test(text)).map(String);
       }
+      if (text.length > IG_DM_MAX) {
+        log(`초안: @${h} ${text.length}자 → 줄여 다시 씀`);
+        const shorter = callClaude(`${buildPrompt(t.obj, ctx, cfg, facts)}
+
+## 주의
+앞 초안이 공백 포함 ${text.length}자였다. 인스타 DM 은 ${IG_DM_MAX}자에서 잘린다. ${DRAFT_TARGET}자 이내로 줄여 다시 쓴다.`);
+        const shorterHit = BANNED.filter((re) => re.test(shorter)).map(String);
+        if (shorter.length <= IG_DM_MAX && shorterHit.length <= hit.length) { text = shorter; hit = shorterHit; }
+      }
+      const tooLong = text.length > IG_DM_MAX ? `${text.length}자라 인스타 DM(${IG_DM_MAX}자)에 다 안 들어감, 손으로 줄일 것` : "";
       if (PREVIEW) { console.log(`
 ----- @${h} 초안 미리보기 (시트에 안 씀) -----
 ${text}
------ 금지 표현: ${hit.join(" ") || "없음"}`); continue; }
-      await setCells(s, C.tab, cand.header, t.rowNo, { "DM 초안": text, "DM 상태": "초안", "DM 오류": hit.length ? `금지 표현 남음, 손으로 고칠 것: ${hit.join(" ")}` : "" });
+----- 금지 표현: ${hit.join(" ") || "없음"} · 길이 ${text.length}자`); continue; }
+      const errs = [hit.length ? `금지 표현 남음, 손으로 고칠 것: ${hit.join(" ")}` : "", tooLong].filter(Boolean).join(" / ");
+      await setCells(s, C.tab, cand.header, t.rowNo, { "DM 초안": text, "DM 상태": "초안", "DM 오류": errs });
       log(`초안: @${h} 완료 (${text.length}자)`);
     } catch (e) {
       await setCells(s, C.tab, cand.header, t.rowNo, { "DM 상태": "초안 대기", "DM 오류": `초안 실패: ${e.message.slice(0, 200)}` });
@@ -251,6 +278,13 @@ async function doSends(s, cand) {
     if (!(Date.now() - at < APPROVAL_TTL_H * 3600000)) {
       await setCells(s, C.tab, cand.header, r.rowNo, { "DM 상태": "초안", "DM 오류": `승인 만료(${APPROVAL_TTL_H}시간 안에 발송 못 함). 다시 승인하세요` });
       log(`발송: @${h} 승인 만료`);
+      continue;
+    }
+    const draftLen = (r.obj["DM 초안"] || "").length;
+    if (draftLen > IG_DM_MAX) {
+      // 대화창을 열기 전에 거른다(10-20 에는 열고 1,000자까지 입력한 뒤에야 실패를 알았다)
+      await setCells(s, C.tab, cand.header, r.rowNo, { "DM 상태": "초안 대기", "DM 오류": `승인됐지만 초안이 ${draftLen}자라 인스타 DM(${IG_DM_MAX}자)에 다 안 들어감. 다시 써서 승인 필요` });
+      log(`발송: @${h} ${draftLen}자라 보내지 않고 다시 쓰도록 돌림`);
       continue;
     }
     if (st.sentToday >= DAILY_CAP) { log(`발송: 하루 상한 ${DAILY_CAP} 도달, 남은 승인은 다음 회차`); break; }
