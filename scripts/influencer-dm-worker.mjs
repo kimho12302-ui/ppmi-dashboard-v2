@@ -104,7 +104,11 @@ async function doDrafts(s, cand, cfg) {
   if (!PREVIEW) {
     for (const r of cand.rows) {
       const d = r.obj["DM 초안"] || "";
-      if (r.obj["DM 상태"] === "초안" && d.length > IG_DM_MAX) {
+      // 상태가 「후보」인 행만(제외·컨택함 행은 건드리지 않는다, 10-21 첫 회차에 5행을 잘못 돌림).
+      // 「실패」도 포함: 10-20 에 1,000자에서 끊긴 6건. 단 「전송 확인 실패」는 잘린 글이 실제로 나갔을 수 있어 사람이 본다
+      const st0 = r.obj["DM 상태"];
+      const retry = st0 === "초안" || (st0 === "실패" && !/^전송 확인 실패/.test(r.obj["DM 오류"] || ""));
+      if (r.obj["상태"] === "후보" && retry && d.length > IG_DM_MAX) {
         await setCells(s, C.tab, cand.header, r.rowNo, { "DM 상태": "초안 대기", "DM 오류": `초안이 ${d.length}자라 인스타 DM(${IG_DM_MAX}자)에 다 안 들어감. 다시 씀` });
         r.obj["DM 상태"] = "초안 대기";
         log(`초안: @${r.obj["핸들"]} ${d.length}자 → 다시 쓰도록 돌림`);
