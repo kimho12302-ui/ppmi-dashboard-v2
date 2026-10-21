@@ -310,16 +310,50 @@ export function buildPowerlink(account: NaverAccount, entries: SourceEntry[], re
 }
 
 // ── 쿠팡 후보 (1-4절) ──────────────────────────────────────────
-/** coupang_keyword_add_source 의 candidates 한 줄. */
+// 2026-10-21 캠페인·광고유형 판정 추가 (docs/sql/2026-10-21-coupang-ad-type.sql).
+//   캠페인 칸이 비어 있던 원인은 수집기였다(일간 보고서 머리글 「캠페인」을 못 읽음). 10-21 고쳐 09-18~10-20 을 다시 넣었다.
+//   수동 캠페인 여부는 보고서 「광고유형」으로 가린다. '매출 최적화' 가 아닌 광고유형 행이 있으면 수동으로 본다.
+//   ★ 보고서에는 노출이 난 행만 나온다. 수동 캠페인에 등록했지만 노출 0 인 키워드는 안 보인다.
+//     그래서 "수동 캠페인 미등록 후보" 는 "수동 캠페인에서 노출된 행이 없음" 이지 "등록 안 됨 확정" 이 아니다.
+export const COUPANG_AUTO_AD_TYPE = "매출 최적화";
+export const COUPANG_UNCOLLECTED = "(미수집)";
+
+/** coupang_keyword_add_source 의 candidates 한 줄. campaign·ad_types·manual_hit 은 10-21 SQL 이후에만 온다. */
 export interface CoupangSource {
   keyword_norm: string; keyword: string; product: string;
   impressions: number; clicks: number; spend: number; orders_1d: number; orders_14d: number;
   conv_sales_14d: number; order_days: number;
+  campaign?: string | null; ad_types?: string[] | null; manual_hit?: boolean | null;
 }
+
+/** 기간 전체 광고유형 분포로 판정 가능 여부를 정한다. */
+export interface CoupangAdTypeSummary {
+  collected: boolean;        // 광고유형이 채워진 행이 하나라도 있음
+  manualRows: number;        // 매출 최적화가 아닌 광고유형 행 수
+  uncollectedRows: number;   // 광고유형이 빈 행 수(칸 생기기 전에 넣고 다시 안 넣은 행)
+  byType: Record<string, number>;
+}
+
+/** ad_type_rows 가 없으면(10-21 SQL 실행 전) 미수집으로 본다. */
+export function summarizeCoupangAdTypes(adTypeRows: Record<string, number> | null | undefined): CoupangAdTypeSummary {
+  const byType: Record<string, number> = {};
+  for (const [k, v] of Object.entries(adTypeRows || {})) byType[k] = Number(v) || 0;
+  const typed = Object.keys(byType).filter((k) => k !== COUPANG_UNCOLLECTED);
+  return {
+    collected: typed.length > 0,
+    manualRows: typed.filter((k) => k !== COUPANG_AUTO_AD_TYPE).reduce((a, k) => a + byType[k], 0),
+    uncollectedRows: byType[COUPANG_UNCOLLECTED] || 0,
+    byType,
+  };
+}
+
+export type CoupangState = "광고유형 미수집" | "수동 캠페인에서 노출된 적 있음" | "수동 캠페인 미등록 후보";
+
 export interface CoupangCandidate {
   key: string; keyword: string; norm: string; tier: Tier;
   impressions: number; clicks: number; spend: number; orders: number; orders_1d: number; sales: number;
-  order_days: number; product: string; action: string; order: number;
+  order_days: number; product: string; campaign: string; adTypes: string[]; manualHit: boolean;
+  state: CoupangState; action: string; order: number;
 }
 
 /** 쿠팡 상품명은 "이름,옵션,옵션,..." 꼴이다. 첫 조각만 보인다. */
@@ -327,7 +361,19 @@ export function shortCoupangProduct(p: string): string {
   return (p || "").split(",")[0].trim() || "(상품 없음)";
 }
 
-export function buildCoupang(rows: CoupangSource[]): CoupangCandidate[] {
+function coupangState(collected: boolean, manualHit: boolean): CoupangState {
+  if (!collected) return "광고유형 미수집";
+  return manualHit ? "수동 캠페인에서 노출된 적 있음" : "수동 캠페인 미등록 후보";
+}
+
+function coupangAction(state: CoupangState, orders: number): string {
+  const base = state === "광고유형 미수집" ? "수동 키워드 후보(수동 캠페인 여부 미확인)"
+    : state === "수동 캠페인에서 노출된 적 있음" ? "수동 캠페인에 이미 있을 수 있음, 광고센터에서 확인"
+    : "수동 키워드 후보";
+  return orders === 1 ? `${base}, 주문 1건이라 우연 가능` : base;
+}
+
+export function buildCoupang(rows: CoupangSource[], adTypes: CoupangAdTypeSummary = summarizeCoupangAdTypes(null)): CoupangCandidate[] {
   return rows
     .filter((r) => Number(r.orders_14d) >= COUPANG_MIN_ORDERS)
     .map((r) => {
@@ -335,12 +381,17 @@ export function buildCoupang(rows: CoupangSource[]): CoupangCandidate[] {
       const tier: Tier = hasToken(norm, OWN_TOKENS.main) ? "자사" : "일반";
       const orders = Number(r.orders_14d) || 0;
       const sales = Number(r.conv_sales_14d) || 0;
+      const manualHit = adTypes.collected && r.manual_hit === true;
+      const state = coupangState(adTypes.collected, manualHit);
       return {
         key: `coupang|${norm}`, keyword: r.keyword, norm, tier,
         impressions: Number(r.impressions) || 0, clicks: Number(r.clicks) || 0, spend: Number(r.spend) || 0,
         orders, orders_1d: Number(r.orders_1d) || 0, sales, order_days: Number(r.order_days) || 0,
         product: shortCoupangProduct(r.product),
-        action: orders === 1 ? "수동 키워드 후보(등록 여부 미확인), 주문 1건이라 우연 가능" : "수동 키워드 후보(등록 여부 미확인)",
+        campaign: (r.campaign || "").trim() || "-",
+        adTypes: Array.isArray(r.ad_types) ? r.ad_types : [],
+        manualHit, state,
+        action: coupangAction(state, orders),
         order: orderValue(tier, orders, sales),
       };
     });

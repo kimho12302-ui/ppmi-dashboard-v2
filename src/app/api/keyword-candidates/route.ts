@@ -5,14 +5,15 @@ import { cachedGET } from "@/lib/api-cache";
 import { kstDate } from "@/lib/date";
 import {
   GROUP_CAMPAIGNS, SHOP_MIN_PURCHASES, PL_MIN_CLICKS_OWN, COUPANG_MIN_ORDERS,
-  buildRegIndex, buildHolds, buildShopping, buildPowerlink, buildCoupang,
+  buildRegIndex, buildHolds, buildShopping, buildPowerlink, buildCoupang, summarizeCoupangAdTypes,
   type NaverAccount, type RegKeyword, type HoldRule, type ChangeLogRow, type SourceEntry,
   type NaverCandidate, type CoupangSource,
 } from "@/lib/add-keywords";
 
 // 키워드 탭 「추가할 키워드」 칸. 2026-10-20 신설.
 //   channel=naver   네이버 쇼핑 구매어 → 파워링크 등록 후보 + 파워링크 클릭어 → 등록 후보
-//   channel=coupang 쿠팡 검색 영역 주문어 → 수동 키워드 후보(등록 여부 미확인)
+//   channel=coupang 쿠팡 검색 영역 주문어 → 수동 키워드 후보. 10-21 부터 캠페인·광고유형(수동 캠페인 노출 여부)을 같이 돌려준다
+//                   (docs/sql/2026-10-21-coupang-ad-type.sql 실행 전이면 그 칸 없이 예전처럼 동작)
 // 규칙은 src/lib/add-keywords.ts, 정본은 Work/PPMI/projects/검색광고-운영/reports/2026-10-20-추가키워드-기준.md
 // SQL: docs/sql/2026-10-20-add-keyword-candidates.sql (표 naver_sa_keyword·sa_keyword_hold, 함수 2개)
 //
@@ -133,6 +134,9 @@ async function naver(brand: string, from: string, to: string) {
 interface CoupangResp {
   candidates: CoupangSource[]; rows: number; dates: number; latest: string | null;
   search_total: { impressions: number; clicks: number; spend: number; orders_14d: number; conv_sales_14d: number };
+  // 10-21 SQL 이후에만 온다
+  ad_type_rows?: Record<string, number>;
+  campaigns?: { campaign: string; ad_type: string; rows: number; first_date: string; last_date: string }[];
 }
 
 async function coupang(from: string, to: string) {
@@ -140,9 +144,11 @@ async function coupang(from: string, to: string) {
   if (isMissing(r.error)) return json({ channel: "coupang", ready: false, reason: "sql" as NotReady });
   if (r.error) throw new Error(r.error.message);
   const d = r.data;
+  const adTypes = summarizeCoupangAdTypes(d?.ad_type_rows);
   return json({
     channel: "coupang", ready: true,
-    candidates: buildCoupang(d?.candidates || []),
+    candidates: buildCoupang(d?.candidates || [], adTypes),
+    adTypes, campaigns: d?.campaigns ?? null,
     searchTotal: d?.search_total ?? null, rows: d?.rows ?? 0, dates: d?.dates ?? 0, latestCollected: d?.latest ?? null,
   });
 }

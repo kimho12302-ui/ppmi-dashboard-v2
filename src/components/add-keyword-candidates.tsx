@@ -6,8 +6,8 @@ import { useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { SortTable, type SortCol } from "@/components/sort-table";
 import {
-  SHORT_PERIOD_DAYS, PL_MIN_CLICKS_OTHER,
-  type NaverCandidate, type CoupangCandidate,
+  SHORT_PERIOD_DAYS, PL_MIN_CLICKS_OTHER, COUPANG_UNCOLLECTED,
+  type NaverCandidate, type CoupangCandidate, type CoupangAdTypeSummary,
 } from "@/lib/add-keywords";
 
 // 키워드 탭 「추가할 키워드」 칸. 2026-10-20 신설.
@@ -178,14 +178,16 @@ type CRow = CoupangCandidate & { name: string };
 interface CoupangResp {
   ready?: boolean; reason?: "sql"; error?: string;
   candidates?: CoupangCandidate[]; dates?: number; latestCollected?: string | null;
+  adTypes?: CoupangAdTypeSummary;
+  campaigns?: { campaign: string; ad_type: string; rows: number; first_date: string; last_date: string }[] | null;
 }
 
-const COUPANG_STATE = "미확인";
 const COUPANG_COLS: SortCol<CRow>[] = [
   { key: "name", label: "키워드", value: (r) => r.name, render: (r) => r.name, left: true },
   { key: "channel", label: "채널", value: () => "쿠팡", render: () => "쿠팡", left: true },
   { key: "order", label: "구분", value: (r) => r.order, render: (r) => r.tier, left: true },
-  { key: "state", label: "등록 상태", value: () => COUPANG_STATE, render: () => COUPANG_STATE, left: true },
+  { key: "state", label: "수동 캠페인", value: (r) => r.state, render: (r) => r.state, left: true },
+  { key: "campaign", label: "캠페인", value: (r) => r.campaign, render: (r) => r.campaign, left: true },
   { key: "impressions", label: "노출", value: (r) => r.impressions, render: (r) => formatNumber(r.impressions) },
   { key: "clicks", label: "클릭", value: (r) => r.clicks, render: (r) => formatNumber(r.clicks) },
   { key: "spend", label: "광고비", value: (r) => r.spend, render: (r) => formatCurrency(r.spend) },
@@ -197,12 +199,30 @@ const COUPANG_COLS: SortCol<CRow>[] = [
   { key: "action", label: "권하는 조치", value: (r) => r.action, render: (r) => r.action, left: true },
 ];
 
+/** 광고유형 판정 상태 한 줄. ad_type 칸이 없거나 아직 안 채워졌으면 판정하지 않는다. */
+function CoupangAdTypeLine({ adTypes }: { adTypes?: CoupangAdTypeSummary }) {
+  if (!adTypes?.collected) {
+    return <Notice tone="warn">광고유형 미수집이라 수동 캠페인 여부를 못 가립니다. 아래 &quot;수동 캠페인&quot; 칸은 전부 미수집으로 나옵니다.</Notice>;
+  }
+  const types = Object.entries(adTypes.byType).filter(([k]) => k !== COUPANG_UNCOLLECTED)
+    .map(([k, n]) => `${k} ${formatNumber(n)}행`).join(" · ");
+  return (
+    <Notice>
+      이 기간 보고서에 수동 성과형 캠페인 행 {formatNumber(adTypes.manualRows)}건
+      {adTypes.manualRows === 0 && <> · 그래서 후보 전부 &quot;수동 캠페인 미등록 후보&quot;입니다</>}.
+      광고유형별: {types}
+      {adTypes.uncollectedRows > 0 && <> · 광고유형 미수집 {formatNumber(adTypes.uncollectedRows)}행(판정에서 빠짐)</>}
+    </Notice>
+  );
+}
+
 export function CoupangAddKeywordCard({ from, to }: { from: string; to: string }) {
   const { data, loading, error } = useFetch<CoupangResp>(`/api/keyword-candidates?channel=coupang&from=${from}&to=${to}`);
   const rows: CRow[] = useMemo(() => withNames(data?.candidates || [], (r) => r.keyword), [data]);
   const days = daysBetween(from, to);
   const sum = (k: keyof CoupangCandidate) => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
   const own = rows.filter((r) => r.tier === "자사").length;
+  const manual = rows.filter((r) => r.manualHit).length;
 
   return (
     <Card><CardContent className="p-4 space-y-3">
@@ -211,9 +231,12 @@ export function CoupangAddKeywordCard({ from, to }: { from: string; to: string }
           추가할 키워드 <span className="text-xs font-normal text-muted-foreground">쿠팡 검색 영역에서 주문이 난 키워드 · 수동 키워드 후보</span>
         </h3>
         <p className="text-xs text-muted-foreground mt-1">
-          <b>등록 여부 미확인</b>: 쿠팡 일간 보고서는 캠페인 이름이 거의 빈칸이라 자동·수동 캠페인을 가를 수 없습니다.
-          수동 캠페인에 이미 있는지는 광고센터에서 확인해야 합니다. 주문은 칸 이름이 14일이지만 보고서를 다음 날 한 번만 읽어
-          사실상 클릭 다음 날까지의 주문입니다.
+          수동 캠페인 여부는 보고서의 「광고유형」 칸으로 가립니다(매출 최적화가 아닌 행이 있으면 수동). 캠페인 칸은 10-21 전까지
+          수집기가 일간 보고서 머리글(「캠페인」)을 못 읽어 비어 있었고, 10-21 고쳐 09-18~10-20 을 다시 넣었습니다.
+          주문은 칸 이름이 14일이지만 보고서를 다음 날 한 번만 읽어 사실상 클릭 다음 날까지의 주문입니다.
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          보고서에는 노출이 난 행만 나온다. 수동 캠페인에 등록했지만 노출 0 인 키워드는 여기 안 보인다.
         </p>
       </div>
       {days < SHORT_PERIOD_DAYS && <Notice tone="warn">기간이 짧아 후보가 적게 나옵니다. 기준은 어제까지 30일입니다(지금 {days}일).</Notice>}
@@ -224,12 +247,14 @@ export function CoupangAddKeywordCard({ from, to }: { from: string; to: string }
           <Notice tone="warn">쿠팡 후보 계산 함수가 아직 DB 에 없습니다(SQL 실행 전). docs/sql/2026-10-20-add-keyword-candidates.sql 실행 뒤 나타납니다.</Notice>
         ) : data ? (
           <>
+            <CoupangAdTypeLine adTypes={data.adTypes} />
             <p className="text-xs text-muted-foreground">
-              {formatNumber(rows.length)}개 (자사 {formatNumber(own)} · 일반 {formatNumber(rows.length - own)}) · 노출 {formatNumber(sum("impressions"))} ·
+              {formatNumber(rows.length)}개 (자사 {formatNumber(own)} · 일반 {formatNumber(rows.length - own)}
+              {data.adTypes?.collected && <> · 수동 캠페인에서 노출된 적 있음 {formatNumber(manual)}</>}) · 노출 {formatNumber(sum("impressions"))} ·
               클릭 {formatNumber(sum("clicks"))} · 광고비 {formatCurrency(sum("spend"))} · 주문 {formatNumber(sum("orders"))} ·
               주문매출 {formatCurrency(sum("sales"))} · 기간 {days}일 중 보고서 있는 날 {formatNumber(data.dates || 0)}일
             </p>
-            <p className="text-xs text-muted-foreground">주문 1건짜리는 우연일 수 있습니다. 주문 난 날 수가 2일 이상인 것부터 봅니다.</p>
+            <p className="text-xs text-muted-foreground">주문 1건짜리는 우연일 수 있습니다. 주문 난 날 수가 2일 이상인 것부터 봅니다. 캠페인 칸은 주문이 가장 많이 난 캠페인입니다.</p>
             {rows.length > 0
               ? <SortTable rows={rows} cols={COUPANG_COLS} initial="order" maxHeight={420} />
               : <Notice>이 기간에는 주문이 난 검색 키워드가 없습니다.</Notice>}
