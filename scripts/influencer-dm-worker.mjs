@@ -238,6 +238,8 @@ async function doSends(s, cand) {
   const queue = cand.rows.filter((r) => r.obj["DM 상태"] === "승인").filter((r) => !ONLY || r.obj["핸들"].toLowerCase() === ONLY);
   if (!queue.length) return 0;
   let sent = 0;
+  // 실패한 시도도 센다. 10-20 17:00 실패 7건이 대기 없이 40초 간격으로 연달아 대화창을 열었다(대기·상한이 성공에만 걸려 있었음)
+  let tried = 0, failStreak = 0;
   for (const r of queue) {
     const h = r.obj["핸들"].toLowerCase();
     const at = approvedAt(r.obj["DM 승인"]);
@@ -252,8 +254,10 @@ async function doSends(s, cand) {
       continue;
     }
     if (st.sentToday >= DAILY_CAP) { log(`발송: 하루 상한 ${DAILY_CAP} 도달, 남은 승인은 다음 회차`); break; }
-    if (sent >= MAX_SENDS_PER_RUN) break;
-    if (sent > 0) { const w = 120000 + Math.floor(Math.random() * 240000); log(`발송: ${Math.round(w / 1000)}초 대기`); await sleepMs(w); }
+    if (tried >= MAX_SENDS_PER_RUN) break;
+    if (failStreak >= 2) { log(`발송: 연달아 ${failStreak}건 실패해 이번 회차 멈춤`); break; }
+    if (tried > 0) { const w = 120000 + Math.floor(Math.random() * 240000); log(`발송: ${Math.round(w / 1000)}초 대기`); await sleepMs(w); }
+    tried += 1;
     try {
       const out = sendDM(h, r.obj["DM 초안"]);
       if (out.ok) {
@@ -261,10 +265,11 @@ async function doSends(s, cand) {
         // 텀이 지나 다시 보낸 경우 지난 발송 기록은 'DM 이력' 으로 옮긴다
         const history = r.obj["DM 발송"] ? [r.obj["DM 이력"], r.obj["DM 발송"]].filter(Boolean).join(" / ") : undefined;
         await setCells(s, C.tab, cand.header, r.rowNo, { "DM 상태": "발송됨", "DM 발송": `${kstStamp()} · @${EXPECT} · ${out.url}`, "DM 오류": "", "회신": "", 상태: "컨택함", "DM 이력": history });
-        sent += 1;
+        sent += 1; failStreak = 0;
         log(`발송: @${h} 완료 ${out.url}`);
       } else {
         await setCells(s, C.tab, cand.header, r.rowNo, { "DM 상태": "실패", "DM 오류": out.error || "알 수 없음" });
+        failStreak += 1;
         log(`발송: @${h} 실패 ${out.error}`);
       }
     } catch (e) {
