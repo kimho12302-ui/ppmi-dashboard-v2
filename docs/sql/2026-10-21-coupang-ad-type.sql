@@ -23,6 +23,11 @@
 -- 비어 있는 행 = 이 칸이 생기기 전에 넣고 아직 다시 넣지 않은 행.
 alter table raw_coupang_keyword add column if not exists ad_type text;
 
+-- 10-16~18 묶음 파일 169행은 옛 키(캠페인 이름 포함)로 들어가 있어 다시 넣으면 중복이 생긴다.
+-- 원본 파일 169행이 전부 '매출 최적화'인 것을 10-21 확인했으므로 파일 이름으로 직접 채운다.
+update raw_coupang_keyword set ad_type = '매출 최적화'
+where file = 'A01490552_pa_daily_keyword_20261016_20261018.xlsx' and ad_type is null;
+
 
 -- ── 2. coupang_keyword_add_source 교체 ────────────────────────────
 --
