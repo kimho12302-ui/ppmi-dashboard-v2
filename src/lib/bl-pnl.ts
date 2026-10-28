@@ -28,7 +28,7 @@ export interface PnlProductConfig {
 export const PNL_PRODUCTS: PnlProductConfig[] = [
   { key: "nutrition", label: "큐모발검사 뉴트리션", unitCost: 10_000, selfShipTimes: 2, note: "시트 AG42 =수량×10,000" },
   { key: "heavy", label: "큐모발검사 중금속", unitCost: 10_000, selfShipTimes: 2, note: "시트 AG59 =수량×10,000" },
-  { key: "saliva", label: "큐타액호르몬검사", unitCost: 10_000, selfShipTimes: 2, note: "미확인: 시트가 6~8월 ×10,000, 9~10월 ×30,000 으로 섞여 있음" },
+  { key: "saliva", label: "큐타액호르몬검사", unitCost: 36_650, selfShipTimes: 2, note: "김호 확정 2026-10-28 (시트 수식 10,000·30,000 대신)" },
   { key: "food", label: "큐음식물과민증검사", unitCost: 194_000, selfShipTimes: 2, note: "시트 AG80 =수량×194,000" },
   { key: "supplement", label: "메디넥스(영양제)", unitCost: 30_000, selfShipTimes: 1, note: "시트 AG103 =수량×30,000, 배송 1회(AD103)" },
   { key: "etc", label: "기타(구분 안 되는 상품)", unitCost: 10_000, selfShipTimes: 2, note: "옵션 없는 큐모발검사·큐모발검사 미네랄 등. 합계에만 들어감" },
