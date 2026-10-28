@@ -3,6 +3,9 @@ import { supabase } from "@/lib/supabase";
 import { google } from "googleapis";
 import { triggerSheetSync } from "@/lib/github-dispatch";
 import { cachedGET, revalidateAfter } from "@/lib/api-cache";
+import { PNL_PRODUCTS, MANUAL_COST_KIND_MAX, isMissingTable } from "@/lib/bl-pnl";
+
+const PNL_PRODUCT_KEYS = new Set<string>(PNL_PRODUCTS.map((p) => p.key));
 
 const STATS_SHEET_ID = "1FzxDCyR9FyAIduf7Q0lfUIOzvSqVlod21eOFqaPrXio";
 
@@ -445,6 +448,29 @@ async function postImpl(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
+      // ── 밸런스랩 제품별 손익: 광고 외 마케팅비(체험 키트 원가 등) ──
+      // 금액 0 이면 그 행을 지운다. 표는 docs/sql/2026-10-28-bl-pnl-manual-cost.sql
+      case "bl_pnl_manual_cost": {
+        const product = String(data?.product ?? "");
+        const month = String(data?.month ?? "");
+        const kind = String(data?.kind ?? "").trim();
+        const amount = Number(data?.amount);
+        const memo = String(data?.memo ?? "").trim().slice(0, 200) || null;
+        if (!PNL_PRODUCT_KEYS.has(product)) return NextResponse.json({ error: "product 값이 손익 제품 키가 아님" }, { status: 400 });
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return NextResponse.json({ error: "month 는 YYYY-MM" }, { status: 400 });
+        if (!kind || kind.length > MANUAL_COST_KIND_MAX) return NextResponse.json({ error: `종류는 1~${MANUAL_COST_KIND_MAX}자` }, { status: 400 });
+        if (!Number.isInteger(amount) || amount < 0) return NextResponse.json({ error: "금액은 0 이상 정수(원)" }, { status: 400 });
+        const table = supabase.from("bl_pnl_manual_cost");
+        const { error } = amount === 0
+          ? await table.delete().eq("product", product).eq("month", month).eq("kind", kind)
+          : await table.upsert({ product, month, kind, amount, memo, updated_at: new Date().toISOString() }, { onConflict: "product,month,kind" });
+        if (isMissingTable(error)) {
+          return NextResponse.json({ error: "표가 아직 없습니다. docs/sql/2026-10-28-bl-pnl-manual-cost.sql 실행 후 사용" }, { status: 409 });
+        }
+        if (error) throw error;
+        return NextResponse.json({ ok: true });
+      }
+
       default:
         return NextResponse.json({ error: `Unknown type: ${type}` }, { status: 400 });
     }
@@ -488,5 +514,5 @@ async function deleteImpl(req: NextRequest) {
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
 export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"], ["type"]);
-export const POST = revalidateAfter(postImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"]);
+export const POST = revalidateAfter(postImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets", "bl_pnl_manual_cost"]);
 export const DELETE = revalidateAfter(deleteImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"]);

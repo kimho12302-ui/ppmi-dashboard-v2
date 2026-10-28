@@ -15,6 +15,8 @@ export interface PnlTableRow {
   notes: string[];
   /** 마케팅비 칸에 마우스를 올리면 보이는 내역 */
   marketingTitle?: string;
+  /** 마케팅비 칸에 손 입력(광고 외 마케팅비)이 들어가 있음 */
+  marketingHasExtra?: boolean;
 }
 
 const COLS: { key: keyof PnlRow; label: string; kind: "won" | "count" | "rate" }[] = [
@@ -35,13 +37,16 @@ function fmt(v: number | null, kind: "won" | "count" | "rate"): string {
   return Math.round(v).toLocaleString("ko-KR");
 }
 
-export function PnlBlockTable({ title, subtitle, rows, total, marketingLabel, totalNote }: {
+export function PnlBlockTable({ title, subtitle, rows, total, marketingLabel, totalNote, onMarketingClick, editingMonth }: {
   title: string;
   totalNote?: string;
   subtitle: string;
   rows: PnlTableRow[];
   total: PnlRow;
   marketingLabel: string;
+  /** 주면 마케팅비 칸을 눌러 광고 외 마케팅비를 입력할 수 있다(자체표, 제품 하나 고른 때) */
+  onMarketingClick?: (month: string) => void;
+  editingMonth?: string | null;
 }) {
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
@@ -71,18 +76,24 @@ export function PnlBlockTable({ title, subtitle, rows, total, marketingLabel, to
                 ) : (
                   COLS.map((c) => {
                     const v = r.row ? (r.row[c.key] as number | null) : null;
+                    const editable = c.key === "marketing" && !!onMarketingClick && r.row !== null;
                     return (
                       <td
                         key={c.key}
-                        title={c.key === "marketing" ? r.marketingTitle : undefined}
+                        title={c.key === "marketing" ? [r.marketingTitle, editable ? "눌러서 광고 외 마케팅비(체험 키트 원가 등) 입력" : ""].filter(Boolean).join(" · ") : undefined}
+                        onClick={editable ? () => onMarketingClick(r.month) : undefined}
                         className={cn(
                           "py-1.5 px-3 text-right tabular-nums border-r whitespace-nowrap",
                           typeof v === "number" && v < 0 && "text-red-600 dark:text-red-400",
                           c.key === "contribution" && "font-semibold",
                           c.key === "marketing" && r.marketingTitle && "underline decoration-dotted cursor-help",
+                          editable && "cursor-pointer hover:bg-primary/10",
+                          editable && editingMonth === r.month && "bg-primary/15 ring-1 ring-inset ring-primary",
+                          c.key === "marketing" && r.marketingHasExtra && "text-violet-700 dark:text-violet-300",
                         )}
                       >
                         {fmt(v, c.kind)}
+                        {c.key === "marketing" && r.marketingHasExtra && <sup className="ml-0.5 text-[10px]">+</sup>}
                       </td>
                     );
                   })

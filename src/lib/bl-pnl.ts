@@ -8,7 +8,9 @@
 //   시트 공구 블록은 마진(Q = 매출 − 수량×단가)에서 재료비를 한 번 빼고,
 //   공헌이익(2)(W = T − 재료비)에서 또 뺀다. 자체 블록은 한 번만 뺀다.
 //   시트의 밸런스랩 합계 행(AH23 = AE23 + T23)도 공구 쪽은 한 번 뺀 T 를 쓴다.
-//   그래서 화면은 두 블록 모두 "한 번 차감"(= 시트 T·AE 열)으로 통일했다. 김호 확인 대기.
+//   그래서 화면은 두 블록 모두 "한 번 차감"(= 시트 T·AE 열)으로 통일했다. 김호 확정 2026-10-28.
+//
+// 자체 마케팅비 = 광고비 + 광고 외 마케팅비(표 bl_pnl_manual_cost, 체험 키트 원가 등 손 입력).
 
 import { classifyBlProduct } from "@/lib/brand-groups";
 
@@ -45,12 +47,25 @@ export const SHIP_FEE = 3_000;
 export const GONGGU_SHIP_TIMES = 1;
 
 /**
- * 판매 원장에 공구 표식(lineup·공구 판매처)이 아예 없는 달.
- * 2026-01·02 공구는 smartstore·lineup 빈 행으로만 들어와 자체와 구분이 안 된다
- * (1월 16~30일 공구 441개, 메모리 project_qhair_jan2026_gonggu). 이 달은 공구 블록을
- * "구분 불가"로 두고 자체 블록에 공구가 섞여 있다고 표시한다. 원장에 lineup 을 채우면 이 목록에서 뺀다.
+ * 공구 일정표(bl_gonggu_schedule)를 못 읽을 때만 쓰는 폴백 목록.
+ *
+ * 평소 "공구 구분 불가" 달은 일정표로 정한다: 그 달에 공구 기간이 있는데 원장에 공구 표식 행이 0 인 달.
+ * 2026-01·02 공구는 smartstore·lineup 빈 행으로만 들어와 자체와 구분이 안 됐다.
+ * docs/sql/2026-10-28-bl-gonggu.sql 이 원장에 셀러 이름을 채우면 일정표 판정이 자동으로 풀린다.
+ * 일정표 표가 아직 없으면(그 SQL 전) 이 목록으로 표시한다.
  */
 export const GONGGU_UNTAGGED_MONTHS = ["2026-01", "2026-02"];
+
+/** Supabase 가 "그런 표 없음"으로 답했는지. SQL 실행 전 새 표를 읽을 때 화면이 죽지 않게 */
+export function isMissingTable(error: { code?: string } | null | undefined): boolean {
+  return !!error && (error.code === "PGRST205" || error.code === "42P01");
+}
+
+// ── 광고 외 마케팅비 (손 입력, 표 bl_pnl_manual_cost) ──
+export const MANUAL_COST_DEFAULT_KIND = "체험 키트 원가";
+export const MANUAL_COST_KIND_MAX = 40;
+export interface ManualCost { kind: string; amount: number; memo: string | null }
+export const manualSum = (xs: ManualCost[]) => xs.reduce((a, x) => a + x.amount, 0);
 
 export function productConfig(key: PnlProductKey): PnlProductConfig {
   return PNL_PRODUCTS.find((p) => p.key === key) ?? PNL_PRODUCTS[PNL_PRODUCTS.length - 1];
@@ -103,12 +118,19 @@ export function isHeavyIntentKeyword(kw: string): boolean {
   return HEAVY_KW.test(kw) && !NUTRI_KW.test(kw);
 }
 
+// 옛 수집기가 키워드 칸에 캠페인(광고주) 이름을 넣은 행. 2026-04-16 ~ 05-04 사이 9일에 이 세 줄만 있었다.
+// 검색어가 아니므로 키워드 원장 "측정됨" 판정과 중금속 몫 계산에서 뺀다.
+const CAMPAIGN_LABEL_KEYWORDS = new Set(["밸런스랩스토어", "와이에스환경기술연구소", "한국반려동물안전인증센터"]);
+export function isCampaignLabelKeyword(kw: string): boolean {
+  return CAMPAIGN_LABEL_KEYWORDS.has(kw.trim()) || NOT_BALANCELAB.test(kw);
+}
+
 // ── API 응답 모양 ──
 export interface SalesCell { revenue: number; quantity: number; orders: number }
 export interface AdBreakdown { naverSearch: number; naverShopping: number; meta: number }
 export interface PnlMonthInput {
   month: string; // YYYY-MM
-  products: Record<PnlProductKey, { gonggu: SalesCell; self: SalesCell; ad: AdBreakdown }>;
+  products: Record<PnlProductKey, { gonggu: SalesCell; self: SalesCell; ad: AdBreakdown; extra: ManualCost[] }>;
   /** 이번 달이라 판매 동기화(최근 5일 지연)가 덜 들어왔을 수 있음 */
   lagWarning: boolean;
   /** 공구 표식이 원장에 없는 달 */
@@ -121,7 +143,13 @@ export interface PnlMonthInput {
   gfa: number;
   excluded: Record<string, number>;
 }
-export interface PnlResponse { year: number; months: PnlMonthInput[]; asOf: string }
+export interface PnlResponse {
+  year: number; months: PnlMonthInput[]; asOf: string;
+  /** 손 입력 표(bl_pnl_manual_cost)가 있는지. false 면 입력 칸은 "SQL 실행 후 사용" */
+  manualCostReady: boolean;
+  /** 공구 일정표(bl_gonggu_schedule)가 있는지. false 면 공구 구분 불가 달은 폴백 목록 */
+  scheduleReady: boolean;
+}
 
 // ── 계산 ──
 export interface PnlRow {
@@ -141,10 +169,11 @@ export function computeGonggu(cell: SalesCell, cfg: PnlProductConfig): PnlRow {
   return { ...cell, margin, marketing, shipping, contribution, materialCost, contributionRate: rate(contribution, cell.revenue) };
 }
 
-export function computeSelf(cell: SalesCell, adSpend: number, cfg: PnlProductConfig): PnlRow {
+/** marketingSpend = 광고비 + 광고 외 마케팅비(손 입력) */
+export function computeSelf(cell: SalesCell, marketingSpend: number, cfg: PnlProductConfig): PnlRow {
   const materialCost = cell.quantity * cfg.unitCost;
   const margin = cell.revenue - materialCost;
-  const marketing = Math.round(adSpend);
+  const marketing = Math.round(marketingSpend);
   const shipping = SHIP_FEE * cfg.selfShipTimes * cell.orders;
   const contribution = margin - marketing - shipping;
   return { ...cell, margin, marketing, shipping, contribution, materialCost, contributionRate: rate(contribution, cell.revenue) };

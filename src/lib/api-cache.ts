@@ -34,6 +34,7 @@ export const DATA_TAGS = [
   "naver_campaign_daily", "meta_ad_daily", "ad_product_performance", "sa_change_log",
   "raw_coupang_keyword", "raw_gfa_campaign", "raw_naver_search_term", "sync_heartbeat",
   "naver_sa_keyword", "sa_keyword_hold",
+  "bl_gonggu_schedule", "bl_pnl_manual_cost",
   "ext_gsc", "ext_meta",
 ] as const;
 export type DataTag = (typeof DATA_TAGS)[number];
