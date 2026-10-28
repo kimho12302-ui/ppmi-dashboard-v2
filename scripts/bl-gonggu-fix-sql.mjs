@@ -87,7 +87,10 @@ export function buildSchedule(years) {
 }
 
 function sellerFor(date, schedule) {
-  const hit = schedule.filter((w) => w.start <= date && date <= w.end).map((w) => w.seller);
+  // 잇는 순서는 시작일 → 마감일 → 이름 (sync_sales_auto.py·src/lib/gonggu.ts 와 같게)
+  const hit = schedule.filter((w) => w.start <= date && date <= w.end)
+    .sort((x, y) => (x.start < y.start ? -1 : x.start > y.start ? 1 : x.end < y.end ? -1 : x.end > y.end ? 1 : x.seller.localeCompare(y.seller)))
+    .map((w) => w.seller);
   return hit.length ? hit.join("·") : "기타";
 }
 
