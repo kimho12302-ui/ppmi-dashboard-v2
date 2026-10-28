@@ -1,12 +1,15 @@
 "use client";
 
-import { Suspense, useMemo, useState, useEffect } from "react";
+import { Suspense, useCallback, useMemo, useState, useEffect } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch, useFilterParams } from "@/hooks/use-dashboard-data";
 import { BRAND_LABELS } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
+import { kstDate } from "@/lib/date";
+import { BlPnlView, PNL_DEFAULT_PICK, isPnlPick, type PnlPick } from "@/components/bl-pnl-view";
 import {
   LineChart, Line, ReferenceLine,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ComposedChart, Bar,
@@ -58,15 +61,111 @@ export default function MonthlyPage() {
   );
 }
 
+// 보기 두 개 (2026-10-28): 요약 | 밸런스랩 제품별 손익. 손익은 원래 /brand/balancelab/pnl 이었는데
+// 사이드바가 길어져 이 페이지 안으로 옮겼다. 보기·연도·제품은 URL 에 남겨 새로고침·공유해도 그대로 열린다.
+//   /monthly                              요약, 올해
+//   /monthly?view=pnl&product=food&year=2025  손익, 음식물, 2025년
+// 기본값(view=summary, product=nutrition, year=올해)은 URL 에서 뺀다.
+type MonthlyView = "summary" | "pnl";
+const VIEWS: { key: MonthlyView; label: string }[] = [
+  { key: "summary", label: "요약" },
+  { key: "pnl", label: "밸런스랩 제품별 손익" },
+];
+
+const segBtn = (active: boolean) => cn(
+  "px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
+  active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+);
+
 function MonthlyInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const { brand } = useFilterParams();
   const { brandMap } = useConfig();
-  const currentYear = new Date().getFullYear();
-  const [year, setYear] = useState(currentYear);
+  const currentYear = Number(kstDate().slice(0, 4));
+  const years = [currentYear - 1, currentYear];
+
+  const view: MonthlyView = searchParams.get("view") === "pnl" ? "pnl" : "summary";
+  const yearParam = Number(searchParams.get("year"));
+  const year = years.includes(yearParam) ? yearParam : currentYear;
+  const productParam = searchParams.get("product");
+  const pick: PnlPick = isPnlPick(productParam) ? productParam : PNL_DEFAULT_PICK;
+
+  /** 보기·연도·제품을 URL 에 쓴다. 기간·브랜드 같은 다른 쿼리는 그대로 둔다. replace 라 뒤로가기가 쌓이지 않는다 */
+  const setQuery = useCallback((patch: { view?: MonthlyView; year?: number; product?: PnlPick }) => {
+    const params = new URLSearchParams(searchParams.toString());
+    const put = (key: string, value: string, def: string) => {
+      if (value === def) params.delete(key); else params.set(key, value);
+    };
+    const nextView = patch.view ?? view;
+    put("view", nextView, "summary");
+    if (patch.year !== undefined) put("year", String(patch.year), String(currentYear));
+    if (nextView === "pnl") {
+      if (patch.product !== undefined) put("product", patch.product, PNL_DEFAULT_PICK);
+    } else {
+      params.delete("product");
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [searchParams, router, pathname, view, currentYear]);
+
   const [brandFilter, setBrandFilter] = useState(brand);
   // 글로벌 브랜드 필터 변경 시 동기화 (마운트 시 brand가 늦게 로드돼 '전체'로 리셋되던 버그)
   useEffect(() => { setBrandFilter(brand || "all"); }, [brand]);
 
+  // Brand list (hard-coded since we know brands)
+  const brands = ["all", "nutty", "ironpet", "saip", "balancelab"];
+
+  return (
+    <PageShell
+      title="월별 요약"
+      description={view === "pnl"
+        ? "밸런스랩 제품별 손익 · 시트 「★브랜드별 매출」 밸런스랩 제품 블록을 판매 원장·광고비 원장으로 자동 계산"
+        : "월별 성과 요약 · 원가/배송비/이익 분석"}
+      hideFilters
+    >
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-4">
+        {/* 보기 전환 */}
+        <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1" role="tablist" aria-label="보기">
+          {VIEWS.map((v) => (
+            <button key={v.key} role="tab" aria-selected={view === v.key} onClick={() => setQuery({ view: v.key })} className={segBtn(view === v.key)}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Year selector: 두 보기가 같은 연도를 쓴다 */}
+        <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
+          {years.map((y) => (
+            <button key={y} onClick={() => setQuery({ year: y })} className={segBtn(year === y)}>
+              {y}년
+            </button>
+          ))}
+        </div>
+
+        {/* Brand filter: 손익 보기는 밸런스랩 전용이라 숨긴다 */}
+        {view === "summary" && (
+          <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
+            {brands.map((b) => (
+              <button key={b} onClick={() => setBrandFilter(b)} className={segBtn(brandFilter === b)}>
+                {b === "all" ? "전체" : (brandMap[b]?.label || BRAND_LABELS[b] || b)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {view === "pnl"
+        ? <BlPnlView year={String(year)} pick={pick} onPickChange={(p) => setQuery({ product: p })} />
+        : <SummaryView year={year} brandFilter={brandFilter} />}
+    </PageShell>
+  );
+}
+
+/** 요약 보기. 이 보기가 떠 있을 때만 월별 요약 API 를 부른다 */
+function SummaryView({ year, brandFilter }: { year: number; brandFilter: string }) {
   const { data, loading } = useFetch<MonthlyData>(
     `/api/monthly-summary?year=${year}&brand=${brandFilter}`
   );
@@ -101,54 +200,12 @@ function MonthlyInner() {
   }, [summary]);
   const channelData = chartSummary.map((m) => ({ month: m.month, ...m.channelCosts }));
 
-  // Brand list (hard-coded since we know brands)
-  const brands = ["all", "nutty", "ironpet", "saip", "balancelab"];
-
   if (loading) {
-    return (
-      <PageShell title="월별 요약" description="월별 성과 요약 · 원가/배송비/이익 분석" hideFilters>
-        <div className="h-64 bg-muted rounded-lg animate-pulse" />
-      </PageShell>
-    );
+    return <div className="h-64 bg-muted rounded-lg animate-pulse" />;
   }
 
   return (
-    <PageShell title="월별 요약" description="월별 성과 요약 · 원가/배송비/이익 분석" hideFilters>
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-4">
-        {/* Year selector */}
-        <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
-          {[currentYear - 1, currentYear].map((y) => (
-            <button
-              key={y}
-              onClick={() => setYear(y)}
-              className={cn(
-                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
-                year === y ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {y}년
-            </button>
-          ))}
-        </div>
-
-        {/* Brand filter */}
-        <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
-          {brands.map((b) => (
-            <button
-              key={b}
-              onClick={() => setBrandFilter(b)}
-              className={cn(
-                "px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
-                brandFilter === b ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {b === "all" ? "전체" : (brandMap[b]?.label || BRAND_LABELS[b] || b)}
-            </button>
-          ))}
-        </div>
-      </div>
-
+    <>
       {/* YTD Summary */}
       {ytd && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -323,6 +380,6 @@ function MonthlyInner() {
           </table>
         </CardContent>
       </Card>
-    </PageShell>
+    </>
   );
 }

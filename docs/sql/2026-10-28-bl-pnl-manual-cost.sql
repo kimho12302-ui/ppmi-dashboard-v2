@@ -6,7 +6,7 @@
 --    8월 2,808,443 = 광고비 + 1,548,574, 9월 1,183,702 = 광고비 + 163,860.
 --    이 차액은 체험을 위해 나간 키트 원가다(김호 2026-10-28). 광고 원장에 없으므로 손으로 넣는다.
 --
---  쓰는 쪽: 손익 화면(/brand/balancelab/pnl) 자체표 마케팅비 칸 클릭 → POST /api/settings type=bl_pnl_manual_cost
+--  쓰는 쪽: 손익 화면(/monthly?view=pnl, 옛 /brand/balancelab/pnl) 자체표 마케팅비 칸 클릭 → POST /api/settings type=bl_pnl_manual_cost
 --  읽는 쪽: GET /api/bl-product-pnl. 자체 마케팅비 = 광고비 + 이 표 합계.
 --  이 표가 없으면(이 SQL 전) 화면은 광고비만으로 계산하고 입력 칸에 "SQL 실행 후 사용" 을 띄운다.
 --

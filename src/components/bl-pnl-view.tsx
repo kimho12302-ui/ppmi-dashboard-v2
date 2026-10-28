@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { Suspense, useCallback, useMemo, useState } from "react";
-import { PageShell } from "@/components/page-shell";
+import { useCallback, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { cn } from "@/lib/utils";
@@ -15,31 +13,22 @@ import {
   type PnlProductKey, type PnlResponse, type PnlMonthInput, type PnlRow, type ManualCost,
 } from "@/lib/bl-pnl";
 
-// 밸런스랩 제품별 손익 (2026-10-28). /brand/balancelab/pnl
+// 밸런스랩 제품별 손익 (2026-10-28). 월별 요약 안의 보기: /monthly?view=pnl&product=nutrition
+// 옛 주소 /brand/balancelab/pnl 은 next.config.mjs 에서 이리로 보낸다.
 // 김호가 매달 손으로 채우던 시트 「★브랜드별 매출」 밸런스랩 제품 블록을 자동 계산한다.
 // 계산식·단가는 src/lib/bl-pnl.ts 한 곳에 있다.
 
-type Pick = PnlProductKey | "all";
+export type PnlPick = PnlProductKey | "all";
+type Pick = PnlPick;
+export const PNL_DEFAULT_PICK: PnlPick = "nutrition";
 const PICKS: { key: Pick; label: string }[] = [
   ...PNL_SELECTABLE.map((k) => ({ key: k as Pick, label: productConfig(k).label })),
   { key: "all", label: "합계" },
 ];
-const won = (n: number) => Math.round(n).toLocaleString("ko-KR");
-
-export default function BlPnlPage({ params }: { params: { brand: string } }) {
-  if (params.brand !== "balancelab") {
-    return (
-      <PageShell title="제품별 손익" hideFilters>
-        <p className="text-sm text-muted-foreground">제품별 손익은 밸런스랩만 있습니다. <Link className="underline" href="/brand/balancelab/pnl">밸런스랩 제품별 손익으로</Link></p>
-      </PageShell>
-    );
-  }
-  return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
-      <BlPnlInner />
-    </Suspense>
-  );
+export function isPnlPick(v: string | null): v is PnlPick {
+  return v !== null && PICKS.some((p) => p.key === v);
 }
+const won = (n: number) => Math.round(n).toLocaleString("ko-KR");
 
 /** 한 달 × 선택 제품의 공구·자체 행. 합계면 제품별로 계산한 뒤 더한다(단가가 제품마다 달라서) */
 function rowsFor(m: PnlMonthInput, pick: Pick): { gonggu: PnlRow; self: PnlRow; adNote: string; hasExtra: boolean } {
@@ -75,12 +64,12 @@ function monthNotes(m: PnlMonthInput, pick: Pick, block: "gonggu" | "self"): str
   return out;
 }
 
-function BlPnlInner() {
-  const [year, setYear] = useState(kstDate().slice(0, 4));
-  const [pick, setPick] = useState<Pick>("nutrition");
+/** 월별 요약 페이지가 연도·제품을 URL 로 쥐고 넘겨 준다 */
+export function BlPnlView({ year, pick, onPickChange }: { year: string; pick: Pick; onPickChange: (p: Pick) => void }) {
   const { data, loading, error, refetch } = useFetch<PnlResponse>(`/api/bl-product-pnl?year=${year}`);
   const thisMonth = kstDate().slice(0, 7);
   const [editMonth, setEditMonth] = useState<string | null>(null);
+  const setPick = onPickChange;
   const canEdit = pick !== "all";
   const editing = canEdit && editMonth ? data?.months.find((m) => m.month === editMonth) ?? null : null;
 
@@ -125,9 +114,8 @@ function BlPnlInner() {
 
   const label = PICKS.find((p) => p.key === pick)?.label ?? "";
   return (
-    <PageShell title="밸런스랩 제품별 손익" description="시트 「★브랜드별 매출」 밸런스랩 제품 블록을 판매 원장·광고비 원장으로 자동 계산" hideFilters>
+    <>
       <div className="flex flex-wrap items-center gap-2">
-        <Link href="/brand/balancelab" className="text-sm text-muted-foreground hover:underline mr-2">← 밸런스랩</Link>
         {PICKS.map((p) => (
           <button key={p.key} onClick={() => setPick(p.key)}
             className={cn("px-3 py-1.5 text-sm rounded-md border transition-colors",
@@ -135,10 +123,7 @@ function BlPnlInner() {
             {p.label}
           </button>
         ))}
-        <select value={year} onChange={(e) => setYear(e.target.value)} className="ml-auto px-2 py-1.5 text-sm rounded-md border bg-background">
-          {[Number(kstDate().slice(0, 4)), Number(kstDate().slice(0, 4)) - 1].map((y) => <option key={y} value={y}>{y}년</option>)}
-        </select>
-        <button onClick={download} disabled={!data} className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
+        <button onClick={download} disabled={!data} className="ml-auto px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
           엑셀로 내려받기
         </button>
       </div>
@@ -165,7 +150,7 @@ function BlPnlInner() {
         </>
       )}
       <RulesCard />
-    </PageShell>
+    </>
   );
 }
 
