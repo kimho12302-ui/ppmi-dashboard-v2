@@ -36,6 +36,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/brand/ironpet", label: "아이언펫", icon: "", emoji: "🦴" },
   { href: "/brand/saip", label: "사입", icon: "", emoji: "📦" },
   { href: "/brand/balancelab", label: "밸런스랩", icon: "", emoji: "🧬" },
+  // 밸런스랩 제품별 손익 (2026-10-28). 시트 「★브랜드별 매출」 손 입력을 대신한다
+  { href: "/brand/balancelab/pnl", label: "밸런스랩 제품별 손익", icon: "", emoji: "🧾" },
 
   // ── 계획·기록 ──
   { href: "/budget", label: "예산 페이싱", icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z", separator: true, section: "계획·기록" },
