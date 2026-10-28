@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import { triggerSheetSync } from "@/lib/github-dispatch";
 import { revalidateAfter } from "@/lib/api-cache";
+import { GONGGU_LABEL, GONGGU_SCHEDULE_TABLE, resolveSalesLineup, type GongguWindow } from "@/lib/gonggu";
 
 export const maxDuration = 60;
 
@@ -242,12 +243,28 @@ async function postImpl(request: NextRequest) {
       names: d.names,
     }));
 
+    // 공구 일정표: 상품 목록에서 브랜드명이 「공동구매」인데 라인업(셀러)이 빈 코드가 있을 때만 읽는다.
+    // 그 코드의 줄은 일정표로 셀러를 붙인다(없으면 '기타'). 안 붙이면 lineup 이 비어 같은 날 같은 상품의
+    // 자체 줄과 한 행으로 합쳐지고 자체로 잡힌다. 표를 못 읽어도 업로드는 막지 않고 '기타' 로 간다.
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+    let gongguSchedule: GongguWindow[] = [];
+    let gongguScheduleWarning: string | null = null;
+    const needsSchedule = Array.from(productListMap.values()).some(
+      (p: any) => String(p.brand || "").trim() === GONGGU_LABEL && !String(p.lineup || "").trim(),
+    );
+    if (needsSchedule) {
+      const { data, error } = await supabase.from(GONGGU_SCHEDULE_TABLE).select("seller,start_on,end_on");
+      if (error) gongguScheduleWarning = `공구 일정표를 못 읽어 셀러 이름이 빈 공동구매 상품은 '기타' 로 넣음: ${error.message}`;
+      else gongguSchedule = (data || []) as GongguWindow[];
+    }
+
     interface SalesRow {
       date: string;
       channel: string;
       brand: string;
       category: string;
-      lineup: string;
+      lineup: string;      // DB product_sales.lineup (공구면 셀러 이름, 비지 않음)
+      sheetLineup: string; // Sales 시트 F열. 상품 목록 D열 그대로(빈칸이면 빈칸: 나중에 일정표로 다시 풀 수 있게)
       product: string;
       productCode: string;
       quantity: number;
@@ -298,12 +315,17 @@ async function postImpl(request: NextRequest) {
       const brand = detectBrand(productCode, productListMap);
       const plInfo = productListMap.get(productCode) || {};
 
+      // lineup: 상품 목록 D열 > (밸런스랩 공동구매면) 공구 일정표 셀러 > 빈칸. 규칙은 lib/gonggu resolveSalesLineup.
+      const lineup = resolveSalesLineup(
+        { date: dateStr, brand, brandLabel: plInfo.brand, lineup: plInfo.lineup },
+        gongguSchedule,
+      );
+
       // 밸런스랩 공동구매: channel = 공구_셀러명
-      if (brand === "balancelab" && plInfo.brand === "\uACF5\uB3D9\uAD6C\uB9E4") {
-        // 거래처명에 스마트스토어 포함 시 공구 로직 스킵
-        if (!client.includes("\uC2A4\uB9C8\uD2B8\uC2A4\uD1A0\uC5B4")) {
-          const seller = plInfo.lineup || "\uAE30\uD0C0";
-          channel = `\uACF5\uAD6C_${seller}`;
+      if (brand === "balancelab" && String(plInfo.brand || "").trim() === GONGGU_LABEL) {
+        // 거래처명에 스마트스토어 포함 시 공구 로직 스킵 (channel=smartstore + lineup=셀러, gonggu.ts 형식 A)
+        if (!client.includes("스마트스토어")) {
+          channel = `공구_${lineup}`;
         }
       }
 
@@ -328,7 +350,8 @@ async function postImpl(request: NextRequest) {
         channel,
         brand,
         category: plInfo.category || "",
-        lineup: plInfo.lineup || "",
+        lineup,
+        sheetLineup: plInfo.lineup || "",
         product: plInfo.product || productCode,
         productCode,
         quantity: qty,
@@ -391,8 +414,8 @@ async function postImpl(request: NextRequest) {
     const dailySalesRows = Array.from(dailyAgg.values());
 
     // DB 저장 (product_sales: 날짜 삭제 후 재삽입 / daily_sales: upsert)
-    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     let dbResults: Record<string, any> = {};
+    if (gongguScheduleWarning) dbResults.gongguScheduleWarning = gongguScheduleWarning;
 
     // product_sales: 날짜별 delete → insert (unique: date,brand,product,channel,lineup)
     // ★ delete 실패 시 insert 하지 않음 — 옛 행이 남은 채 새 행이 추가돼 매출이 중복 집계되던 사고 방지
@@ -451,7 +474,7 @@ async function postImpl(request: NextRequest) {
         yearMonth, dateText,
         channelKor[r.channel] || r.channel,
         r.category, brandLabel,
-        r.lineup, r.product, r.quantity, 1, r.revenue, r.revenue,
+        r.sheetLineup, r.product, r.quantity, 1, r.revenue, r.revenue,
       ];
     });
 

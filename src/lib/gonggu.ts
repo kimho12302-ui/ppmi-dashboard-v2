@@ -90,3 +90,49 @@ export function gongguSeller(row: GongguRow): string {
   if (ch === "공구") return "기타";
   return "";
 }
+
+// ── 매출 적재 시 lineup 정하기 ─────────────────────────────────
+// marketing-dashboard/scripts/sync_sales_auto.py 의 seller_for·resolve_lineup 과 **같은 규칙**이다.
+// 셋(업로드 폼·Sales 시트 수집기·전체 재빌드)이 어긋나면 같은 날 같은 상품의 공구·자체가
+// 한 행으로 합쳐지거나 공구가 자체로 샌다(2025-12~2026-05 밸런스랩, 2026-10-28 보정).
+//  1) 라인업(상품 목록 D열 / Sales 시트 F열) 값이 있으면 그 값
+//  2) 비어 있고 밸런스랩 「공동구매」 줄이면 공구 일정표(bl_gonggu_schedule)에서 그날 셀러.
+//     겹치면 '·' 로 잇고, 일정에 없거나 표를 못 읽으면 '기타'
+//  3) 그 외 빈 문자열
+// 공구 줄은 lineup 이 비지 않으므로 isGonggu 가 항상 true 다.
+
+export const GONGGU_LABEL = "공동구매";
+export const UNKNOWN_GONGGU_SELLER = "기타";
+export const GONGGU_SELLER_JOIN = "·";
+export const GONGGU_SCHEDULE_TABLE = "bl_gonggu_schedule";
+
+export interface GongguWindow {
+  seller: string;
+  start_on: string; // YYYY-MM-DD
+  end_on: string;   // YYYY-MM-DD (포함)
+}
+
+const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** 그날 걸린 공구 셀러. 여럿이면 '·' 로 잇고(시작일 → 마감일 → 이름 순, sync_sales_auto._window_order 와 같음), 없으면 '기타'. */
+export function gongguSellerOn(date: string, schedule: readonly GongguWindow[]): string {
+  const hits = [...schedule]
+    .map(w => ({ seller: w.seller, start: String(w.start_on).slice(0, 10), end: String(w.end_on).slice(0, 10) }))
+    .sort((a, b) => cmp(a.start, b.start) || cmp(a.end, b.end) || cmp(a.seller, b.seller))
+    .filter(w => w.start <= date && date <= w.end)
+    .map(w => w.seller);
+  return hits.length ? hits.join(GONGGU_SELLER_JOIN) : UNKNOWN_GONGGU_SELLER;
+}
+
+/** product_sales.lineup 값. 공구면 셀러 이름(비지 않음), 자체·다른 브랜드 빈 라인업은 빈 문자열. */
+export function resolveSalesLineup(
+  args: { date: string; brand: string; brandLabel?: string | null; lineup?: string | null },
+  schedule: readonly GongguWindow[],
+): string {
+  const lineup = String(args.lineup ?? "").trim();
+  if (lineup) return lineup;
+  if (args.brand === "balancelab" && String(args.brandLabel ?? "").trim() === GONGGU_LABEL) {
+    return gongguSellerOn(args.date, schedule);
+  }
+  return "";
+}
