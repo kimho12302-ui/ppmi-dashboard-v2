@@ -10,6 +10,7 @@ import { matchesBrand } from "@/lib/brand-groups";
 import { ProductTrendChart } from "@/components/product-trend-chart";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
+import { daysBetween, lastDataDate } from "@/lib/bucket";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { isGonggu as isGongguRow, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
 import { Suspense, useMemo, useState } from "react";
@@ -55,6 +56,27 @@ export default function SalesPage() {
       <SalesPageInner />
     </Suspense>
   );
+}
+
+// 매출 화면 전용 주·월 키. 주는 1월 1일 기준 주차(YYYY-Wnn)라 공용 bucketKey(월요일 시작)와 다르다.
+// 화면 라벨이 바뀌지 않게 기존 규칙을 그대로 두고, 축 채우기에서도 같은 함수를 쓴다.
+type PeriodMode = "daily" | "weekly" | "monthly";
+function periodKey(date: string, mode: PeriodMode): string {
+  if (mode === "monthly") return date.slice(0, 7); // YYYY-MM
+  if (mode === "daily") return date.slice(5);
+  const d = new Date(date);
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
+  return `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+}
+/** 선택 기간 전체(오늘까지)의 키 → 그 키에 속한 첫날. 첫날은 수집 지연 구간 판정에 쓴다. */
+function periodAxis(from: string, to: string, mode: PeriodMode): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const d of daysBetween(from, to)) {
+    const k = periodKey(d, mode);
+    if (!m.has(k)) m.set(k, d);
+  }
+  return m;
 }
 
 function SalesPageInner() {
@@ -111,9 +133,6 @@ function SalesPageInner() {
 
   /* 브랜드별 누적 매출 트렌드 — API의 brandRevenueTrend 사용 (공구 포함) */
   const brandColors: Record<string, string> = { 너티: "#dc2626", 아이언펫: "#ea580c", 사입: "#92400e", 밸런스랩: "#2563eb" };
-  const dailyTrend = useMemo(() => {
-    return (data?.brandRevenueTrend || []).map((r) => ({ ...r, date: r.date.slice(5) }));
-  }, [data?.brandRevenueTrend]);
   const activeBrands = useMemo(() => {
     const set = new Set<string>();
     for (const r of data?.brandRevenueTrend || []) {
@@ -121,6 +140,21 @@ function SalesPageInner() {
     }
     return Array.from(set);
   }, [data?.brandRevenueTrend]);
+  // 축 = 선택 기간 전체(오늘까지). 서버는 매출이 있는 날만 보내므로 빈 날을 0 으로 채운다(2026-10-28).
+  // 마지막 매출 날짜 이후는 판매 0 이 아니라 동기화 지연이라 null(막대 없음).
+  const dailyTrend = useMemo(() => {
+    const rows = data?.brandRevenueTrend || [];
+    if (!rows.length) return [];
+    const byDate = new Map(rows.map((r) => [r.date, r]));
+    const last = lastDataDate(rows);
+    const days = Array.from(new Set([...daysBetween(from, to), ...byDate.keys()])).sort();
+    return days.map((d) => {
+      const r = byDate.get(d);
+      const row: Record<string, string | number | null> = { date: d.slice(5) };
+      for (const bl of activeBrands) row[bl] = d > last ? null : Number(r?.[bl] || 0);
+      return row;
+    });
+  }, [data?.brandRevenueTrend, activeBrands, from, to]);
 
   /* 채널별 */
   const byChannel = useMemo(() => {
@@ -157,22 +191,22 @@ function SalesPageInner() {
   const [periodMode, setPeriodMode] = useState<"weekly" | "monthly">("weekly");
   const periodData = useMemo(() => {
     const map: Record<string, { revenue: number; orders: number }> = {};
+    // 기간 전체 주·월을 먼저 0 으로 깔아 둔다. 매출 없는 주·월도 축에서 빠지지 않는다(2026-10-28).
+    const axis = periodAxis(from, to, periodMode);
+    for (const key of axis.keys()) map[key] = { revenue: 0, orders: 0 };
     for (const r of sales) {
-      let key: string;
-      if (periodMode === "monthly") {
-        key = r.date.slice(0, 7); // YYYY-MM
-      } else {
-        const d = new Date(r.date);
-        const jan1 = new Date(d.getFullYear(), 0, 1);
-        const weekNum = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
-        key = `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
-      }
+      const key = periodKey(r.date, periodMode);
       if (!map[key]) map[key] = { revenue: 0, orders: 0 };
       map[key].revenue += r.revenue || 0;
       map[key].orders += r.orders || 0;
     }
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([period, v]) => ({ period, ...v }));
-  }, [sales, periodMode]);
+    if (!sales.length) return [];
+    const last = lastDataDate(sales);
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([period, v]) => {
+      const pending = (axis.get(period) || "") > last; // 그 주·월의 첫날이 마지막 매출일 뒤면 아직 안 들어온 구간
+      return { period, revenue: pending ? null : v.revenue, orders: pending ? null : v.orders };
+    });
+  }, [sales, periodMode, from, to]);
 
   /* 밸런스랩 자체 vs 공구 시간 추이 */
   const [balanceTrendMode, setBalanceTrendMode] = useState<"daily" | "weekly" | "monthly">("weekly");
@@ -189,27 +223,23 @@ function SalesPageInner() {
           const isG = isGongguRow(r) || isGongguAggregate(r);
           return { date: r.date, self: isG ? 0 : rev, gonggu: isG ? rev : 0 };
         });
-    for (const day of days) {
-      const date = day.date;
-      if (!/^\d{4}-\d{2}-\d{2}/.test(date)) continue;
-      let key: string;
-      if (balanceTrendMode === "monthly") {
-        key = date.slice(0, 7);
-      } else if (balanceTrendMode === "weekly") {
-        const d = new Date(date);
-        if (isNaN(d.getTime())) continue;
-        const jan1 = new Date(d.getFullYear(), 0, 1);
-        const weekNum = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
-        key = `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
-      } else {
-        key = date.slice(5);
-      }
+    const valid = days.filter((day) => /^\d{4}-\d{2}-\d{2}/.test(day.date) && !isNaN(new Date(day.date).getTime()));
+    if (!valid.length) return [];
+    // 기간 전체 일·주·월을 0 으로 깔아 둔다(2026-10-28). 마지막 데이터 이후 구간은 null.
+    const axis = periodAxis(from, to, balanceTrendMode);
+    for (const key of axis.keys()) map[key] = { self: 0, gonggu: 0 };
+    for (const day of valid) {
+      const key = periodKey(day.date, balanceTrendMode);
       if (!map[key]) map[key] = { self: 0, gonggu: 0 };
       map[key].gonggu += day.gonggu;
       map[key].self += day.self;
     }
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([period, v]) => ({ period, ...v }));
-  }, [data?.blDaily, products, balanceTrendMode]);
+    const last = lastDataDate(valid);
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([period, v]) => {
+      const pending = (axis.get(period) || "") > last;
+      return { period, self: pending ? null : v.self, gonggu: pending ? null : v.gonggu };
+    });
+  }, [data?.blDaily, products, balanceTrendMode, from, to]);
 
   /* 공구별 (밸런스랩) */
   const gongguData = useMemo(() => {
@@ -294,7 +324,7 @@ function SalesPageInner() {
                     borderRadius: 8,
                     fontSize: 12,
                   }}
-                  formatter={(val) => formatCurrency(Number(val))}
+                  formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))}
                 />
                 <Legend />
                 {activeBrands.map((bl) => (
@@ -332,7 +362,7 @@ function SalesPageInner() {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
                 <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
                 <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill="#2563eb" radius={[4, 4, 0, 0]} />
               </BarChart>
             </DeferredResponsiveContainer>
@@ -349,7 +379,7 @@ function SalesPageInner() {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                 <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={100} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
                 <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
               </BarChart>
             </DeferredResponsiveContainer>
@@ -394,7 +424,7 @@ function SalesPageInner() {
                       borderRadius: 8,
                       fontSize: 12,
                     }}
-                    formatter={(val) => formatCurrency(Number(val))}
+                    formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))}
                   />
                   <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill="#2563eb" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -509,7 +539,7 @@ function SalesPageInner() {
                     />
                     <Tooltip
                       contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                      formatter={(val) => formatCurrency(Number(val))}
+                      formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))}
                     />
                     <Legend />
                     <Bar isAnimationActive={false} dataKey="self" name="자체매출" stackId="bal" fill="#3b82f6" radius={[0, 0, 0, 0]} />

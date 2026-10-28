@@ -8,7 +8,7 @@ import { DateRangeSelector } from "@/components/ui/date-range-selector";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { BRAND_LABELS, AD_CHANNEL_COLORS } from "@/lib/types";
-import { bucketize, GRAN_LABELS, type Gran } from "@/lib/bucket";
+import { bucketize, bucketAxis, bucketLabel, isAfterLastData, lastDataDate, GRAN_LABELS, type Gran } from "@/lib/bucket";
 import { StoreDetailChart } from "@/components/store-detail-chart";
 import { SectionHeading } from "@/components/ui/section";
 import { ProductAdTable } from "@/components/product-ad-table";
@@ -110,34 +110,54 @@ function BrandInner({ brand }: { brand: string }) {
     return dim === "channel" ? k.channels : dim === "lineup" ? k.lineups : k.products;
   }, [detail, dim]);
 
-  const stackData = useMemo(() => {
-    if (dim === "gonggu") {
-      const rows = detail?.selfGongguTrend || [];
-      if (!rows.length) return [];
-      return bucketize(rows, gran, (r) => ({ 자체: r.self || 0, 공구: r.gonggu || 0 }))
-        .map((b) => ({ label: b.label, ...b.values }));
-    }
-    const rows = detail?.stackSeries || [];
-    if (!rows.length) return [];
-    const field = dim === "channel" ? "byChannel" : dim === "lineup" ? "byLineup" : "byProduct";
-    return bucketize(rows, gran, (r) => (r as unknown as Record<string, Record<string, number>>)[field] || {})
-      .map((b) => ({ label: b.label, ...b.values }));
-  }, [detail, dim, gran]);
+  // 매출 원본 행. 판매가 하나도 없으면 차트 대신 "기간 내 판매 없음"을 보인다.
+  const stackRows = useMemo(
+    () => (dim === "gonggu" ? detail?.selfGongguTrend || [] : detail?.stackSeries || []),
+    [detail, dim]
+  );
+
+  // 매출 버킷. 축은 기간 전체(값 없는 날도 0)로 만든다. 키(YYYY-MM-DD)로 다룬다.
+  // 라벨("10/2")로 묶으면 해가 바뀌는 기간에서 다른 해의 같은 날이 겹친다.
+  const stackByKey = useMemo(() => {
+    const m = new Map<string, Record<string, number>>();
+    if (!stackRows.length) return m;
+    const range = { from, to, fields: stackKeys };
+    const buckets = dim === "gonggu"
+      ? bucketize(detail?.selfGongguTrend || [], gran, (r) => ({ 자체: r.self || 0, 공구: r.gonggu || 0 }), range)
+      : bucketize(detail?.stackSeries || [], gran, (r) => {
+          const field = dim === "channel" ? "byChannel" : dim === "lineup" ? "byLineup" : "byProduct";
+          return (r as unknown as Record<string, Record<string, number>>)[field] || {};
+        }, range);
+    for (const b of buckets) m.set(b.key, b.values);
+    return m;
+  }, [detail, dim, gran, from, to, stackKeys, stackRows]);
 
   // 매출 구성 차트에 겹쳐 그릴 광고비. 같은 버킷 단위로 접는다.
   // (별도 "일별 매출·광고비" 차트가 이 차트와 사실상 같은 그림이라 광고비 선만 여기로 합쳤다)
-  const adByBucket = useMemo(() => {
-    const rows = dash?.trend || [];
-    if (!rows.length) return new Map<string, number>();
+  const adByKey = useMemo(() => {
     const m = new Map<string, number>();
-    for (const b of bucketize(rows, gran, (r) => ({ ad: r.adSpend || 0 }))) m.set(b.label, b.values.ad || 0);
+    for (const b of bucketize(dash?.trend || [], gran, (r) => ({ ad: r.adSpend || 0 }), { from, to, fields: ["ad"] })) {
+      m.set(b.key, b.values.ad || 0);
+    }
     return m;
-  }, [dash, gran]);
+  }, [dash, gran, from, to]);
 
-  const chartData = useMemo(
-    () => stackData.map((row) => ({ ...row, __ad: adByBucket.get(String(row.label)) || 0 })),
-    [stackData, adByBucket]
-  );
+  // 축 = 선택 기간 전체(오늘까지). 예전에는 매출이 있는 날만 축에 올라가서
+  // 매출 0 인 날은 광고비 선까지 같이 사라졌다(2026-10-28 수정).
+  // 마지막 판매 데이터 이후 버킷은 판매 0 이 아니라 동기화 지연이라 막대를 비운다(null).
+  const chartData = useMemo(() => {
+    if (!stackRows.length) return [];
+    const lastSale = lastDataDate(stackRows);
+    const keys = Array.from(new Set([...bucketAxis(from, to, gran), ...stackByKey.keys()])).sort();
+    return keys.map((k) => {
+      const pending = isAfterLastData(k, gran, lastSale);
+      const vals = stackByKey.get(k) || {};
+      const row: Record<string, string | number | null> = { label: bucketLabel(k, gran) };
+      for (const sk of stackKeys) row[sk] = pending ? null : vals[sk] || 0;
+      row.__ad = adByKey.get(k) || 0;
+      return row;
+    });
+  }, [stackRows, stackByKey, adByKey, stackKeys, from, to, gran]);
 
   const dimLabel = [...STACK_DIMS, GONGGU_DIM].find(d => d.key === dim)?.label || "";
   const keyLabel = (k: string) => (dim === "channel" ? CH_KOR[k] || k : k);
@@ -213,14 +233,14 @@ function BrandInner({ brand }: { brand: string }) {
               </div>
             </div>
           </div>
-          {stackData.length > 0 && stackKeys.length > 0 ? (
+          {chartData.length > 0 && stackKeys.length > 0 ? (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData}>
                   <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} />
                   <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
                   <Tooltip
-                    formatter={(v, name) => [formatCurrency(Number(v)), name === "__ad" ? "광고비" : keyLabel(String(name))]}
+                    formatter={(v, name) => [v == null ? "-" : formatCurrency(Number(v)), name === "__ad" ? "광고비" : keyLabel(String(name))]}
                     labelFormatter={(l) => `${l}`}
                     itemSorter={(i) => -(Number(i.value) || 0)} />
                   <Legend formatter={(v) => (v === "__ad" ? "광고비" : keyLabel(String(v)))} wrapperStyle={{ fontSize: 11 }} />

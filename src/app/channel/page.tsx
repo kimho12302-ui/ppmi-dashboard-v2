@@ -5,7 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatWon, cn } from "@/lib/utils";
-import { bucketKey, bucketLabel, type Gran } from "@/lib/bucket";
+import { bucketAxis, bucketKey, bucketLabel, type Gran } from "@/lib/bucket";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
@@ -40,12 +40,18 @@ function roasColor(roas: number) {
   return "#ef4444";
 }
 
+// ROAS 는 비율이라 광고비가 0 이면 0x 가 아니라 "-" 로 둔다(2026-10-28).
+function RoasText({ r, a }: { r: number; a: number }) {
+  if (a <= 0) return <span>-</span>;
+  const roas = r / a;
+  return <span style={{ color: roasColor(roas) }}>{roas.toFixed(1)}x</span>;
+}
+
 function CellTd({ r, a }: { r: number; a: number }) {
-  const roas = a > 0 ? r / a : 0;
   return (
     <td className="py-2 px-3 text-right whitespace-nowrap">
       <div>{formatWon(r)}</div>
-      <div className="text-[11px] text-muted-foreground">{formatWon(a)} · <span style={{ color: roasColor(roas) }}>{roas.toFixed(1)}x</span></div>
+      <div className="text-[11px] text-muted-foreground">{formatWon(a)} · <RoasText r={r} a={a} /></div>
     </td>
   );
 }
@@ -66,9 +72,13 @@ function ChannelInner() {
   const series = useMemo(() => data?.series || [], [data]);
   const buckets = useMemo(() => {
     const m: Record<string, { naver: { r: number; a: number }; jasamol: { r: number; a: number }; coupang: { r: number; a: number }; other: { r: number; a: number } }> = {};
+    const empty = () => ({ naver: { r: 0, a: 0 }, jasamol: { r: 0, a: 0 }, coupang: { r: 0, a: 0 }, other: { r: 0, a: 0 } });
+    if (!series.length) return [];
+    // 축 = 선택 기간 전체(오늘까지). 매출·광고비가 없는 날도 0 으로 남긴다(2026-10-28).
+    for (const key of bucketAxis(from, to, gran)) m[key] = empty();
     for (const row of series) {
       const key = bucketKey(row.date, gran);
-      if (!m[key]) m[key] = { naver: { r: 0, a: 0 }, jasamol: { r: 0, a: 0 }, coupang: { r: 0, a: 0 }, other: { r: 0, a: 0 } };
+      if (!m[key]) m[key] = empty();
       m[key].naver.r += row.naver?.revenue || 0; m[key].naver.a += row.naver?.adSpend || 0;
       m[key].jasamol.r += row.jasamol?.revenue || 0; m[key].jasamol.a += row.jasamol?.adSpend || 0;
       m[key].coupang.r += row.coupang?.revenue || 0; m[key].coupang.a += row.coupang?.adSpend || 0;
@@ -79,16 +89,18 @@ function ChannelInner() {
       const b = m[key];
       const totalRev = b.naver.r + b.jasamol.r + b.coupang.r + b.other.r;
       const totalAd = b.naver.a + b.jasamol.a + b.coupang.a + b.other.a;
-      return { key, label: bucketLabel(key, gran), ...b, totalRev, totalAd, totalRoas: totalAd > 0 ? totalRev / totalAd : 0 };
+      return { key, label: bucketLabel(key, gran), ...b, totalRev, totalAd };
     });
-  }, [series, gran]);
+  }, [series, gran, from, to]);
 
+  // 이 차트는 ROAS(비율)만 그린다. 광고비 0 인 구간은 0x 가 아니라 빈칸(null)이라 선이 끊긴다.
+  const ratio = (r: number, a: number) => (a > 0 ? +(r / a).toFixed(2) : null);
   const chartData = useMemo(() => buckets.map((b) => ({
     label: b.label,
-    스마트스토어: b.naver.a > 0 ? +(b.naver.r / b.naver.a).toFixed(2) : 0,
-    자사몰: b.jasamol.a > 0 ? +(b.jasamol.r / b.jasamol.a).toFixed(2) : 0,
-    쿠팡: b.coupang.a > 0 ? +(b.coupang.r / b.coupang.a).toFixed(2) : 0,
-    전체: +b.totalRoas.toFixed(2),
+    스마트스토어: ratio(b.naver.r, b.naver.a),
+    자사몰: ratio(b.jasamol.r, b.jasamol.a),
+    쿠팡: ratio(b.coupang.r, b.coupang.a),
+    전체: ratio(b.totalRev, b.totalAd),
   })), [buckets]);
 
   if (loading) {
@@ -184,7 +196,7 @@ function ChannelInner() {
                   <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}x`} />
                   <Tooltip
                     contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
-                    formatter={(v) => `${Number(v).toFixed(2)}x`}
+                    formatter={(v) => (v == null ? "-" : `${Number(v).toFixed(2)}x`)}
                   />
                   <Legend />
                   <Line type="monotone" dataKey="스마트스토어" stroke="#10b981" strokeWidth={2} dot={false} />
@@ -215,7 +227,7 @@ function ChannelInner() {
                         <CellTd r={b.coupang.r} a={b.coupang.a} />
                         <td className="py-2 pl-3 text-right whitespace-nowrap">
                           <div className="font-semibold">{formatWon(b.totalRev)}</div>
-                          <div className="text-[11px] text-muted-foreground">{formatWon(b.totalAd)} · <span style={{ color: roasColor(b.totalRoas) }}>{b.totalRoas.toFixed(1)}x</span></div>
+                          <div className="text-[11px] text-muted-foreground">{formatWon(b.totalAd)} · <RoasText r={b.totalRev} a={b.totalAd} /></div>
                         </td>
                       </tr>
                     ))}

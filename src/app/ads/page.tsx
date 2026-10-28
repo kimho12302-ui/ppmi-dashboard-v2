@@ -9,6 +9,7 @@ import { AD_ALERTS_URL } from "@/lib/api-urls";
 import { AdAlerts } from "@/components/ad-alerts";
 import { CHANNEL_LABELS, CHANNEL_COLORS, type DailyAdSpend } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
+import { daysBetween } from "@/lib/bucket";
 import { formatCurrency, formatNumber, formatPercent, formatRoas, isRoasUntracked, cn } from "@/lib/utils";
 import { Suspense, useMemo, useState } from "react";
 import {
@@ -125,20 +126,35 @@ function AdsPageInner() {
       .sort((a, b) => b.spend - a.spend);
   }, [ads, channelMap]);
 
-  /* ── 일별 트렌드 (채널별) ── */
+  const activeChannels = useMemo(() => {
+    const chs = new Set<string>();
+    for (const r of ads) {
+      if (!r.channel.startsWith("ga4_") && r.spend > 0) chs.add(r.channel);
+    }
+    return Array.from(chs).sort();
+  }, [ads]);
+
+  // 축 = 선택 기간 전체(오늘까지). 집행이 없는 날도 빠지지 않는다(2026-10-28).
+  // 광고 원장에 있는 기간 밖 날짜도 버리지 않고 합친다(합계 보존).
+  const adDays = useMemo(() => {
+    const set = new Set(daysBetween(from, to));
+    for (const r of ads) if (!r.channel.startsWith("ga4_")) set.add(r.date);
+    return Array.from(set).sort();
+  }, [ads, from, to]);
+
+  /* ── 일별 트렌드 (채널별) ── 집행 없는 날은 0 */
   const dailyTrend = useMemo(() => {
     const map: Record<string, Record<string, number>> = {};
+    for (const d of adDays) map[d] = Object.fromEntries(activeChannels.map((ch) => [ch, 0]));
     for (const r of ads) {
       if (r.channel.startsWith("ga4_")) continue; // GA4 제외
       if (!map[r.date]) map[r.date] = {};
       map[r.date][r.channel] = (map[r.date][r.channel] || 0) + (r.spend || 0);
     }
-    return Object.entries(map)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, channels]) => ({ date: date.slice(5), ...channels }));
-  }, [ads]);
+    return adDays.map((date) => ({ date: date.slice(5), ...map[date] }));
+  }, [ads, adDays, activeChannels]);
 
-  /* ── 일별 ROAS 트렌드 (채널별) ── */
+  /* ── 일별 ROAS 트렌드 (채널별) ── 비율이라 광고비 0 인 날은 0x 가 아니라 빈칸(null) */
   const dailyRoas = useMemo(() => {
     const spendMap: Record<string, Record<string, number>> = {};
     const convMap: Record<string, Record<string, number>> = {};
@@ -148,26 +164,20 @@ function AdsPageInner() {
       spendMap[r.date][r.channel] = (spendMap[r.date][r.channel] || 0) + (r.spend || 0);
       convMap[r.date][r.channel] = (convMap[r.date][r.channel] || 0) + (r.conversion_value || 0);
     }
-    return Object.entries(spendMap).sort(([a], [b]) => a.localeCompare(b)).map(([date, spends]) => {
-      const row: Record<string, string | number> = { date: date.slice(5) };
-      for (const ch of Object.keys(spends)) {
-        row[ch] = spends[ch] > 0 ? Number((convMap[date]?.[ch] || 0) / spends[ch]) : 0;
+    return adDays.map((date) => {
+      const spends = spendMap[date] || {};
+      const row: Record<string, string | number | null> = { date: date.slice(5) };
+      for (const ch of activeChannels) {
+        const sp = spends[ch] || 0;
+        row[ch] = sp > 0 ? Number((convMap[date]?.[ch] || 0) / sp) : null;
       }
       // 전체 ROAS
       const totalSpend = Object.values(spends).reduce((s, v) => s + v, 0);
       const totalConv = Object.values(convMap[date] || {}).reduce((s, v) => s + v, 0);
-      row["__total"] = totalSpend > 0 ? Number((totalConv / totalSpend).toFixed(2)) : 0;
+      row["__total"] = totalSpend > 0 ? Number((totalConv / totalSpend).toFixed(2)) : null;
       return row;
     });
-  }, [ads]);
-
-  const activeChannels = useMemo(() => {
-    const chs = new Set<string>();
-    for (const r of ads) {
-      if (!r.channel.startsWith("ga4_") && r.spend > 0) chs.add(r.channel);
-    }
-    return Array.from(chs).sort();
-  }, [ads]);
+  }, [ads, adDays, activeChannels]);
 
   if (loading) {
     return (
@@ -315,7 +325,7 @@ function AdsPageInner() {
                   <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "1.0x", position: "right", fontSize: 10, fill: "#ef4444" }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                    formatter={(val) => `${Number(val).toFixed(2)}x`}
+                    formatter={(val) => (val == null ? "-" : `${Number(val).toFixed(2)}x`)}
                   />
                   <Legend />
                   {activeChannels.map((ch) => (

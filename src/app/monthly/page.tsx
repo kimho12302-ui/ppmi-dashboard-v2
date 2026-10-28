@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useMemo, useState, useEffect } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch, useFilterParams } from "@/hooks/use-dashboard-data";
@@ -79,7 +79,27 @@ function MonthlyInner() {
   const CH_LABEL: Record<string, string> = { meta: "메타", naver_search: "네이버검색", naver_shopping: "네이버쇼핑", google_pmax: "구글P-Max", google_search: "구글검색", google_ads: "구글", coupang_ads: "쿠팡", gfa: "GFA", gdn: "GDN", influencer: "인플루언서" };
   const CH_COLOR: Record<string, string> = { meta: "#1877f2", naver_search: "#03c75a", naver_shopping: "#22c55e", google_pmax: "#eab308", google_search: "#f59e0b", google_ads: "#fbbf24", coupang_ads: "#ef4444", gfa: "#8b5cf6", gdn: "#a78bfa", influencer: "#ec4899" };
   const channelKeys = Array.from(new Set(summary.flatMap((m) => Object.keys(m.channelCosts || {})))).filter(Boolean);
-  const channelData = summary.map((m) => ({ month: m.month, ...m.channelCosts }));
+  // 차트 축: 데이터가 있는 첫 달~마지막 달 사이의 빈 달도 빠지지 않게 채운다(2026-10-28).
+  // 금액은 0, 비율(이익률·ROAS)은 0 이 아니라 빈칸(null). 첫 데이터 달 이전은 수집 전이라 넣지 않는다.
+  // 표는 서버가 계산한 전월비가 있어 행을 끼워 넣지 않는다.
+  const chartSummary = useMemo(() => {
+    if (summary.length < 2) return summary as (Omit<MonthlySummary, "profitRate" | "roas"> & { profitRate: number | null; roas: number | null })[];
+    const byMonth = new Map(summary.map((m) => [m.month, m]));
+    const out: (Omit<MonthlySummary, "profitRate" | "roas"> & { profitRate: number | null; roas: number | null })[] = [];
+    let [y, mo] = summary[0].month.split("-").map(Number);
+    const last = summary[summary.length - 1].month;
+    for (let i = 0; i < 240; i++) {
+      const key = `${y}-${String(mo).padStart(2, "0")}`;
+      if (key > last) break;
+      out.push(byMonth.get(key) || {
+        month: key, revenue: 0, orders: 0, adSpend: 0, cogs: 0, shippingCost: 0, profit: 0,
+        profitRate: null, roas: null, mer: 0, cv: 0, aov: 0, adRatio: 0, cac: 0, channelCosts: {},
+      });
+      mo += 1; if (mo > 12) { mo = 1; y += 1; }
+    }
+    return out;
+  }, [summary]);
+  const channelData = chartSummary.map((m) => ({ month: m.month, ...m.channelCosts }));
 
   // Brand list (hard-coded since we know brands)
   const brands = ["all", "nutty", "ironpet", "saip", "balancelab"];
@@ -175,7 +195,7 @@ function MonthlyInner() {
           <CardContent className="p-4">
             <h3 className="font-semibold text-sm mb-3">매출 vs 총비용 (광고비+원가+배송)</h3>
             <ResponsiveContainer width="100%" height={220}>
-              <ComposedChart data={summary}>
+              <ComposedChart data={chartSummary}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
                 <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
@@ -197,7 +217,7 @@ function MonthlyInner() {
           <CardContent className="p-4">
             <h3 className="font-semibold text-sm mb-3">이익률 & ROAS 추이</h3>
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={summary}>
+              <LineChart data={chartSummary}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
                 <YAxis yAxisId="left" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v.toFixed(0)}%`} />

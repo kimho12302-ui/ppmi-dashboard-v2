@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { channelGroupsUrl } from "@/lib/api-urls";
 import { formatCurrency, cn } from "@/lib/utils";
-import { bucketize, GRAN_LABELS, type Gran } from "@/lib/bucket";
+import { bucketize, isAfterLastData, lastDataDate, GRAN_LABELS, type Gran } from "@/lib/bucket";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend,
 } from "recharts";
@@ -35,17 +35,27 @@ export function StoreDetailChart({ brand, from, to }: { brand: string; from: str
   const series = useMemo(() => {
     const rows = (data?.series || []) as unknown as { date: string; [k: string]: { revenue: number; adSpend: number } | string }[];
     if (!rows.length || !active) return [];
+    // 축은 선택 기간 전체(오늘까지). 값 없는 날은 매출·광고비 0 으로 자리를 지킨다(2026-10-28).
+    // 마지막 데이터 날짜 이후는 0 이 아니라 아직 안 들어온 구간이라 null.
+    // ROAS 는 비율이라 광고비가 0 인 구간은 0x 가 아니라 빈칸(null, 선이 끊김).
+    const last = lastDataDate(rows.map((r) => ({ date: String(r.date) })));
     return bucketize(
       rows.map((r) => ({ date: String(r.date), cell: r[active] as { revenue: number; adSpend: number } | undefined })),
       gran,
-      (r) => ({ 매출: r.cell?.revenue || 0, 광고비: r.cell?.adSpend || 0 })
-    ).map((b) => ({
-      label: b.label,
-      매출: b.values["매출"] || 0,
-      광고비: b.values["광고비"] || 0,
-      ROAS: (b.values["광고비"] || 0) > 0 ? +((b.values["매출"] || 0) / (b.values["광고비"] || 1)).toFixed(2) : 0,
-    }));
-  }, [data, active, gran]);
+      (r) => ({ 매출: r.cell?.revenue || 0, 광고비: r.cell?.adSpend || 0 }),
+      { from, to, fields: ["매출", "광고비"] }
+    ).map((b) => {
+      const pending = isAfterLastData(b.key, gran, last);
+      const rev = b.values["매출"] || 0;
+      const ad = b.values["광고비"] || 0;
+      return {
+        label: b.label,
+        매출: pending ? null : rev,
+        광고비: pending ? null : ad,
+        ROAS: !pending && ad > 0 ? +(rev / ad).toFixed(2) : null,
+      };
+    });
+  }, [data, active, gran, from, to]);
 
   if (!options.length) return null;
   const activeLabel = options.find((g) => g.key === active)?.label || "";
@@ -86,7 +96,7 @@ export function StoreDetailChart({ brand, from, to }: { brand: string; from: str
                 <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis yAxisId="won" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
                 <YAxis yAxisId="roas" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}x`} />
-                <Tooltip formatter={(v, name) => [name === "ROAS" ? `${v}x` : formatCurrency(Number(v)), String(name)]} />
+                <Tooltip formatter={(v, name) => [v == null ? "-" : name === "ROAS" ? `${v}x` : formatCurrency(Number(v)), String(name)]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar isAnimationActive={false} yAxisId="won" dataKey="매출" fill="#2563eb" radius={[3, 3, 0, 0]} />
                 <Line isAnimationActive={false} yAxisId="won" dataKey="광고비" stroke="#ef4444" strokeWidth={2} dot={false} />

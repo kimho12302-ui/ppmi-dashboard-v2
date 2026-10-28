@@ -12,6 +12,7 @@ import { MagazineBoard } from "@/components/magazine-board";
 import { PhotoSearch } from "@/components/photo-search";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatNumber, formatCurrency, cn } from "@/lib/utils";
+import { bucketAxis } from "@/lib/bucket";
 import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
@@ -119,7 +120,7 @@ function ContentInner() {
   const [view, setView] = useState<View>("work");
 
   const byType = data?.byType || [];
-  const postsTrend = data?.postsTrend || [];
+  const rawPostsTrend = data?.postsTrend || [];
   const followerTrend = data?.followerTrend || [];
 
   const totalPosts = byType.reduce((s, r) => s + r.posts, 0);
@@ -133,9 +134,22 @@ function ContentInner() {
   const contentTypes = Array.from(
     new Set([
       ...byType.map((r) => r.content_type),
-      ...postsTrend.flatMap((row) => Object.keys(row).filter((k) => k !== "date")),
+      ...rawPostsTrend.flatMap((row) => Object.keys(row).filter((k) => k !== "date")),
     ])
   );
+
+  // 주간 게시 추이 축 = 선택 기간 전체의 주(월요일 시작, 오늘까지). 게시가 없는 주도 0 으로 남긴다(2026-10-28).
+  // 마지막 수집 주 이후는 0 이 아니라 아직 안 들어온 구간이라 비운다(null).
+  const lastPostWeek = rawPostsTrend.reduce((mx, r) => (r.date > mx ? r.date : mx), "");
+  const postsTrendByWeek = new Map(rawPostsTrend.map((r) => [r.date, r]));
+  const postsTrend = rawPostsTrend.length === 0 ? [] : Array.from(new Set([...bucketAxis(from, to, "week"), ...postsTrendByWeek.keys()]))
+    .sort()
+    .map((wk) => {
+      const r = postsTrendByWeek.get(wk);
+      const row: Record<string, string | number | null> = { date: wk };
+      for (const ct of contentTypes) row[ct] = wk > lastPostWeek ? null : Number(r?.[ct] || 0);
+      return row;
+    });
 
   // 사진 찾기는 기간·브랜드와 무관하므로 성과 데이터를 기다리지 않는다.
   // 로딩 분기보다 앞에 둬야 데이터가 느린 날에도 바로 쓸 수 있다.

@@ -7,6 +7,7 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatNumber, formatCurrency, cn } from "@/lib/utils";
+import { daysBetween } from "@/lib/bucket";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   BarChart, Bar, Cell, Legend,
@@ -37,7 +38,16 @@ function FunnelInner() {
   const { data, loading } = useFetch<FunnelData>(`/api/funnel?from=${from}&to=${to}&brand=${brand || "all"}`);
 
   const funnel = data?.funnel || [];
-  const trend = data?.trend || [];
+  // 축 = 선택 기간 전체(오늘까지, 2026-10-28). 서버는 수집 행이 있는 날만 보낸다.
+  // 노출·유입·구매 어느 원천에도 행이 없는 날은 "0 건"이 아니라 수집되지 않은 날이라
+  // 0 으로 채우지 않고 빈칸(null)으로 둔다. 날짜 자리는 축에 남는다.
+  const trend = useMemo(() => {
+    const rows = data?.trend || [];
+    if (!rows.length) return [];
+    const byDate = new Map(rows.map((t) => [t.date, t]));
+    const days = Array.from(new Set([...daysBetween(from, to), ...byDate.keys()])).sort();
+    return days.map((d) => byDate.get(d) || ({ date: d } as TrendPoint));
+  }, [data, from, to]);
   const channelFunnel = data?.channelFunnel || [];
   const repurchase = data?.repurchase || { value: 0, rate: 0 };
 

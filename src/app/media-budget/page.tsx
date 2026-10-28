@@ -7,6 +7,7 @@ import { useFetch, useFilterParams } from "@/hooks/use-dashboard-data";
 import { BRAND_LABELS, CHANNEL_LABELS, type DailyAdSpend } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency } from "@/lib/utils";
+import { daysBetween } from "@/lib/bucket";
 
 // 채널 표시 순서
 const CHANNEL_ORDER = [
@@ -58,6 +59,8 @@ function MediaBudgetInner() {
       Record<string, { spend: number; impressions: number; clicks: number }>
     >();
 
+    // 기간 전체 날짜(오늘까지)를 먼저 깔아 둔다. 집행이 없는 날도 표에서 빠지지 않는다(2026-10-28).
+    if (ads.length) for (const d of daysBetween(from, to)) dateMap.set(d, {});
     for (const r of ads) {
       if (!dateMap.has(r.date)) dateMap.set(r.date, {});
       const dm = dateMap.get(r.date)!;
@@ -78,7 +81,7 @@ function MediaBudgetInner() {
           clicks: Object.values(byChannel).reduce((s, v) => s + v.clicks, 0),
         },
       }));
-  }, [ads]);
+  }, [ads, from, to]);
 
   // 합계 행
   const totals = useMemo(() => {

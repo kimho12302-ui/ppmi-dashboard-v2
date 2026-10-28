@@ -22,6 +22,7 @@ import {
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import Link from "next/link";
 import { PacingSection } from "@/components/pacing-section";
+import { kstDate } from "@/lib/date";
 
 type KpiKey = "revenue" | "adSpend" | "roas" | "orders" | "profit" | "profitRate" | "ctr" | "aov" | null;
 
@@ -137,9 +138,15 @@ function OverviewInner() {
     })).sort((a, b) => b.revenue - a.revenue);
   }, [data, channelMap]);
 
-  const dailyTrend = useMemo(() => (data?.trend || []).map((t) => ({
-    date: t.date.slice(5), revenue: t.revenue, adSpend: t.adSpend, maRevenue: t.maRevenue, maAdSpend: t.maAdSpend, roas: Number(t.roas) || 0,
-  })), [data]);
+  // 서버가 기간 전체 날짜를 0 으로 채워 보낸다. 오늘(KST) 이후 날짜만 축에서 뺀다.
+  // ROAS 는 비율이라 광고비가 0 인 날은 0x 가 아니라 빈칸(null, 선이 끊김)으로 둔다(2026-10-28).
+  const dailyTrend = useMemo(() => {
+    const today = kstDate();
+    return (data?.trend || []).filter((t) => t.date <= today).map((t) => ({
+      date: t.date.slice(5), revenue: t.revenue, adSpend: t.adSpend, maRevenue: t.maRevenue, maAdSpend: t.maAdSpend,
+      roas: (t.adSpend || 0) > 0 ? Number(t.roas) || 0 : null,
+    }));
+  }, [data]);
 
   const funnelSummary = data?.funnelSummary || { sessions: 0, cartAdds: 0, purchases: 0, repurchases: 0, convRate: 0 };
   const topProducts = useMemo(() => data?.topProducts || [], [data]);
@@ -184,7 +191,8 @@ function OverviewInner() {
 
   // 누적 매출
   const cumulativeData = useMemo(() => {
-    const trend = data?.trend || [];
+    const today = kstDate();
+    const trend = (data?.trend || []).filter((t) => t.date <= today);
     if (trend.length === 0) return [];
     let cumRev = 0, cumAd = 0;
     return trend.map((t) => {
@@ -617,7 +625,7 @@ function OverviewInner() {
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
                 <YAxis yAxisId="won" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                 <YAxis yAxisId="roas" orientation="right" tick={{ fontSize: 11 }} stroke="#10b981" tickFormatter={(v) => `${v}x`} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val, name) => (name === "ROAS" ? `${Number(val).toFixed(2)}x` : formatCurrency(Number(val)))} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val, name) => (val == null ? "-" : name === "ROAS" ? `${Number(val).toFixed(2)}x` : formatCurrency(Number(val)))} />
                 <Legend />
                 <Area isAnimationActive={false} yAxisId="won" type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} />
                 <Area isAnimationActive={false} yAxisId="won" type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} />
