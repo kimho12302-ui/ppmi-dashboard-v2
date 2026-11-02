@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "smoke": "next build && node scripts/smoke.mjs",
     "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
