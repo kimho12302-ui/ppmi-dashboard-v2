@@ -3,7 +3,8 @@
 //   한 번 긁어 넣은 파일이다. 자동 수집이 아니다(데이터랩 API 키를 발급하지 않기로 함, 2026-11-03).
 // 방법 정본: Work/밸런스랩/docs/2026-10-13-판매부진-진단/검색수요-재측정-2026-11-03.md
 //
-// ★ 지수 = 원지수(index)를 검색어 자기 첫 52주 평균으로 나눈 값(= 100 기준).
+// ★ 지수 = 원지수(index)를 검색어 자기 기준 기간(2024-10 ~ 2025-09 주, 52주) 평균으로 나눈 값(= 100 기준).
+//   기준 기간은 11-03 노트의 전년 비교 구간과 맞춰 고정한다(데이터가 2024-01 부터 있어도 "첫 52주"가 아니다).
 //   앵커환산값(anchorScaled = 원지수 ÷ 같은 조회 영양제)으로 지수를 만들면 영양제 자신의 감소가 모든 선에서
 //   빠져 "시장 대비 얼마나 줄었나"가 왜곡된다. 원지수는 "그 조회 안 최댓값 = 100" 상대값이라 조회가 다르면
 //   직접 이을 수 없다. 그래서 **검색어마다 조회 하나만** 골라 쓴다(pickQuery). 같은 조회 안 같은 검색어끼리
@@ -15,7 +16,9 @@
 // ★ 주 축은 처음~마지막 주 사이 7일 간격 연속 격자다. 빠진 주는 빈칸(null)이라 이동평균·전년비가 그 자리에서
 //   계산을 멈춘다. 배열 위치 -52 가 늘 364일 전이 되게 하려는 것이다.
 
-export const BASELINE_WEEKS = 52;
+/** 기준 기간: 주 시작일이 이 사이에 드는 주(2024-10-07 ~ 2025-09-29, 52주). */
+export const BASELINE_FROM = "2024-10-01";
+export const BASELINE_TO = "2025-09-30";
 export const MA_WEEKS = 4;
 export const YOY_WEEKS = 13;
 /** 이 이름의 묶음은 비교군(회색 선). 나머지 묶음은 카테고리 버튼이 된다. */
@@ -29,13 +32,14 @@ export interface SearchDemandFile {
   anchor: string;
   source: string;
   groups: Record<string, string[]>;
-  rows: { week: string; term: string; query: number; index: number; anchorScaled: number | null; partial?: boolean }[];
+  /** index 가 null = 데이터랩이 기준 미만이라 뺀 주(0 이 아님). 빈칸으로 다룬다. */
+  rows: { week: string; term: string; query: number; index: number | null; anchorScaled: number | null; partial?: boolean }[];
 }
 
 export interface TermSeries {
   term: string;
   group: string;
-  /** 주별 지수(첫 52주 평균 = 100). weeks 와 같은 길이, 없는 주는 null */
+  /** 주별 지수(기준 기간 평균 = 100). weeks 와 같은 길이, 없는 주는 null */
   index: (number | null)[];
   /** 4주 이동평균(직전 4주가 다 있을 때만) */
   ma: (number | null)[];
@@ -86,8 +90,8 @@ export function movingAverage(xs: (number | null)[], n = MA_WEEKS): (number | nu
 }
 
 /** 지수: 첫 52개 값(있는 것)의 평균을 100 으로. 평균이 0 이면 전부 null. */
-export function toIndex(raw: (number | null)[], baseWeeks = BASELINE_WEEKS): (number | null)[] {
-  const base = mean(raw.slice(0, baseWeeks).filter((v): v is number => v !== null));
+export function toIndex(raw: (number | null)[], baseMask: boolean[]): (number | null)[] {
+  const base = mean(raw.filter((v, i): v is number => baseMask[i] && v !== null));
   if (!base) return raw.map(() => null);
   return raw.map((v) => (v === null ? null : (v / base) * 100));
 }
@@ -115,7 +119,7 @@ export function pickQuery(rows: Row[]): number {
   const by = new Map<number, { n: number; max: number }>();
   for (const r of rows) {
     const s = by.get(r.query) ?? { n: 0, max: 0 };
-    by.set(r.query, { n: s.n + 1, max: Math.max(s.max, r.index) });
+    by.set(r.query, { n: s.n + 1, max: Math.max(s.max, r.index ?? 0) });
   }
   return [...by].sort((a, b) => b[1].n - a[1].n || b[1].max - a[1].max || a[0] - b[0])[0][0];
 }
@@ -128,7 +132,7 @@ export function validateFile(f: unknown): string | null {
   if (!o.groups || typeof o.groups !== "object") return "groups 가 없습니다";
   if (!Array.isArray(o.rows)) return "rows 가 배열이 아닙니다";
   const bad = o.rows.findIndex((r) => !r || !DATE_RE.test(String(r.week)) || typeof r.term !== "string"
-    || typeof r.query !== "number" || typeof r.index !== "number" || !Number.isFinite(r.index));
+    || typeof r.query !== "number" || !(r.index === null || (typeof r.index === "number" && Number.isFinite(r.index))));
   if (bad >= 0) return `rows[${bad}] 형식이 틀렸습니다(week·term·query·index)`;
   const notMonday = o.rows.findIndex((r) => new Date(`${r.week}T00:00:00Z`).getUTCDay() !== 1);
   return notMonday >= 0 ? `rows[${notMonday}] week ${o.rows[notMonday].week} 가 월요일(주 시작)이 아닙니다` : null;
@@ -158,13 +162,15 @@ export function buildSearchDemand(file: SearchDemandFile): SearchDemand | null {
   const weeks: string[] = [];
   for (let w = seen[0]; w <= seen[seen.length - 1]; w = addDays(w, 7)) weeks.push(w);
   const pos = new Map(weeks.map((w, i) => [w, i]));
+  const baseMask = weeks.map((w) => w >= BASELINE_FROM && w <= BASELINE_TO);
+  const baseWeeks = weeks.filter((_, i) => baseMask[i]);
   const order = groups.flatMap((g) => g.terms);
   const terms: TermSeries[] = order.map((term) => {
     const mine = usable.filter((r) => r.term === term);
     const query = pickQuery(mine);
     const raw: (number | null)[] = weeks.map(() => null);
     for (const r of mine) if (r.query === query) raw[pos.get(r.week)!] = r.index;
-    const index = toIndex(raw);
+    const index = toIndex(raw, baseMask);
     return { term, group: grouped.get(term)!, query, index, ma: movingAverage(index), yoy: yoyRecent(raw) };
   });
 
@@ -185,7 +191,7 @@ export function buildSearchDemand(file: SearchDemandFile): SearchDemand | null {
     weeks,
     latestWeek,
     partialWeeks,
-    baseline: { from: weeks[0], to: weeks[Math.min(BASELINE_WEEKS, weeks.length) - 1] },
+    baseline: { from: baseWeeks[0] ?? BASELINE_FROM, to: baseWeeks[baseWeeks.length - 1] ?? BASELINE_TO },
     yoyWindow: { from: yoyFrom, to: latestWeek, priorFrom: addDays(yoyFrom, -364), priorTo: addDays(latestWeek, -364) },
     groups,
     terms,
