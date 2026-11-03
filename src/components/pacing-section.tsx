@@ -56,7 +56,8 @@ function ProgressBar({ value, marker, color }: { value: number; marker?: number;
 }
 
 // from/to는 페이지에서 선택한 기간. 이 섹션은 월 목표 기준이라 달력 월에 고정되는데,
-// 선택 기간이 그와 다르면 아래 KPI 카드와 숫자가 어긋나 보이므로 그 사실을 명시한다.
+// 선택 기간이 그와 다르면 Overview KPI 카드와 숫자가 어긋나 보이므로 그 사실을 명시한다.
+// (2026-11-03 Overview 맨 위에서 인사이트 화면 맨 위로 옮겼다.)
 export function PacingSection({ brand, from, to }: { brand: string; from?: string; to?: string }) {
   const b = brand || "all";
   const [open, setOpen] = useState(true);
@@ -142,7 +143,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
 
         {scopeDiffers && (
           <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-500">
-            이 섹션은 <b>{monthLabel} 누적</b> 기준입니다. 선택하신 기간({from} ~ {to})과 달라 아래 &ldquo;선택 기간 실적&rdquo;의 숫자와 일치하지 않습니다.
+            이 섹션은 <b>{monthLabel} 누적</b> 기준입니다. 선택하신 기간({from} ~ {to})과 달라 Overview &ldquo;선택 기간 실적&rdquo;의 숫자와 일치하지 않습니다.
           </div>
         )}
 

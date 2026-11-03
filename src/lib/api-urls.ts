@@ -22,3 +22,7 @@ export const saChangesUrl = (brand: string) => `/api/sa-changes?brand=${brand}`;
 
 export const brandDetailUrl = (brand: string, from: string, to: string) =>
   `/api/brand-detail?brand=${brand}&from=${from}&to=${to}`;
+
+// Overview 와 인사이트(이상치 카드)가 같이 쓴다. 글자가 같아야 한쪽에서 받은 응답을 다른 쪽이 재사용한다.
+export const dashboardUrl = (brand: string, from: string, to: string) =>
+  `/api/dashboard?from=${from}&to=${to}&brand=${brand || "all"}`;

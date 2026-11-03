@@ -8,7 +8,7 @@ import { SectionHeading } from "@/components/ui/section";
 import { AttributionGap } from "@/components/attribution-gap";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
-import { pacingUrl, channelGroupsUrl, brandDetailUrl } from "@/lib/api-urls";
+import { dashboardUrl, channelGroupsUrl, brandDetailUrl } from "@/lib/api-urls";
 import { useDataStatus } from "@/hooks/use-data-status";
 import { useConfig } from "@/hooks/use-config";
 import {
@@ -21,7 +21,6 @@ import {
 } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import Link from "next/link";
-import { PacingSection } from "@/components/pacing-section";
 import { kstDate } from "@/lib/date";
 
 type KpiKey = "revenue" | "adSpend" | "roas" | "orders" | "profit" | "profitRate" | "ctr" | "aov" | null;
@@ -67,10 +66,10 @@ export default function OverviewPage() {
 function OverviewInner() {
   const { brand, from, to } = useFilterParams();
   const { brandMap, channelMap } = useConfig();
-  const { data, loading } = useFetch<DashboardData>(`/api/dashboard?from=${from}&to=${to}&brand=${brand || "all"}`);
-  // 페이싱·판매처 차트·브랜드 상세는 로딩 화면 동안 마운트되지 않는다. 대시보드 응답을 기다리지 않게 같이 부른다.
+  const { data, loading } = useFetch<DashboardData>(dashboardUrl(brand || "all", from, to));
+  // 판매처 차트·브랜드 상세는 로딩 화면 동안 마운트되지 않는다. 대시보드 응답을 기다리지 않게 같이 부른다.
+  // (목표 페이싱·이상치 카드는 2026-11-03 인사이트 화면으로 옮겼다.)
   usePrefetch([
-    pacingUrl(brand || "all"),
     channelGroupsUrl(brand || "all", from, to),
     brand && brand !== "all" ? brandDetailUrl(brand, from, to) : null,
   ]);
@@ -150,7 +149,6 @@ function OverviewInner() {
 
   const funnelSummary = data?.funnelSummary || { sessions: 0, cartAdds: 0, purchases: 0, repurchases: 0, convRate: 0 };
   const topProducts = useMemo(() => data?.topProducts || [], [data]);
-  const anomalies = data?.anomalies || [];
   const gongguSalesTotal = data?.gongguSalesTotal || 0;
   const selfSalesTotal = data?.selfSalesTotal || 0;
   const gongguSales = data?.gongguSales || [];
@@ -416,27 +414,6 @@ function OverviewInner() {
 
   return (
     <PageShell title="Overview" description="PPMI 마케팅 대시보드 전체 현황">
-      {/* 목표 대비 페이싱 — 의사결정 1순위 (통계시트 '광고 예산안' 재현) */}
-      <PacingSection brand={brand || "all"} from={from} to={to} />
-
-      {anomalies.length > 0 && (
-        <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
-          <CardContent className="p-3">
-            {/* ★ IA(2026-09): Overview 의 자체 이상치 카드와 /insights 가 서로를 모르는 상태였다.
-                /insights 는 사이드바로만 도달 가능한 고아 페이지라 인사이트가 몇 건인지 눌러봐야 알았다. */}
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <p className="text-sm font-medium text-red-700 dark:text-red-400">이상치 감지 ({anomalies.length}건)</p>
-              <Link href="/insights" className="text-xs text-red-700 dark:text-red-400 hover:underline whitespace-nowrap">원인 분석 →</Link>
-            </div>
-            {anomalies.map((a, i) => (
-              <p key={i} className="text-xs text-red-600 dark:text-red-300">
-                • {a.brand} {a.metric}: {a.change > 0 ? "+" : ""}{a.change.toFixed(0)}% 변동
-              </p>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
       {/* ── 선택 기간 실적 ──
           기존에는 KPI 9개가 전부 같은 크기로 4열에 깔려 있었다. 균일 그리드는
           "무엇을 먼저 봐야 하는지"를 지운다. 매출·광고비·ROAS 를 hero 로 띄우고
@@ -444,7 +421,7 @@ function OverviewInner() {
       <SectionHeading
         eyebrow="Performance"
         title="선택 기간 실적"
-        note={`${from} ~ ${to}${gongguSalesTotal > 0 ? ` · 매출은 자체매출 기준 (공구 ${formatCurrency(gongguSalesTotal)} 별도, 위 페이싱은 공구 포함)` : ""}`}
+        note={`${from} ~ ${to}${gongguSalesTotal > 0 ? ` · 매출은 자체매출 기준 (공구 ${formatCurrency(gongguSalesTotal)} 별도)` : ""}`}
         action={
           <button onClick={exportCSV}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md text-muted-foreground transition-colors">
