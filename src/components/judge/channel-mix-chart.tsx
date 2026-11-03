@@ -19,7 +19,8 @@ import { biggestShareShift, SHARE_LOOKBACK, SHARE_MIN_SHIFT_PP } from "@/lib/jud
 
 const ACCENT = "var(--sig-danger)";
 // 판매처 무채색(진한 것부터). 비중 큰 판매처가 진하다.
-const NEUTRALS = ["#475569", "#94a3b8", "#cbd5e1", "#64748b", "#e2e8f0", "#334155"];
+// 흰 카드·어두운 카드 둘 다에서 보이는 중간 톤만 쓴다(아주 옅은 #e2e8f0 류는 라이트 모드에서 사라진다).
+const NEUTRALS = ["#475569", "#94a3b8", "#64748b", "#a8b3c4", "#334155", "#7c8a9e"];
 const INCOMPLETE_OPACITY = 0.45;
 
 interface SalesRow { date: string; channel?: string | null; revenue?: number | null }

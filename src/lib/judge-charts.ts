@@ -13,6 +13,11 @@
 export const CONTROL_MIN_DAYS = 14;
 /** 관리 한계 폭(σ 배수). */
 export const CONTROL_SIGMA = 3;
+/**
+ * 같은 원천의 유입 대비 구매가 이 비율(%) 이상이면 수집 오류로 보고 판정에서 뺀다.
+ * 실측: 쿠팡 2026-09-30 구매 88 ÷ 유입 89 = 98.9%. 이런 날 하나가 σ 를 키워 다른 날의 이탈을 다 가렸다.
+ */
+export const CONTROL_IMPLAUSIBLE_RATE = 50;
 
 export interface ControlDayInput {
   date: string;
@@ -30,7 +35,7 @@ export interface ControlPoint {
   rate: number | null;
   status: ControlStatus;
   /** 판정에서 뺀 이유. status === "excluded" 일 때만. */
-  reason?: "no_sessions" | "sales_pending" | "today";
+  reason?: "no_sessions" | "sales_pending" | "today" | "implausible";
   sessions: number | null;
   orders: number | null;
 }
@@ -55,6 +60,7 @@ export interface ControlResult {
  *   - 유입이 0 이거나 행이 없는 날: 분모가 없어 전환율이 성립하지 않는다.
  *   - 판매 동기화가 아직 안 들어온 날(salesLastDate 이후): 구매가 0 으로 읽혀 전부 −3σ 이탈로 잘못 뜬다.
  *   - 오늘: 하루가 안 끝났다.
+ *   - 전환율이 CONTROL_IMPLAUSIBLE_RATE 이상인 날: 유입과 구매의 수집 단위가 어긋난 날이다.
  * 축(날짜)은 연속으로 유지하고 그 자리만 비운다.
  */
 export function buildControlChart(
@@ -72,7 +78,9 @@ export function buildControlChart(
       return { date, rate: null, status: "excluded", reason: "sales_pending", sessions, orders: null };
     }
     if (!sessions || sessions <= 0) return { date, rate: null, status: "excluded", reason: "no_sessions", sessions, orders };
-    return { date, rate: (orders / sessions) * 100, status: "in", sessions, orders };
+    const rate = (orders / sessions) * 100;
+    if (rate >= CONTROL_IMPLAUSIBLE_RATE) return { date, rate: null, status: "excluded", reason: "implausible", sessions, orders };
+    return { date, rate, status: "in", sessions, orders };
   });
 
   const rates = base.filter((p) => p.rate != null).map((p) => p.rate as number);

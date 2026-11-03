@@ -10,7 +10,7 @@ import { useFetch } from "@/hooks/use-dashboard-data";
 import { daysBetween } from "@/lib/bucket";
 import { kstDate } from "@/lib/date";
 import { formatNumber, cn } from "@/lib/utils";
-import { buildControlChart, CONTROL_MIN_DAYS, CONTROL_SIGMA, type ControlPoint } from "@/lib/judge-charts";
+import { buildControlChart, CONTROL_MIN_DAYS, CONTROL_SIGMA, CONTROL_IMPLAUSIBLE_RATE, type ControlPoint } from "@/lib/judge-charts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from "recharts";
 
@@ -25,6 +25,7 @@ const REASON_LABEL: Record<NonNullable<ControlPoint["reason"]>, string> = {
   no_sessions: "유입 미수집",
   sales_pending: "판매 동기화 대기",
   today: "오늘(진행 중)",
+  implausible: "수집 오류 의심",
 };
 
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
@@ -79,6 +80,7 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
   const excluded = chart.points.filter((p) => p.status === "excluded");
   const pendingDays = excluded.filter((p) => p.reason === "sales_pending").length;
   const missingDays = excluded.filter((p) => p.reason === "no_sessions").length;
+  const implausible = excluded.filter((p) => p.reason === "implausible");
 
   const rows = chart.points.map((p) => ({ ...p, label: p.date.slice(5) }));
 
@@ -176,6 +178,12 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
                 pendingDays > 0 ? `판매 동기화 대기 ${pendingDays}일${data?.salesLastDate ? `(${md(data.salesLastDate)} 이후)` : ""}` : null,
                 missingDays > 0 ? `유입 미수집 ${missingDays}일` : null,
               ].filter(Boolean).join(" · ")}. 0 으로 그리면 하락 이탈로 잘못 뜹니다.
+            </p>
+          )}
+          {implausible.length > 0 && (
+            <p>
+              수집 오류 의심으로 뺀 날: {implausible.map((p) => `${md(p.date)} 구매 ${formatNumber(p.orders || 0)} ÷ 유입 ${formatNumber(p.sessions || 0)}`).join(", ")}.
+              전환율 {CONTROL_IMPLAUSIBLE_RATE}% 이상은 유입과 구매의 수집 단위가 어긋난 날로 봅니다.
             </p>
           )}
           {active.note && <p>{active.note}</p>}
