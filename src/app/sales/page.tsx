@@ -11,6 +11,8 @@ import { ProductTrendChart } from "@/components/product-trend-chart";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { daysBetween, lastDataDate } from "@/lib/bucket";
+import { periodKey, periodAxis } from "@/lib/sales-period";
+import { ChannelMixChart } from "@/components/judge/channel-mix-chart";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { isGonggu as isGongguRow, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
 import { Suspense, useMemo, useState } from "react";
@@ -58,26 +60,7 @@ export default function SalesPage() {
   );
 }
 
-// 매출 화면 전용 주·월 키. 주는 1월 1일 기준 주차(YYYY-Wnn)라 공용 bucketKey(월요일 시작)와 다르다.
-// 화면 라벨이 바뀌지 않게 기존 규칙을 그대로 두고, 축 채우기에서도 같은 함수를 쓴다.
-type PeriodMode = "daily" | "weekly" | "monthly";
-function periodKey(date: string, mode: PeriodMode): string {
-  if (mode === "monthly") return date.slice(0, 7); // YYYY-MM
-  if (mode === "daily") return date.slice(5);
-  const d = new Date(date);
-  const jan1 = new Date(d.getFullYear(), 0, 1);
-  const weekNum = Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
-  return `${d.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
-}
-/** 선택 기간 전체(오늘까지)의 키 → 그 키에 속한 첫날. 첫날은 수집 지연 구간 판정에 쓴다. */
-function periodAxis(from: string, to: string, mode: PeriodMode): Map<string, string> {
-  const m = new Map<string, string>();
-  for (const d of daysBetween(from, to)) {
-    const k = periodKey(d, mode);
-    if (!m.has(k)) m.set(k, d);
-  }
-  return m;
-}
+// 주·월 키(1월 1일 기준 주차)는 src/lib/sales-period.ts 로 옮겼다(채널별 매출 구성 차트와 공유, 2026-11-03).
 
 function SalesPageInner() {
   const { brand, from, to } = useFilterParams();
@@ -187,26 +170,7 @@ function SalesPageInner() {
     return Object.entries(map).map(([cat, v]) => ({ category: cat, ...v })).sort((a, b) => b.revenue - a.revenue);
   }, [products]);
 
-  /* 주별/월별 집계 (기획서 4.3-4) */
-  const [periodMode, setPeriodMode] = useState<"weekly" | "monthly">("weekly");
-  const periodData = useMemo(() => {
-    const map: Record<string, { revenue: number; orders: number }> = {};
-    // 기간 전체 주·월을 먼저 0 으로 깔아 둔다. 매출 없는 주·월도 축에서 빠지지 않는다(2026-10-28).
-    const axis = periodAxis(from, to, periodMode);
-    for (const key of axis.keys()) map[key] = { revenue: 0, orders: 0 };
-    for (const r of sales) {
-      const key = periodKey(r.date, periodMode);
-      if (!map[key]) map[key] = { revenue: 0, orders: 0 };
-      map[key].revenue += r.revenue || 0;
-      map[key].orders += r.orders || 0;
-    }
-    if (!sales.length) return [];
-    const last = lastDataDate(sales);
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([period, v]) => {
-      const pending = (axis.get(period) || "") > last; // 그 주·월의 첫날이 마지막 매출일 뒤면 아직 안 들어온 구간
-      return { period, revenue: pending ? null : v.revenue, orders: pending ? null : v.orders };
-    });
-  }, [sales, periodMode, from, to]);
+  /* 주별/월별 집계는 채널별 매출 구성 차트(ChannelMixChart)가 판매처별로 쌓아 그린다. */
 
   /* 밸런스랩 자체 vs 공구 시간 추이 */
   const [balanceTrendMode, setBalanceTrendMode] = useState<"daily" | "weekly" | "monthly">("weekly");
@@ -343,32 +307,9 @@ function SalesPageInner() {
         </Card>
       )}
 
-      {(
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">주별/월별 매출</h3>
-              <div className="flex gap-1 bg-muted rounded-md p-0.5">
-                {(["weekly", "monthly"] as const).map((m) => (
-                  <button key={m} onClick={() => setPeriodMode(m)}
-                    className={cn("px-2 py-1 text-xs rounded", periodMode === m ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
-                    {m === "weekly" ? "주별" : "월별"}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <DeferredResponsiveContainer width="100%" height={200}>
-              <BarChart data={periodData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
-                <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill="#2563eb" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </DeferredResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
+      {/* 판단용: 채널별 매출 구성 (2026-11-03). 예전 '주별/월별 매출' 합계 막대를 판매처별로 쌓았다.
+          막대 높이(그 주·월 합계)는 예전과 같다. 기간 합계는 아래 판매처 카드가 보여 준다. */}
+      <ChannelMixChart sales={sales} channels={byChannel} from={from} to={to} />
 
       {(
         <Card>
@@ -404,33 +345,7 @@ function SalesPageInner() {
               </Card>
             ))}
           </div>
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-4">판매처별 매출 비교</h3>
-              <DeferredResponsiveContainer width="100%" height={300}>
-                <BarChart data={byChannel} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis
-                    type="number"
-                    tick={{ fontSize: 11 }}
-                    stroke="var(--muted-foreground)"
-                    tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`}
-                  />
-                  <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={80} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "var(--card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                    formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))}
-                  />
-                  <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill="#2563eb" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </DeferredResponsiveContainer>
-            </CardContent>
-          </Card>
+          {/* '판매처별 매출 비교'(기간 합계 가로 막대)는 위 판매처 카드와 같은 숫자라 뺐다. 시간 흐름은 채널별 매출 구성에 있다. */}
         </>
       )}
 

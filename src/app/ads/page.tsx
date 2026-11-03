@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
 import { AD_ALERTS_URL } from "@/lib/api-urls";
 import { AdAlerts } from "@/components/ad-alerts";
+import { NaverCampaignMultiples } from "@/components/judge/naver-campaign-multiples";
 import { CHANNEL_LABELS, CHANNEL_COLORS, type DailyAdSpend } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { daysBetween } from "@/lib/bucket";
@@ -579,6 +580,8 @@ function NaverCampaignsSection({ brand, from, to }: { brand: string; from: strin
           <KpiCard title="평균 CTR" value={formatPercent(summary.avgCtr)} />
         </div>
       )}
+      {/* 판단용: 캠페인별 주간 추이 스몰 멀티플 (2026-11-03) */}
+      <NaverCampaignMultiples brand={brand} to={to} />
       <Card>
         <CardContent className="p-4 overflow-x-auto">
           <div className="flex items-center justify-between mb-4">

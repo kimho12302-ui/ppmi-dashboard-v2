@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatNumber, formatCurrency, cn } from "@/lib/utils";
 import { daysBetween } from "@/lib/bucket";
+import { ConversionControlChart } from "@/components/judge/conversion-control-chart";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   BarChart, Bar, Cell, Legend,
@@ -226,6 +227,9 @@ function FunnelInner() {
           </div>
         </CardContent>
       </Card>
+
+      {/* 판단용: 일별 전환율 관리도 (2026-11-03). 같은 원천의 유입·구매로만 계산한다. */}
+      <ConversionControlChart brand={brand || "all"} from={from} to={to} />
 
       {/* 노출 일별 트렌드 (소스별) */}
       {trend.length > 0 && (
