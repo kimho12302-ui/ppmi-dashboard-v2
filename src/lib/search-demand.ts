@@ -11,7 +11,9 @@
 // ★ 비교군 평균 = 구성 검색어 각각의 지수(100 기준)를 주마다 평균. 원지수 평균이 아니다.
 // ★ 전년 동기 = 최근 13주 원지수 합 ÷ 52주(364일) 전 같은 13주 합 - 1.
 //   비교군의 전년 동기는 구성 검색어 전년 동기의 평균(11-03 노트의 "평균"과 같은 식).
-// ★ partial(진행 중인 주) 행은 계산·차트에서 뺀다.
+// ★ partial(진행 중인 주) 행은 계산·차트에서 뺀다. 표식을 빠뜨려도 주 끝(시작+6일)이 수집일 이후면 진행 중으로 본다.
+// ★ 주 축은 처음~마지막 주 사이 7일 간격 연속 격자다. 빠진 주는 빈칸(null)이라 이동평균·전년비가 그 자리에서
+//   계산을 멈춘다. 배열 위치 -52 가 늘 364일 전이 되게 하려는 것이다.
 
 export const BASELINE_WEEKS = 52;
 export const MA_WEEKS = 4;
@@ -127,7 +129,9 @@ export function validateFile(f: unknown): string | null {
   if (!Array.isArray(o.rows)) return "rows 가 배열이 아닙니다";
   const bad = o.rows.findIndex((r) => !r || !DATE_RE.test(String(r.week)) || typeof r.term !== "string"
     || typeof r.query !== "number" || typeof r.index !== "number" || !Number.isFinite(r.index));
-  return bad >= 0 ? `rows[${bad}] 형식이 틀렸습니다(week·term·query·index)` : null;
+  if (bad >= 0) return `rows[${bad}] 형식이 틀렸습니다(week·term·query·index)`;
+  const notMonday = o.rows.findIndex((r) => new Date(`${r.week}T00:00:00Z`).getUTCDay() !== 1);
+  return notMonday >= 0 ? `rows[${notMonday}] week ${o.rows[notMonday].week} 가 월요일(주 시작)이 아닙니다` : null;
 }
 
 function averageLines(lines: (number | null)[][], len: number): (number | null)[] {
@@ -136,8 +140,9 @@ function averageLines(lines: (number | null)[][], len: number): (number | null)[
 
 /** 파일 → 화면 데이터. 쓸 행이 없으면 null. 파일 모양은 validateFile 로 먼저 본다. */
 export function buildSearchDemand(file: SearchDemandFile): SearchDemand | null {
-  const full = file.rows.filter((r) => !r.partial);
-  const partialWeeks = [...new Set(file.rows.filter((r) => r.partial).map((r) => r.week))].sort();
+  const isPartial = (r: Row) => !!r.partial || addDays(r.week, 6) >= file.collectedAt;
+  const full = file.rows.filter((r) => !isPartial(r));
+  const partialWeeks = [...new Set(file.rows.filter(isPartial).map((r) => r.week))].sort();
   const grouped = new Map<string, string>();
   const groups: GroupInfo[] = [];
   for (const [label, members] of Object.entries(file.groups || {})) {
@@ -149,7 +154,9 @@ export function buildSearchDemand(file: SearchDemandFile): SearchDemand | null {
   const usable = full.filter((r) => grouped.has(r.term));
   if (usable.length === 0) return null;
 
-  const weeks = [...new Set(usable.map((r) => r.week))].sort();
+  const seen = usable.map((r) => r.week).sort();
+  const weeks: string[] = [];
+  for (let w = seen[0]; w <= seen[seen.length - 1]; w = addDays(w, 7)) weeks.push(w);
   const pos = new Map(weeks.map((w, i) => [w, i]));
   const order = groups.flatMap((g) => g.terms);
   const terms: TermSeries[] = order.map((term) => {

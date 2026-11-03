@@ -93,7 +93,7 @@ function DemandChart({ data }: { data: SearchDemand }) {
     const members = data.terms.filter((t) => t.group === activeId);
     return members.map((s, i) => ({
       key: `t${i}`, name: s.term, series: s,
-      color: tint(baseColor, members.length > 1 ? (i / (members.length - 1)) * 0.45 : 0),
+      color: tint(baseColor, members.length > 1 ? (i / (members.length - 1)) * 0.35 : 0),
     }));
   }, [data.terms, activeId, baseColor]);
 
