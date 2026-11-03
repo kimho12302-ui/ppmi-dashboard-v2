@@ -10,9 +10,9 @@ import { useFetch } from "@/hooks/use-dashboard-data";
 import { daysBetween } from "@/lib/bucket";
 import { kstDate } from "@/lib/date";
 import { formatNumber, cn } from "@/lib/utils";
-import { buildControlChart, CONTROL_MIN_DAYS, CONTROL_SIGMA, CONTROL_IMPLAUSIBLE_RATE, type ControlPoint } from "@/lib/judge-charts";
+import { buildControlChart, CONTROL_MIN_DAYS, CONTROL_SIGMA, CONTROL_IMPLAUSIBLE_RATE, CONTROL_RUN_LENGTH, type ControlPoint } from "@/lib/judge-charts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, ReferenceArea } from "recharts";
 
 const ACCENT = "var(--sig-danger)";
 const NEUTRAL = "var(--muted-foreground)";
@@ -52,6 +52,7 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
     <div className="mb-3">
       <h3 className="font-semibold">일별 구매 전환율 관리도</h3>
       <p className="text-xs text-muted-foreground mt-0.5">판단: 전환율이 떨어지거나 오른 날이 우연한 흔들림인지, 따로 원인을 찾아야 하는 날인지</p>
+      <p className="text-[11px] text-muted-foreground">방식: Laney p′ 관리도. 유입이 적은 날일수록 한계선이 넓어지고, 실제 흔들림 폭(σz)으로 보정합니다</p>
     </div>
   );
 
@@ -103,16 +104,23 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
         <p className="text-sm mb-2">
           {!chart.enough ? (
             <span className="text-muted-foreground">기간이 짧아 판단 보류 (판정 가능한 날 {chart.n}일, {CONTROL_MIN_DAYS}일 이상 필요)</span>
-          ) : outs.length === 0 ? (
-            <>모든 날이 평균 ±{CONTROL_SIGMA}σ 안입니다. 이 기간의 오르내림은 우연한 흔들림 범위입니다.</>
+          ) : outs.length === 0 && chart.runs.length === 0 ? (
+            <>한계선 밖으로 나간 날도, {CONTROL_RUN_LENGTH}일 연속 한쪽에 머문 구간도 없습니다. 이 기간의 오르내림은 우연한 흔들림 범위입니다.</>
           ) : (
             <>
-              <b style={{ color: ACCENT }}>{outs.length}일</b>이 평균 ±{CONTROL_SIGMA}σ 밖입니다:{" "}
-              {outs.map((p) => `${md(p.date)} ${p.rate!.toFixed(2)}%`).join(", ")}
+              {outs.length > 0 && (
+                <><b style={{ color: ACCENT }}>{outs.length}일</b> 한계선 밖: {outs.map((p) => `${md(p.date)} ${p.rate!.toFixed(2)}%(${p.rate! > (p.ucl ?? Infinity) ? "위" : "아래"})`).join(", ")}</>
+              )}
+              {outs.length > 0 && chart.runs.length > 0 && " · "}
+              {chart.runs.length > 0 && (
+                <><b style={{ color: ACCENT }}>{chart.runs.length}구간</b> {CONTROL_RUN_LENGTH}일 이상 연속 {chart.runs.map((r) => `${md(r.start)}~${md(r.end)} ${r.side === "below" ? "평균 아래" : "평균 위"} ${r.days}일`).join(", ")}</>
+              )}
             </>
           )}
           {chart.enough && latest && (
-            <span className="text-muted-foreground"> · 판정 가능한 마지막 날 {md(latest.date)}: {latest.status === "out" ? "범위 밖" : "범위 안"}</span>
+            <span className="text-muted-foreground">
+              {" "}· 판정 가능한 마지막 날 {md(latest.date)}: {latest.status === "out" ? "한계선 밖" : latest.lcl == null ? "상한 안 (그날은 하한이 0% 아래라 하락은 판정 불가)" : "한계선 안"}
+            </span>
           )}
         </p>
 
@@ -133,6 +141,9 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
                       <>
                         <div>전환율 {p.rate.toFixed(2)}% {p.status === "out" && <b style={{ color: ACCENT }}>(범위 밖)</b>}</div>
                         <div className="text-muted-foreground">구매 {formatNumber(p.orders || 0)} ÷ 유입 {formatNumber(p.sessions || 0)}</div>
+                        {p.ucl != null && (
+                          <div className="text-muted-foreground">그날 한계 {p.lcl != null ? `${p.lcl.toFixed(2)}%` : "하한 없음"} ~ {p.ucl.toFixed(2)}%</div>
+                        )}
                       </>
                     ) : (
                       <div className="text-muted-foreground">판정 제외: {p.reason ? REASON_LABEL[p.reason] : "-"}</div>
@@ -141,17 +152,20 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
                 );
               }}
             />
-            {chart.enough && chart.mean != null && (
-              <ReferenceLine y={chart.mean} stroke={NEUTRAL} strokeWidth={1} ifOverflow="extendDomain"
-                label={{ value: `평균 ${chart.mean.toFixed(2)}%`, position: "insideTopRight", fontSize: 10, fill: "var(--muted-foreground)" }} />
+            {chart.enough && chart.runs.map((r) => (
+              <ReferenceArea key={r.start} x1={r.start.slice(5)} x2={r.end.slice(5)} fill={ACCENT} fillOpacity={0.08} stroke="none" ifOverflow="extendDomain" />
+            ))}
+            {chart.enough && chart.center != null && (
+              <ReferenceLine y={chart.center} stroke={NEUTRAL} strokeWidth={1} ifOverflow="extendDomain"
+                label={{ value: `평균 ${chart.center.toFixed(2)}%`, position: "insideTopRight", fontSize: 10, fill: "var(--muted-foreground)" }} />
             )}
-            {chart.enough && chart.ucl != null && (
-              <ReferenceLine y={chart.ucl} stroke={ACCENT} strokeDasharray="4 4" ifOverflow="extendDomain"
-                label={{ value: `+${CONTROL_SIGMA}σ ${chart.ucl.toFixed(2)}%`, position: "insideTopLeft", fontSize: 10, fill: ACCENT }} />
+            {chart.enough && (
+              <Line type="step" dataKey="ucl" stroke={ACCENT} strokeOpacity={0.6} strokeDasharray="4 4" strokeWidth={1}
+                dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} />
             )}
-            {chart.enough && chart.lcl != null && (
-              <ReferenceLine y={chart.lcl} stroke={ACCENT} strokeDasharray="4 4" ifOverflow="extendDomain"
-                label={{ value: `−${CONTROL_SIGMA}σ ${chart.lcl.toFixed(2)}%`, position: "insideBottomLeft", fontSize: 10, fill: ACCENT }} />
+            {chart.enough && (
+              <Line type="step" dataKey="lcl" stroke={ACCENT} strokeOpacity={0.6} strokeDasharray="4 4" strokeWidth={1}
+                dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} />
             )}
             <Line
               type="linear" dataKey="rate" stroke={NEUTRAL} strokeOpacity={0.45} strokeWidth={1.25}
@@ -169,9 +183,11 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
 
         <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
           <p>
-            전환율 = 같은 원천의 구매 ÷ 유입. 평균·σ 는 이 기간에서 판정 가능한 {chart.n}일로 계산합니다.
-            {chart.enough && chart.lcl == null && " 하한(−3σ)이 0% 아래라 하락 이탈은 이 데이터로 가려낼 수 없습니다(하루 구매가 적어 0건인 날도 정상 범위)."}
+            전환율 = 같은 원천의 구매 ÷ 유입. 점선 = 그날의 ±{CONTROL_SIGMA}σ 한계(p̄ ± {CONTROL_SIGMA}·√(p̄(1−p̄)/유입)·σz), 판정 가능한 {chart.n}일로 계산
+            {chart.sigmaZ != null ? `, σz ${chart.sigmaZ.toFixed(2)}` : ""}.
+            {chart.enough && ` 하한이 0% 위로 올라온 날 ${chart.lclDays}일${chart.lclDays === 0 ? "(하루 구매가 적어 0건인 날도 정상 범위라 하루 단위 하락은 가려낼 수 없습니다. 연속 규칙으로 봅니다)" : ""}.`}
           </p>
+          <p>연속 규칙: 판정 가능한 날 기준 {CONTROL_RUN_LENGTH}일 이상 연속으로 평균선 한쪽에 머문 구간을 칠합니다. 점을 그리지 않은 날은 건너뜁니다(끊지도 잇지도 않음).</p>
           {(pendingDays > 0 || missingDays > 0) && (
             <p>
               점을 그리지 않은 날: {[

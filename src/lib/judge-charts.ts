@@ -3,21 +3,40 @@
 // 화면 코드와 분리해 둔 순수 함수들이다. 규칙(문턱값)은 전부 여기 상수로 두고,
 // 화면은 이 상수로 규칙 문장을 만들어 카드 아래에 그대로 보여 준다. 숫자를 화면에 따로 적지 않는다.
 //
-//  1) 관리도: 일별 구매 전환율이 평균 ±3σ 밖으로 나간 날만 강조한다.
+//  1) 관리도: 일별 구매 전환율이 날짜별 한계(Laney p′) 밖으로 나간 날과, 8일 연속 한쪽에 머문 구간만 강조한다.
 //  2) 스몰 멀티플: 네이버 검색광고 캠페인별 주간 추이에서 "최근 몇 주가 눈에 띄게 낮아진" 캠페인만 강조한다.
 //  3) 채널별 매출 구성: 직전 구간들보다 비중이 가장 크게 움직인 판매처 하나만 강조한다.
 
 /* ───────────────────────── 1. 관리도 ───────────────────────── */
+//
+// 방식: Laney p′ 관리도 (2026-11-03 교체).
+//   옛 방식(일별 전환율의 평균 ±3σ 수평선)은 원천 4개 모두 −3σ 가 0% 아래라 하락을 하나도 못 잡았다.
+//   날마다 유입 수가 달라 유입이 많은 날은 전환율이 덜 흔들리고 적은 날은 더 흔들린다. 그래서 한계선을
+//   날마다 다르게 긋는 p-관리도를 쓴다. 다만 실제 전환율은 이항분포보다 넓게 퍼져 있어(σz 실측 1.5~1.8)
+//   순수 p-관리도는 정상인 날도 이탈로 잡는다(펫 스마트스토어 90일 중 12일). Laney 보정으로 그 퍼짐을 넣는다.
+//     p̄ = 판정 가능한 날의 구매 합 ÷ 유입 합
+//     σp_i = √(p̄(1−p̄)/유입_i),  z_i = (p_i − p̄)/σp_i
+//     σz = z 의 평균 이동범위 ÷ 1.128
+//     한계_i = p̄ ± 3·σp_i·σz
+//   2026-08-01~11-03 실측: 하한이 0% 위로 올라오는 날이 펫 스마트스토어 82/90일, 쿠팡 12/33일 생겼다.
+//   밸런스랩·펫 카페24 는 하루 구매가 0~2건이라 어느 방식으로도 하한이 생기지 않는다(연속 규칙으로 본다).
 
-/** 이 날수보다 기준 표본이 적으면 평균·σ 가 흔들려 이탈 판정을 하지 않는다. */
+/** 이 날수보다 기준 표본이 적으면 p̄·σz 가 흔들려 이탈 판정을 하지 않는다. */
 export const CONTROL_MIN_DAYS = 14;
 /** 관리 한계 폭(σ 배수). */
 export const CONTROL_SIGMA = 3;
+/** 이동범위 → 표준편차 환산 상수(d2, 표본 2개). */
+const D2 = 1.128;
 /**
  * 같은 원천의 유입 대비 구매가 이 비율(%) 이상이면 수집 오류로 보고 판정에서 뺀다.
- * 실측: 쿠팡 2026-09-30 구매 88 ÷ 유입 89 = 98.9%. 이런 날 하나가 σ 를 키워 다른 날의 이탈을 다 가렸다.
+ * 실측: 쿠팡 2026-09-30 구매 88 ÷ 유입 89 = 98.9%. 이런 날 하나가 한계를 키워 다른 날의 이탈을 다 가렸다.
  */
 export const CONTROL_IMPLAUSIBLE_RATE = 50;
+/**
+ * 연속 규칙: 판정 가능한 날 기준 이만큼 연속으로 중심선(p̄) 한쪽에 있으면 그 구간을 강조한다.
+ * 하루하루는 한계 안이어도 꾸준히 낮아진 것(수준 변화)을 잡는다. 제외한 날은 건너뛴다(끊지도 잇지도 않음).
+ */
+export const CONTROL_RUN_LENGTH = 8;
 
 export interface ControlDayInput {
   date: string;
@@ -38,27 +57,61 @@ export interface ControlPoint {
   reason?: "no_sessions" | "sales_pending" | "today" | "implausible";
   sessions: number | null;
   orders: number | null;
+  /** 그날의 상한(%). 판정 가능한 날만. */
+  ucl: number | null;
+  /** 그날의 하한(%). 0% 이하면 null(그날은 하락 이탈을 판정할 수 없다). */
+  lcl: number | null;
+}
+
+export interface ControlRun {
+  side: "below" | "above";
+  /** 판정 가능한 첫날·마지막날(사이에 제외한 날이 끼어 있을 수 있다). */
+  start: string;
+  end: string;
+  days: number;
 }
 
 export interface ControlResult {
   points: ControlPoint[];
   /** 기준 표본 수(판정에 쓴 날). */
   n: number;
-  mean: number | null;
-  sigma: number | null;
-  ucl: number | null;
-  /** 0 미만이면 null. 하한이 없으면 "하락 이탈" 판정이 불가능하다는 뜻이다. */
-  lcl: number | null;
+  /** 중심선 p̄(%). */
+  center: number | null;
+  /** Laney 보정 계수. 1 이면 이항분포만큼 퍼져 있다는 뜻. */
+  sigmaZ: number | null;
+  /** 하한이 0% 위로 올라온 날 수(하락 이탈을 판정할 수 있는 날). */
+  lclDays: number;
   /** 표본이 CONTROL_MIN_DAYS 이상이라 한계선을 그릴 수 있는지. */
   enough: boolean;
+  runs: ControlRun[];
 }
 
 /**
- * 일별 전환율 관리도.
+ * 연속 규칙. 판정 가능한 점만 차례로 보며 같은 쪽이 CONTROL_RUN_LENGTH 번 이상 이어진 구간을 돌려준다.
+ * 중심선과 정확히 같은 점은 어느 쪽도 아니라 건너뛴다.
+ */
+export function findRuns(points: ControlPoint[], center: number): ControlRun[] {
+  const runs: ControlRun[] = [];
+  let side: ControlRun["side"] | null = null;
+  let start = "", end = "", len = 0;
+  const close = () => { if (side && len >= CONTROL_RUN_LENGTH) runs.push({ side, start, end, days: len }); };
+  for (const p of points) {
+    if (p.rate == null || p.rate === center) continue;
+    const s: ControlRun["side"] = p.rate < center ? "below" : "above";
+    if (s === side) { end = p.date; len++; continue; }
+    close();
+    side = s; start = p.date; end = p.date; len = 1;
+  }
+  close();
+  return runs;
+}
+
+/**
+ * 일별 전환율 관리도(Laney p′).
  *
  * ★ 판정에서 빼는 날(점도 안 그린다):
  *   - 유입이 0 이거나 행이 없는 날: 분모가 없어 전환율이 성립하지 않는다.
- *   - 판매 동기화가 아직 안 들어온 날(salesLastDate 이후): 구매가 0 으로 읽혀 전부 −3σ 이탈로 잘못 뜬다.
+ *   - 판매 동기화가 아직 안 들어온 날(salesLastDate 이후): 구매가 0 으로 읽혀 전부 하락 이탈로 잘못 뜬다.
  *   - 오늘: 하루가 안 끝났다.
  *   - 전환율이 CONTROL_IMPLAUSIBLE_RATE 이상인 날: 유입과 구매의 수집 단위가 어긋난 날이다.
  * 축(날짜)은 연속으로 유지하고 그 자리만 비운다.
@@ -73,34 +126,46 @@ export function buildControlChart(
     const d = byDate.get(date);
     const sessions = d?.sessions ?? null;
     const orders = d ? d.orders : 0;
-    if (date >= opts.today) return { date, rate: null, status: "excluded", reason: "today", sessions, orders: null };
-    if (!opts.salesLastDate || date > opts.salesLastDate) {
-      return { date, rate: null, status: "excluded", reason: "sales_pending", sessions, orders: null };
-    }
-    if (!sessions || sessions <= 0) return { date, rate: null, status: "excluded", reason: "no_sessions", sessions, orders };
+    const skip = (reason: NonNullable<ControlPoint["reason"]>, o: number | null): ControlPoint =>
+      ({ date, rate: null, status: "excluded", reason, sessions, orders: o, ucl: null, lcl: null });
+    if (date >= opts.today) return skip("today", null);
+    if (!opts.salesLastDate || date > opts.salesLastDate) return skip("sales_pending", null);
+    if (!sessions || sessions <= 0) return skip("no_sessions", orders);
     const rate = (orders / sessions) * 100;
-    if (rate >= CONTROL_IMPLAUSIBLE_RATE) return { date, rate: null, status: "excluded", reason: "implausible", sessions, orders };
-    return { date, rate, status: "in", sessions, orders };
+    if (rate >= CONTROL_IMPLAUSIBLE_RATE) return skip("implausible", orders);
+    return { date, rate, status: "in", sessions, orders, ucl: null, lcl: null };
   });
 
-  const rates = base.filter((p) => p.rate != null).map((p) => p.rate as number);
-  const n = rates.length;
-  if (n === 0) return { points: base, n, mean: null, sigma: null, ucl: null, lcl: null, enough: false };
+  const judged = base.filter((p) => p.rate != null);
+  const n = judged.length;
+  const empty = { points: base, n, center: null, sigmaZ: null, lclDays: 0, enough: false, runs: [] };
+  if (n === 0) return empty;
 
-  const mean = rates.reduce((s, v) => s + v, 0) / n;
-  // 표본 표준편차(n−1). 하루짜리면 σ 를 정할 수 없다.
-  const sigma = n > 1 ? Math.sqrt(rates.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1)) : null;
-  const enough = n >= CONTROL_MIN_DAYS && sigma != null;
-  const ucl = sigma != null ? mean + CONTROL_SIGMA * sigma : null;
-  const rawLcl = sigma != null ? mean - CONTROL_SIGMA * sigma : null;
-  const lcl = rawLcl != null && rawLcl > 0 ? rawLcl : null;
+  const sumO = judged.reduce((s, p) => s + (p.orders || 0), 0);
+  const sumS = judged.reduce((s, p) => s + (p.sessions || 0), 0);
+  const pbar = sumO / sumS;
+  const center = pbar * 100;
+  // p̄ 가 0 또는 1 이면 이항 σ 가 0 이라 한계를 정할 수 없다(구매가 한 건도 없는 원천).
+  if (n < 2 || pbar <= 0 || pbar >= 1) return { ...empty, center };
 
+  const sigmaP = (p: ControlPoint) => Math.sqrt((pbar * (1 - pbar)) / (p.sessions as number));
+  const z = judged.map((p) => ((p.rate as number) / 100 - pbar) / sigmaP(p));
+  let mr = 0;
+  for (let i = 1; i < z.length; i++) mr += Math.abs(z[i] - z[i - 1]);
+  const sigmaZ = mr / (z.length - 1) / D2;
+  const enough = n >= CONTROL_MIN_DAYS;
+
+  let lclDays = 0;
   const points = base.map((p) => {
-    if (!enough || p.rate == null || ucl == null) return p;
-    const out = p.rate > ucl || (lcl != null && p.rate < lcl);
-    return out ? { ...p, status: "out" as const } : p;
+    if (p.rate == null) return p;
+    const w = CONTROL_SIGMA * sigmaP(p) * sigmaZ * 100;
+    const ucl = center + w;
+    const lcl = center - w > 0 ? center - w : null;
+    if (lcl != null) lclDays++;
+    const out = enough && (p.rate > ucl || (lcl != null && p.rate < lcl));
+    return { ...p, ucl, lcl, status: out ? ("out" as const) : p.status };
   });
-  return { points, n, mean, sigma, ucl, lcl, enough };
+  return { points, n, center, sigmaZ, lclDays, enough, runs: enough ? findRuns(points, center) : [] };
 }
 
 /* ───────────────────────── 2. 스몰 멀티플 ───────────────────────── */
@@ -170,8 +235,10 @@ export const SHARE_MIN_SHIFT_PP = 3;
 
 export interface ShareShift {
   channel: string;
-  /** 직전 구간 평균 비중 대비 마지막 완료 구간 비중 변화(%p). */
+  /** 직전 구간 합계 비중 대비 마지막 완료 구간 비중 변화(%p). */
   shiftPp: number;
+  /** 비교에 실제로 쓴 직전 완료 구간 수(SHARE_LOOKBACK 이하). */
+  priorCount: number;
 }
 
 /**
@@ -198,7 +265,7 @@ export function biggestShareShift(
   let best: ShareShift | null = null;
   for (const ch of new Set([...Object.keys(before), ...Object.keys(after)])) {
     const shiftPp = (after[ch] || 0) - (before[ch] || 0);
-    if (!best || Math.abs(shiftPp) > Math.abs(best.shiftPp)) best = { channel: ch, shiftPp };
+    if (!best || Math.abs(shiftPp) > Math.abs(best.shiftPp)) best = { channel: ch, shiftPp, priorCount: prior.length };
   }
   return best && Math.abs(best.shiftPp) >= SHARE_MIN_SHIFT_PP ? best : null;
 }

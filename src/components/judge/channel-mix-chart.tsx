@@ -10,7 +10,7 @@
 import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
-import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from "recharts";
+import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, Tooltip, CartesianGrid, Legend, LabelList } from "recharts";
 import { formatCurrency, cn } from "@/lib/utils";
 import { axisEnd, daysBetween, lastDataDate } from "@/lib/bucket";
 import { kstDate } from "@/lib/date";
@@ -84,6 +84,8 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
   const rows = buckets.map((b) => {
     const row: Record<string, string | number | boolean | null> = { period: b.period, state: b.state };
     for (const ch of order) row[ch] = b.state === "pending" ? null : (b.byChannel[ch] || 0);
+    // 막대 위 합계 라벨. 예전 '주별/월별 매출' 카드가 보여 주던 그 주·월 합계와 같은 값이다.
+    row.__total = b.state === "pending" ? null : order.reduce((a, ch) => a + (b.byChannel[ch] || 0), 0);
     return row;
   });
   const lastBucket = buckets[buckets.length - 1];
@@ -110,14 +112,14 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
           {order.length < 2 ? (
             <span className="text-muted-foreground">이 기간 판매처가 {order[0] ? labelOf(order[0]) : "없음"} 하나라 구성 비교는 없습니다. 막대는 {unit}별 매출 합계입니다.</span>
           ) : shift ? (
-            <><b style={{ color: ACCENT }}>{labelOf(shift.channel)}</b> 비중이 직전 {SHARE_LOOKBACK}{unit} 합계 대비 마지막 완료 {unit}에 {shift.shiftPp > 0 ? "+" : ""}{shift.shiftPp.toFixed(1)}%p 움직였습니다.</>
+            <><b style={{ color: ACCENT }}>{labelOf(shift.channel)}</b> 비중이 직전 {shift.priorCount}{unit} 합계 대비 마지막 완료 {unit}에 {shift.shiftPp > 0 ? "+" : ""}{shift.shiftPp.toFixed(1)}%p 움직였습니다.</>
           ) : (
             <span className="text-muted-foreground">비중이 {SHARE_MIN_SHIFT_PP}%p 이상 움직인 판매처가 없습니다{buckets.filter((b) => b.complete).length < 2 ? ` (완료된 ${unit}가 2개 미만)` : ""}.</span>
           )}
         </p>
 
         <DeferredResponsiveContainer width="100%" height={240}>
-          <BarChart data={rows}>
+          <ComposedChart data={rows} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
             <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(Number(v) / 10000).toFixed(0)}만`} />
@@ -131,13 +133,13 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
                 return (
                   <div className="rounded-lg border bg-card px-2 py-1.5 text-[11px] shadow-sm">
                     <div className="font-medium">{String(r.period)}{note}</div>
+                    <div className="flex justify-between gap-3 font-semibold border-b mb-1 pb-1"><span>합계</span><span>{formatCurrency(tot)}</span></div>
                     {order.filter((ch) => Number(r[ch]) > 0).map((ch) => (
                       <div key={ch} className="flex justify-between gap-3">
                         <span>{labelOf(ch)}</span>
                         <span>{formatCurrency(Number(r[ch]))} ({tot > 0 ? ((Number(r[ch]) / tot) * 100).toFixed(0) : 0}%)</span>
                       </div>
                     ))}
-                    <div className="flex justify-between gap-3 border-t mt-1 pt-1 font-medium"><span>합계</span><span>{formatCurrency(tot)}</span></div>
                   </div>
                 );
               }}
@@ -152,16 +154,21 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
                 ))}
               </Bar>
             ))}
-          </BarChart>
+            {/* 합계 라벨. 막대 위 라벨은 맨 위 판매처 값이 0 인 주에 안 그려져서, 보이지 않는 선의 점에 단다. */}
+            <Line dataKey="__total" stroke="none" dot={false} activeDot={false} legendType="none" isAnimationActive={false} tooltipType="none">
+              <LabelList dataKey="__total" position="top" fontSize={10} fill="var(--muted-foreground)"
+                formatter={(v: unknown) => (v == null ? "" : `${Math.round(Number(v) / 10000).toLocaleString("ko-KR")}만`)} />
+            </Line>
+          </ComposedChart>
         </DeferredResponsiveContainer>
 
         <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
           <p>
-            흐린 막대 = 다 안 찬 {unit}
+            막대 위 숫자 = 그 {unit} 매출 합계(만원, 마우스를 올리면 원 단위). 흐린 막대 = 다 안 찬 {unit}
             {lastBucket && lastBucket.state === "in_progress" ? ` (마지막 ${lastBucket.period} 은 진행 중, 판매 동기화가 1~3일 늦게 들어옵니다)` : ""}. 비중 비교에서 뺍니다.
           </p>
           <p>
-            강조 규칙: 마지막 완료 {unit}의 판매처 비중을 직전 {SHARE_LOOKBACK}{unit} 합계 비중과 비교해 가장 크게 움직인 판매처 하나만 칠합니다({SHARE_MIN_SHIFT_PP}%p 미만이면 칠하지 않음).
+            강조 규칙: 마지막 완료 {unit}의 판매처 비중을 직전 최대 {SHARE_LOOKBACK}{unit}(완료된 것만) 합계 비중과 비교해 가장 크게 움직인 판매처 하나만 칠합니다({SHARE_MIN_SHIFT_PP}%p 미만이면 칠하지 않음).
             별도 공구 판매처 행은 빠져 있어 위 매출 KPI 와 같은 범위입니다.
           </p>
         </div>
