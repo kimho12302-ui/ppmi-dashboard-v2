@@ -17,7 +17,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const READY_TIMEOUT_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 
-const ROUTES = ["/", "/monthly", "/sales", "/settings", "/daily", "/channel", "/api/pacing"];
+const ROUTES = ["/", "/monthly", "/sales", "/settings", "/daily", "/channel", "/keywords", "/api/pacing", "/api/search-demand"];
 const SETTINGS_HEADINGS = [
   "데이터 수집 현황", "엑셀 업로드", "브랜드 관리", "채널 관리", "제품 원가", "월별 목표 설정", "마케팅 이벤트 관리",
 ];
