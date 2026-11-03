@@ -9,6 +9,9 @@ import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatNumber, formatCurrency, cn } from "@/lib/utils";
 import { daysBetween } from "@/lib/bucket";
 import { ConversionControlChart } from "@/components/judge/conversion-control-chart";
+import { SourceFunnelSteps, useSourceFunnels, SINGLE_BRAND_FUNNEL_NOTE } from "@/components/judge/source-funnel-steps";
+import { META_PURCHASE_UNTRACKED_BRANDS, UNMEASURED_LABEL } from "@/lib/conversion-tracking";
+import { BRAND_LABELS } from "@/lib/types";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   BarChart, Bar, Cell, Legend,
@@ -20,7 +23,6 @@ interface ChannelFunnel { channel: string; sessions: number; cart_adds: number; 
 interface MetaAdRow { date: string; brand: string; impressions: number; clicks: number; conversions: number; conversion_value: number; reach: number; spend: number; }
 interface FunnelData { funnel: FunnelStep[]; trend: TrendPoint[]; channelFunnel: ChannelFunnel[]; repurchase: { value: number; rate: number }; metaAds: MetaAdRow[]; }
 
-const FUNNEL_COLORS = ["#6366f1", "#818cf8", "#a78bfa", "#22c55e", "#14b8a6"];
 const CHANNEL_COLORS: Record<string, string> = { 스마트스토어: "#16a34a", 카페24: "#2563eb", 쿠팡: "#dc2626" };
 const IMP_COLORS: Record<string, string> = { meta: "#8b5cf6", naver: "#22c55e", google: "#eab308", coupang: "#ef4444" };
 const IMP_LABELS: Record<string, string> = { meta: "Meta", naver: "네이버", google: "구글", coupang: "쿠팡" };
@@ -51,6 +53,8 @@ function FunnelInner() {
   }, [data, from, to]);
   const channelFunnel = data?.channelFunnel || [];
   const repurchase = data?.repurchase || { value: 0, rate: 0 };
+  // 원천별 평균 전환율(관리도 p̄). 단계표·관리도와 같은 주소라 요청은 한 번이다.
+  const { funnels: sourceFunnels, loading: sourceLoading } = useSourceFunnels(brand || "all", from, to);
 
   // 너티/아이언펫/사입은 cafe24·스마트스토어 퍼널이 시트에서 3개 합산으로만 기록됨 → 브랜드별 분리 불가.
   // 숫자를 쪼개 보여주면 과대귀속(왜곡)이므로, 합산 수치임을 정직하게 라벨한다.
@@ -60,8 +64,8 @@ function FunnelInner() {
   const sessionsStep = funnel.find(s => s.name === "유입");
   const purchaseStep = funnel.find(s => s.name === "구매");
   const cartStep = funnel.find(s => s.name === "장바구니");
-  const overallConvRate = sessionsStep && sessionsStep.value > 0 && purchaseStep
-    ? ((purchaseStep.value / sessionsStep.value) * 100) : 0;
+  // ★ 전체 「구매 전환율」 KPI 는 뺐다(2026-11-03). 전 판매처 구매 ÷ 일부 채널 유입처럼 분모·분자 모집단이 달라
+  //   아이언펫 0.02% 같은 숫자가 떴다. 전환율은 원천별로만 낸다(sourceFunnels).
   const cartVal = cartStep?.value || 0;
   const purchaseVal = purchaseStep?.value || 0;
   // ★ 이탈률은 장바구니가 실제로 수집되는 채널로만 계산한다(API가 rateBase/rateNum 으로 내려줌).
@@ -74,25 +78,25 @@ function FunnelInner() {
   const cartNote = purchaseStep?.rateNote || null;
 
   /* Meta 광고 퍼널 */
+  // 도달(reach)은 수집하지 않아 늘 0 이고, 구매 전환은 픽셀에서 막힌 브랜드가 있다(src/lib/conversion-tracking.ts).
+  // 둘을 0·-100% 로 찍으면 "성과 0" 으로 읽히므로, 노출→클릭만 실측으로 보이고 전환은 측정되는 브랜드 행만 쓴다.
   const metaFunnel = useMemo(() => {
-    const rows = data?.metaAds || [];
-    if (brand && brand !== "all") {
-      const filtered = rows.filter(r => matchesBrand(r.brand, brand));
-      const t = { impressions: 0, reach: 0, clicks: 0, conversions: 0, convValue: 0, spend: 0 };
-      for (const r of filtered) {
-        t.impressions += r.impressions || 0; t.reach += r.reach || 0;
-        t.clicks += r.clicks || 0; t.conversions += r.conversions || 0;
-        t.convValue += r.conversion_value || 0; t.spend += r.spend || 0;
-      }
-      return t;
-    }
-    const t = { impressions: 0, reach: 0, clicks: 0, conversions: 0, convValue: 0, spend: 0 };
+    const rows = (data?.metaAds || []).filter(r => !brand || brand === "all" || matchesBrand(r.brand, brand));
+    const t = { impressions: 0, clicks: 0, spend: 0, trackedSpend: 0, conversions: 0, convValue: 0 };
+    const untracked = new Set<string>();
     for (const r of rows) {
-      t.impressions += r.impressions || 0; t.reach += r.reach || 0;
-      t.clicks += r.clicks || 0; t.conversions += r.conversions || 0;
-      t.convValue += r.conversion_value || 0; t.spend += r.spend || 0;
+      t.impressions += r.impressions || 0;
+      t.clicks += r.clicks || 0;
+      t.spend += r.spend || 0;
+      if (META_PURCHASE_UNTRACKED_BRANDS.has(r.brand)) {
+        if ((r.spend || 0) > 0 || (r.impressions || 0) > 0) untracked.add(r.brand);
+        continue;
+      }
+      t.trackedSpend += r.spend || 0;
+      t.conversions += r.conversions || 0;
+      t.convValue += r.conversion_value || 0;
     }
-    return t;
+    return { ...t, untrackedBrands: Array.from(untracked) };
   }, [data, brand]);
 
   if (loading) {
@@ -121,112 +125,36 @@ function FunnelInner() {
       )}
 
       {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <KpiCard title="총 세션" value={formatNumber(sessionsStep?.value || 0)} />
-        <KpiCard title="구매 전환율" value={`${overallConvRate.toFixed(2)}%`} />
         <KpiCard title="장바구니 이탈률" value={abandonComputable ? `${abandonRate.toFixed(1)}%` : "산출 불가"} />
         <KpiCard title="총 구매" value={formatNumber(purchaseVal)} />
       </div>
+      {/* 구매 전환율은 원천별로만 낸다(관리도 평균선 p̄ 와 같은 값). */}
+      <p className="text-xs text-muted-foreground -mt-2">
+        구매 전환율(원천별, 관리도 평균):{" "}
+        {sourceLoading
+          ? "불러오는 중"
+          : sourceFunnels.length === 0
+            ? (["nutty", "ironpet", "saip"].includes(brand) ? SINGLE_BRAND_FUNNEL_NOTE : "이 기간에 유입이 수집된 원천이 없습니다.")
+            : sourceFunnels.map((f) => `${f.label} ${f.rate != null ? `${f.rate.toFixed(2)}%` : "-"}`).join(" · ")}
+        {sourceFunnels.length > 0 && " · 원천을 합친 전체 전환율은 모집단이 달라 내지 않습니다."}
+      </p>
       {cartNote && (
         <p className="text-xs text-muted-foreground -mt-2">
           ⓘ {abandonComputable ? `장바구니 이탈률은 ${cartNote}` : cartNote}
         </p>
       )}
 
-      {/* 전환 퍼널 (깔때기) */}
-      <Card>
-        <CardContent className="p-4">
-          <h3 className="font-semibold mb-4">전환 퍼널</h3>
-          <div className="space-y-0">
-            {(() => {
-              const impressionStep = funnel.find(s => s.name === "노출");
-              const funnelSteps = funnel.filter(s => s.name !== "노출");
-              const maxVal = funnelSteps[0]?.value || 1;
+      {/* 원천별 단계표 (2026-11-03, 옛 「전환 퍼널」 깔때기 대체). 원천 사이를 잇거나 합치지 않는다. */}
+      <SourceFunnelSteps brand={brand || "all"} from={from} to={to} />
 
-              return (
-                <div className="space-y-4">
-                  {impressionStep && (
-                    <div className="flex items-center gap-3 bg-indigo-50 dark:bg-indigo-900/10 rounded-lg px-4 py-3">
-                      <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">노출</span>
-                      <span className="text-2xl font-bold text-indigo-500">{formatNumber(impressionStep.value)}</span>
-                      {funnelSteps[0] && (
-                        <span className="text-xs text-muted-foreground ml-auto">
-                          유입률 {impressionStep.value > 0 ? ((funnelSteps[0].value / impressionStep.value) * 100).toFixed(2) : 0}%
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="space-y-0">
-                    {funnelSteps.map((step, i) => {
-                      const pct = maxVal > 0 ? (step.value / maxVal) * 100 : 0;
-                      const width = Math.max(pct, 12);
-                      const prevStep = i > 0 ? funnelSteps[i - 1] : null;
-                      const rawConvRate = prevStep && prevStep.value > 0 ? (step.value / prevStep.value * 100) : 100;
-                      const stepConvRate = rawConvRate > 100 ? 100 : rawConvRate;
-                      const dropRate = rawConvRate > 100 ? 0 : 100 - stepConvRate;
-                      const channels = step.channels as Record<string, number> | undefined;
-                      const hasChannels = channels && Object.values(channels).some((v: number) => v > 0);
-                      const totalCh = hasChannels ? Object.values(channels!).reduce((s: number, v: number) => s + v, 0) : 0;
-
-                      return (
-                        <div key={step.name}>
-                          {i > 0 && (
-                            <div className="flex items-center justify-center py-1">
-                              <span className="text-[10px] text-red-400">▼ 이탈 {dropRate.toFixed(1)}% ({formatNumber((prevStep?.value || 0) - step.value)}명)</span>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-3">
-                            <span className="text-xs text-muted-foreground w-16 text-right shrink-0">{step.name}</span>
-                            <div className="flex-1 flex justify-center">
-                              {hasChannels && totalCh > 0 ? (
-                                <div className="h-12 rounded-lg flex overflow-hidden transition-all shadow-sm" style={{ width: `${width}%` }}>
-                                  {Object.entries(channels!).filter(([, v]) => v > 0).map(([ch, v]) => {
-                                    const chPct = totalCh > 0 ? (v / totalCh) * 100 : 0;
-                                    const chColor = CHANNEL_COLORS[ch] || "#6b7280";
-                                    return (
-                                      <div key={ch} className="h-full flex items-center justify-center relative group"
-                                        style={{ backgroundColor: chColor, width: `${chPct}%`, minWidth: chPct > 5 ? "auto" : "8px" }}>
-                                        {chPct > 15 && <span className="text-[9px] text-white/90 font-medium truncate px-1">{ch}</span>}
-                                        <div className="absolute bottom-full mb-1 hidden group-hover:block bg-black/80 text-white text-[10px] rounded px-2 py-1 whitespace-nowrap z-10">
-                                          {ch}: {formatNumber(v)} ({chPct.toFixed(0)}%)
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <div className="h-12 rounded-lg flex items-center justify-between px-4 transition-all shadow-sm"
-                                  style={{ backgroundColor: FUNNEL_COLORS[i + 1] || FUNNEL_COLORS[i], opacity: 0.9, width: `${width}%` }}>
-                                  <span className="text-sm font-bold text-white">{formatNumber(step.value)}</span>
-                                  <span className="text-[11px] text-white/80 font-medium">{pct.toFixed(1)}%</span>
-                                </div>
-                              )}
-                            </div>
-                            <span className="text-xs text-muted-foreground w-20 shrink-0">
-                              {hasChannels ? formatNumber(step.value) : ""} {i > 0 ? `전환 ${stepConvRate.toFixed(1)}%` : "기준"}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {repurchase.value >= 0 && (
-                    <div className="flex items-center gap-3 bg-teal-50 dark:bg-teal-900/10 rounded-lg px-4 py-3 mt-3">
-                      <span className="text-sm font-medium text-teal-600 dark:text-teal-400">재구매</span>
-                      <span className="text-2xl font-bold text-teal-500">{formatNumber(repurchase.value)}</span>
-                      <span className="text-xs text-muted-foreground ml-auto">
-                        재구매율 {repurchase.rate.toFixed(1)}%
-                      </span>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        </CardContent>
-      </Card>
+      {/* 재구매: 퍼널 단계가 아니라 별도 수치(스마트스토어 재구매 수기 입력)라 따로 둔다. */}
+      {repurchase.value > 0 && (
+        <p className="text-xs text-muted-foreground -mt-2">
+          재구매 {formatNumber(repurchase.value)}건 · 재구매율 {repurchase.rate.toFixed(1)}%
+        </p>
+      )}
 
       {/* 판단용: 일별 전환율 관리도 (2026-11-03). 같은 원천의 유입·구매로만 계산한다. */}
       <ConversionControlChart brand={brand || "all"} from={from} to={to} />
@@ -350,44 +278,50 @@ function FunnelInner() {
         </Card>
       )}
 
-      {/* Meta 광고 퍼널 */}
+      {/* Meta 광고 퍼널: 노출→클릭(CTR)만 실측. 도달은 미수집이라 칸을 두지 않는다. */}
       {metaFunnel.impressions > 0 && (
         <Card className="border-l-4 border-l-blue-500">
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">Meta 광고 퍼널</h3>
-            <div className="flex items-center justify-between gap-1">
-              {[
-                { label: "노출", value: metaFunnel.impressions, color: "#94a3b8" },
-                { label: "도달", value: metaFunnel.reach, color: "#64748b" },
-                { label: "클릭", value: metaFunnel.clicks, color: "#3b82f6" },
-                { label: "전환", value: metaFunnel.conversions, color: "#10b981" },
-              ].map((step, i, arr) => {
-                const pct = metaFunnel.impressions > 0 ? (step.value / metaFunnel.impressions * 100) : 0;
-                const dropRate = i > 0 && arr[i - 1].value > 0
-                  ? ((arr[i - 1].value - step.value) / arr[i - 1].value * 100) : 0;
-                return (
-                  <div key={step.label} className="flex items-center flex-1">
-                    <div className="flex-1 text-center">
-                      <div className="text-xs text-muted-foreground mb-1">{step.label}</div>
-                      <div className="text-lg font-bold" style={{ color: step.color }}>{formatNumber(step.value)}</div>
-                      <div className="text-[10px] text-muted-foreground">{pct.toFixed(2)}%</div>
-                    </div>
-                    {i < arr.length - 1 && (
-                      <div className="text-center px-1 text-muted-foreground">
-                        <div className="text-lg">→</div>
-                        {dropRate > 0 && <div className="text-[10px]">-{dropRate.toFixed(0)}%</div>}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="flex items-center gap-1">
+              <div className="flex-1 text-center">
+                <div className="text-xs text-muted-foreground mb-1">노출</div>
+                <div className="text-lg font-bold">{formatNumber(metaFunnel.impressions)}</div>
+              </div>
+              <div className="text-center px-1 text-muted-foreground">
+                <div className="text-lg">→</div>
+                <div className="text-[10px]">CTR {((metaFunnel.clicks / metaFunnel.impressions) * 100).toFixed(2)}%</div>
+              </div>
+              <div className="flex-1 text-center">
+                <div className="text-xs text-muted-foreground mb-1">클릭</div>
+                <div className="text-lg font-bold">{formatNumber(metaFunnel.clicks)}</div>
+              </div>
+              <div className="text-center px-1 text-muted-foreground"><div className="text-lg">→</div></div>
+              <div className="flex-1 text-center">
+                <div className="text-xs text-muted-foreground mb-1">구매 전환</div>
+                {metaFunnel.trackedSpend > 0
+                  ? <div className="text-lg font-bold">{formatNumber(metaFunnel.conversions)}</div>
+                  : <div className="text-sm font-medium text-muted-foreground/80 italic">{UNMEASURED_LABEL}</div>}
+              </div>
             </div>
-            <div className="flex justify-between mt-3 text-xs text-muted-foreground border-t pt-2">
+            <div className="flex flex-wrap justify-between gap-2 mt-3 text-xs text-muted-foreground border-t pt-2">
               <span>광고비: {formatCurrency(metaFunnel.spend)}</span>
-              <span>전환매출: {formatCurrency(metaFunnel.convValue)}</span>
-              <span>ROAS: {metaFunnel.spend > 0 ? `${(metaFunnel.convValue / metaFunnel.spend).toFixed(2)}x` : "—"}</span>
-              <span>CPA: {metaFunnel.conversions > 0 ? formatCurrency(Math.round(metaFunnel.spend / metaFunnel.conversions)) : "—"}</span>
+              {metaFunnel.trackedSpend > 0 ? (
+                <>
+                  <span>전환매출: {formatCurrency(metaFunnel.convValue)}</span>
+                  <span>ROAS: {(metaFunnel.convValue / metaFunnel.trackedSpend).toFixed(2)}x</span>
+                  <span>CPA: {metaFunnel.conversions > 0 ? formatCurrency(Math.round(metaFunnel.trackedSpend / metaFunnel.conversions)) : "-"}</span>
+                </>
+              ) : (
+                <span>전환매출·ROAS·CPA: {UNMEASURED_LABEL}</span>
+              )}
             </div>
+            {metaFunnel.untrackedBrands.length > 0 && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                {metaFunnel.untrackedBrands.map((b) => BRAND_LABELS[b] || b).join("·")} 메타 픽셀은 구매 이벤트가 막혀 있어 전환이 0 으로 들어옵니다. 성과 0 이 아니라 측정 불가입니다
+                {metaFunnel.trackedSpend > 0 ? " (전환·ROAS·CPA 는 그 브랜드를 뺀 값)" : ""}.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

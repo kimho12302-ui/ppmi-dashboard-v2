@@ -12,6 +12,7 @@ import { kstDate } from "@/lib/date";
 import { formatNumber, cn } from "@/lib/utils";
 import { buildControlChart, CONTROL_MIN_DAYS, CONTROL_SIGMA, CONTROL_IMPLAUSIBLE_RATE, CONTROL_RUN_LENGTH, type ControlPoint } from "@/lib/judge-charts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
+import { SINGLE_BRAND_FUNNEL_NOTE } from "@/components/judge/source-funnel-steps";
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, ReferenceArea } from "recharts";
 
 const ACCENT = "var(--sig-danger)";
@@ -68,7 +69,7 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
       <Card><CardContent className="p-4">{header}
         <p className="text-sm text-muted-foreground">
           {single
-            ? "이 브랜드는 유입이 펫 3개 브랜드 합산으로만 기록돼 단독 전환율을 계산할 수 없습니다. 브랜드 필터를 '펫'으로 바꾸면 통합 스토어 기준으로 볼 수 있습니다."
+            ? SINGLE_BRAND_FUNNEL_NOTE
             : "이 기간에 유입이 수집된 원천이 없어 그리지 않습니다."}
         </p>
       </CardContent></Card>

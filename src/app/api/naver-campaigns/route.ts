@@ -20,6 +20,8 @@ const TYPE_LABEL: Record<string, string> = {
 
 interface Row {
   date: string; campaign_id: string; campaign: string | null; campaign_type: string | null; brand: string | null;
+  /** 검색광고 계정. 화면이 계정 단위로 ROAS 판단 가능 여부를 가른다(src/lib/conversion-tracking.ts). */
+  account: string | null;
   impressions: number; clicks: number; cost: number; conversions: number; conversion_value: number;
 }
 
@@ -34,20 +36,20 @@ async function getImpl(request: NextRequest) {
 
   try {
     let q = supabase.from("naver_campaign_daily")
-      .select("date,campaign_id,campaign,campaign_type,brand,impressions,clicks,cost,conversions,conversion_value")
+      .select("date,campaign_id,campaign,campaign_type,brand,account,impressions,clicks,cost,conversions,conversion_value")
       .gte("date", from).lte("date", to).order("date");
     q = brand === "all" ? q.neq("brand", "other") : q.in("brand", expandBrands(brand));
     // 이 테이블엔 id 가 없다. 기본키가 (date, campaign_id) 라 date 다음 campaign_id 로 전순서가 된다.
     const rows = (await fetchAll(q, "campaign_id")) as Row[];
 
     const agg = new Map<string, {
-      campaignId: string; campaignName: string; type: string; brand: string;
+      campaignId: string; campaignName: string; type: string; brand: string; account: string;
       impressions: number; clicks: number; cost: number; conversions: number; convValue: number; days: Set<string>;
     }>();
     for (const r of rows) {
       const e = agg.get(r.campaign_id) || {
         campaignId: r.campaign_id, campaignName: r.campaign || r.campaign_id,
-        type: TYPE_LABEL[r.campaign_type || ""] || r.campaign_type || "기타", brand: r.brand || "",
+        type: TYPE_LABEL[r.campaign_type || ""] || r.campaign_type || "기타", brand: r.brand || "", account: r.account || "",
         impressions: 0, clicks: 0, cost: 0, conversions: 0, convValue: 0, days: new Set<string>(),
       };
       e.impressions += Number(r.impressions || 0);
@@ -60,7 +62,7 @@ async function getImpl(request: NextRequest) {
     }
 
     const campaigns = Array.from(agg.values()).map((c) => ({
-      campaignId: c.campaignId, campaignName: c.campaignName, type: c.type, brand: c.brand,
+      campaignId: c.campaignId, campaignName: c.campaignName, type: c.type, brand: c.brand, account: c.account,
       impressions: c.impressions, clicks: c.clicks, cost: Math.round(c.cost),
       conversions: c.conversions, convValue: Math.round(c.convValue),
       roas: c.cost > 0 ? c.convValue / c.cost : 0,

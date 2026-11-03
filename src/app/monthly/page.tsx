@@ -51,6 +51,8 @@ interface MonthlyData {
   summary: MonthlySummary[];
   ytd: YTD;
   year: string;
+  /** 진행 중인 달. salesDays = 그 달에 판매 원장이 들어온 날 수(오늘 제외). */
+  inProgress?: { month: string; salesDays: number; salesThrough: string | null } | null;
 }
 
 export default function MonthlyPage() {
@@ -173,6 +175,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
   const summary = data?.summary || [];
   const ytd = data?.ytd;
   const reversed = [...summary].reverse(); // desc for table
+  const inProgress = data?.inProgress ?? null;
 
   // 채널별 광고비 ((M)Dash Board 재현)
   const CH_LABEL: Record<string, string> = { meta: "메타", naver_search: "네이버검색", naver_shopping: "네이버쇼핑", google_pmax: "구글P-Max", google_search: "구글검색", google_ads: "구글", coupang_ads: "쿠팡", gfa: "GFA", gdn: "GDN", influencer: "인플루언서" };
@@ -341,10 +344,18 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
             <tbody>
               {reversed.map((r) => (
                 <tr key={r.month} className="border-b border-border/50 hover:bg-muted/50">
-                  <td className="py-2 pr-3 font-medium">{r.month}</td>
+                  {/* 진행 중인 달은 며칠치만 들어 있어 전월비를 비운다(서버도 revGrowth 를 주지 않는다). */}
+                  <td className="py-2 pr-3 font-medium whitespace-nowrap">
+                    {r.month}
+                    {inProgress?.month === r.month && (
+                      <span className="ml-1 text-[11px] font-normal text-muted-foreground" title="판매 원장이 들어온 날 수(오늘 제외). 달이 끝나지 않아 전월비를 내지 않습니다">
+                        ({inProgress.salesDays}일)
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 pr-3 text-right">{formatCurrency(r.revenue)}</td>
                   <td className="py-2 pr-3 text-right">
-                    {r.revGrowth !== undefined ? (
+                    {r.revGrowth !== undefined && inProgress?.month !== r.month ? (
                       <span className={cn("text-xs", r.revGrowth >= 0 ? "text-emerald-500" : "text-red-500")}>
                         {r.revGrowth >= 0 ? "▲" : "▼"}{Math.abs(r.revGrowth).toFixed(0)}%
                       </span>

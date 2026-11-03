@@ -50,7 +50,6 @@ interface DashboardData {
   selfSalesTotal: number;
   dailyGongguTotal: number;
   dailyGonggu?: Record<string, number>;
-  anomalies: { brand: string; metric: string; change: number; current: number; previous: number }[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   targets: any[];
 }

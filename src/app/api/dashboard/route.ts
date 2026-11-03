@@ -430,34 +430,8 @@ async function getImpl(req: NextRequest) {
     // ── Targets ──
     const targets = (targetData || []).filter(r => matchesBrand(r.brand, brand));
 
-    // ── Anomaly detection ──
-    const anomalies: { brand: string; metric: string; change: number; current: number; previous: number }[] = [];
-    const sortedDates = Array.from(new Set((sales || []).map(r => r.date))).sort();
-    if (sortedDates.length >= 2) {
-      const lastDate = sortedDates[sortedDates.length - 1];
-      const prevDate = sortedDates[sortedDates.length - 2];
-      const dayRevMap = new Map<string, Map<string, number>>();
-      const dayAdMap = new Map<string, Map<string, number>>();
-      for (const r of adjSales) {
-        if (r.date !== lastDate && r.date !== prevDate) continue;
-        if (!dayRevMap.has(r.date)) dayRevMap.set(r.date, new Map());
-        dayRevMap.get(r.date)!.set(r.brand, (dayRevMap.get(r.date)!.get(r.brand) || 0) + Number(r.revenue));
-      }
-      for (const r of nonGa4Ad) {
-        if (r.date !== lastDate && r.date !== prevDate) continue;
-        if (!dayAdMap.has(r.date)) dayAdMap.set(r.date, new Map());
-        dayAdMap.get(r.date)!.set(r.brand, (dayAdMap.get(r.date)!.get(r.brand) || 0) + Number(r.spend));
-      }
-      for (const b of ["nutty", "ironpet", "saip", "balancelab"]) {
-        const label = brandLabels[b] || b;
-        const curRev = dayRevMap.get(lastDate)?.get(b) || 0;
-        const pRev = dayRevMap.get(prevDate)?.get(b) || 0;
-        if (pRev > 0) { const c = ((curRev - pRev) / pRev) * 100; if (Math.abs(c) >= 30) anomalies.push({ brand: label, metric: "매출", change: c, current: curRev, previous: pRev }); }
-        const curAd = dayAdMap.get(lastDate)?.get(b) || 0;
-        const pAd = dayAdMap.get(prevDate)?.get(b) || 0;
-        if (pAd > 0) { const c = ((curAd - pAd) / pAd) * 100; if (Math.abs(c) >= 30) anomalies.push({ brand: label, metric: "광고비", change: c, current: curAd, previous: pAd }); }
-      }
-    }
+    // (이상치 감지는 2026-11-03 뺐다. 마지막 이틀 브랜드별 ±30% 를 이상치로 불러 하루 1~2건 브랜드가 -100% 로 떴다.
+    //  표본 크기를 감안한 판정은 /funnel 관리도(Laney p′)가 한다. 인사이트 화면은 그쪽으로 링크만 둔다.)
 
     // Raw data — sales는 form-A 공구 차감본(adjSales)으로 반환해
     // /sales 페이지가 재집계해도 오버뷰 헤드라인과 동일한 자체매출이 되도록 함.
@@ -539,7 +513,6 @@ async function getImpl(req: NextRequest) {
       targets,
       gongguSales, gongguSalesTotal, selfSalesTotal,
       dailyGongguTotal, dailyGonggu: Object.fromEntries(dailyGongguByCh),
-      anomalies,
     });
   } catch (error) {
     console.error("Dashboard API error:", error);

@@ -124,7 +124,7 @@ function ChannelInner() {
           <CardContent className="p-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div><p className="text-xs text-muted-foreground">총 매출 (자체)</p><p className="text-lg font-bold">{formatWon(total.revenue)}</p></div>
             <div><p className="text-xs text-muted-foreground">총 광고비</p><p className="text-lg font-bold">{formatWon(total.adSpend)}</p></div>
-            <div><p className="text-xs text-muted-foreground">통합 ROAS</p><p className="text-lg font-bold">{total.roas.toFixed(2)}x</p></div>
+            <div><p className="text-xs text-muted-foreground">통합 ROAS</p><p className="text-lg font-bold">{total.adSpend > 0 ? `${total.roas.toFixed(2)}x` : "-"}</p></div>
             <div><p className="text-xs text-muted-foreground">광고비 비중</p><p className="text-lg font-bold">{total.adRatio.toFixed(1)}%</p></div>
           </CardContent>
         </Card>
@@ -133,11 +133,15 @@ function ChannelInner() {
       {/* 채널그룹 카드 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {groups.map((g) => (
-          <Card key={g.key} className="border-t-4" style={{ borderTopColor: roasColor(g.roas) }}>
+          // ★ 광고비 0 인 판매처(자사몰 등)는 ROAS 가 정의되지 않는다. 0.00x 빨강으로 찍으면
+          //   "광고 성과 최악" 으로 읽히므로 표 셀(RoasText)과 같이 "-" 로 두고 색·경고선도 넣지 않는다(2026-11-03).
+          <Card key={g.key} className="border-t-4" style={{ borderTopColor: g.adSpend > 0 ? roasColor(g.roas) : "var(--border)" }}>
             <CardContent className="p-5 space-y-4">
               <div className="flex items-start justify-between">
                 <h3 className="font-semibold text-sm">{g.label}</h3>
-                <span className="text-lg font-bold" style={{ color: roasColor(g.roas) }}>{g.roas.toFixed(2)}x</span>
+                {g.adSpend > 0
+                  ? <span className="text-lg font-bold" style={{ color: roasColor(g.roas) }}>{g.roas.toFixed(2)}x</span>
+                  : <span className="text-lg font-bold text-muted-foreground" title="광고비가 없어 ROAS 를 계산하지 않습니다">-</span>}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -162,7 +166,7 @@ function ChannelInner() {
               </div>
               <div className="border-t pt-2 flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">ROAS 전기간 대비</span>
-                <span className="font-medium"><Delta v={g.roasDelta} /></span>
+                <span className="font-medium"><Delta v={g.adSpend > 0 ? g.roasDelta : null} /></span>
               </div>
             </CardContent>
           </Card>

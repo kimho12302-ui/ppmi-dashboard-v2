@@ -5,10 +5,11 @@ import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
-import { AD_ALERTS_URL } from "@/lib/api-urls";
+import { AD_ALERTS_URL, dashboardUrl } from "@/lib/api-urls";
 import { AdAlerts } from "@/components/ad-alerts";
 import { NaverCampaignMultiples } from "@/components/judge/naver-campaign-multiples";
-import { CHANNEL_LABELS, CHANNEL_COLORS, type DailyAdSpend } from "@/lib/types";
+import { CHANNEL_LABELS, CHANNEL_COLORS, BRAND_LABELS, type DailyAdSpend } from "@/lib/types";
+import { isPurchaseConversionMeasured, NAVER_ROAS_UNTRUSTED_ACCOUNTS } from "@/lib/conversion-tracking";
 import { useConfig } from "@/hooks/use-config";
 import { daysBetween } from "@/lib/bucket";
 import { formatCurrency, formatNumber, formatPercent, formatRoas, isRoasUntracked, cn } from "@/lib/utils";
@@ -18,9 +19,6 @@ import {
   Area,
   LineChart,
   Line,
-  ScatterChart,
-  Scatter,
-  ZAxis,
   ReferenceLine,
   XAxis,
   YAxis,
@@ -38,6 +36,27 @@ const GA4_LABEL: Record<string, string> = {
 
 type ViewTab = "overview" | "channels" | "ga4" | "creatives" | "naver";
 
+// 매체 합산 (GA4 제외). 규칙 설명은 화면 쪽 「집계」 주석.
+function aggregateAds(rows: DailyAdSpend[]) {
+  const nonGa4 = rows.filter((r) => !r.channel.startsWith("ga4_"));
+  const measured = nonGa4.filter((r) => isPurchaseConversionMeasured(r.channel, r.brand));
+  const sum = (list: DailyAdSpend[], k: "spend" | "clicks" | "impressions" | "conversion_value" | "conversions") =>
+    list.reduce((acc, r) => acc + (Number(r[k]) || 0), 0);
+  const spend = sum(nonGa4, "spend");
+  const clicks = sum(nonGa4, "clicks");
+  const impressions = sum(nonGa4, "impressions");
+  const convValue = sum(nonGa4, "conversion_value");
+  const conversions = sum(measured, "conversions");
+  const measuredSpend = sum(measured, "spend");
+  return {
+    spend, clicks, impressions, convValue, conversions, measuredSpend,
+    reportedRoas: spend > 0 ? convValue / spend : 0,
+    ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
+    cpa: conversions > 0 ? measuredSpend / conversions : 0,
+  };
+}
+
+
 export default function AdsPage() {
   return (
     <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
@@ -54,6 +73,13 @@ function AdsPageInner() {
   const [tab, setTab] = useState<ViewTab>("overview");
   // 광고 경보 칸은 광고 응답이 올 때까지 마운트되지 않는다. 기다리지 않게 같이 부른다.
   usePrefetch([AD_ALERTS_URL]);
+  // ★ 헤드라인 ROAS 는 Overview·월별과 같은 정의(판매 원장 실매출 ÷ 매체비)여야 한다(2026-11-03).
+  //   매체가 신고한 전환매출을 더하면 같은 주문을 여러 매체가 자기 몫으로 신고해 실매출을 넘는다
+  //   (2026-10 실측: 신고 합산 10.48x vs 실매출 6.17x). Overview 와 같은 주소라 받은 응답을 재사용한다.
+  const { data: dash } = useFetch<{ kpi?: { roas: number; roasPrev: number; revenue: number; adSpend: number } }>(
+    dashboardUrl(brand || "all", from, to)
+  );
+  const realKpi = dash?.kpi;
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ads = useMemo(() => data?.ads || [], [data]);
@@ -61,41 +87,26 @@ function AdsPageInner() {
   const prevAds = useMemo(() => data?.prevAds || [], [data]);
 
   /* ── 집계 ── */
-  const totals = useMemo(() => {
-    // GA4 제외 (광고비 중복 방지)
-    const nonGa4 = ads.filter((r) => !r.channel.startsWith("ga4_"));
-    const spend = nonGa4.reduce((s, r) => s + (r.spend || 0), 0);
-    const clicks = nonGa4.reduce((s, r) => s + (r.clicks || 0), 0);
-    const impressions = nonGa4.reduce((s, r) => s + (r.impressions || 0), 0);
-    const convValue = nonGa4.reduce((s, r) => s + (r.conversion_value || 0), 0);
-    const conversions = nonGa4.reduce((s, r) => s + (r.conversions || 0), 0);
-    return {
-      spend,
-      clicks,
-      impressions,
-      roas: spend > 0 ? convValue / spend : 0,
-      ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
-      conversions,
-      convValue,
-      cpa: conversions > 0 ? spend / conversions : 0,
-    };
-  }, [ads]);
+  // 매체 합산. GA4 제외 (광고비 중복 방지).
+  //  - roas(신고) = 매체가 신고한 전환매출 합 ÷ 광고비. 같은 주문을 여러 매체가 중복 신고해 실매출보다 크다.
+  //  - 전환수·CPA 는 구매 전환이 측정되는 행만 분자·분모에 넣는다(src/lib/conversion-tracking.ts).
+  //    전엔 메타(구매 미배선) 광고비가 CPA 분자에만 들어가 CPA 가 부풀려졌다.
+  const totals = useMemo(() => aggregateAds(ads), [ads]);
+  /* ── 이전 기간 집계 ── 같은 규칙 */
+  const prevTotals = useMemo(() => aggregateAds(prevAds), [prevAds]);
 
-  /* ── 이전 기간 집계 ── */
-  const prevTotals = useMemo(() => {
-    const nonGa4 = prevAds.filter((r) => !r.channel.startsWith("ga4_"));
-    const spend = nonGa4.reduce((s, r) => s + (r.spend || 0), 0);
-    const clicks = nonGa4.reduce((s, r) => s + (r.clicks || 0), 0);
-    const impressions = nonGa4.reduce((s, r) => s + (r.impressions || 0), 0);
-    const convValue = nonGa4.reduce((s, r) => s + (r.conversion_value || 0), 0);
-    const conversions = nonGa4.reduce((s, r) => s + (r.conversions || 0), 0);
-    return {
-      spend, clicks, impressions, conversions, convValue,
-      roas: spend > 0 ? convValue / spend : 0,
-      ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
-      cpa: conversions > 0 ? spend / conversions : 0,
-    };
-  }, [prevAds]);
+  /* ── 전환수·CPA 가 어느 매체로 계산됐는지(라벨용) ── */
+  const conversionScope = useMemo(() => {
+    const label = (r: DailyAdSpend) => channelMap[r.channel]?.label || CHANNEL_LABELS[r.channel] || r.channel;
+    const included = new Set<string>();
+    const excluded = new Set<string>();
+    for (const r of ads) {
+      if (r.channel.startsWith("ga4_") || !(r.spend > 0)) continue;
+      if (isPurchaseConversionMeasured(r.channel, r.brand)) included.add(label(r));
+      else excluded.add(`${label(r)}(${BRAND_LABELS[r.brand] || r.brand})`);
+    }
+    return { included: Array.from(included).sort(), excluded: Array.from(excluded).sort() };
+  }, [ads, channelMap]);
 
   const pctChange = (cur: number, prev: number) => {
     if (prev === 0) return cur > 0 ? 100 : undefined;
@@ -224,14 +235,33 @@ function AdsPageInner() {
         ))}
       </div>
 
-      {/* KPI */}
+      {/* KPI
+          ROAS 는 Overview 와 같은 실매출 기준. 매체 신고 합산은 보조로만 적는다(2026-11-03).
+          전환수·CPA 는 구매 전환이 측정되는 매체만 넣고 그 범위를 카드에 적는다. */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <KpiCard title="총 광고비" value={formatCurrency(totals.spend)} change={pctChange(totals.spend, prevTotals.spend)} />
-        <KpiCard title="통합 ROAS" value={`${totals.roas.toFixed(2)}x`} change={pctChange(totals.roas, prevTotals.roas)} />
+        <KpiCard
+          title="ROAS (실매출)"
+          value={realKpi ? (realKpi.adSpend > 0 ? `${realKpi.roas.toFixed(2)}x` : "-") : "…"}
+          change={realKpi && realKpi.adSpend > 0 ? pctChange(realKpi.roas, realKpi.roasPrev) : undefined}
+          subtitle={`판매 원장 매출 ÷ 광고비 · 신고 ROAS(매체 합산, 중복 포함) ${totals.spend > 0 ? `${totals.reportedRoas.toFixed(2)}x` : "-"}`}
+        />
         <KpiCard title="총 클릭" value={formatNumber(totals.clicks)} change={pctChange(totals.clicks, prevTotals.clicks)} />
         <KpiCard title="평균 CTR" value={formatPercent(totals.ctr)} change={pctChange(totals.ctr, prevTotals.ctr)} />
-        <KpiCard title="전환수" value={formatNumber(totals.conversions)} change={pctChange(totals.conversions, prevTotals.conversions)} />
-        <KpiCard title="CPA" value={totals.cpa > 0 ? formatCurrency(Math.round(totals.cpa)) : "—"} change={pctChange(totals.cpa, prevTotals.cpa)} />
+        <KpiCard
+          title="전환수 (측정 매체)"
+          value={conversionScope.included.length ? formatNumber(totals.conversions) : "-"}
+          // 직전 기간 전환수가 0 이면 비교하지 않는다. 2026-09 이전 원장은 전환 "수" 칸이 비어 있어(전환매출만 있음)
+          // 0 과 비교하면 늘 ▲100% 로 뜬다.
+          change={conversionScope.included.length && prevTotals.conversions > 0 ? pctChange(totals.conversions, prevTotals.conversions) : undefined}
+          subtitle={scopeNote(conversionScope)}
+        />
+        <KpiCard
+          title="CPA (측정 매체)"
+          value={totals.cpa > 0 ? formatCurrency(Math.round(totals.cpa)) : "-"}
+          change={totals.cpa > 0 && prevTotals.cpa > 0 ? pctChange(totals.cpa, prevTotals.cpa) : undefined}
+          subtitle={`측정 매체 광고비 ${formatCurrency(totals.measuredSpend)} ÷ 전환수`}
+        />
       </div>
 
       {/* 탭 내용 */}
@@ -378,60 +408,6 @@ function AdsPageInner() {
             </CardContent>
           </Card>
 
-          {/* 11.4 매체 효율 사분면 — ROAS vs CPA */}
-          {byChannel.filter(c => !c.channel.startsWith("ga4_") && c.spend > 0).length > 1 && (
-            <Card>
-              <CardContent className="p-4">
-                <h3 className="font-semibold mb-1">매체 효율 사분면 — ROAS vs 광고비</h3>
-                <p className="text-xs text-muted-foreground mb-4">우상단(고ROAS·저광고비) = 효율 우수. 버블 크기 = 광고비</p>
-                <ResponsiveContainer width="100%" height={320}>
-                  <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                    <XAxis
-                      type="number" dataKey="spend" name="광고비"
-                      tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
-                      tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`}
-                      label={{ value: "광고비", position: "insideBottom", offset: -10, fontSize: 11, fill: "var(--muted-foreground)" }}
-                    />
-                    <YAxis
-                      type="number" dataKey="roas" name="ROAS"
-                      tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
-                      tickFormatter={(v) => `${v.toFixed(1)}x`}
-                      label={{ value: "ROAS", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--muted-foreground)" }}
-                    />
-                    <ZAxis type="number" dataKey="spend" range={[60, 600]} name="광고비" />
-                    <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="4 4"
-                      label={{ value: "ROAS 1.0x", position: "right", fontSize: 10, fill: "#ef4444" }} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
-                      formatter={(val, name) => {
-                        if (name === "ROAS") return [`${Number(val).toFixed(2)}x`, name];
-                        if (name === "광고비") return [formatCurrency(Number(val)), name];
-                        return [val, name];
-                      }}
-                      labelFormatter={(_, payload) => payload?.[0]?.payload?.label || ""}
-                    />
-                    <Scatter
-                      data={byChannel.filter(c => !c.channel.startsWith("ga4_") && c.spend > 0)
-                        .map(c => ({ ...c, label: c.label }))}
-                      shape={(props: { cx?: number; cy?: number; fill?: string; payload?: { label: string; spend: number } }) => {
-                        const { cx = 0, cy = 0, fill = "#6366f1", payload } = props;
-                        if (!payload) return <g />;
-                        const r = Math.sqrt(payload.spend / 1000) + 8;
-                        return (
-                          <g>
-                            <circle cx={cx} cy={cy} r={r} fill={fill} fillOpacity={0.7} stroke={fill} strokeWidth={1} />
-                            <text x={cx} y={cy - r - 2} textAnchor="middle" fontSize={10} fill="var(--foreground)">{payload.label}</text>
-                          </g>
-                        );
-                      }}
-                      fill="#6366f1"
-                    />
-                  </ScatterChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          )}
         </>
       )}
 
@@ -539,11 +515,20 @@ function AdsPageInner() {
   );
 }
 
+/** 전환수 카드 아래 한 줄: 어느 매체를 넣고 뺐는지. */
+function scopeNote(scope: { included: string[]; excluded: string[] }): string {
+  const inc = scope.included.length ? `포함 ${scope.included.join("·")}` : "구매 전환이 측정되는 매체 없음";
+  const exc = scope.excluded.length ? ` · 제외 ${scope.excluded.join("·")} (구매 전환 미배선·장바구니 전환)` : "";
+  return inc + exc;
+}
+
 /* ── 네이버 캠페인 섹션 (P10) ── */
 interface NaverCampaign {
   campaignId: string; campaignName: string; type: string;
   impressions: number; clicks: number; cost: number; conversions: number;
   ctr: number; cpc: number; days: number; convValue?: number; roas?: number;
+  /** 검색광고 계정. 밸런스랩 계정은 장바구니 전환이 매출로 잡혀 ROAS 판단 불가. */
+  account?: string;
 }
 interface NaverSummary {
   totalImpressions: number; totalClicks: number; totalCost: number;
@@ -628,7 +613,12 @@ function NaverCampaignsSection({ brand, from, to }: { brand: string; from: strin
                     <td className="py-2 pr-4 text-right">{formatCurrency(c.cpc)}</td>
                     <td className="py-2 pr-4 text-right">{formatNumber(c.conversions)}</td>
                     <td className="py-2 pr-4 text-right">{formatCurrency(c.convValue || 0)}</td>
-                    <td className="py-2 text-right">{c.cost > 0 ? `${(c.roas || 0).toFixed(2)}x` : "-"}</td>
+                    {/* 위 스몰 멀티플과 같은 기준(NAVER_ROAS_UNTRUSTED_ACCOUNTS)으로 밸런스랩 계정은 판단 불가. */}
+                    <td className="py-2 text-right">
+                      {c.account && NAVER_ROAS_UNTRUSTED_ACCOUNTS.has(c.account)
+                        ? <span className="text-muted-foreground/70 italic" title="장바구니 전환이 매출로 잡혀 부풀려진 계정이라 ROAS 로 판단하지 않습니다">판단 불가</span>
+                        : c.cost > 0 ? `${(c.roas || 0).toFixed(2)}x` : "-"}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -13,6 +13,7 @@ import {
   type MultipleMetric, type WeekCell,
 } from "@/lib/judge-charts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
+import { NAVER_ROAS_UNTRUSTED_ACCOUNTS } from "@/lib/conversion-tracking";
 import { LineChart, Line, YAxis, XAxis, ReferenceLine, Tooltip } from "recharts";
 
 const ACCENT = "var(--sig-danger)";
@@ -20,7 +21,8 @@ const NEUTRAL = "var(--muted-foreground)";
 
 // 밸런스랩 검색광고 계정의 전환매출은 장바구니 전환에 상품가가 붙어 부풀려져 있다
 // (2026-11-02 원인 확정: add_to_cart 전환). 이 계정 캠페인은 ROAS 로 판단하지 않는다.
-const ROAS_UNTRUSTED_ACCOUNTS = new Set(["balancelab"]);
+// 목록은 아래 「캠페인별 성과」 표와 같은 상수를 쓴다(src/lib/conversion-tracking.ts).
+const ROAS_UNTRUSTED_ACCOUNTS = NAVER_ROAS_UNTRUSTED_ACCOUNTS;
 
 interface Campaign {
   campaignId: string; campaignName: string; type: string; brand: string; account: string;

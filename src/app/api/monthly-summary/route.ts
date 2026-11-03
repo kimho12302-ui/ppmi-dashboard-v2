@@ -65,13 +65,17 @@ async function getImpl(request: NextRequest) {
     //   (2026-10-14). 필터·묶는 칸은 아래 옛 경로와 같고 날짜는 그 달 1일로 바꿔 아래 계산을 그대로 탄다.
     //   함수가 없으면(SQL 실행 전) 옛 경로. 대조: scripts/verify-summary-rpc.mjs
     const brandsParam = brand !== "all" ? expandBrands(brand) : null;
-    const [parts, miscRes, shipRes, productCostsRes] = await Promise.all([
+    const [parts, miscRes, shipRes, productCostsRes, salesLastRes] = await Promise.all([
       tryRpc<MonthlyParts>("monthly_summary_parts", { p_from: fromDate, p_to: toDate, p_brands: brandsParam }),
       miscQ,
       shipQ,
       // Fetch product costs for COGS
       supabase.from("product_costs").select("product,brand,cost_price,manufacturing_cost,shipping_cost"),
+      // 판매 원장이 어디까지 들어왔는지(진행 중인 달 「(N일)」 표시용, 2026-11-03). 오늘 장중 행은 세지 않는다.
+      supabase.from("daily_sales").select("date").neq("channel", "total").lt("date", todayStr)
+        .order("date", { ascending: false }).limit(1),
     ]);
+    const salesThrough: string | null = salesLastRes.data?.[0]?.date ?? null;
     const asRows = <T extends { month: string }>(rows: T[]) => rows.map((r) => ({ ...r, date: `${r.month}-01` }));
     const [sales, ads, ps, cogsProdData] = parts
       ? [asRows(parts.sales), asRows(parts.ads), needGonggu ? asRows(parts.gonggu) : [], asRows(parts.cogs)]
@@ -204,10 +208,16 @@ async function getImpl(request: NextRequest) {
         };
       });
 
+    // ★ 진행 중인 달(오늘이 속한 달)은 며칠치만 들어 있어 전월(한 달 전체)과 비교하면 늘 크게 떨어져 보인다
+    //   (11-03 실측: 2026-11 행 전월비 ▼92%). 그 달은 전월비를 비우고 판매가 들어온 날 수만 알린다.
+    const currentMonth = todayStr.slice(0, 7);
+    const inProgressDays = salesThrough && salesThrough.slice(0, 7) === currentMonth ? Number(salesThrough.slice(8, 10)) : 0;
+
     // Add MoM growth
     for (let i = 1; i < summary.length; i++) {
       const prev = summary[i - 1];
       const curr = summary[i];
+      if (curr.month === currentMonth) continue;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (curr as any).revGrowth = prev.revenue > 0 ? ((curr.revenue / prev.revenue) - 1) * 100 : 0;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -237,7 +247,11 @@ async function getImpl(request: NextRequest) {
     ytd.aov = ytd.orders > 0 ? ytd.revenue / ytd.orders : 0;
     ytd.profitRate = ytd.revenue > 0 ? (ytd.profit / ytd.revenue) * 100 : 0;
 
-    return NextResponse.json({ summary, ytd, year });
+    return NextResponse.json({
+      summary, ytd, year,
+      // 진행 중인 달과 그 달에 판매가 들어온 날 수(0 = 아직 없음). 지난해를 보면 null.
+      inProgress: summary.some((m) => m.month === currentMonth) ? { month: currentMonth, salesDays: inProgressDays, salesThrough } : null,
+    });
   } catch {
     return NextResponse.json({ error: "Failed to fetch monthly summary" }, { status: 500 });
   }

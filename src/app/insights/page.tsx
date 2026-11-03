@@ -1,18 +1,16 @@
 "use client";
 
 import { Suspense } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { cn } from "@/lib/utils";
 import { PacingSection } from "@/components/pacing-section";
-import { dashboardUrl } from "@/lib/api-urls";
 
 type InsightType = "critical" | "warning" | "opportunity" | "info";
 
-// /api/dashboard 의 anomalies: 기간 안 마지막 두 날짜의 브랜드별 매출·광고비 ±30% 일간 변동.
-// /api/insights 규칙(ROAS·전환율·이탈률·기간 대비 하락)과 다른 감지기라 목록에 합치지 않고 따로 보인다.
-interface Anomaly { brand: string; metric: string; change: number; current: number; previous: number }
 
 interface Insight {
   type: InsightType;
@@ -34,9 +32,8 @@ function InsightsInner() {
   const { data, loading } = useFetch<{ insights: Insight[] }>(
     `/api/insights?from=${from}&to=${to}&brand=${brand}`
   );
-  // 이상치 카드는 Overview 와 같은 주소를 불러 이미 받아 둔 응답을 재사용한다(주소는 api-urls.ts 한곳에서).
-  const { data: dash } = useFetch<{ anomalies?: Anomaly[] }>(dashboardUrl(brand || "all", from, to));
-  const anomalies = dash?.anomalies || [];
+  // 관리도 링크는 지금 고른 브랜드·기간을 그대로 들고 간다.
+  const qs = useSearchParams().toString();
 
   const insights = data?.insights || [];
 
@@ -53,25 +50,18 @@ function InsightsInner() {
   }, {} as Record<string, number>);
 
   return (
-    <PageShell title="인사이트" description="목표 페이싱 · 자동 이상치 감지 · 트렌드 분석 · 효율 경고 · 원인 분석">
+    <PageShell title="인사이트" description="목표 페이싱 · 트렌드 분석 · 효율 경고 · 원인 분석">
       {/* 목표 대비 페이싱: 의사결정 1순위 (통계시트 '광고 예산안' 재현).
           2026-11-03 김호 지시로 Overview 맨 위에서 이 화면 맨 위로 옮겼다. */}
       <PacingSection brand={brand || "all"} from={from} to={to} />
 
-      {/* 일간 이상치(브랜드별 매출·광고비 ±30%). 2026-11-03 Overview 에서 옮겨 왔다.
-          IA(2026-09) 때 Overview 카드와 /insights 가 서로를 모르는 상태였던 문제는 한 화면에 모아 풀었다. */}
-      {anomalies.length > 0 && (
-        <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
-          <CardContent className="p-3">
-            <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-1">이상치 감지 ({anomalies.length}건)</p>
-            {anomalies.map((a, i) => (
-              <p key={i} className="text-xs text-red-600 dark:text-red-300">
-                • {a.brand} {a.metric}: {a.change > 0 ? "+" : ""}{a.change.toFixed(0)}% 변동
-              </p>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      {/* 일간 이상치 카드는 2026-11-03 뺐다. 마지막 이틀 ±30% 를 이상치로 불러 하루 1~2건인 브랜드가 -100% 로 떴다.
+          "우연한 흔들림인지" 는 표본 크기를 감안하는 퍼널 관리도가 판정한다. */}
+      <p className="text-xs text-muted-foreground">
+        어제·그제 변화가 우연인지는{" "}
+        <Link href={qs ? `/funnel?${qs}` : "/funnel"} className="underline underline-offset-2 hover:text-foreground">퍼널 화면의 일별 구매 전환율 관리도</Link>
+        에서 봅니다(원천별, 유입이 적은 날은 한계선이 넓어집니다).
+      </p>
 
       {loading ? (
         <div className="space-y-3">
