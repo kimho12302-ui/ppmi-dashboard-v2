@@ -50,10 +50,15 @@ async function getImpl(req: NextRequest) {
     const today = kstDate(new Date().toISOString());
     const minDay = addDays([...firstDay.values()].sort()[0], -BEFORE_DAYS);
 
-    const kw = (await fetchAll(
+    // ★ 키워드 목록을 .in() 으로 넘기지 않는다. 조정 이력이 192건(2026-11-03)이 되자 한글 키워드를
+    //   주소에 다 실은 요청이 길이 제한에 걸려 "fetch failed" 로 죽었다(로컬 먼저, 쌓이면 운영도).
+    //   기간·브랜드로만 받고(한 달 2천 행 안팎) 키워드는 아래에서 거른다.
+    const wanted = new Set(firstDay.keys());
+    const kw = ((await fetchAll(
       supabase.from("keyword_performance").select("id,date,keyword,impressions,clicks,cost,conversions")
-        .eq("brand", "balancelab").gte("date", minDay).in("keyword", [...firstDay.keys()]).order("date"),
-    )) as { date: string; keyword: string; impressions: number; clicks: number; cost: number; conversions: number }[];
+        .eq("brand", "balancelab").gte("date", minDay).order("date"),
+    )) as { date: string; keyword: string; impressions: number; clicks: number; cost: number; conversions: number }[])
+      .filter((r) => wanted.has(r.keyword));
     const latestData = kw.reduce((m, r) => (r.date > m ? r.date : m), "");
 
     const perf: Record<string, { before: Perf; after: Perf; changedOn: string; afterUntil: string }> = {};
