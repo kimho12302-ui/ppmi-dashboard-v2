@@ -14,6 +14,7 @@ import type { KeywordPerformance } from "@/lib/types";
 import { CoupangKeywordSection } from "@/components/coupang-keywords";
 import { NaverSearchTermSection } from "@/components/naver-search-terms";
 import { SaChangeLog } from "@/components/sa-change-log";
+import { SearchDemandSection } from "@/components/search-demand";
 
 const PLATFORM_LABELS: Record<string, string> = {
   naver_search: "네이버 검색",
@@ -33,6 +34,8 @@ const PLATFORM_COLORS: Record<string, string> = {
   meta: "#1d4ed8",
 };
 
+type KeywordTab = "keywords" | "gsc" | "coupang" | "naver" | "demand";
+
 export default function KeywordsPage() {
   return (
     <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
@@ -46,7 +49,7 @@ function KeywordsInner() {
   const { data, loading } = useFetch<{ keywords: KeywordPerformance[]; latestCollected?: string | null }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
   const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr" | "roas" | "waste">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
-  const [tab, setTab] = useState<"keywords" | "gsc" | "coupang" | "naver">("keywords");
+  const [tab, setTab] = useState<KeywordTab>("keywords");
   // SA 조정 이력 칸은 키워드 응답이 올 때까지 마운트되지 않는다. 기다리지 않게 같이 부른다.
   usePrefetch([(tab === "keywords" || tab === "naver") && (brand === "balancelab" || brand === "all") ? saChangesUrl(brand) : null]);
 
@@ -179,14 +182,15 @@ function KeywordsInner() {
 
   return (
     <PageShell title="키워드" description="키워드별 광고 성과">
-      {/* 탭 */}
-      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
+      {/* 탭. 좁은 화면에서는 줄을 바꾼다(390px 에서 가로로 넘쳤다) */}
+      <div className="flex flex-wrap items-center gap-0.5 rounded-lg bg-muted p-1 w-fit max-w-full">
         {([
           { key: "keywords", label: "키워드 분석" },
           { key: "gsc", label: "Google Search Console" },
           { key: "coupang", label: "쿠팡 광고 키워드" },
           { key: "naver", label: "네이버 검색어" },
-        ] as { key: "keywords" | "gsc" | "coupang" | "naver"; label: string }[]).map((t) => (
+          { key: "demand", label: "검색 수요" },
+        ] as { key: KeywordTab; label: string }[]).map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -203,6 +207,7 @@ function KeywordsInner() {
       {tab === "gsc" && <GscSection brand={brand} from={from} to={to} />}
       {tab === "coupang" && <CoupangKeywordSection brand={brand} from={from} to={to} />}
       {tab === "naver" && <NaverSearchTermSection brand={brand} from={from} to={to} />}
+      {tab === "demand" && <SearchDemandSection />}
 
       {/* 밸런스랩 검색광고는 Claude 가 직접 조정한다(2026-10-12~). 무엇을 언제 바꿨고 그 뒤 어떻게 됐는지. */}
       {(tab === "keywords" || tab === "naver") && (brand === "balancelab" || brand === "all") && <SaChangeLog brand={brand} />}
