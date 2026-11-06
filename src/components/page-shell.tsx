@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Filters } from "./filters";
 import { DataStatusRail } from "./data-status-rail";
 import { DataFreshness } from "./data-freshness";
+import { GuideButton } from "./guide-drawer";
 import { useFilterParams } from "@/hooks/use-dashboard-data";
 
 interface PageShellProps {
@@ -39,6 +40,8 @@ function PageShellInner({ title, description, children, hideFilters, hideAllBran
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <DataFreshness />
+          {/* 화면별 이용 가이드 (2026-11-06). 문구는 src/lib/guides, 경로로 찾는다. */}
+          <GuideButton />
           {!hideFilters && from && to && (
             <span className="num inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border bg-muted/60 text-muted-foreground whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--primary)" }} aria-hidden />
