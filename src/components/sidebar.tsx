@@ -4,6 +4,25 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
+import { useDashboardHealth } from "@/hooks/use-dashboard-health";
+
+/** 「P」 마크. 고장이 있으면 오른쪽 위에 빨간 점. */
+function LogoMark({ broken, small }: { broken: number; small?: boolean }) {
+  const box = small ? "w-6 h-6 rounded-md" : "w-8 h-8 rounded-lg";
+  return (
+    <span className={cn("relative bg-primary flex items-center justify-center flex-shrink-0", box)}>
+      <span className={cn("text-primary-foreground font-bold", small ? "text-xs" : "text-sm")}>P</span>
+      {broken > 0 && (
+        <span
+          className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ring-2 ring-[var(--sidebar-bg)]"
+          style={{ backgroundColor: "var(--sig-danger)" }}
+          title={`고장 ${broken}건`}
+          aria-label={`고장 ${broken}건`}
+        />
+      )}
+    </span>
+  );
+}
 
 interface NavItem {
   href: string;
@@ -73,6 +92,9 @@ export function Sidebar() {
     router.push(qs ? `${href}?${qs}` : href);
   }, [router]);
   const [moreOpen, setMoreOpen] = useState(false);
+  // 고장이 있으면 로고에 작은 빨간 점. 주의·의도 중단은 점을 띄우지 않는다(판정은 @/lib/dashboard-health).
+  const { data: health } = useDashboardHealth();
+  const brokenCount = health?.counts.broken ?? 0;
 
   return (
     <>
@@ -81,16 +103,20 @@ export function Sidebar() {
         className="hidden lg:flex lg:flex-col lg:w-60 lg:fixed lg:inset-y-0 border-r"
         style={{ backgroundColor: "var(--sidebar-bg)", borderColor: "var(--sidebar-border)" }}
       >
-        {/* Logo */}
-        <div
-          className="flex items-center gap-2 px-6 h-16 border-b"
+        {/* Logo = 대시보드 상태 화면 입구 (2026-11-06). 메뉴 항목은 늘리지 않고 로고로만 들어간다. */}
+        <Link
+          href="/status"
+          title="대시보드 상태 보기"
+          aria-label="대시보드 상태 보기"
+          className={cn(
+            "flex items-center gap-2 px-6 h-16 border-b transition-colors hover:bg-[var(--sidebar-hover)]",
+            pathname.startsWith("/status") && "bg-[var(--sidebar-active)]"
+          )}
           style={{ borderColor: "var(--sidebar-border)" }}
         >
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-sm">P</span>
-          </div>
+          <LogoMark broken={brokenCount} />
           <span className="font-semibold text-lg">PPMI</span>
-        </div>
+        </Link>
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
@@ -221,7 +247,17 @@ export function Sidebar() {
               </Link>
             );
           })}
-          <div className="col-span-3 flex justify-end pt-1">
+          {/* 모바일은 상단 로고가 없어 상태 화면 입구를 여기 둔다(메뉴 칸은 늘리지 않는다). */}
+          <div className="col-span-3 flex items-center justify-between pt-1">
+            <Link
+              href="/status"
+              onClick={() => setMoreOpen(false)}
+              className="flex items-center gap-2 px-2 py-1 rounded-lg text-xs text-[var(--muted-foreground)] hover:bg-[var(--sidebar-hover)]"
+              aria-label="대시보드 상태 보기"
+            >
+              <LogoMark broken={brokenCount} small />
+              대시보드 상태
+            </Link>
             <ThemeToggle />
           </div>
         </div>
