@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch, useFilterParams } from "@/hooks/use-dashboard-data";
-import { BRAND_LABELS } from "@/lib/types";
+import { AD_CHANNEL_COLORS, BRAND_LABELS } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { kstDate } from "@/lib/date";
@@ -195,9 +195,9 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
 
   // 채널별 광고비 ((M)Dash Board 재현)
   const CH_LABEL: Record<string, string> = { meta: "메타", naver_search: "네이버검색", naver_shopping: "네이버쇼핑", google_pmax: "구글P-Max", google_search: "구글검색", google_ads: "구글", coupang_ads: "쿠팡", gfa: "GFA", gdn: "GDN", influencer: "인플루언서" };
-  // 네이버 검색·쇼핑이 둘 다 초록(#03c75a·#22c55e)이라 구분이 안 됐다(2026-11-04). 키워드 화면 PLATFORM_COLORS 와 같은 값으로.
-  // TODO: 공용 채널 색 상수가 생기면 그걸로 교체(다른 작업에서 통일 중).
-  const CH_COLOR: Record<string, string> = { meta: "#1877f2", naver_search: "#15803d", naver_shopping: "#0e7490", google_pmax: "#eab308", google_search: "#f59e0b", google_ads: "#fbbf24", coupang_ads: "#ef4444", gfa: "#8b5cf6", gdn: "#a78bfa", influencer: "#ec4899" };
+  // 매체 색은 types.ts 정본(AD_CHANNEL_COLORS)을 쓴다(같은 매체 = 모든 화면 같은 색, 2026-11-09).
+  // 정본에 없는 옛 원장 키(google_ads·gdn·influencer)만 여기서 따로 칠한다.
+  const CH_COLOR: Record<string, string> = { google_ads: "#fbbf24", gdn: "#a78bfa", influencer: "#ec4899", ...AD_CHANNEL_COLORS };
   const channelKeys = Array.from(new Set(summary.flatMap((m) => Object.keys(m.channelCosts || {})))).filter(Boolean);
   // 차트 축: 데이터가 있는 첫 달~마지막 달 사이의 빈 달도 빠지지 않게 채운다(2026-10-28).
   // 금액은 0, 비율(이익률·ROAS)은 0 이 아니라 빈칸(null). 첫 데이터 달 이전은 수집 전이라 넣지 않는다.

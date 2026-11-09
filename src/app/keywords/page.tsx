@@ -10,7 +10,7 @@ import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import {
   ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
-import type { KeywordPerformance } from "@/lib/types";
+import { AD_CHANNEL_COLORS, type KeywordPerformance } from "@/lib/types";
 import { CoupangKeywordSection } from "@/components/coupang-keywords";
 import { NaverSearchTermSection } from "@/components/naver-search-terms";
 import { SaChangeLog } from "@/components/sa-change-log";
@@ -25,13 +25,15 @@ const PLATFORM_LABELS: Record<string, string> = {
   meta: "메타",
 };
 
+// 같은 매체 = 모든 화면 같은 색(2026-11-09). 키워드 원장의 플랫폼 키를 types.ts 정본 매체 색에 잇는다.
+// naver_gfa 는 정본의 gfa 와 같은 매체다. 구글 디스플레이는 정본에 없어 여기서만 칠한다.
 const PLATFORM_COLORS: Record<string, string> = {
-  naver_search: "#15803d",
-  naver_shopping: "#0e7490",
-  naver_gfa: "#6d28d9",
-  google_search: "#c2410c",
+  naver_search: AD_CHANNEL_COLORS.naver_search,
+  naver_shopping: AD_CHANNEL_COLORS.naver_shopping,
+  naver_gfa: AD_CHANNEL_COLORS.gfa,
+  google_search: AD_CHANNEL_COLORS.google_search,
   google_display: "#b45309",
-  meta: "#1d4ed8",
+  meta: AD_CHANNEL_COLORS.meta,
 };
 
 type KeywordTab = "keywords" | "gsc" | "coupang" | "naver" | "demand";
