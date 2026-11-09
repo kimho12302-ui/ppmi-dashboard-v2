@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 function LoginForm() {
   const params = useSearchParams();
-  const next = params.get("next") || "/influencers";
+  const next = params.get("next") || "/";
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -24,7 +24,7 @@ function LoginForm() {
     const j = await r.json().catch(() => ({}));
     setBusy(false);
     // 내부 경로로만 돌려보낸다
-    if (r.ok) window.location.href = next.startsWith("/") && !next.startsWith("//") ? next : "/influencers";
+    if (r.ok) window.location.href = next.startsWith("/") && !next.startsWith("//") ? next : "/";
     else setError(j.error || "로그인 실패");
   }
 
@@ -33,7 +33,7 @@ function LoginForm() {
       <Card>
         <CardContent className="py-6 space-y-4">
           <div>
-            <h1 className="text-xl font-bold">팀 전용 화면</h1>
+            <h1 className="text-xl font-bold">PPMI 대시보드</h1>
             <p className="text-sm text-muted-foreground mt-1">팀 비밀번호와 이름을 넣어 주세요. 이름은 시트에 &lsquo;추가한 사람&rsquo;으로 남습니다.</p>
           </div>
           <form onSubmit={submit} className="space-y-3">

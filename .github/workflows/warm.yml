@@ -29,6 +29,8 @@ jobs:
       - name: 메인 화면 API 깨우기
         env:
           BASE: https://ppmi-dashboard-kappa.vercel.app
+          # 2026-11-09 대시보드 전체 잠금. 키 없으면 미들웨어 401 에서 끝나 함수를 못 깨운다. 값 = Vercel PPMI_API_KEY
+          PPMI_API_KEY: ${{ secrets.PPMI_API_KEY }}
         run: |
           # 화면 기본 기간 "이번 달"과 같은 주소(1일~어제, KST). src/lib/utils.ts getDateRangeFromPreset 과 같다.
           TO=$(TZ=Asia/Seoul date -d "yesterday" +%F)
@@ -40,5 +42,5 @@ jobs:
             "/api/dashboard?from=$FROM&to=$TO&brand=all" \
             "/api/pacing?brand=all" \
             "/api/channel-groups?brand=all&from=$FROM&to=$TO"; do
-            curl -s -o /dev/null --max-time 30 -w "%{http_code} %{time_total}s $p\n" "$BASE$p" || echo "실패 $p"
+            curl -s -o /dev/null --max-time 30 -H "x-ppmi-key: $PPMI_API_KEY" -w "%{http_code} %{time_total}s $p\n" "$BASE$p" || echo "실패 $p"
           done
