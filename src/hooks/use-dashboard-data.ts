@@ -7,15 +7,19 @@ import { getDateRangeFromPreset, type DatePreset } from "@/lib/utils";
 
 /* ── URL 기반 필터 상태 ── */
 
+/** 기간 필터 기본값. URL 에 preset 이 없을 때 쓰고, 이 값을 고르면 URL 에서 지운다. */
+export const DEFAULT_PRESET: DatePreset = "30d";
+
 export function useFilterParams() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
 
   const brand = searchParams.get("brand") || "all";
-  // 기본 기간 = 이번 달. 목표/페이싱이 달력 월 기준이라 30d를 기본으로 두면
-  // 진입 화면에서 페이싱의 매출과 KPI 카드의 매출이 서로 다른 값으로 보였다.
-  const preset = (searchParams.get("preset") || "this_month") as DatePreset;
+  // 기본 기간 = 최근 30일 (2026-11-04 김호 결정). 예전 기본(이번 달)은 월초에 하루이틀치만 보여
+  // 추세를 읽을 수 없었다. 월 목표 페이싱은 기간과 상관없이 이번 달 기준으로 따로 계산한다(/api/pacing).
+  // 「이번 달」 버튼은 그대로 있고, 고르면 URL 에 preset=this_month 가 남는다.
+  const preset = (searchParams.get("preset") || DEFAULT_PRESET) as DatePreset;
   const from = searchParams.get("from") || "";
   const to = searchParams.get("to") || "";
 
@@ -27,8 +31,8 @@ export function useFilterParams() {
   const setParam = useCallback(
     (key: string, value: string) => {
       const params = new URLSearchParams(searchParams.toString());
-      // 기본값(brand=all, preset=this_month)은 URL에서 제거, 나머지는 유지
-      const isDefault = (key === "brand" && value === "all") || (key === "preset" && value === "this_month");
+      // 기본값(brand=all, preset=30d)은 URL에서 제거, 나머지는 유지
+      const isDefault = (key === "brand" && value === "all") || (key === "preset" && value === DEFAULT_PRESET);
       if (value && !isDefault) {
         params.set(key, value);
       } else {

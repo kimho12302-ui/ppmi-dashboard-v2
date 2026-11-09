@@ -5,7 +5,8 @@ import { CONFIDENCE, type Confidence } from "@/lib/status-ui";
 
 export interface KpiConfidence {
   level: Confidence;
-  /** 왜 그 등급인지. 숫자 바로 아래에 그대로 인쇄된다. 툴팁에 숨기지 않는다. */
+  /** 왜 그 등급인지. 숫자 바로 아래에 그대로 인쇄된다. 툴팁에 숨기지 않는다.
+   *  빈 문자열이면 레일·배지만 남기고 각주는 생략한다(같은 각주를 옆 카드가 이미 보여 줄 때). */
   note: string;
 }
 
@@ -143,7 +144,8 @@ export function KpiCard({
       </div>
 
       {/* ★ 각주 밴드. 오해가 실제로 발생한 항목은 툴팁이 아니라 숫자 밑에 인쇄한다. */}
-      {railed && conf && (
+      {/* note 가 빈 문자열이면 밴드를 생략한다. 같은 사유를 옆 카드가 이미 인쇄했을 때(예: 매출과 주문 수) 두 번 찍지 않는다. */}
+      {railed && conf && confidence.note && (
         <div
           className={`stamp mt-2.5 py-1.5 border-t ${isHero ? "-mx-4 sm:-mx-6 -mb-4 sm:-mb-6 px-4 sm:px-6" : isCompact ? "-mx-3 sm:-mx-3.5 -mb-3 sm:-mb-3.5 px-3 sm:px-3.5" : "-mx-3 sm:-mx-5 -mb-3 sm:-mb-5 px-3 sm:px-5"}`}
           style={{ color: conf.color, backgroundColor: conf.surface, borderColor: conf.border }}

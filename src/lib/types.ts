@@ -139,15 +139,19 @@ export interface ChannelConfig {
    하드코딩 fallback (DB 없을 때)
    ──────────────────────────────────────────── */
 
-// 계열색 — ui-ux-pro-max "Analytics Dashboard" 팔레트(블루 데이터 + 앰버 액센트) 기준으로
-// 다시 배치했다. 채도·명도를 한 단계로 맞춰 어느 하나가 튀지 않게 한다.
-// ★ 의미 색은 건드리지 않는다: 매출=파랑, 광고비=빨강, ROAS=초록 (--sig-* 토큰).
+// ★ 색의 원천은 이 파일 하나다 (2026-11-04).
+//   예전에는 이 상수, globals.css 의 --brand-*·--channel-* 변수, 설정 DB(/api/settings)의 색, 화면마다 하드코딩한 색이
+//   제각각이라 쿠팡이 화면마다 빨강·파랑·주황·보라로 바뀌었고 밸런스랩이 네이버 쇼핑과 같은 색이었다.
+//   규칙: 같은 대상 = 모든 화면에서 같은 색. 한 차원(브랜드끼리, 판매처끼리, 매체끼리) 안에서는 서로 다른 색.
+//   useConfig 는 여기 있는 키에 이 색을 쓰고, 여기 없는 새 키에만 설정 DB 색을 쓴다.
+//   판단용 그래프(src/components/judge)는 이 색을 쓰지 않는다(무채색 + 강조색 하나).
+//   의미 색(정상·주의·위험)은 --sig-* 토큰이다. 이 계열색과 섞지 않는다.
 export const BRAND_COLORS: Record<string, string> = {
-  pet: "#f59e0b",
-  nutty: "#3b82f6",
-  ironpet: "#f59e0b",
-  saip: "#8b5cf6",
-  balancelab: "#06b6d4",
+  pet: "#d97706",
+  nutty: "#dc2626",
+  ironpet: "#ea580c",
+  saip: "#78716c",
+  balancelab: "#2563eb",
 };
 
 export const BRAND_LABELS: Record<string, string> = {
@@ -158,23 +162,46 @@ export const BRAND_LABELS: Record<string, string> = {
   balancelab: "밸런스랩",
 };
 
+// 쿠팡은 판매처(coupang)와 광고(coupang_ads)가 같은 색이다.
+const COUPANG_COLOR = "#e11d48";
+
 export const AD_CHANNEL_COLORS: Record<string, string> = {
-  meta: "#3b82f6",
-  naver_search: "#22c55e",
-  naver_shopping: "#06b6d4",
-  google_pmax: "#f59e0b",
-  google_search: "#eab308",
-  gfa: "#8b5cf6",
-  coupang_ads: "#ef4444",
+  meta: "#4f46e5",
+  naver_search: "#059669",
+  naver_shopping: "#0d9488",
+  google_pmax: "#ca8a04",
+  google_search: "#a16207",
+  gfa: "#65a30d",
+  coupang_ads: COUPANG_COLOR,
 };
 
 export const SALES_CHANNEL_COLORS: Record<string, string> = {
-  cafe24: "#3b82f6",
-  smartstore: "#22c55e",
-  coupang: "#f59e0b",
-  ably: "#ec4899",
-  petfriends: "#8b5cf6",
+  cafe24: "#7c3aed",
+  smartstore: "#16a34a",
+  coupang: COUPANG_COLOR,
+  ably: "#c026d3",
+  petfriends: "#0891b2",
+  other: "#6b7280",
 };
+
+/** 판매처 성과(/channel)의 판매처 묶음 → 대표 판매처 색. 스마트스토어=네이버 묶음, 자사몰=카페24. */
+export const SALES_GROUP_COLORS: Record<string, string> = {
+  naver: SALES_CHANNEL_COLORS.smartstore,
+  jasamol: SALES_CHANNEL_COLORS.cafe24,
+  coupang: COUPANG_COLOR,
+  other: SALES_CHANNEL_COLORS.other,
+};
+
+/** 퍼널 노출 원천(광고 매체 묶음) → 대표 매체 색. */
+export const IMPRESSION_SOURCE_COLORS: Record<string, string> = {
+  meta: AD_CHANNEL_COLORS.meta,
+  naver: AD_CHANNEL_COLORS.naver_search,
+  google: AD_CHANNEL_COLORS.google_pmax,
+  coupang: COUPANG_COLOR,
+};
+
+const FALLBACK_COLOR = "#6b7280";
+export const brandColor = (key: string): string => BRAND_COLORS[key] || FALLBACK_COLOR;
 
 export const CHANNEL_LABELS: Record<string, string> = {
   cafe24: "카페24",
@@ -196,6 +223,7 @@ export const CHANNEL_COLORS: Record<string, string> = {
   ...SALES_CHANNEL_COLORS,
   ...AD_CHANNEL_COLORS,
 };
+export const channelColor = (key: string): string => CHANNEL_COLORS[key] || FALLBACK_COLOR;
 
 /** 브랜드 키 배열 */
 // UI 필터용 (2026-07-29 그룹 뷰): 펫 3사는 "pet" 하나로 묶어서 본다. API는 expandBrands 로 해석.
