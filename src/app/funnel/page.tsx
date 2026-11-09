@@ -1,20 +1,21 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { matchesBrand } from "@/lib/brand-groups";
 import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatNumber, formatCurrency, cn } from "@/lib/utils";
+import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { daysBetween } from "@/lib/bucket";
 import { ConversionControlChart } from "@/components/judge/conversion-control-chart";
-import { SourceFunnelSteps, useSourceFunnels, SINGLE_BRAND_FUNNEL_NOTE } from "@/components/judge/source-funnel-steps";
+import { SourceFunnelSteps, useSourceFunnels } from "@/components/judge/source-funnel-steps";
 import { META_PURCHASE_UNTRACKED_BRANDS, UNMEASURED_LABEL } from "@/lib/conversion-tracking";
-import { BRAND_LABELS } from "@/lib/types";
+import { BRAND_LABELS, SALES_CHANNEL_COLORS, IMPRESSION_SOURCE_COLORS } from "@/lib/types";
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  BarChart, Bar, Cell, Legend,
+  AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+  BarChart, Bar, Legend,
 } from "recharts";
 
 interface FunnelStep { name: string; value: number; rate?: number | null; channels?: Record<string, number>; rateNote?: string | null; rateBase?: number; rateNum?: number; }
@@ -23,14 +24,24 @@ interface ChannelFunnel { channel: string; sessions: number; cart_adds: number; 
 interface MetaAdRow { date: string; brand: string; impressions: number; clicks: number; conversions: number; conversion_value: number; reach: number; spend: number; }
 interface FunnelData { funnel: FunnelStep[]; trend: TrendPoint[]; channelFunnel: ChannelFunnel[]; repurchase: { value: number; rate: number }; metaAds: MetaAdRow[]; }
 
-const CHANNEL_COLORS: Record<string, string> = { 스마트스토어: "#16a34a", 카페24: "#2563eb", 쿠팡: "#dc2626" };
-const IMP_COLORS: Record<string, string> = { meta: "#8b5cf6", naver: "#22c55e", google: "#eab308", coupang: "#ef4444" };
+// 색은 src/lib/types.ts 한 곳(같은 판매처·매체 = 모든 화면 같은 색).
 const IMP_LABELS: Record<string, string> = { meta: "Meta", naver: "네이버", google: "구글", coupang: "쿠팡" };
 const CH_LABELS: Record<string, string> = { smartstore: "스마트스토어", cafe24: "카페24", coupang: "쿠팡" };
 
+// 일별 추이 한 장 + 지표 탭(2026-11-04). 예전에는 노출·유입·구매 영역 차트 3장이 세로로 쌓여 관리도가 첫 화면 밖으로 밀렸다.
+type TrendMetric = "imp" | "sessions" | "purchases";
+const TREND_METRICS: { key: TrendMetric; label: string; axis: string; series: { key: string; label: string; color: string }[] }[] = [
+  { key: "imp", label: "노출", axis: "광고 노출 수(매체별로 쌓음)",
+    series: ["meta", "naver", "google", "coupang"].map((k) => ({ key: `imp_${k}`, label: IMP_LABELS[k], color: IMPRESSION_SOURCE_COLORS[k] })) },
+  { key: "sessions", label: "유입", axis: "유입(세션) 수(판매처별로 쌓음)",
+    series: ["smartstore", "cafe24", "coupang"].map((k) => ({ key: `sessions_${k}`, label: CH_LABELS[k], color: SALES_CHANNEL_COLORS[k] })) },
+  { key: "purchases", label: "구매", axis: "구매 수(판매처별로 쌓음)",
+    series: ["smartstore", "cafe24", "coupang"].map((k) => ({ key: `purchases_${k}`, label: CH_LABELS[k], color: SALES_CHANNEL_COLORS[k] })) },
+];
+
 export default function FunnelPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">불러오는 중...</div>}>
       <FunnelInner />
     </Suspense>
   );
@@ -54,7 +65,19 @@ function FunnelInner() {
   const channelFunnel = data?.channelFunnel || [];
   const repurchase = data?.repurchase || { value: 0, rate: 0 };
   // 원천별 평균 전환율(관리도 p̄). 단계표·관리도와 같은 주소라 요청은 한 번이다.
-  const { funnels: sourceFunnels, loading: sourceLoading } = useSourceFunnels(brand || "all", from, to);
+  // 판매 원장 마지막 날도 같은 응답에서 받는다(구매 추이에서 그 뒤 날짜를 비우는 데 쓴다).
+  const { salesLastDate } = useSourceFunnels(brand || "all", from, to);
+  const [trendMetric, setTrendMetric] = useState<TrendMetric>("sessions");
+  const metricDef = TREND_METRICS.find((m) => m.key === trendMetric)!;
+  // 구매는 판매 원장에서 온다. 마지막 판매일 뒤는 0 이 아니라 동기화 대기라 빈칸(null).
+  const trendRows = useMemo(() => trend.map((t) => {
+    const row: Record<string, string | number | null> = { date: t.date.slice(5) };
+    for (const sr of metricDef.series) {
+      const v = t[sr.key];
+      row[sr.key] = trendMetric === "purchases" && salesLastDate && t.date > salesLastDate ? null : v == null ? null : Number(v);
+    }
+    return row;
+  }), [trend, metricDef, trendMetric, salesLastDate]);
 
   // 너티/아이언펫/사입은 cafe24·스마트스토어 퍼널이 시트에서 3개 합산으로만 기록됨 → 브랜드별 분리 불가.
   // 숫자를 쪼개 보여주면 과대귀속(왜곡)이므로, 합산 수치임을 정직하게 라벨한다.
@@ -65,7 +88,7 @@ function FunnelInner() {
   const purchaseStep = funnel.find(s => s.name === "구매");
   const cartStep = funnel.find(s => s.name === "장바구니");
   // ★ 전체 「구매 전환율」 KPI 는 뺐다(2026-11-03). 전 판매처 구매 ÷ 일부 채널 유입처럼 분모·분자 모집단이 달라
-  //   아이언펫 0.02% 같은 숫자가 떴다. 전환율은 원천별로만 낸다(sourceFunnels).
+  //   아이언펫 0.02% 같은 숫자가 떴다. 전환율은 원천별로만 낸다(아래 원천별 단계표).
   const cartVal = cartStep?.value || 0;
   const purchaseVal = purchaseStep?.value || 0;
   // ★ 이탈률은 장바구니가 실제로 수집되는 채널로만 계산한다(API가 rateBase/rateNum 으로 내려줌).
@@ -118,28 +141,19 @@ function FunnelInner() {
           <CardContent className="p-3 flex items-start gap-2 text-sm">
             <span>ⓘ</span>
             <span>
-              cafe24·스마트스토어 퍼널은 <b>너티+아이언펫+사입 통합 수치</b>입니다. 자사몰 유입·장바구니 데이터가 소스(시트)에서 합산으로만 기록돼 브랜드별 분리가 불가능합니다. (쿠팡은 너티 전용) — 해당 브랜드 단독 수치가 아닌 점 참고하세요.
+              cafe24·스마트스토어 퍼널은 <b>너티+아이언펫+사입 통합 수치</b>입니다. 자사몰 유입·장바구니 데이터가 소스(시트)에서 합산으로만 기록돼 브랜드별 분리가 불가능합니다. (쿠팡은 너티 전용). 해당 브랜드 단독 수치가 아닌 점 참고하세요.
             </span>
           </CardContent>
         </Card>
       )}
 
-      {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard title="총 세션" value={formatNumber(sessionsStep?.value || 0)} />
-        <KpiCard title="장바구니 이탈률" value={abandonComputable ? `${abandonRate.toFixed(1)}%` : "산출 불가"} />
-        <KpiCard title="총 구매" value={formatNumber(purchaseVal)} />
+      {/* KPI: 이 화면의 본문은 아래 원천별 단계표와 관리도라 KPI 는 compact 한 줄로 누른다.
+          (원천별 구매 전환율 문장은 2026-11-04 뺐다. 단계표의 「유입 대비 %」와 같은 숫자다.) */}
+      <div className="grid grid-cols-3 gap-2.5">
+        <KpiCard size="compact" title="총 세션" value={formatNumber(sessionsStep?.value || 0)} />
+        <KpiCard size="compact" title="장바구니 이탈률" value={abandonComputable ? `${abandonRate.toFixed(1)}%` : "산출 불가"} />
+        <KpiCard size="compact" title="총 구매" value={formatNumber(purchaseVal)} subtitle={repurchase.value > 0 ? `재구매 ${formatNumber(repurchase.value)}건 · ${repurchase.rate.toFixed(1)}%` : undefined} />
       </div>
-      {/* 구매 전환율은 원천별로만 낸다(관리도 평균선 p̄ 와 같은 값). */}
-      <p className="text-xs text-muted-foreground -mt-2">
-        구매 전환율(원천별, 관리도 평균):{" "}
-        {sourceLoading
-          ? "불러오는 중"
-          : sourceFunnels.length === 0
-            ? (["nutty", "ironpet", "saip"].includes(brand) ? SINGLE_BRAND_FUNNEL_NOTE : "이 기간에 유입이 수집된 원천이 없습니다.")
-            : sourceFunnels.map((f) => `${f.label} ${f.rate != null ? `${f.rate.toFixed(2)}%` : "-"}`).join(" · ")}
-        {sourceFunnels.length > 0 && " · 원천을 합친 전체 전환율은 모집단이 달라 내지 않습니다."}
-      </p>
       {cartNote && (
         <p className="text-xs text-muted-foreground -mt-2">
           ⓘ {abandonComputable ? `장바구니 이탈률은 ${cartNote}` : cartNote}
@@ -149,76 +163,46 @@ function FunnelInner() {
       {/* 원천별 단계표 (2026-11-03, 옛 「전환 퍼널」 깔때기 대체). 원천 사이를 잇거나 합치지 않는다. */}
       <SourceFunnelSteps brand={brand || "all"} from={from} to={to} />
 
-      {/* 재구매: 퍼널 단계가 아니라 별도 수치(스마트스토어 재구매 수기 입력)라 따로 둔다. */}
-      {repurchase.value > 0 && (
-        <p className="text-xs text-muted-foreground -mt-2">
-          재구매 {formatNumber(repurchase.value)}건 · 재구매율 {repurchase.rate.toFixed(1)}%
-        </p>
-      )}
-
       {/* 판단용: 일별 전환율 관리도 (2026-11-03). 같은 원천의 유입·구매로만 계산한다. */}
       <ConversionControlChart brand={brand || "all"} from={from} to={to} />
 
-      {/* 노출 일별 트렌드 (소스별) */}
+      {/* 일별 추이: 노출·유입·구매 중 하나를 골라 본다. 재구매는 퍼널 단계가 아니라 별도 수치라 위 구매 카드에 적는다. */}
       {trend.length > 0 && (
-        <>
-          <Card>
-            <CardContent className="p-4">
-              <h4 className="text-sm font-semibold mb-2">노출 일별 트렌드 (소스별)</h4>
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={trend.map(t => ({ ...t, date: t.date.slice(5) }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                  <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                  <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} />
-                  <Legend />
-                  {["meta", "naver", "google", "coupang"].map((src) => (
-                    <Area key={src} type="monotone" dataKey={`imp_${src}`} name={IMP_LABELS[src]} stackId="imp"
-                      stroke={IMP_COLORS[src]} fill={IMP_COLORS[src]} fillOpacity={0.6} />
-                  ))}
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <h4 className="text-sm font-semibold mb-2">유입 일별 트렌드 (채널별)</h4>
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={trend.map(t => ({ ...t, date: t.date.slice(5) }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                  <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                  <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} />
-                  <Legend />
-                  {["smartstore", "cafe24", "coupang"].map((ch) => (
-                    <Area key={ch} type="monotone" dataKey={`sessions_${ch}`} name={CH_LABELS[ch]} stackId="sessions"
-                      stroke={CHANNEL_COLORS[CH_LABELS[ch]] || "#6b7280"} fill={CHANNEL_COLORS[CH_LABELS[ch]] || "#6b7280"} fillOpacity={0.6} />
-                  ))}
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <h4 className="text-sm font-semibold mb-2">구매 일별 트렌드 (채널별)</h4>
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={trend.map(t => ({ ...t, date: t.date.slice(5) }))}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                  <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                  <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} />
-                  <Legend />
-                  {["smartstore", "cafe24", "coupang"].map((ch) => (
-                    <Area key={ch} type="monotone" dataKey={`purchases_${ch}`} name={CH_LABELS[ch]} stackId="purchases"
-                      stroke={CHANNEL_COLORS[CH_LABELS[ch]] || "#6b7280"} fill={CHANNEL_COLORS[CH_LABELS[ch]] || "#6b7280"} fillOpacity={0.6} />
-                  ))}
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
+              <div>
+                <h3 className="font-semibold">일별 {metricDef.label} 추이</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  가로 = 날짜, 세로 = {metricDef.axis}. 수집되지 않은 날은 비웁니다
+                  {trendMetric === "purchases" && salesLastDate ? `. 구매는 판매 원장 ${salesLastDate.slice(5)}까지` : ""}
+                </p>
+              </div>
+              <div className="flex gap-1 bg-muted rounded-md p-0.5">
+                {TREND_METRICS.map((m) => (
+                  <button key={m.key} onClick={() => setTrendMetric(m.key)}
+                    className={cn("px-2 py-1 text-xs rounded", trendMetric === m.key ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <DeferredResponsiveContainer width="100%" height={220}>
+              <AreaChart data={trendRows}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v: number) => formatNumber(v)} />
+                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                  formatter={(v: unknown) => (v == null ? "-" : formatNumber(Number(v)))} />
+                <Legend />
+                {metricDef.series.map((sr) => (
+                  <Area key={sr.key} type="monotone" dataKey={sr.key} name={sr.label} stackId="m" isAnimationActive={false}
+                    stroke={sr.color} fill={sr.color} fillOpacity={0.5} connectNulls={false} />
+                ))}
+              </AreaChart>
+            </DeferredResponsiveContainer>
+          </CardContent>
+        </Card>
       )}
 
       {/* 채널별 퍼널 비교 */}
@@ -228,21 +212,17 @@ function FunnelInner() {
             <h3 className="font-semibold mb-4">채널별 퍼널 비교</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
-                <p className="text-xs text-muted-foreground mb-3">채널별 구매 전환율</p>
-                <ResponsiveContainer width="100%" height={180}>
+                <p className="text-xs text-muted-foreground mb-3">채널별 구매 전환율 (구매 ÷ 유입, %). 판매처마다 유입을 재는 방법이 달라 높낮이로 우열을 가리지 않습니다</p>
+                <DeferredResponsiveContainer width="100%" height={180}>
                   <BarChart data={channelFunnel}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis dataKey="channel" tick={{ fontSize: 12 }} stroke="var(--muted-foreground)" />
                     <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v: number) => `${v.toFixed(1)}%`} />
                     <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
                       formatter={(v: unknown) => [`${Number(v).toFixed(2)}%`, "전환율"]} />
-                    <Bar dataKey="convRate" name="전환율" radius={[4, 4, 0, 0]}>
-                      {channelFunnel.map((_, i) => (
-                        <Cell key={i} fill={["#8b5cf6", "#14b8a6", "#f97316"][i % 3]} />
-                      ))}
-                    </Bar>
+                    <Bar dataKey="convRate" name="전환율" radius={[4, 4, 0, 0]} fill="var(--neutral-1)" isAnimationActive={false} />
                   </BarChart>
-                </ResponsiveContainer>
+                </DeferredResponsiveContainer>
               </div>
               <div className="overflow-x-auto">
                 <p className="text-xs text-muted-foreground mb-3">채널별 퍼널 상세</p>
@@ -263,9 +243,10 @@ function FunnelInner() {
                         <td className="py-2 pr-4 font-medium">{ch.channel}</td>
                         <td className="py-2 pr-4 text-right">{formatNumber(ch.sessions)}</td>
                         <td className="py-2 pr-4 text-right">{formatNumber(ch.cart_adds)}</td>
-                        <td className="py-2 pr-4 text-right text-green-500">{formatNumber(ch.purchases)}</td>
+                        <td className="py-2 pr-4 text-right">{formatNumber(ch.purchases)}</td>
                         <td className="py-2 pr-4 text-right">{formatNumber(ch.repurchases)}</td>
-                        <td className={cn("py-2 text-right font-medium", ch.convRate >= 5 ? "text-green-500" : ch.convRate >= 2 ? "text-yellow-500" : "text-red-500")}>
+                        {/* 색 기준(5%↑ 초록 등)은 뺐다. 원천마다 유입 측정법이 달라 같은 잣대로 칠할 수 없다. */}
+                        <td className="py-2 text-right font-medium">
                           {ch.convRate.toFixed(2)}%
                         </td>
                       </tr>

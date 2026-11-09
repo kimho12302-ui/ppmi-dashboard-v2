@@ -9,11 +9,13 @@ import { AD_ALERTS_URL, dashboardUrl } from "@/lib/api-urls";
 import { AdAlerts } from "@/components/ad-alerts";
 import { NaverCampaignMultiples } from "@/components/judge/naver-campaign-multiples";
 import { CHANNEL_LABELS, CHANNEL_COLORS, BRAND_LABELS, type DailyAdSpend } from "@/lib/types";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { isPurchaseConversionMeasured, NAVER_ROAS_UNTRUSTED_ACCOUNTS } from "@/lib/conversion-tracking";
 import { useConfig } from "@/hooks/use-config";
 import { daysBetween } from "@/lib/bucket";
 import { formatCurrency, formatNumber, formatPercent, formatRoas, isRoasUntracked, cn } from "@/lib/utils";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useCallback, useMemo, useState } from "react";
 import {
   AreaChart,
   Area,
@@ -23,7 +25,6 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  ResponsiveContainer,
   Legend,
   CartesianGrid,
 } from "recharts";
@@ -35,6 +36,14 @@ const GA4_LABEL: Record<string, string> = {
 };
 
 type ViewTab = "overview" | "channels" | "ga4" | "creatives" | "naver";
+const VIEW_TABS: { key: ViewTab; label: string }[] = [
+  { key: "overview", label: "개요" },
+  { key: "channels", label: "매체별 상세" },
+  { key: "ga4", label: "GA4 UTM" },
+  { key: "creatives", label: "Meta 소재" },
+  { key: "naver", label: "네이버 캠페인" },
+];
+const isViewTab = (v: string | null): v is ViewTab => !!v && VIEW_TABS.some((t) => t.key === v);
 
 // 매체 합산 (GA4 제외). 규칙 설명은 화면 쪽 「집계」 주석.
 function aggregateAds(rows: DailyAdSpend[]) {
@@ -59,7 +68,7 @@ function aggregateAds(rows: DailyAdSpend[]) {
 
 export default function AdsPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">불러오는 중...</div>}>
       <AdsPageInner />
     </Suspense>
   );
@@ -70,7 +79,19 @@ function AdsPageInner() {
   const { channelMap } = useConfig();
   const params = brand && brand !== "all" ? `from=${from}&to=${to}&brand=${brand}` : `from=${from}&to=${to}`;
   const { data, loading } = useFetch<{ ads: DailyAdSpend[]; prevAds: DailyAdSpend[] }>(`/api/ads?${params}`);
-  const [tab, setTab] = useState<ViewTab>("overview");
+  // 탭은 URL(?tab=)에 둔다(2026-11-04). 북마크·뒤로가기·링크 공유로 같은 탭이 열린다. 기본(개요)은 URL 에서 지운다.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const tabParam = searchParams.get("tab");
+  const tab: ViewTab = isViewTab(tabParam) ? tabParam : "overview";
+  const setTab = useCallback((t: ViewTab) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (t === "overview") params.delete("tab");
+    else params.set("tab", t);
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [searchParams, router, pathname]);
   // 광고 경보 칸은 광고 응답이 올 때까지 마운트되지 않는다. 기다리지 않게 같이 부른다.
   usePrefetch([AD_ALERTS_URL]);
   // ★ 헤드라인 ROAS 는 Overview·월별과 같은 정의(판매 원장 실매출 ÷ 매체비)여야 한다(2026-11-03).
@@ -183,10 +204,8 @@ function AdsPageInner() {
         const sp = spends[ch] || 0;
         row[ch] = sp > 0 ? Number((convMap[date]?.[ch] || 0) / sp) : null;
       }
-      // 전체 ROAS
-      const totalSpend = Object.values(spends).reduce((s, v) => s + v, 0);
-      const totalConv = Object.values(convMap[date] || {}).reduce((s, v) => s + v, 0);
-      row["__total"] = totalSpend > 0 ? Number((totalConv / totalSpend).toFixed(2)) : null;
+      // ("전체" 점선은 2026-11-04 뺐다. 매체 신고 전환매출을 더한 값이라 같은 주문이 여러 번 들어가 실매출 ROAS 보다 크다.
+      //  실매출 ROAS 는 위 「ROAS (실매출)」 카드와 Overview 가 본다.)
       return row;
     });
   }, [ads, adDays, activeChannels]);
@@ -212,14 +231,9 @@ function AdsPageInner() {
     <PageShell title="광고 분석" description="매체별 광고 효율 및 ROAS">
       <AdAlerts />
       {/* 탭 전환 */}
-      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
-        {([
-          { key: "overview", label: "개요" },
-          { key: "channels", label: "매체별 상세" },
-          { key: "ga4", label: "GA4 UTM" },
-          { key: "creatives", label: "Meta 소재" },
-          { key: "naver", label: "네이버 캠페인" },
-        ] as { key: ViewTab; label: string }[]).map((t) => (
+      {/* 모바일 390px 에서 탭 5개가 409px 라 문서 폭이 425px 로 늘었다. 넘치면 탭 바 안에서만 가로로 민다. */}
+      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit max-w-full overflow-x-auto">
+        {VIEW_TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -238,17 +252,21 @@ function AdsPageInner() {
       {/* KPI
           ROAS 는 Overview 와 같은 실매출 기준. 매체 신고 합산은 보조로만 적는다(2026-11-03).
           전환수·CPA 는 구매 전환이 측정되는 매체만 넣고 그 범위를 카드에 적는다. */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard title="총 광고비" value={formatCurrency(totals.spend)} change={pctChange(totals.spend, prevTotals.spend)} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <KpiCard size="hero" title="총 광고비" value={formatCurrency(totals.spend)} change={pctChange(totals.spend, prevTotals.spend)} changeLabel="직전 같은 기간 대비" subtitle="GA4 UTM 제외(구글 광고비와 중복)" />
         <KpiCard
+          size="hero"
           title="ROAS (실매출)"
           value={realKpi ? (realKpi.adSpend > 0 ? `${realKpi.roas.toFixed(2)}x` : "-") : "…"}
           change={realKpi && realKpi.adSpend > 0 ? pctChange(realKpi.roas, realKpi.roasPrev) : undefined}
           subtitle={`판매 원장 매출 ÷ 광고비 · 신고 ROAS(매체 합산, 중복 포함) ${totals.spend > 0 ? `${totals.reportedRoas.toFixed(2)}x` : "-"}`}
         />
-        <KpiCard title="총 클릭" value={formatNumber(totals.clicks)} change={pctChange(totals.clicks, prevTotals.clicks)} />
-        <KpiCard title="평균 CTR" value={formatPercent(totals.ctr)} change={pctChange(totals.ctr, prevTotals.ctr)} />
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <KpiCard size="compact" title="총 클릭" value={formatNumber(totals.clicks)} change={pctChange(totals.clicks, prevTotals.clicks)} />
+        <KpiCard size="compact" title="평균 CTR" value={formatPercent(totals.ctr)} change={pctChange(totals.ctr, prevTotals.ctr)} />
         <KpiCard
+          size="compact"
           title="전환수 (측정 매체)"
           value={conversionScope.included.length ? formatNumber(totals.conversions) : "-"}
           // 직전 기간 전환수가 0 이면 비교하지 않는다. 2026-09 이전 원장은 전환 "수" 칸이 비어 있어(전환매출만 있음)
@@ -257,6 +275,7 @@ function AdsPageInner() {
           subtitle={scopeNote(conversionScope)}
         />
         <KpiCard
+          size="compact"
           title="CPA (측정 매체)"
           value={totals.cpa > 0 ? formatCurrency(Math.round(totals.cpa)) : "-"}
           change={totals.cpa > 0 && prevTotals.cpa > 0 ? pctChange(totals.cpa, prevTotals.cpa) : undefined}
@@ -282,13 +301,13 @@ function AdsPageInner() {
                       <span className="font-semibold text-sm">{c.label}</span>
                       <span className="text-sm font-bold">{formatCurrency(c.spend)}</span>
                     </div>
-                    <div className="grid grid-cols-3 lg:grid-cols-6 gap-2 text-xs text-muted-foreground">
+                    <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-3 xl:grid-cols-6 gap-2 text-xs text-muted-foreground">
                       <div>
                         <p>ROAS</p>
                         {/* 전환 미연동 채널을 0.00x 빨강으로 찍으면 "돈만 태우는 매체"로 오독된다.
                             '미연동'으로 구분해야 예산 삭감 판단이 왜곡되지 않는다(2026-08 리뷰). */}
                         <p className={`font-medium ${isRoasUntracked(c.roas, c.spend) ? "text-muted-foreground/70 italic" : c.roas >= 3 ? "text-green-600" : c.roas >= 1 ? "text-yellow-600" : "text-red-500"}`}
-                          title={isRoasUntracked(c.roas, c.spend) ? "전환 추적 미연동 — 성과 0이 아니라 측정 불가" : undefined}>
+                          title={isRoasUntracked(c.roas, c.spend) ? "전환 추적 미연동: 성과 0이 아니라 측정 불가" : undefined}>
                           {formatRoas(c.roas, c.spend)}
                         </p>
                       </div>
@@ -313,7 +332,7 @@ function AdsPageInner() {
                       <div>
                         <p>CPA</p>
                         <p className="font-medium text-foreground">
-                          {c.conversions > 0 ? formatCurrency(Math.round(c.spend / c.conversions)) : "—"}
+                          {c.conversions > 0 ? formatCurrency(Math.round(c.spend / c.conversions)) : "-"}
                         </p>
                       </div>
                       <div>
@@ -347,32 +366,33 @@ function AdsPageInner() {
           {/* 5.3-2: 매체별 ROAS 트렌드 */}
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-semibold mb-4">매체별 ROAS 트렌드</h3>
-              <ResponsiveContainer width="100%" height={280}>
+              <h3 className="font-semibold">매체별 ROAS 트렌드</h3>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-3">가로 = 날짜, 세로 = 매체가 신고한 전환매출 ÷ 그 매체 광고비(배). 매체끼리 더하면 안 됩니다. 점선 = 1.0x</p>
+              <DeferredResponsiveContainer width="100%" height={280}>
                 <LineChart data={dailyRoas}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
                   <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}x`} />
-                  <ReferenceLine y={1} stroke="#ef4444" strokeDasharray="4 4" label={{ value: "1.0x", position: "right", fontSize: 10, fill: "#ef4444" }} />
+                  <ReferenceLine y={1} stroke="var(--muted-foreground)" strokeDasharray="4 4" label={{ value: "1.0x", position: "right", fontSize: 10, fill: "var(--muted-foreground)" }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
                     formatter={(val) => (val == null ? "-" : `${Number(val).toFixed(2)}x`)}
                   />
                   <Legend />
                   {activeChannels.map((ch) => (
-                    <Line key={ch} type="monotone" dataKey={ch} name={CHANNEL_LABELS[ch] || ch} stroke={CHANNEL_COLORS[ch] || "#6b7280"} strokeWidth={1.5} dot={false} />
+                    <Line key={ch} type="monotone" dataKey={ch} name={channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch} stroke={CHANNEL_COLORS[ch] || "#6b7280"} strokeWidth={1.5} dot={false} isAnimationActive={false} />
                   ))}
-                  <Line type="monotone" dataKey="__total" name="전체" stroke="#000" strokeWidth={2} strokeDasharray="4 4" dot={false} />
                 </LineChart>
-              </ResponsiveContainer>
+              </DeferredResponsiveContainer>
             </CardContent>
           </Card>
 
           {/* 5.3-1: 매체별 광고비 트렌드 */}
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-semibold mb-4">매체별 광고비 트렌드</h3>
-              <ResponsiveContainer width="100%" height={300}>
+              <h3 className="font-semibold">매체별 광고비 트렌드</h3>
+              <p className="text-xs text-muted-foreground mt-0.5 mb-3">가로 = 날짜, 세로 = 원(매체별로 쌓음, GA4 제외)</p>
+              <DeferredResponsiveContainer width="100%" height={300}>
                 <AreaChart data={dailyTrend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
@@ -396,15 +416,16 @@ function AdsPageInner() {
                       key={ch}
                       type="monotone"
                       dataKey={ch}
-                      name={CHANNEL_LABELS[ch] || ch}
+                      name={channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch}
                       stackId="1"
+                      isAnimationActive={false}
                       stroke={CHANNEL_COLORS[ch] || "#6b7280"}
                       fill={CHANNEL_COLORS[ch] || "#6b7280"}
                       fillOpacity={0.3}
                     />
                   ))}
                 </AreaChart>
-              </ResponsiveContainer>
+              </DeferredResponsiveContainer>
             </CardContent>
           </Card>
 
@@ -445,12 +466,12 @@ function AdsPageInner() {
                       <td className="py-2 pr-4 text-right">{formatNumber(c.impressions)}</td>
                       <td className="py-2 pr-4 text-right">{formatNumber(c.clicks)}</td>
                       <td className="py-2 pr-4 text-right">{formatPercent(c.ctr)}</td>
-                      <td className="py-2 pr-4 text-right">{c.cpc > 0 ? formatCurrency(Math.round(c.cpc)) : "—"}</td>
+                      <td className="py-2 pr-4 text-right">{c.cpc > 0 ? formatCurrency(Math.round(c.cpc)) : "-"}</td>
                       <td className="py-2 pr-4 text-right">{formatNumber(c.conversions)}</td>
                       <td className="py-2 pr-4 text-right">{formatCurrency(c.convValue)}</td>
-                      <td className="py-2 pr-4 text-right">{c.conversions > 0 ? formatCurrency(Math.round(c.spend / c.conversions)) : "—"}</td>
+                      <td className="py-2 pr-4 text-right">{c.conversions > 0 ? formatCurrency(Math.round(c.spend / c.conversions)) : "-"}</td>
                       <td className={`py-2 text-right font-medium ${isRoasUntracked(c.roas, c.spend) ? "text-muted-foreground/70 italic" : c.roas >= 3 ? "text-green-600" : c.roas >= 1 ? "text-yellow-600" : "text-red-500"}`}
-                        title={isRoasUntracked(c.roas, c.spend) ? "전환 추적 미연동 — 성과 0이 아니라 측정 불가" : undefined}>{formatRoas(c.roas, c.spend)}</td>
+                        title={isRoasUntracked(c.roas, c.spend) ? "전환 추적 미연동: 성과 0이 아니라 측정 불가" : undefined}>{formatRoas(c.roas, c.spend)}</td>
                     </tr>
                   ))}
               </tbody>
@@ -468,7 +489,7 @@ function AdsPageInner() {
                 <Card
                   key={c.channel}
                   className="p-4"
-                  style={{ borderLeft: "4px solid #f59e0b" }}
+                  style={{ borderLeft: `4px solid ${CHANNEL_COLORS.google_pmax}` }}
                 >
                   <CardContent className="p-0 space-y-2">
                     <div className="flex items-center justify-between">
@@ -553,23 +574,15 @@ function NaverCampaignsSection({ brand, from, to }: { brand: string; from: strin
 
   const summary = data?.summary;
 
-  if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">네이버 캠페인 로딩 중...</CardContent></Card>;
+  if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">불러오는 중...</CardContent></Card>;
 
   return (
     <>
-      {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <KpiCard title="총 광고비" value={formatCurrency(summary.totalCost)} />
-          <KpiCard title="총 클릭" value={formatNumber(summary.totalClicks)} />
-          <KpiCard title="총 노출" value={formatNumber(summary.totalImpressions)} />
-          <KpiCard title="평균 CTR" value={formatPercent(summary.avgCtr)} />
-        </div>
-      )}
-      {/* 판단용: 캠페인별 주간 추이 스몰 멀티플 (2026-11-03) */}
+      {/* 판단용: 캠페인별 주간 추이 스몰 멀티플 (2026-11-03). 탭에 들어오면 이것부터 본다(2026-11-04 맨 위로). */}
       <NaverCampaignMultiples brand={brand} to={to} />
       <Card>
         <CardContent className="p-4 overflow-x-auto">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
             <h3 className="font-semibold">캠페인별 성과</h3>
             <div className="flex items-center gap-1">
               {(["cost", "clicks", "ctr", "conversions"] as const).map(s => (
@@ -580,6 +593,12 @@ function NaverCampaignsSection({ brand, from, to }: { brand: string; from: strin
               ))}
             </div>
           </div>
+          {/* 네이버 검색광고 합계. 예전 KPI 4장(제목 「총 광고비」가 위 전체 매체 카드와 겹쳤다)을 한 줄로 줄였다. */}
+          {summary && (
+            <p className="text-xs text-muted-foreground mb-3">
+              네이버 검색광고 합계: 광고비 {formatCurrency(summary.totalCost)} · 노출 {formatNumber(summary.totalImpressions)} · 클릭 {formatNumber(summary.totalClicks)} · CTR {formatPercent(summary.avgCtr)}
+            </p>
+          )}
           {campaigns.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               {error ? `불러오지 못했습니다 (${error})` : "이 기간에 집행한 네이버 검색광고 캠페인이 없습니다"}
@@ -654,7 +673,7 @@ function CreativesSection({ brand, from, to }: { brand: string; from: string; to
     });
   }, [data, sort]);
 
-  if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">Meta 소재 로딩 중...</CardContent></Card>;
+  if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">불러오는 중...</CardContent></Card>;
   if (data?.error) return <Card><CardContent className="p-4 text-sm text-amber-600">{data.error}</CardContent></Card>;
   if (creatives.length === 0) return <Card><CardContent className="p-4 text-sm text-muted-foreground">{data?.notice || "이 기간에 집행한 메타 소재가 없습니다"}{data?.latestCollected ? ` · 마지막 수집일 ${data.latestCollected}` : ""}</CardContent></Card>;
   // 밸런스랩처럼 픽셀 구매가 막힌 계정은 구매·ROAS 가 늘 0 이라 빨간 테두리로 오독된다. 상세조회로 본다.

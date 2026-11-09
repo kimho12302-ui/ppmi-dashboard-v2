@@ -1,12 +1,14 @@
 "use client";
 
-// 채널별 매출 구성 (주별/월별 쌓은 막대, 2026-11-03).
+// 매출 구성 (주별/월별 쌓은 막대, 2026-11-03). 판매처별 또는 브랜드별로 쌓는다(2026-11-04).
 //
 // 예전 "주별/월별 매출"(합계 막대 1개)과 "판매처별 매출 비교"(기간 합계 가로 막대)를 하나로 합쳤다.
 // 막대 높이 = 그 주·월 매출 합계(예전 막대와 같은 값), 칸 = 판매처. 기간 합계는 위 판매처 카드에 있다.
 // ★ 원천은 판매 원장(daily_sales.revenue)이다. 광고 전환값을 쓰지 않는다(메타 구매 귀속이 막혀 왜곡된다).
 //   그래서 이름도 "기여도"가 아니라 "구성"이다.
 // 판매처는 무채색으로 두고, 비중이 가장 크게 움직인 판매처 하나만 강조색으로 칠한다(규칙: src/lib/judge-charts.ts).
+// 「브랜드」 쌓기는 예전 「브랜드별 누적 매출 트렌드」(일별 브랜드 막대)를 대신한다. 같은 판매 원장(공구 차감 자체매출)이라
+// 막대 높이는 판매처로 쌓든 브랜드로 쌓든 같다. 강조 규칙도 같다(가장 크게 움직인 브랜드 하나).
 import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
@@ -16,16 +18,18 @@ import { axisEnd, daysBetween, lastDataDate } from "@/lib/bucket";
 import { kstDate } from "@/lib/date";
 import { periodAxis, periodKey, periodCalendarDays } from "@/lib/sales-period";
 import { biggestShareShift, SHARE_LOOKBACK, SHARE_MIN_SHIFT_PP } from "@/lib/judge-charts";
+import { BRAND_LABELS } from "@/lib/types";
 
 const ACCENT = "var(--sig-danger)";
-// 판매처 무채색(진한 것부터). 비중 큰 판매처가 진하다.
-// 흰 카드·어두운 카드 둘 다에서 보이는 중간 톤만 쓴다(아주 옅은 #e2e8f0 류는 라이트 모드에서 사라진다).
-const NEUTRALS = ["#475569", "#94a3b8", "#64748b", "#a8b3c4", "#334155", "#7c8a9e"];
+// 무채색 6단계(globals.css --neutral-1..6). 이웃 칸이 진함·옅음으로 번갈아 갈리게 둔다.
+// 라이트·다크가 각자 값을 가진다(다크 카드 위에서 6단계가 뭉개지던 것을 2026-11-04 고쳤다).
+const NEUTRALS = [1, 2, 3, 4, 5, 6].map((i) => "var(--neutral-" + i + ")");
 const INCOMPLETE_OPACITY = 0.45;
 
-interface SalesRow { date: string; channel?: string | null; revenue?: number | null }
+interface SalesRow { date: string; channel?: string | null; brand?: string | null; revenue?: number | null }
 interface ChannelInfo { channel: string; label: string; revenue: number }
 type Mode = "weekly" | "monthly";
+type Dim = "channel" | "brand";
 
 interface Bucket {
   period: string;
@@ -37,7 +41,17 @@ interface Bucket {
 
 export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow[]; channels: ChannelInfo[]; from: string; to: string }) {
   const [mode, setMode] = useState<Mode>("weekly");
+  const [dimPick, setDimPick] = useState<Dim>("channel");
   const unit = mode === "weekly" ? "주" : "달";
+  // 브랜드가 하나뿐이면(브랜드 필터) 브랜드 쌓기는 의미가 없어 토글을 숨긴다.
+  const brandKeys = useMemo(() => {
+    const tot = new Map<string, number>();
+    for (const r of sales) tot.set(r.brand || "other", (tot.get(r.brand || "other") || 0) + (Number(r.revenue) || 0));
+    return Array.from(tot.entries()).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  }, [sales]);
+  const dim: Dim = brandKeys.length > 1 ? dimPick : "channel";
+  const keyOf = (r: SalesRow) => (dim === "brand" ? r.brand || "other" : r.channel || "other");
+  const what = dim === "brand" ? "브랜드" : "판매처";
 
   const buckets = useMemo<Bucket[]>(() => {
     if (!sales.length) return [];
@@ -60,7 +74,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
       const k = periodKey(r.date, mode);
       const m = map.get(k);
       if (!m) continue; // 기간 밖 날짜는 이 차트에 없다(위 KPI 와 같은 기간)
-      const ch = r.channel || "other";
+      const ch = keyOf(r);
       m[ch] = (m[ch] || 0) + (Number(r.revenue) || 0);
     }
     return keys.map((k, i) => {
@@ -73,12 +87,13 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
       else if (seen < total) state = "partial_range";
       return { period: k, complete: state === "complete", state, byChannel: map.get(k) || {} };
     });
-  }, [sales, from, to, mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sales, from, to, mode, dim]);
 
-  const order = channels.map((c) => c.channel);
+  const order = dim === "brand" ? brandKeys : channels.map((c) => c.channel);
   const shift = useMemo(() => biggestShareShift(buckets), [buckets]);
   const color = (ch: string, i: number) => (shift?.channel === ch ? ACCENT : NEUTRALS[i % NEUTRALS.length]);
-  const labelOf = (ch: string) => channels.find((c) => c.channel === ch)?.label || ch;
+  const labelOf = (ch: string) => (dim === "brand" ? BRAND_LABELS[ch] || ch : channels.find((c) => c.channel === ch)?.label || ch);
 
   // 아직 안 들어온 구간은 막대를 그리지 않는다(0 이 아니라 미수집). 축 자리는 남긴다.
   const rows = buckets.map((b) => {
@@ -95,9 +110,21 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
       <CardContent className="p-4">
         <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
           <div>
-            <h3 className="font-semibold">채널별 매출 구성</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">판단: 매출이 어느 판매처에서 늘고 줄었는지 (판매 원장 기준, 광고 귀속 아님)</p>
+            <h3 className="font-semibold">매출 구성</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">가로 = {unit}, 세로 = 원(판매 원장 자체매출), 칸 = {what}</p>
+            <p className="text-xs text-muted-foreground">판단: 매출이 어느 {what}에서 늘고 줄었는지 (광고 귀속 아님)</p>
           </div>
+          <div className="flex flex-wrap gap-2">
+          {brandKeys.length > 1 && (
+            <div className="flex gap-1 bg-muted rounded-md p-0.5">
+              {(["channel", "brand"] as const).map((d) => (
+                <button key={d} onClick={() => setDimPick(d)}
+                  className={cn("px-2 py-1 text-xs rounded", dim === d ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
+                  {d === "channel" ? "판매처" : "브랜드"}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex gap-1 bg-muted rounded-md p-0.5">
             {(["weekly", "monthly"] as const).map((m) => (
               <button key={m} onClick={() => setMode(m)}
@@ -106,15 +133,16 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
               </button>
             ))}
           </div>
+          </div>
         </div>
 
         <p className="text-sm mb-2">
           {order.length < 2 ? (
-            <span className="text-muted-foreground">이 기간 판매처가 {order[0] ? labelOf(order[0]) : "없음"} 하나라 구성 비교는 없습니다. 막대는 {unit}별 매출 합계입니다.</span>
+            <span className="text-muted-foreground">이 기간 {what}가 {order[0] ? labelOf(order[0]) : "없음"} 하나라 구성 비교는 없습니다. 막대는 {unit}별 매출 합계입니다.</span>
           ) : shift ? (
             <><b style={{ color: ACCENT }}>{labelOf(shift.channel)}</b> 비중이 직전 {shift.priorCount}{unit} 합계 대비 마지막 완료 {unit}에 {shift.shiftPp > 0 ? "+" : ""}{shift.shiftPp.toFixed(1)}%p 움직였습니다.</>
           ) : (
-            <span className="text-muted-foreground">비중이 {SHARE_MIN_SHIFT_PP}%p 이상 움직인 판매처가 없습니다{buckets.filter((b) => b.complete).length < 2 ? ` (완료된 ${unit}가 2개 미만)` : ""}.</span>
+            <span className="text-muted-foreground">비중이 {SHARE_MIN_SHIFT_PP}%p 이상 움직인 {what}가 없습니다{buckets.filter((b) => b.complete).length < 2 ? ` (완료된 ${unit}가 2개 미만)` : ""}.</span>
           )}
         </p>
 
@@ -168,7 +196,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
             {lastBucket && lastBucket.state === "in_progress" ? ` (마지막 ${lastBucket.period} 은 진행 중, 판매 동기화가 1~3일 늦게 들어옵니다)` : ""}. 비중 비교에서 뺍니다.
           </p>
           <p>
-            강조 규칙: 마지막 완료 {unit}의 판매처 비중을 직전 최대 {SHARE_LOOKBACK}{unit}(완료된 것만) 합계 비중과 비교해 가장 크게 움직인 판매처 하나만 칠합니다({SHARE_MIN_SHIFT_PP}%p 미만이면 칠하지 않음).
+            강조 규칙: 마지막 완료 {unit}의 {what} 비중을 직전 최대 {SHARE_LOOKBACK}{unit}(완료된 것만) 합계 비중과 비교해 가장 크게 움직인 {what} 하나만 칠합니다({SHARE_MIN_SHIFT_PP}%p 미만이면 칠하지 않음).
             별도 공구 판매처 행은 빠져 있어 위 매출 KPI 와 같은 범위입니다.
           </p>
         </div>

@@ -8,8 +8,12 @@ import { LazyMount } from "@/components/lazy-mount";
 import { matchesBrand } from "@/lib/brand-groups";
 import { ProductTrendChart } from "@/components/product-trend-chart";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
+
+// 카테고리 분류는 브랜드마다 체계가 달라(너티=라인업, 아이언펫=키트/추가, 사입=유통 브랜드, 밸런스랩=검사/기타)
+// 여러 브랜드를 한 막대에 섞으면 읽을 수 없다. 브랜드 하나를 골랐을 때만 그린다(2026-11-04).
+const CATEGORY_BRANDS = ["nutty", "ironpet", "saip", "balancelab"];
 import { useConfig } from "@/hooks/use-config";
-import { daysBetween, lastDataDate } from "@/lib/bucket";
+import { lastDataDate } from "@/lib/bucket";
 import { periodKey, periodAxis } from "@/lib/sales-period";
 import { ChannelMixChart } from "@/components/judge/channel-mix-chart";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
@@ -20,16 +24,7 @@ import {
 } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 
-// 탭 제거 — 모든 섹션을 한 페이지에 표시
-type ViewTab = "trend" | "channel" | "category" | "product" | "gonggu";
-
 /* 브랜드별 카테고리 분류 (기획서 4.1) */
-const CATEGORY_MAP: Record<string, Record<string, string>> = {
-  nutty: {}, // lineup으로 분류
-  ironpet: {}, // lineup → "키트" / "기타"
-  saip: {}, // lineup → 파미나/테라카니스/닥터레이
-  balancelab: {}, // lineup → 검사/기타
-};
 function getCategory(brand: string, product: string, lineup?: string): string {
   if (brand === "nutty") return lineup || "기타";
   if (brand === "ironpet") {
@@ -49,11 +44,10 @@ function getCategory(brand: string, product: string, lineup?: string): string {
   }
   return lineup || "기타";
 }
-void CATEGORY_MAP;
 
 export default function SalesPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">불러오는 중...</div>}>
       <SalesPageInner />
     </Suspense>
   );
@@ -70,13 +64,10 @@ function SalesPageInner() {
     prevSales: DailySales[];
     blDaily?: { date: string; self: number; gonggu: number }[];
     gongguSalesTotal?: number;
-    brandRevenueTrend?: { date: string; [brand: string]: number | string }[];
   }>(`/api/dashboard?${params}&raw=sales,products,prevSales&lean=1`);
   // (채널 효율 사분면은 2026-11-03 뺐다: 신고 전환으로 만든 CAC·ROAS 라 매체 간 비교가 성립하지 않는다.
   //  매체 효율은 /ads 매체별 상세 표와 네이버 캠페인 12주 스몰 멀티플이 본다.)
   const { brandMap, channelMap } = useConfig();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [tab, setTab] = useState<ViewTab>("trend");
 
   const sales = useMemo(() => {
     const all = data?.sales || [];
@@ -111,31 +102,6 @@ function SalesPageInner() {
     if (prev === 0) return cur > 0 ? 100 : undefined;
     return ((cur - prev) / Math.abs(prev)) * 100;
   };
-
-  /* 브랜드별 누적 매출 트렌드 — API의 brandRevenueTrend 사용 (공구 포함) */
-  const brandColors: Record<string, string> = { 너티: "#dc2626", 아이언펫: "#ea580c", 사입: "#92400e", 밸런스랩: "#2563eb" };
-  const activeBrands = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of data?.brandRevenueTrend || []) {
-      Object.keys(r).filter((k) => k !== "date").forEach((k) => set.add(k));
-    }
-    return Array.from(set);
-  }, [data?.brandRevenueTrend]);
-  // 축 = 선택 기간 전체(오늘까지). 서버는 매출이 있는 날만 보내므로 빈 날을 0 으로 채운다(2026-10-28).
-  // 마지막 매출 날짜 이후는 판매 0 이 아니라 동기화 지연이라 null(막대 없음).
-  const dailyTrend = useMemo(() => {
-    const rows = data?.brandRevenueTrend || [];
-    if (!rows.length) return [];
-    const byDate = new Map(rows.map((r) => [r.date, r]));
-    const last = lastDataDate(rows);
-    const days = Array.from(new Set([...daysBetween(from, to), ...byDate.keys()])).sort();
-    return days.map((d) => {
-      const r = byDate.get(d);
-      const row: Record<string, string | number | null> = { date: d.slice(5) };
-      for (const bl of activeBrands) row[bl] = d > last ? null : Number(r?.[bl] || 0);
-      return row;
-    });
-  }, [data?.brandRevenueTrend, activeBrands, from, to]);
 
   /* 채널별 */
   const byChannel = useMemo(() => {
@@ -258,68 +224,32 @@ function SalesPageInner() {
 
   return (
     <PageShell title="매출 분석" description="판매처별·브랜드별 매출 트렌드">
-      {/* 탭 */}
-      {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard title="매출" value={formatCurrency(totals.revenue)} change={pctChange(totals.revenue, prevTotals.revenue)} />
-        <KpiCard title="주문 수" value={formatNumber(totals.orders)} change={pctChange(totals.orders, prevTotals.orders)} />
-        <KpiCard title="평균 객단가" value={totals.aov > 0 ? formatCurrency(Math.round(totals.aov)) : "—"} change={pctChange(totals.aov, prevTotals.aov)} />
+      {/* KPI: 매출이 이 화면의 대표 지표라 hero, 주문·객단가는 보조(compact). */}
+      <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
+        <KpiCard size="hero" title="매출" subtitle="판매 원장 자체매출(공구 제외)" value={formatCurrency(totals.revenue)} change={pctChange(totals.revenue, prevTotals.revenue)} changeLabel="직전 같은 기간 대비" />
+        <div className="grid grid-cols-2 sm:grid-cols-1 gap-2.5">
+          <KpiCard size="compact" title="주문 수" value={formatNumber(totals.orders)} change={pctChange(totals.orders, prevTotals.orders)} />
+          <KpiCard size="compact" title="평균 객단가" value={totals.aov > 0 ? formatCurrency(Math.round(totals.aov)) : "-"} change={pctChange(totals.aov, prevTotals.aov)} />
+        </div>
       </div>
 
-      {(
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="font-semibold mb-4">브랜드별 누적 매출 트렌드</h3>
-            <DeferredResponsiveContainer width="100%" height={300}>
-              <BarChart data={dailyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                <YAxis
-                  tick={{ fontSize: 11 }}
-                  stroke="var(--muted-foreground)"
-                  tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--card)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                  formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))}
-                />
-                <Legend />
-                {activeBrands.map((bl) => (
-                  <Bar isAnimationActive={false}
-                    key={bl}
-                    dataKey={bl}
-                    name={bl}
-                    stackId="brand"
-                    fill={brandColors[bl] || "#6b7280"}
-                    radius={activeBrands.indexOf(bl) === activeBrands.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                  />
-                ))}
-              </BarChart>
-            </DeferredResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 판단용: 채널별 매출 구성 (2026-11-03). 예전 '주별/월별 매출' 합계 막대를 판매처별로 쌓았다.
+      {/* 판단용: 매출 구성 (2026-11-03). 예전 '주별/월별 매출' 합계 막대를 판매처별로 쌓았다.
+          2026-11-04 「판매처 / 브랜드」 쌓기 토글을 붙이고 「브랜드별 누적 매출 트렌드」(일별 브랜드 막대)를 뺐다.
           막대 높이(그 주·월 합계)는 예전과 같다. 기간 합계는 아래 판매처 카드가 보여 준다. */}
       <ChannelMixChart sales={sales} channels={byChannel} from={from} to={to} />
 
-      {(
+      {CATEGORY_BRANDS.includes(brand) && byCategory.length > 0 && (
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-semibold mb-4">카테고리별 매출</h3>
+            <h3 className="font-semibold">카테고리별 매출</h3>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-3">가로 = 원(상품 판매 원장), {BRAND_LABELS[brand] || brand} 분류 기준</p>
             <DeferredResponsiveContainer width="100%" height={Math.max(200, byCategory.length * 35)}>
               <BarChart data={byCategory} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                 <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={100} />
                 <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
-                <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill={BRAND_COLORS[brand] || "#6b7280"} radius={[0, 4, 4, 0]} />
               </BarChart>
             </DeferredResponsiveContainer>
           </CardContent>
@@ -408,14 +338,14 @@ function SalesPageInner() {
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-muted-foreground">자체매출</p>
                 <p className="text-2xl font-bold text-blue-500">{formatCurrency(gongguData.selfTotal)}</p>
-                <p className="text-xs text-muted-foreground">{gongguData.total > 0 ? `${((gongguData.selfTotal / gongguData.total) * 100).toFixed(1)}%` : "—"}</p>
+                <p className="text-xs text-muted-foreground">{gongguData.total > 0 ? `${((gongguData.selfTotal / gongguData.total) * 100).toFixed(1)}%` : "-"}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-muted-foreground">공구매출</p>
                 <p className="text-2xl font-bold text-purple-500">{formatCurrency(gongguData.gongguTotal)}</p>
-                <p className="text-xs text-muted-foreground">{gongguData.total > 0 ? `${((gongguData.gongguTotal / gongguData.total) * 100).toFixed(1)}%` : "—"}</p>
+                <p className="text-xs text-muted-foreground">{gongguData.total > 0 ? `${((gongguData.gongguTotal / gongguData.total) * 100).toFixed(1)}%` : "-"}</p>
               </CardContent>
             </Card>
           </div>
@@ -487,7 +417,7 @@ function SalesPageInner() {
                         <td className="py-2 pr-4 font-medium">{s.seller}</td>
                         <td className="py-2 pr-4 text-right">{formatCurrency(s.revenue)}</td>
                         <td className="py-2 pr-4 text-right">{formatNumber(s.quantity)}</td>
-                        <td className="py-2 text-right">{gongguData.gongguTotal > 0 ? `${((s.revenue / gongguData.gongguTotal) * 100).toFixed(1)}%` : "—"}</td>
+                        <td className="py-2 text-right">{gongguData.gongguTotal > 0 ? `${((s.revenue / gongguData.gongguTotal) * 100).toFixed(1)}%` : "-"}</td>
                       </tr>
                     ))}
                   </tbody>
