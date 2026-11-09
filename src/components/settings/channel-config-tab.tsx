@@ -41,7 +41,7 @@ export function ChannelConfigTab() {
   };
 
   return (
-    <Card>
+    <Card data-tour="settings-channels">
       <CardContent className="p-4 space-y-4">
         <h3 className="font-semibold">채널 관리</h3>
         <div className="overflow-x-auto">

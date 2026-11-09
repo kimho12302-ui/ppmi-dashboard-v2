@@ -128,7 +128,7 @@ function MonthlyInner() {
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-4">
         {/* 보기 전환 */}
-        <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1" role="tablist" aria-label="보기">
+        <div data-tour="monthly-view-tabs" className="flex items-center gap-0.5 rounded-lg bg-muted p-1" role="tablist" aria-label="보기">
           {VIEWS.map((v) => (
             <button key={v.key} role="tab" aria-selected={view === v.key} onClick={() => setQuery({ view: v.key })} className={segBtn(view === v.key)}>
               {v.label}
@@ -137,7 +137,7 @@ function MonthlyInner() {
         </div>
 
         {/* Year selector: 두 보기가 같은 연도를 쓴다 */}
-        <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
+        <div data-tour="monthly-year" className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
           {years.map((y) => (
             <button key={y} onClick={() => setQuery({ year: y })} className={segBtn(year === y)}>
               {y}년
@@ -147,7 +147,7 @@ function MonthlyInner() {
 
         {/* Brand filter: 손익 보기는 밸런스랩 전용이라 숨긴다 */}
         {view === "summary" && (
-          <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
+          <div data-tour="monthly-brand" className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
             {brands.map((b) => (
               <button key={b} onClick={() => setBrandFilter(b)} className={segBtn(brandFilter === b)}>
                 {b === "all" ? "전체" : (brandMap[b]?.label || BRAND_LABELS[b] || b)}
@@ -208,7 +208,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
     <>
       {/* YTD Summary */}
       {ytd && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div data-tour="monthly-ytd" className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">YTD 매출</p>
@@ -248,7 +248,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
+        <Card data-tour="monthly-chart-cost">
           <CardContent className="p-4">
             <h3 className="font-semibold text-sm mb-3">매출 vs 총비용 (광고비+원가+배송)</h3>
             <ResponsiveContainer width="100%" height={220}>
@@ -270,7 +270,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-tour="monthly-chart-rate">
           <CardContent className="p-4">
             <h3 className="font-semibold text-sm mb-3">이익률 & ROAS 추이</h3>
             <ResponsiveContainer width="100%" height={220}>
@@ -294,7 +294,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
 
       {/* 매체별 광고비 (월별 스택) */}
       {channelKeys.length > 0 && (
-        <Card>
+        <Card data-tour="monthly-chart-channel">
           <CardContent className="p-4">
             <h3 className="font-semibold text-sm mb-3">채널별 광고비 추이</h3>
             <ResponsiveContainer width="100%" height={240}>
@@ -317,7 +317,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
       )}
 
       {/* Table */}
-      <Card>
+      <Card data-tour="monthly-table">
         <CardContent className="p-4 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

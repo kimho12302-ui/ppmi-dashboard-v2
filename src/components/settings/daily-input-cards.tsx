@@ -39,7 +39,7 @@ export function GfaInputCard({ today, onSaved }: { today: string; onSaved?: () =
   };
 
   return (
-    <Card>
+    <Card data-tour="daily-gfa">
       <CardContent className="p-4">
         <ManualRowTable
           title="GFA 광고비 (너티·사입·밸런스랩 브랜드별)"
@@ -107,7 +107,7 @@ export function MiscCostCard({ onSaved }: { onSaved?: () => void }) {
   const sel = "border rounded px-2 py-1.5 text-sm bg-transparent w-full";
 
   return (
-    <Card>
+    <Card data-tour="daily-misc-cost">
       <CardContent className="p-4 space-y-3">
         <h3 className="font-medium">🧾 건별 비용 입력 <span className="text-xs text-muted-foreground font-normal">인플루언서/협찬/촬영비/디자인비 등</span></h3>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
@@ -203,7 +203,7 @@ export function EventInputCard() {
   const brandLabels: Record<string, string> = { all: "전체", nutty: "너티", ironpet: "아이언펫", saip: "사입", balancelab: "밸런스랩" };
 
   return (
-    <Card>
+    <Card data-tour="daily-event">
       <CardContent className="p-4 space-y-3">
         <h3 className="font-medium">📌 마케팅 이벤트 <span className="text-xs text-muted-foreground font-normal">캠페인·프로모션·신제품 출시 등 — 차트에 표시됨</span></h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

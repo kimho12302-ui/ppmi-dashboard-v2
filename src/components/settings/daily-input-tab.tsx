@@ -53,7 +53,7 @@ function DataStatusPanel({ refreshKey }: { refreshKey?: number }) {
   const manual = sources.filter(s => s.type === "manual");
 
   return (
-    <Card>
+    <Card data-tour="daily-collect-detail">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold text-sm">데이터 수집 현황 <span className="text-muted-foreground font-normal">({refDate} 기준)</span></h3>
@@ -111,7 +111,7 @@ function DataStatusCard() {
   useEffect(() => { refresh(); }, [refresh]);
 
   return (
-    <Card>
+    <Card data-tour="daily-collect-status">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -178,7 +178,7 @@ function DailyInputGuide({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void }) {
   const todayLabel = new Date(Date.now() + 32400000).toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
 
   return (
-    <Card>
+    <Card data-tour="daily-checklist">
       <CardContent className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">📋 일일 입력 체크리스트 <span className="text-muted-foreground font-normal text-sm">({todayLabel})</span></h3>
@@ -245,7 +245,7 @@ function MissingDatesBanner({ refreshKey }: { refreshKey?: number }) {
   if (filtered.length === 0) return null;
 
   return (
-    <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
+    <Card data-tour="daily-missing-banner" className="border-orange-300 bg-orange-50 dark:bg-orange-950/20">
       <CardContent className="p-4 space-y-2">
         <p className="text-sm font-medium text-orange-700 dark:text-orange-400">⚠️ 미입력 날짜 — 아래 폼에서 해당 날짜를 추가해 입력하세요</p>
         <div className="space-y-1">
@@ -306,11 +306,15 @@ export function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void
     <div className="space-y-4">
       <DailyInputGuide onSwitchTab={onSwitchTab} />
       <DataStatusCard />
+      <div data-tour="daily-auto-collect">
       <OpsStatusPanel section="collector" title="🤖 자동 수집 상태"
         hint="매일 07:36 화면에서 읽어 이 대시보드에 넣는 수집기입니다. 못 읽은 날은 0 대신 실패로 남깁니다." />
+      </div>
       <ManualEntries />
+      <div data-tour="daily-report-status">
       <OpsStatusPanel section="report" title="🗒️ 보고 상태"
         hint="일일 브리핑·주간/월간 회의록·팀 공지가 제때 나왔는지." />
+      </div>
 
       {savedMsg && (
         <div className="px-4 py-3 rounded-lg bg-emerald-500/10 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 text-sm font-medium">
@@ -322,7 +326,7 @@ export function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void
       <DataStatusPanel refreshKey={refreshKey} />
 
       {/* 카페24 퍼널 */}
-      <Card>
+      <Card data-tour="daily-cafe24">
         <CardContent className="p-4">
           <ManualRowTable
             title="카페24 퍼널"
@@ -340,7 +344,7 @@ export function DailyInputTab({ onSwitchTab }: { onSwitchTab: (tab: Tab) => void
       </Card>
 
       {/* 스마트스토어 퍼널 */}
-      <Card>
+      <Card data-tour="daily-smartstore">
         <CardContent className="p-4">
           <ManualRowTable
             title="스마트스토어 퍼널"

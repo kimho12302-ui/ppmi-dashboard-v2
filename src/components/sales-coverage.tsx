@@ -55,7 +55,7 @@ export function SalesCoverage() {
   const gapCount = data.brandGaps.reduce((s, g) => s + g.dates.length, 0);
 
   return (
-    <Card>
+    <Card data-tour="daily-upload-coverage">
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
           <h3 className="font-semibold text-sm">

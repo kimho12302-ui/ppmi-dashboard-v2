@@ -45,9 +45,9 @@ function SettingsInner({ mode }: { mode: SettingsMode }) {
 
   return (
     <PageShell title={daily ? "일일 입력" : "설정"} description={daily ? "매일 넣는 광고비·퍼널 수치 (API 가 없어 사람이 넣는 항목)" : undefined} hideFilters>
-      <div className="flex items-center gap-1 rounded-lg bg-muted p-1 overflow-x-auto">
+      <div data-tour="settings-tabs" className="flex items-center gap-1 rounded-lg bg-muted p-1 overflow-x-auto">
         {visibleTabs.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+          <button key={t.key} data-tour={`settings-tab-${t.key}`} onClick={() => setTab(t.key)}
             className={cn("px-3 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
               tab === t.key ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
           >{t.label}</button>

@@ -56,6 +56,7 @@ export function Verdict({ data, onRefresh, loading }: { data: DashboardHealth; o
     : "숫자는 대체로 맞습니다. 확인할 것이 있습니다";
   return (
     <section
+      data-tour="status-headline"
       className="rounded-xl border p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6"
       style={{ backgroundColor: v.surface, borderColor: v.border }}
       aria-label="한 줄 결론"
@@ -70,6 +71,7 @@ export function Verdict({ data, onRefresh, loading }: { data: DashboardHealth; o
         <Pill level="ok" text={`정상 ${data.counts.ok}`} />
         <Pill level="paused" text={`쉬는 중 ${data.counts.paused}`} />
         <button
+          data-tour="status-refresh"
           onClick={onRefresh}
           disabled={loading}
           className="text-xs px-2 py-1 rounded-md border hover:bg-muted transition-colors disabled:opacity-50"

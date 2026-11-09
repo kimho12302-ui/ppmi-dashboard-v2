@@ -66,7 +66,7 @@ export function TargetsTab() {
   }
 
   return (
-    <Card>
+    <Card data-tour="settings-targets">
       <CardContent className="p-4 space-y-4">
         <h3 className="font-semibold">월별 목표 설정</h3>
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
