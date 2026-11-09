@@ -56,12 +56,14 @@ function InsightsInner() {
     <PageShell title="인사이트" description="목표 페이싱 · 자동 이상치 감지 · 트렌드 분석 · 효율 경고 · 원인 분석">
       {/* 목표 대비 페이싱: 의사결정 1순위 (통계시트 '광고 예산안' 재현).
           2026-11-03 김호 지시로 Overview 맨 위에서 이 화면 맨 위로 옮겼다. */}
-      <PacingSection brand={brand || "all"} from={from} to={to} />
+      <div data-tour="insights-pacing">
+        <PacingSection brand={brand || "all"} from={from} to={to} />
+      </div>
 
       {/* 일간 이상치(브랜드별 매출·광고비 ±30%). 2026-11-03 Overview 에서 옮겨 왔다.
           IA(2026-09) 때 Overview 카드와 /insights 가 서로를 모르는 상태였던 문제는 한 화면에 모아 풀었다. */}
       {anomalies.length > 0 && (
-        <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
+        <Card data-tour="insights-anomaly" className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
           <CardContent className="p-3">
             <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-1">이상치 감지 ({anomalies.length}건)</p>
             {anomalies.map((a, i) => (
@@ -86,7 +88,7 @@ function InsightsInner() {
         </div>
       ) : (<>
       {/* Summary badges */}
-      <div className="flex flex-wrap gap-2">
+      <div data-tour="insights-badges" className="flex flex-wrap gap-2">
         {(["critical", "warning", "opportunity", "info"] as InsightType[]).map((level) => {
           const count = countByLevel[level] || 0;
           if (count === 0) return null;
@@ -100,7 +102,7 @@ function InsightsInner() {
       </div>
 
       {/* Insight cards */}
-      <div className="space-y-3">
+      <div data-tour="insights-cards" className="space-y-3">
         {insights.length === 0 && (
           <Card className="border-l-4 border-l-blue-500 bg-blue-500/5">
             <CardContent className="p-4">
@@ -156,7 +158,7 @@ function InsightsInner() {
       </div>
       </>)}
 
-      <Card>
+      <Card data-tour="insights-rules">
         <CardContent className="p-4">
           <p className="text-xs text-muted-foreground">
             💡 규칙 기반 자동 감지: ROAS &lt; 1 적자채널, 전체 ROAS 목표 미달, 전환율/장바구니 이탈률, 매출 15%+ 하락 시 브랜드/채널/제품별 원인 분석.

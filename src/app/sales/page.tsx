@@ -262,14 +262,14 @@ function SalesPageInner() {
     <PageShell title="매출 분석" description="판매처별·브랜드별 매출 트렌드">
       {/* 탭 */}
       {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div data-tour="sales-kpi" className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <KpiCard title="매출" value={formatCurrency(totals.revenue)} change={pctChange(totals.revenue, prevTotals.revenue)} />
         <KpiCard title="주문 수" value={formatNumber(totals.orders)} change={pctChange(totals.orders, prevTotals.orders)} />
         <KpiCard title="평균 객단가" value={totals.aov > 0 ? formatCurrency(Math.round(totals.aov)) : "—"} change={pctChange(totals.aov, prevTotals.aov)} />
       </div>
 
       {(
-        <Card>
+        <Card data-tour="sales-brand-trend">
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">브랜드별 누적 매출 트렌드</h3>
             <DeferredResponsiveContainer width="100%" height={300}>
@@ -309,10 +309,12 @@ function SalesPageInner() {
 
       {/* 판단용: 채널별 매출 구성 (2026-11-03). 예전 '주별/월별 매출' 합계 막대를 판매처별로 쌓았다.
           막대 높이(그 주·월 합계)는 예전과 같다. 기간 합계는 아래 판매처 카드가 보여 준다. */}
-      <ChannelMixChart sales={sales} channels={byChannel} from={from} to={to} />
+      <div data-tour="sales-channel-mix">
+        <ChannelMixChart sales={sales} channels={byChannel} from={from} to={to} />
+      </div>
 
       {(
-        <Card>
+        <Card data-tour="sales-category">
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">카테고리별 매출</h3>
             <DeferredResponsiveContainer width="100%" height={Math.max(200, byCategory.length * 35)}>
@@ -330,7 +332,7 @@ function SalesPageInner() {
 
       {(
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div data-tour="sales-store-cards" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {byChannel.map((c) => (
               <Card key={c.channel} className="p-4" style={{ borderLeft: `4px solid ${c.color}` }}>
                 <CardContent className="p-0 space-y-1">
@@ -351,12 +353,14 @@ function SalesPageInner() {
 
       {/* 상품 추이는 화면 중간 아래다. 올해 전체면 응답이 커서(묶음 4천여 줄) 위쪽 숫자까지 늦췄다.
           보일 때 부른다(2026-10-14). */}
-      <LazyMount minHeight={420}>
-        <ProductTrendChart brand={brand || "all"} from={from} to={to} />
-      </LazyMount>
+      <div data-tour="sales-product-trend">
+        <LazyMount minHeight={420}>
+          <ProductTrendChart brand={brand || "all"} from={from} to={to} />
+        </LazyMount>
+      </div>
 
       {(
-        <Card>
+        <Card data-tour="sales-top10">
           <CardContent className="p-4 overflow-x-auto">
             <h3 className="font-semibold mb-4">TOP 10 제품</h3>
             <table className="w-full text-sm">
@@ -399,7 +403,7 @@ function SalesPageInner() {
       {(!brand || brand === "all" || brand === "balancelab") && (
         <div className="space-y-4">
           {/* 자체 vs 공구 비교 */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div data-tour="sales-bl-summary" className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-muted-foreground">밸런스랩 전체</p>
@@ -423,7 +427,7 @@ function SalesPageInner() {
           </div>
 
           {/* 자체 vs 공구 시간 추이 */}
-          <Card>
+          <Card data-tour="sales-bl-trend">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold">밸런스랩 자체 vs 공구 추이</h3>
@@ -468,7 +472,7 @@ function SalesPageInner() {
           </Card>
 
           {/* 셀러별 테이블 */}
-          <Card>
+          <Card data-tour="sales-gonggu-sellers">
             <CardContent className="p-4">
               <h3 className="font-semibold mb-3">공구 셀러별 매출</h3>
               {gongguData.sellers.length > 0 ? (
@@ -556,7 +560,7 @@ function ChannelEfficiencySection({ brand, from, to }: { brand: string; from: st
   const avgRoas = _totSpend > 0 ? _totConvValue / _totSpend : 0;
 
   return (
-    <Card>
+    <Card data-tour="sales-efficiency">
       <CardContent className="p-4">
         <h3 className="font-semibold text-sm mb-1">채널 효율 사분면 — CAC vs ROAS</h3>
         <div className="flex gap-4 text-xs text-muted-foreground mb-3 flex-wrap">
