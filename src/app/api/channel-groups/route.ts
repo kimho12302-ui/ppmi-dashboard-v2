@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
+import { baseStoreAdSpend, isBalancelabMetaGoogle } from "@/lib/ad-store";
 
 // 채널(판매처) 성과 — 판매처별 매출 vs 그 판매처를 끌어온 광고비.
 // ★ 브랜드 판매처 구조 반영(2026-06 수정):
@@ -35,11 +36,11 @@ const GROUPS = [
 ];
 
 // 판매처(그룹)별 광고비 — blMG = 밸런스랩 메타+구글(스마트스토어 귀속분)
+// 매체 → 판매처 대응은 공용 규칙(src/lib/ad-store.ts)이다. 「제품별 광고 성과」 실매출도 같은 규칙을 쓴다.
 function storeAd(key: string, ad: Record<string, number>, blMG: number): number {
-  const g = (c: string) => ad[c] || 0;
-  if (key === "naver") return g("naver_search") + g("naver_shopping") + g("gfa") + blMG;
-  if (key === "jasamol") return Math.max(0, g("meta") + g("google_pmax") - blMG);
-  if (key === "coupang") return g("coupang_ads");
+  if (key === "naver") return baseStoreAdSpend("smartstore", ad) + blMG;
+  if (key === "jasamol") return Math.max(0, baseStoreAdSpend("cafe24", ad) - blMG);
+  if (key === "coupang") return baseStoreAdSpend("coupang", ad);
   return 0;
 }
 function storeSubAds(key: string, ad: Record<string, number>, blMG: number) {
@@ -97,7 +98,7 @@ async function periodData(from: string, to: string, brand: string) {
     const v = Number(r.spend || 0);
     adByCh[r.channel] = (adByCh[r.channel] || 0) + v;
     const dd = day(r.date); dd.ad[r.channel] = (dd.ad[r.channel] || 0) + v;
-    if (r.brand === "balancelab" && (r.channel === "meta" || r.channel === "google_pmax")) {
+    if (isBalancelabMetaGoogle(r.brand, r.channel)) {
       blMG += v; dd.blMG += v;
     }
   }

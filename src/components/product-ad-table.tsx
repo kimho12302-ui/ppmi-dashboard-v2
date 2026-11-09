@@ -18,10 +18,16 @@ interface ProductAdRow {
   salesProduct: string | null;
   /** 이 줄로 합친 광고 상품 이름들(같은 기본 품목으로 이어지는 광고는 한 줄) */
   adNames?: string[];
+  /** 실매출에 넣은 판매처(이 줄 광고 매체가 손님을 보내는 판매처, src/lib/ad-store.ts) */
+  salesStores?: string[];
+  /** 판매처를 정하지 않은 매체. 이 매체만 있는 줄은 실매출을 비운다 */
+  unmappedChannels?: string[];
   actualRevenue: number | null;
   actualQuantity: number | null;
   actualRoas: number | null;
 }
+const STORE_LABEL: Record<string, string> = { smartstore: "스마트스토어", cafe24: "자사몰(카페24)", coupang: "쿠팡" };
+const storeText = (stores?: string[]) => (stores || []).map((s) => STORE_LABEL[s] || s).join("·");
 interface LineupRow { lineup: string; brand: string; spend: number; conversion_value: number; roas: number }
 
 /**
@@ -70,7 +76,9 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
     );
   }
 
-  // 밸런스랩 실매출은 공구를 뺀 값이다(공구는 광고와 상관없이 팔린다). 펫은 따로 빼는 공구가 없어 문구를 붙이지 않는다.
+  // 실매출은 그 광고가 손님을 보내는 판매처 판매만이다(네이버 검색·쇼핑·GFA → 스마트스토어, 메타·구글 → 자사몰,
+  // 밸런스랩 메타·구글 → 스마트스토어, 쿠팡 광고 → 쿠팡. 공용 규칙 src/lib/ad-store.ts).
+  // 밸런스랩 실매출은 공구도 뺀 값이다(공구는 광고와 상관없이 팔린다). 펫은 따로 빼는 공구가 없어 문구를 붙이지 않는다.
   const hasGongguRule = brand === "balancelab" || brand === "all";
   const totalSpend = products.reduce((s, p) => s + p.spend, 0);
   // ★ 신고 전환매출이 아니라 **실매출** 0 을 기준으로 센다. 신고는 부풀어 있어
@@ -82,7 +90,7 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
       <div className="flex items-baseline justify-between gap-2 flex-wrap mb-3">
         <h3 className="font-semibold text-sm">
           제품별 광고 성과 <span className="text-xs text-muted-foreground font-normal">
-            {data?.componentsReady ? "기본 품목 단위(묶음·세트는 구성표로 풀어 셈)" : "광고 상품·캠페인 단위"} · 실매출은 판매 원장 기준{hasGongguRule && " (공구 제외)"}
+            {data?.componentsReady ? "기본 품목 단위(묶음·세트는 구성표로 풀어 셈)" : "광고 상품·캠페인 단위"} · 실매출 = 광고 판매처 판매(예: 네이버 광고 → 스마트스토어){hasGongguRule && ", 공구 제외"}
             {typeof data?.linkedCount === "number" && ` · 판매 연결 ${data.linkedCount}/${products.length}종`}
           </span>
         </h3>
@@ -140,9 +148,11 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
                   {p.spend > 0 ? `${p.roas.toFixed(2)}x` : "—"}
                 </td>
                 {/* 상품번호가 시트에 없으면 '연결 안 됨'(—). 연결됐는데 0이면 진짜 안 팔린 것. */}
-                <td className="py-2 text-right num">
+                <td className="py-2 text-right num" title={p.actualRevenue !== null && p.salesStores?.length ? `${storeText(p.salesStores)} 판매만` : undefined}>
                   {p.actualRevenue === null
-                    ? <span className="text-muted-foreground" title="판매와 이을 상품을 찾지 못했습니다. 상품 목록 시트 G열에 상품번호가 없고, 이름도 판매 원장·검사 라인과 맞지 않습니다">미연결</span>
+                    ? p.salesProduct && !(p.salesStores && p.salesStores.length)
+                      ? <span className="text-muted-foreground" title={`광고 매체(${(p.unmappedChannels || []).join(", ")})가 어느 판매처로 손님을 보내는지 정해 두지 않았습니다`}>판매처 미정</span>
+                      : <span className="text-muted-foreground" title="판매와 이을 상품을 찾지 못했습니다. 상품 목록 시트 G열에 상품번호가 없고, 이름도 판매 원장·검사 라인과 맞지 않습니다">미연결</span>
                     : formatCurrency(p.actualRevenue)}
                 </td>
                 <td className="py-2 text-right num font-medium"

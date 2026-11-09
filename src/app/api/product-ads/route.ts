@@ -10,10 +10,13 @@ import { cachedGET } from "@/lib/api-cache";
 import { isGonggu, isGongguAggregate } from "@/lib/gonggu";
 import { loadComponentIndex } from "@/lib/product-components-server";
 import { expandSales, isMultiComponent, productKey, singleComponentOf } from "@/lib/product-components";
+import { adStoreOf, type AdStore } from "@/lib/ad-store";
 
 interface SaleRow { product: string; brand: string; channel: string | null; lineup: string | null; revenue: number; quantity: number }
 interface Sale { revenue: number; quantity: number }
-type Link = { group: string; salesProduct: string | null; sale: Sale | null; basis: "item" | "set" | "line" | null };
+type Basis = "item" | "set" | "line";
+/** 광고 줄이 이어지는 판매 단위. 실매출은 줄의 광고 판매처마다 saleKey 로 꺼내 더한다. */
+type Link = { group: string; salesProduct: string | null; basis: Basis | null; saleKey: string | null };
 
 /**
  * 제품(상품) 단위 광고 성과.
@@ -31,7 +34,7 @@ async function getImpl(req: NextRequest) {
   try {
     let q = supabase
       .from("ad_product_performance")
-      .select("date,brand,product_id,product_name,lineup,spend,impressions,clicks,conversions,conversion_value")
+      .select("date,brand,channel,product_id,product_name,lineup,spend,impressions,clicks,conversions,conversion_value")
       .gte("date", from)
       .lte("date", to);
     if (brand !== "all") q = q.in("brand", expandBrands(brand));
@@ -75,16 +78,31 @@ async function getImpl(req: NextRequest) {
       return line ? `balancelab|${line}` : null;
     };
     const key = (b: unknown, product: unknown) => `${String(b)}|${productKey(String(product))}`;
+    // ★ 실매출은 그 광고가 손님을 보내는 판매처 판매만 센다(2026-11-09).
+    //   예전엔 판매처를 가리지 않아, 스마트스토어로 보내는 GFA 광고에 쿠팡·자사몰 판매까지 붙어
+    //   펫 실 ROAS 가 수백 배로 보였다. 매체 → 판매처 대응은 「판매처별 성과」와 같은 공용 규칙
+    //   (src/lib/ad-store.ts)이다. 판매 집계는 판매처별로 따로 두고, 광고 줄의 판매처만 더한다.
+    //   연결 여부(linkedNames·linkedLines)는 판매처와 상관없이 전체 판매로 정한다.
+    //   쿠팡에서만 팔린 품목은 「미연결」이 아니라 「연결됨, 광고 판매처 실매출 0」이다.
     const add = (m: Map<string, Sale>, k: string, r: SaleRow) => {
-      const cur = m.get(k) || { revenue: 0, quantity: 0 };
-      m.set(k, { revenue: cur.revenue + (Number(r.revenue) || 0), quantity: cur.quantity + (Number(r.quantity) || 0) });
+      const sk = `${r.channel ?? ""}|${k}`;
+      const cur = m.get(sk) || { revenue: 0, quantity: 0 };
+      m.set(sk, { revenue: cur.revenue + (Number(r.revenue) || 0), quantity: cur.quantity + (Number(r.quantity) || 0) });
+    };
+    const saleIn = (m: Map<string, Sale>, k: string, stores: readonly AdStore[]): Sale => {
+      let revenue = 0, quantity = 0;
+      for (const st of stores) {
+        const v = m.get(`${st}|${k}`);
+        if (v) { revenue += v.revenue; quantity += v.quantity; }
+      }
+      return { revenue, quantity };
     };
 
     const linkedNames = new Set<string>();         // 판매 원장 이름 + 기본 품목 이름 (브랜드|이름)
     const linkedLines = new Set<string>();
-    const salesByItem = new Map<string, Sale>();   // 기본 품목별 (푼 뒤)
-    const salesBySet = new Map<string, Sale>();    // 판매 상품별 (풀기 전, 세트 광고용)
-    const salesByLine = new Map<string, Sale>();   // 밸런스랩 검사 라인별 (푼 뒤)
+    const salesByItem = new Map<string, Sale>();   // 판매처|기본 품목별 (푼 뒤)
+    const salesBySet = new Map<string, Sale>();    // 판매처|판매 상품별 (풀기 전, 세트 광고용)
+    const salesByLine = new Map<string, Sale>();   // 판매처|밸런스랩 검사 라인별 (푼 뒤)
     for (const r of salesRows) {
       linkedNames.add(key(r.brand, r.product));
       if (!isExcludedGonggu(r)) add(salesBySet, key(r.brand, r.product), r);
@@ -104,19 +122,19 @@ async function getImpl(req: NextRequest) {
       // ① 밸런스랩 검사 광고는 검사 라인(옵션 SKU 까지 합산, 푼 뒤 품목 기준)
       const adLine = lineKey(b, productName);
       if (adLine && linkedLines.has(adLine)) {
-        return { group: `${b}|line|${adLine}|${productName}`, salesProduct: productName, sale: salesByLine.get(adLine) ?? null, basis: "line" };
+        return { group: `${b}|line|${adLine}|${productName}`, salesProduct: productName, basis: "line", saleKey: adLine };
       }
       // ② 스마트스토어 상품번호로 정본 조회(GFA 경로). ③ 광고 이름이 판매 원장·구성표에 그대로 있으면 그것.
       const m = masterByPid(productId);
       const name = m?.product
         ?? (linkedNames.has(key(b, productName)) || components.get(b, productName) ? productName : null);
-      if (!name) return { group: `${b}|ad|${productName}`, salesProduct: null, sale: null, basis: null };
+      if (!name) return { group: `${b}|ad|${productName}`, salesProduct: null, basis: null, saleKey: null };
       // 여러 품목 세트(냠+바삭 등)는 세트 상품 자체 판매로 잇는다. 한 품목 묶음·단품은 그 품목 판매 전체.
       if (isMultiComponent(components, b, name)) {
-        return { group: `${b}|set|${productKey(name)}`, salesProduct: name, sale: salesBySet.get(key(b, name)) ?? null, basis: "set" };
+        return { group: `${b}|set|${productKey(name)}`, salesProduct: name, basis: "set", saleKey: key(b, name) };
       }
       const item = singleComponentOf(components, b, name) ?? name;
-      return { group: `${b}|item|${productKey(item)}`, salesProduct: item, sale: salesByItem.get(key(b, item)) ?? null, basis: "item" };
+      return { group: `${b}|item|${productKey(item)}`, salesProduct: item, basis: "item", saleKey: key(b, item) };
     };
 
     // 판매 단위로 기간 합산.
@@ -128,20 +146,28 @@ async function getImpl(req: NextRequest) {
       product_id: string; product_name: string; brand: string; lineup: string | null; adNames: string[];
       spend: number; impressions: number; clicks: number; conversions: number; conversion_value: number;
       link: Link;
+      /** 이 줄 광고들이 손님을 보내는 판매처(여러 매체를 합친 줄이면 합집합) */
+      stores: AdStore[];
+      /** 판매처를 정하지 않은 매체(공용 규칙에 없는 매체). 실매출에 넣지 않는다 */
+      unmappedChannels: string[];
     }>();
     for (const r of rows as Record<string, unknown>[]) {
-      const b = String(r.brand), name = String(r.product_name);
+      const b = String(r.brand), name = String(r.product_name), ch = String(r.channel ?? "");
       const link = linkOf(b, String(r.product_id), name);
+      const store = adStoreOf(b, ch);
       const cur = map.get(link.group) || {
         product_id: String(r.product_id),
         // 기본 품목·세트로 이은 줄은 판매 이름으로 보인다(광고 상품명은 adNames)
         product_name: link.basis === "item" || link.basis === "set" ? String(link.salesProduct) : name,
         brand: b, lineup: (r.lineup as string) ?? null, adNames: [],
         spend: 0, impressions: 0, clicks: 0, conversions: 0, conversion_value: 0, link,
+        stores: [] as AdStore[], unmappedChannels: [] as string[],
       };
       map.set(link.group, {
         ...cur,
         adNames: cur.adNames.includes(name) ? cur.adNames : [...cur.adNames, name],
+        stores: !store || cur.stores.includes(store) ? cur.stores : [...cur.stores, store],
+        unmappedChannels: store || cur.unmappedChannels.includes(ch) ? cur.unmappedChannels : [...cur.unmappedChannels, ch],
         spend: cur.spend + (Number(r.spend) || 0),
         impressions: cur.impressions + (Number(r.impressions) || 0),
         clicks: cur.clicks + (Number(r.clicks) || 0),
@@ -150,18 +176,26 @@ async function getImpl(req: NextRequest) {
       });
     }
 
+    const saleMap = (basis: Basis): Map<string, Sale> => (basis === "line" ? salesByLine : basis === "set" ? salesBySet : salesByItem);
     const products = Array.from(map.values())
-      .map(({ link, ...p }) => ({
-        ...p,
-        roas: p.spend > 0 ? p.conversion_value / p.spend : 0,
-        // 이어붙인 실제 판매(밸런스랩은 공구 제외). 이을 판매를 못 찾으면 null 로 두고
+      .map(({ link, stores, ...p }) => {
+        // 이어붙인 실제 판매(광고 판매처 판매만, 밸런스랩은 공구 제외). 이을 판매를 못 찾으면 null 로 두고
         // 화면이 '연결 안 됨'과 '판매 0'을 구분해 말할 수 있게 한다.
-        salesProduct: link.salesProduct,
-        salesBasis: link.basis,
-        actualRevenue: link.salesProduct ? (link.sale?.revenue ?? 0) : null,
-        actualQuantity: link.salesProduct ? (link.sale?.quantity ?? 0) : null,
-        actualRoas: link.salesProduct && p.spend > 0 ? (link.sale?.revenue ?? 0) / p.spend : null,
-      }))
+        // 판매처를 하나도 정하지 못한 줄(공용 규칙에 없는 매체만 있는 줄)도 null 이다. 판매처를 모르면서
+        // 전체 판매를 붙이면 예전처럼 부풀고, 0 을 붙이면 안 팔린 것처럼 읽힌다. 2026-11-09 기준 해당 행 0건.
+        const linked = link.salesProduct !== null && link.basis !== null && link.saleKey !== null && stores.length > 0;
+        const sale = linked ? saleIn(saleMap(link.basis as Basis), link.saleKey as string, stores) : null;
+        return {
+          ...p,
+          roas: p.spend > 0 ? p.conversion_value / p.spend : 0,
+          salesProduct: link.salesProduct,
+          salesBasis: link.basis,
+          salesStores: stores,
+          actualRevenue: sale ? sale.revenue : null,
+          actualQuantity: sale ? sale.quantity : null,
+          actualRoas: sale && p.spend > 0 ? sale.revenue / p.spend : null,
+        };
+      })
       .sort((a, b) => b.spend - a.spend);
     const linkedCount = products.filter((p) => p.salesProduct !== null).length;
 
