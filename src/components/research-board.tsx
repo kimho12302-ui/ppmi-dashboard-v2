@@ -347,7 +347,7 @@ function AxisBoard({ axis: a, reportedAt, snap }: { axis: Axis; reportedAt?: str
   const owner = REVIEW_OWNER[a.axis] || "";
 
   return (
-    <BoardCard>
+    <BoardCard tour="content-research">
       <Masthead
         eyebrow="RESEARCH / 매일 06:00 수집"
         title="자료조사 신선도"

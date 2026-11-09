@@ -90,10 +90,12 @@ export default function InfluencersPage() {
     .sort((a, b) => num(b["점수"]) - num(a["점수"])), [board, status, minFollowers, fitOnly, signalOnly, tagFilter]);
 
   const col = board?.collector || {};
+  // 가이드(단계별 투어)가 가리킬 DM 칸: 표에서 DM 칸이 열린 첫 행
+  const firstDmIdx = view.findIndex((x) => (x["상태"] || "검토 전") === "후보" || !!x["DM 상태"]);
 
   return (
     <PageShell title="공구 셀러 발굴" description="인스타 해시태그로 공구 진행자를 찾아 협찬 리스트 시트에 쌓습니다 (밸런스랩 큐모발검사)" hideFilters>
-      <Card>
+      <Card data-tour="influencers-status">
         <CardContent className="py-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
           <span><span className="text-muted-foreground">수집기 마지막 실행</span> <b>{col["마지막 실행"] || "아직 없음"}</b></span>
           {col["결과"] && <span className="text-muted-foreground">{col["결과"]}</span>}
@@ -107,7 +109,7 @@ export default function InfluencersPage() {
       {error && <div className="rounded-md border border-red-500/50 text-red-500 px-3 py-2 text-sm">{error}</div>}
 
       <SectionHeading eyebrow="1단계" title="수집할 해시태그" note="공구 셀러가 쓰는 태그 · 경쟁 브랜드 공구 태그가 효과가 좋습니다 (예: #영양제공구 #바이오컴공구 #모발검사)" />
-      <Card>
+      <Card data-tour="influencers-tags">
         <CardContent className="py-4 space-y-3">
           <div className="flex gap-2">
             <input className="flex-1 rounded-md border bg-background px-3 py-2 text-sm" placeholder="#영양제공구 #건강식품공구 #모발검사 (여러 개는 띄어쓰기로)" value={tagText}
@@ -131,7 +133,7 @@ export default function InfluencersPage() {
       {board && <DmSettingsPanel key={board.settings.map((x) => x.값).join("|").length} settings={board.settings} onSaved={load} />}
 
       <SectionHeading eyebrow="2단계" title="후보 검토" note="점수 = 팔로워(25) + 공구 신호(35) + 건강·영양 관련(20) + 여러 태그 발견(10) + 연락처(10)" />
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 text-xs" data-tour="influencers-filters">
         {[...STATUSES, "전체"].map((s) => (
           <button key={s} onClick={() => setStatus(s)} className={cn("px-2.5 py-1 rounded-full border", status === s ? "bg-foreground text-background" : "")}>
             {s} {s === "전체" ? board?.candidates.length ?? 0 : counts[s] || 0}
@@ -150,7 +152,7 @@ export default function InfluencersPage() {
         <button className="ml-auto underline" onClick={load}>새로고침</button>
       </div>
 
-      <Card>
+      <Card data-tour="influencers-table">
         <CardContent className="p-0 overflow-x-auto">
           {!board ? <p className="text-sm text-muted-foreground px-6 py-8 text-center">불러오는 중…</p>
             : view.length === 0 ? <p className="text-sm text-muted-foreground px-6 py-8 text-center">조건에 맞는 후보가 없습니다.</p>
@@ -168,7 +170,7 @@ export default function InfluencersPage() {
                 </tr>
               </thead>
               <tbody>
-                {view.map((c) => {
+                {view.map((c, i) => {
                   const h = c["핸들"];
                   const cur = c["상태"] || "검토 전";
                   const showDm = cur === "후보" || !!c["DM 상태"];
@@ -200,7 +202,7 @@ export default function InfluencersPage() {
                         {words(c["판매 링크"]).map((l) => <div key={l} className="text-muted-foreground">🔗 {l}</div>)}
                       </td>
                       <td className="px-3 py-2">
-                        <div className="flex flex-col gap-1 min-w-[72px]">
+                        <div className="flex flex-col gap-1 min-w-[72px]" data-tour={i === 0 ? "influencers-review" : undefined}>
                           {STATUSES.map((s) => (
                             <button key={s} onClick={() => s !== cur && review(h, s)}
                               className={cn("text-xs px-2 py-0.5 rounded", s === cur ? STATUS_STYLE[s] + " font-semibold" : "text-muted-foreground hover:bg-muted")}>
@@ -215,7 +217,8 @@ export default function InfluencersPage() {
                       <tr className="border-b last:border-0">
                         <td />
                         <td colSpan={6} className="px-3 pb-4">
-                          <DmEditor key={`${c["DM 상태"]}|${c["DM 초안"]}`} row={c} onChanged={load} />
+                          <DmEditor key={`${c["DM 상태"]}|${c["DM 초안"]}`} row={c} onChanged={load}
+                            tourAnchor={i === firstDmIdx} />
                         </td>
                       </tr>
                     )}

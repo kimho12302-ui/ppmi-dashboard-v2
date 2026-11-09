@@ -183,7 +183,7 @@ function KeywordsInner() {
   return (
     <PageShell title="키워드" description="키워드별 광고 성과">
       {/* 탭. 좁은 화면에서는 줄을 바꾼다(390px 에서 가로로 넘쳤다) */}
-      <div className="flex flex-wrap items-center gap-0.5 rounded-lg bg-muted p-1 w-fit max-w-full">
+      <div className="flex flex-wrap items-center gap-0.5 rounded-lg bg-muted p-1 w-fit max-w-full" data-tour="keywords-tabs">
         {([
           { key: "keywords", label: "키워드 분석" },
           { key: "gsc", label: "Google Search Console" },
@@ -193,6 +193,7 @@ function KeywordsInner() {
         ] as { key: KeywordTab; label: string }[]).map((t) => (
           <button
             key={t.key}
+            data-tour={"keywords-tab-" + t.key}
             onClick={() => setTab(t.key)}
             className={cn(
               "px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
@@ -215,7 +216,7 @@ function KeywordsInner() {
       {/* 수집 중단을 빈 화면으로 오독하지 않도록 최종 수집일을 명시한다(2026-08 리뷰).
           조회 기간보다 마지막 수집일이 앞서면 "이 기간엔 애초에 데이터가 없다"는 뜻. */}
       {tab === "keywords" && !loading && data?.latestCollected && data.latestCollected < from && (
-        <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-500">
+        <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-500" data-tour="keywords-stalled">
           키워드 수집이 <b>{data.latestCollected}</b> 이후 중단돼 선택하신 기간({from} ~ {to})에는 데이터가 없습니다.
           아래가 비어 있는 것은 성과가 0이어서가 아니라 <b>수집이 멈춘 것</b>입니다.
         </div>
@@ -223,14 +224,14 @@ function KeywordsInner() {
 
       {tab === "keywords" && <>
       {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-tour="keywords-kpis">
         <KpiCard title="키워드 수" value={formatNumber(totals.uniqueKeywords)} />
         <KpiCard title="총 비용" value={formatCurrency(totals.cost)} />
         <KpiCard title="총 클릭" value={formatNumber(totals.clicks)} />
         <KpiCard title="평균 CTR" value={formatPercent(totals.ctr)} />
       </div>
       {/* 성과(ROAS) 행. 전환매출 없이는 '어떤 키워드가 돈을 벌었나'를 판단할 수 없다. */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5" data-tour="keywords-roas-kpis">
         <KpiCard
           size="compact"
           title="전환매출"
@@ -253,7 +254,7 @@ function KeywordsInner() {
       </div>
 
       {/* 필터 */}
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4" data-tour="keywords-filters">
         <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1">
           <button
             onClick={() => setPlatformFilter("all")}
@@ -292,7 +293,7 @@ function KeywordsInner() {
       </div>
 
       {/* 키워드 테이블 */}
-      <Card>
+      <Card data-tour="keywords-top50">
         <CardContent className="p-4 overflow-x-auto">
           <h3 className="font-semibold mb-4">TOP 50 키워드</h3>
           <table className="w-full text-sm">
@@ -355,7 +356,7 @@ function KeywordsInner() {
         </CardContent>
       </Card>
       {/* 9.3 브랜드 vs 일반 키워드 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-tour="keywords-brand-split">
         {[
           { label: "🏷️ 브랜드 키워드", data: groupedStats.brand, color: "#2563eb" },
           { label: "🔍 일반 키워드", data: groupedStats.general, color: "#6b7280" },
@@ -376,7 +377,7 @@ function KeywordsInner() {
 
       {/* 9.4 TOP 비용 vs TOP 전환 */}
       {aggregated.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-tour="keywords-top10">
           <Card>
             <CardContent className="p-4">
               <h4 className="font-semibold text-sm mb-2">💰 비용 TOP 10</h4>
@@ -418,7 +419,7 @@ function KeywordsInner() {
         const avgCtr = bubbleData.reduce((s, d) => s + d.ctr, 0) / bubbleData.length;
         const avgImp = bubbleData.reduce((s, d) => s + d.impressions, 0) / bubbleData.length;
         return (
-          <Card>
+          <Card data-tour="keywords-quadrant">
             <CardContent className="p-4">
               <h3 className="font-semibold text-sm mb-1">키워드 사분면 — CTR vs 노출 (버블 크기 = 비용)</h3>
               <div className="flex gap-4 text-xs text-muted-foreground mb-3 flex-wrap">

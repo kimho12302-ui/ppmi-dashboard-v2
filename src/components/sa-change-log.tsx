@@ -122,7 +122,7 @@ export function SaChangeLog({ brand }: { brand: string }) {
   if (!data?.changes?.length) return null;
 
   return (
-    <Card>
+    <Card data-tour="keywords-sa-log">
       <CardContent className="p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>

@@ -120,7 +120,7 @@ function ChannelInner() {
     <PageShell title="판매처 성과" description="판매처별 매출 vs 그 판매처를 끌어온 광고비 · 원 단위 · 전기간 대비">
       {/* 통합 요약 */}
       {total && (
-        <Card>
+        <Card data-tour="channel-summary">
           <CardContent className="p-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div><p className="text-xs text-muted-foreground">총 매출 (자체)</p><p className="text-lg font-bold">{formatWon(total.revenue)}</p></div>
             <div><p className="text-xs text-muted-foreground">총 광고비</p><p className="text-lg font-bold">{formatWon(total.adSpend)}</p></div>
@@ -131,8 +131,8 @@ function ChannelInner() {
       )}
 
       {/* 채널그룹 카드 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {groups.map((g) => (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" data-tour="channel-store-cards">
+        {groups.map((g, gi) => (
           <Card key={g.key} className="border-t-4" style={{ borderTopColor: roasColor(g.roas) }}>
             <CardContent className="p-5 space-y-4">
               <div className="flex items-start justify-between">
@@ -151,7 +151,7 @@ function ChannelInner() {
                   <p className="text-[11px]">전기간 <Delta v={g.adDelta} invert /></p>
                 </div>
               </div>
-              <div className="border-t pt-2 space-y-1">
+              <div className="border-t pt-2 space-y-1" data-tour={gi === 0 ? "channel-ad-mix" : undefined}>
                 <p className="text-[11px] text-muted-foreground">광고비 구성</p>
                 {g.subAds.map((s) => (
                   <div key={s.channel} className="flex items-center justify-between text-xs">
@@ -160,7 +160,7 @@ function ChannelInner() {
                   </div>
                 ))}
               </div>
-              <div className="border-t pt-2 flex items-center justify-between text-xs">
+              <div className="border-t pt-2 flex items-center justify-between text-xs" data-tour={gi === 0 ? "channel-roas-delta" : undefined}>
                 <span className="text-muted-foreground">ROAS 전기간 대비</span>
                 <span className="font-medium"><Delta v={g.roasDelta} /></span>
               </div>
@@ -170,11 +170,11 @@ function ChannelInner() {
       </div>
 
       {/* 기간별 ROAS 추이 (일/주/월) */}
-      <Card>
+      <Card data-tour="channel-trend">
         <CardContent className="p-4 space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h3 className="font-semibold text-sm">기간별 추이 — 매출 / 광고비 / ROAS</h3>
-            <div className="flex gap-0.5 rounded-lg bg-muted p-1">
+            <div className="flex gap-0.5 rounded-lg bg-muted p-1" data-tour="channel-gran">
               {([["day", "일별"], ["week", "주별"], ["month", "월별"]] as const).map(([k, lbl]) => (
                 <button key={k} onClick={() => setGran(k)}
                   className={cn("px-3 py-1 text-xs font-medium rounded-md transition-colors", gran === k ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
@@ -189,6 +189,7 @@ function ChannelInner() {
           ) : (
             <>
               {/* ROAS 추이 라인차트 */}
+              <div data-tour="channel-roas-chart">
               <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -205,9 +206,10 @@ function ChannelInner() {
                   <Line type="monotone" dataKey="전체" stroke="#6b7280" strokeWidth={2} strokeDasharray="4 2" dot={false} />
                 </LineChart>
               </ResponsiveContainer>
+              </div>
 
               {/* 상세 표: 각 셀 = 매출 / 광고비 · ROAS */}
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" data-tour="channel-trend-table">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-left border-b text-muted-foreground">
@@ -236,7 +238,7 @@ function ChannelInner() {
               </div>
             </>
           )}
-          <p className="text-[11px] text-muted-foreground/70">
+          <p className="text-[11px] text-muted-foreground/70" data-tour="channel-rule-note">
             스마트스토어=스마트스토어 매출÷(네이버검색+쇼핑+GFA+밸런스랩메타) · 자사몰=카페24÷(메타·구글, 밸런스랩 제외) · 쿠팡=쿠팡÷쿠팡광고. 밸런스랩은 스마트스토어 전용이라 메타도 여기 포함. 매출은 공구 제외 자체매출. 주별=월요일 기준.
           </p>
         </CardContent>

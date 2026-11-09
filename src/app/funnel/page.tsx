@@ -110,7 +110,7 @@ function FunnelInner() {
   return (
     <PageShell title="퍼널" description="전환 퍼널 분석">
       {isSharedStorefront && (
-        <Card className="border-l-4 border-l-amber-500 bg-amber-500/5">
+        <Card className="border-l-4 border-l-amber-500 bg-amber-500/5" data-tour="funnel-shared-note">
           <CardContent className="p-3 flex items-start gap-2 text-sm">
             <span>ⓘ</span>
             <span>
@@ -121,20 +121,20 @@ function FunnelInner() {
       )}
 
       {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-tour="funnel-kpis">
         <KpiCard title="총 세션" value={formatNumber(sessionsStep?.value || 0)} />
         <KpiCard title="구매 전환율" value={`${overallConvRate.toFixed(2)}%`} />
         <KpiCard title="장바구니 이탈률" value={abandonComputable ? `${abandonRate.toFixed(1)}%` : "산출 불가"} />
         <KpiCard title="총 구매" value={formatNumber(purchaseVal)} />
       </div>
       {cartNote && (
-        <p className="text-xs text-muted-foreground -mt-2">
+        <p className="text-xs text-muted-foreground -mt-2" data-tour="funnel-cart-note">
           ⓘ {abandonComputable ? `장바구니 이탈률은 ${cartNote}` : cartNote}
         </p>
       )}
 
       {/* 전환 퍼널 (깔때기) */}
-      <Card>
+      <Card data-tour="funnel-steps">
         <CardContent className="p-4">
           <h3 className="font-semibold mb-4">전환 퍼널</h3>
           <div className="space-y-0">
@@ -146,7 +146,7 @@ function FunnelInner() {
               return (
                 <div className="space-y-4">
                   {impressionStep && (
-                    <div className="flex items-center gap-3 bg-indigo-50 dark:bg-indigo-900/10 rounded-lg px-4 py-3">
+                    <div className="flex items-center gap-3 bg-indigo-50 dark:bg-indigo-900/10 rounded-lg px-4 py-3" data-tour="funnel-impression">
                       <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">노출</span>
                       <span className="text-2xl font-bold text-indigo-500">{formatNumber(impressionStep.value)}</span>
                       {funnelSteps[0] && (
@@ -157,7 +157,7 @@ function FunnelInner() {
                     </div>
                   )}
 
-                  <div className="space-y-0">
+                  <div className="space-y-0" data-tour="funnel-step-bars">
                     {funnelSteps.map((step, i) => {
                       const pct = maxVal > 0 ? (step.value / maxVal) * 100 : 0;
                       const width = Math.max(pct, 12);
@@ -213,7 +213,7 @@ function FunnelInner() {
                   </div>
 
                   {repurchase.value >= 0 && (
-                    <div className="flex items-center gap-3 bg-teal-50 dark:bg-teal-900/10 rounded-lg px-4 py-3 mt-3">
+                    <div className="flex items-center gap-3 bg-teal-50 dark:bg-teal-900/10 rounded-lg px-4 py-3 mt-3" data-tour="funnel-repurchase">
                       <span className="text-sm font-medium text-teal-600 dark:text-teal-400">재구매</span>
                       <span className="text-2xl font-bold text-teal-500">{formatNumber(repurchase.value)}</span>
                       <span className="text-xs text-muted-foreground ml-auto">
@@ -229,12 +229,14 @@ function FunnelInner() {
       </Card>
 
       {/* 판단용: 일별 전환율 관리도 (2026-11-03). 같은 원천의 유입·구매로만 계산한다. */}
-      <ConversionControlChart brand={brand || "all"} from={from} to={to} />
+      <div data-tour="funnel-control">
+        <ConversionControlChart brand={brand || "all"} from={from} to={to} />
+      </div>
 
       {/* 노출 일별 트렌드 (소스별) */}
       {trend.length > 0 && (
         <>
-          <Card>
+          <Card data-tour="funnel-trend-impressions">
             <CardContent className="p-4">
               <h4 className="text-sm font-semibold mb-2">노출 일별 트렌드 (소스별)</h4>
               <ResponsiveContainer width="100%" height={200}>
@@ -253,7 +255,7 @@ function FunnelInner() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-tour="funnel-trend-sessions">
             <CardContent className="p-4">
               <h4 className="text-sm font-semibold mb-2">유입 일별 트렌드 (채널별)</h4>
               <ResponsiveContainer width="100%" height={200}>
@@ -272,7 +274,7 @@ function FunnelInner() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card data-tour="funnel-trend-purchases">
             <CardContent className="p-4">
               <h4 className="text-sm font-semibold mb-2">구매 일별 트렌드 (채널별)</h4>
               <ResponsiveContainer width="100%" height={200}>
@@ -295,7 +297,7 @@ function FunnelInner() {
 
       {/* 채널별 퍼널 비교 */}
       {channelFunnel.length > 0 && (
-        <Card>
+        <Card data-tour="funnel-channel-compare">
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">채널별 퍼널 비교</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -352,7 +354,7 @@ function FunnelInner() {
 
       {/* Meta 광고 퍼널 */}
       {metaFunnel.impressions > 0 && (
-        <Card className="border-l-4 border-l-blue-500">
+        <Card className="border-l-4 border-l-blue-500" data-tour="funnel-meta">
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">Meta 광고 퍼널</h3>
             <div className="flex items-center justify-between gap-1">

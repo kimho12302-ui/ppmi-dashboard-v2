@@ -101,7 +101,7 @@ export function ThreadsCandidates({ only }: { only?: "balancelab" | "pet" } = {}
   const axes = (["balancelab", "pet"] as const).filter((a) => (!only || a === only) && items.some((i) => i.axis === a));
 
   return (
-    <Card>
+    <Card data-tour="content-threads">
       <CardContent className="p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold text-sm">🧵 이번 주 쓰레드 후보</h3>

@@ -119,8 +119,9 @@ export function BoardEmpty({ what, how }: { what: string; how: string }) {
   );
 }
 
-export function BoardCard({ children }: { children: React.ReactNode }) {
-  return <Card className="overflow-hidden">{children}</Card>;
+// tour = 가이드(단계별 투어)가 이 카드를 찾는 표식(data-tour). 모양에는 영향이 없다.
+export function BoardCard({ children, tour }: { children: React.ReactNode; tour?: string }) {
+  return <Card className="overflow-hidden" data-tour={tour}>{children}</Card>;
 }
 
 export function Masthead({ eyebrow, title, subtitle, right, children }: {

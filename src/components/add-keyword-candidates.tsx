@@ -134,7 +134,7 @@ export function NaverAddKeywordCard({ brand, from, to }: { brand: string; from: 
   const days = daysBetween(from, to);
 
   return (
-    <Card><CardContent className="p-4 space-y-3">
+    <Card data-tour="keywords-naver-add"><CardContent className="p-4 space-y-3">
       <div>
         <h3 className="font-semibold text-sm">추가할 검색어 <span className="text-xs font-normal text-muted-foreground">네이버 · 이미 운영 중인 키워드는 뺐습니다</span></h3>
         <p className="text-xs text-muted-foreground mt-1">
@@ -225,7 +225,7 @@ export function CoupangAddKeywordCard({ from, to }: { from: string; to: string }
   const manual = rows.filter((r) => r.manualHit).length;
 
   return (
-    <Card><CardContent className="p-4 space-y-3">
+    <Card data-tour="keywords-coupang-add"><CardContent className="p-4 space-y-3">
       <div>
         <h3 className="font-semibold text-sm">
           추가할 키워드 <span className="text-xs font-normal text-muted-foreground">쿠팡 검색 영역에서 주문이 난 키워드 · 수동 키워드 후보</span>

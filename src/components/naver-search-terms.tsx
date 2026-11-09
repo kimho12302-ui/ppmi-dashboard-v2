@@ -135,7 +135,7 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
             ))}
           </div>
         )}
-        <div className="flex gap-0.5 rounded-lg bg-muted p-1">
+        <div className="flex gap-0.5 rounded-lg bg-muted p-1" data-tour="keywords-naver-type">
           {([["all", "전체"], ["powerlink", "파워링크"], ["shopping", "쇼핑검색"]] as const).map(([k, l]) => (
             <button key={k} onClick={() => { setType(k); setPicked(null); }}
               className={cn("px-3 py-1.5 text-xs rounded-md", type === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>{l}</button>
@@ -169,7 +169,7 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
               <KpiCard title="장바구니 (쇼핑검색)" value={formatNumber(total.cart_adds)} />
             </div>
 
-            <Card><CardContent className="p-4">
+            <Card data-tour="keywords-naver-products"><CardContent className="p-4">
               <h3 className="font-semibold text-sm">상품별 <span className="text-xs font-normal text-muted-foreground">쇼핑검색은 상품, 파워링크는 광고그룹 · 누르면 아래 검색어 표가 그 상품으로 바뀝니다</span></h3>
               <div className="mt-2">
                 <SortTable rows={products} initial="cost" onRowClick={(r) => pick(r.name)} activeName={picked} maxHeight={360}
@@ -179,7 +179,7 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
             </CardContent></Card>
 
             {waste.length > 0 && (
-              <Card><CardContent className="p-4">
+              <Card data-tour="keywords-naver-waste"><CardContent className="p-4">
                 <h3 className="font-semibold text-sm">돈만 쓰는 검색어 <span className="text-xs font-normal text-muted-foreground">쇼핑검색 · 광고비 {formatCurrency(WASTE_MIN_COST)} 이상 · 구매 0 · {waste.length}개</span></h3>
                 <p className="text-xs text-muted-foreground mb-2">제외 검색어 후보입니다. 기간이 짧으면 우연일 수 있으니 기간을 넓혀 다시 보세요.</p>
                 <SortTable rows={waste} initial="cost" maxHeight={320}

@@ -149,7 +149,7 @@ export function TopicProgress({ only }: { only?: "balancelab" | "pet" } = {}) {
   const waiting = topics.filter((t) => t.status === "ready").length;
 
   return (
-    <BoardCard>
+    <BoardCard tour="content-topics">
       <Masthead
         eyebrow="TOPICS / 고른 다음 어디까지 갔나"
         title="주제별 진행"
