@@ -11,7 +11,7 @@ import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { kstDate } from "@/lib/date";
 import { BlPnlView, PNL_DEFAULT_PICK, isPnlPick, type PnlPick } from "@/components/bl-pnl-view";
 import {
-  LineChart, Line, ReferenceLine,
+  LineChart, Line, ReferenceLine, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ComposedChart, Bar,
 } from "recharts";
 
@@ -53,11 +53,27 @@ interface MonthlyData {
   year: string;
   /** 진행 중인 달. salesDays = 그 달에 판매 원장이 들어온 날 수(오늘 제외). */
   inProgress?: { month: string; salesDays: number; salesThrough: string | null } | null;
+  /** 원가 매칭률(0~1, 행 단위, Overview 와 같은 방식). 판매 행이 없으면 null */
+  cogsMatchRate?: number | null;
 }
+
+// 차트 색: 무채색 + 강조 하나(시각화 아카이브 원칙). 매출만 강조색, 비용은 회색 단계로 구분한다.
+const C_ACCENT = "#2563eb";
+// 광고비가 가장 진하고 원가·배송비 순으로 옅다. 라이트·다크 둘 다에서 보이는 중간 톤(#475569 는 다크 배경에 묻혔다).
+const C_COST = { adSpend: "#64748b", cogs: "#a3afc0", shippingCost: "#d5dce6" } as const;
+const C_LINE = "#475569";
+/** 진행 중인 달 막대·점은 흐리게. 며칠치만 들어 있어 다른 달과 같은 무게로 보이면 안 된다 */
+const IN_PROGRESS_OPACITY = 0.35;
+const tooltipStyle = { backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 };
+/** 비율 미니 그래프 두 칸. 축 하나에 단위 하나 */
+const RATIO_CHARTS = [
+  { key: "profitRate", title: "이익률", axis: (v: number) => `${v.toFixed(0)}%`, tip: (v: number) => `${v.toFixed(1)}%` },
+  { key: "roas", title: "ROAS (매출 ÷ 광고비)", axis: (v: number) => `${v.toFixed(1)}x`, tip: (v: number) => `${v.toFixed(2)}x` },
+] as const;
 
 export default function MonthlyPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">Loading...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
       <MonthlyInner />
     </Suspense>
   );
@@ -179,7 +195,9 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
 
   // 채널별 광고비 ((M)Dash Board 재현)
   const CH_LABEL: Record<string, string> = { meta: "메타", naver_search: "네이버검색", naver_shopping: "네이버쇼핑", google_pmax: "구글P-Max", google_search: "구글검색", google_ads: "구글", coupang_ads: "쿠팡", gfa: "GFA", gdn: "GDN", influencer: "인플루언서" };
-  const CH_COLOR: Record<string, string> = { meta: "#1877f2", naver_search: "#03c75a", naver_shopping: "#22c55e", google_pmax: "#eab308", google_search: "#f59e0b", google_ads: "#fbbf24", coupang_ads: "#ef4444", gfa: "#8b5cf6", gdn: "#a78bfa", influencer: "#ec4899" };
+  // 네이버 검색·쇼핑이 둘 다 초록(#03c75a·#22c55e)이라 구분이 안 됐다(2026-11-04). 키워드 화면 PLATFORM_COLORS 와 같은 값으로.
+  // TODO: 공용 채널 색 상수가 생기면 그걸로 교체(다른 작업에서 통일 중).
+  const CH_COLOR: Record<string, string> = { meta: "#1877f2", naver_search: "#15803d", naver_shopping: "#0e7490", google_pmax: "#eab308", google_search: "#f59e0b", google_ads: "#fbbf24", coupang_ads: "#ef4444", gfa: "#8b5cf6", gdn: "#a78bfa", influencer: "#ec4899" };
   const channelKeys = Array.from(new Set(summary.flatMap((m) => Object.keys(m.channelCosts || {})))).filter(Boolean);
   // 차트 축: 데이터가 있는 첫 달~마지막 달 사이의 빈 달도 빠지지 않게 채운다(2026-10-28).
   // 금액은 0, 비율(이익률·ROAS)은 0 이 아니라 빈칸(null). 첫 데이터 달 이전은 수집 전이라 넣지 않는다.
@@ -203,6 +221,21 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
   }, [summary]);
   const channelData = chartSummary.map((m) => ({ month: m.month, ...m.channelCosts }));
 
+  // 이익 각주 (2026-11-04). 이익은 매출에서 광고비·잡비·원가·배송비를 뺀 값인데
+  //  (1) 원가표에 없는 제품은 원가 0 으로 들어가 이익이 커 보이고(Overview 와 같은 매칭률 기준)
+  //  (2) 배송비 원장이 비어 있으면 배송비가 전 달 0 으로 들어간다. 둘 다 숫자 옆에서 알려야 한다.
+  const cogsMatchRate = data?.cogsMatchRate ?? null;
+  const profitNotes: string[] = [];
+  if (cogsMatchRate != null) {
+    const pct = Math.round(cogsMatchRate * 100);
+    profitNotes.push(cogsMatchRate < 0.95
+      ? `원가 매칭 ${pct}%: 원가표에 없는 제품 판매분은 원가 0으로 계산돼 이익이 실제보다 크게 표시됩니다`
+      : `원가 매칭 ${pct}%`);
+  }
+  if (summary.length > 0 && summary.every((m) => !m.shippingCost)) {
+    profitNotes.push("배송비 원장이 비어 있어 배송비가 전 달 0으로 계산됩니다");
+  }
+
   if (loading) {
     return <div className="h-64 bg-muted rounded-lg animate-pulse" />;
   }
@@ -211,88 +244,109 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
     <>
       {/* YTD Summary */}
       {ytd && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">YTD 매출</p>
-              <p className="text-xl font-bold">{formatCurrency(ytd.revenue)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">YTD 광고비</p>
-              <p className="text-xl font-bold">{formatCurrency(ytd.adSpend)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">YTD 원가</p>
-              <p className="text-xl font-bold">{formatCurrency(ytd.cogs)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">YTD 이익</p>
-              <p className={cn("text-xl font-bold", ytd.profit >= 0 ? "text-emerald-600" : "text-red-500")}>
-                {formatCurrency(ytd.profit)}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">YTD 이익률</p>
-              <p className={cn("text-xl font-bold", ytd.profitRate >= 0 ? "text-emerald-600" : "text-red-500")}>
-                {formatPercent(ytd.profitRate)}
-              </p>
-            </CardContent>
-          </Card>
+        <div className="space-y-1.5">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">YTD 매출</p>
+                <p className="text-xl font-bold">{formatCurrency(ytd.revenue)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">YTD 광고비</p>
+                <p className="text-xl font-bold">{formatCurrency(ytd.adSpend)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">YTD 원가</p>
+                <p className="text-xl font-bold">{formatCurrency(ytd.cogs)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">YTD 이익{profitNotes.length > 0 && <sup>*</sup>}</p>
+                <p className={cn("text-xl font-bold", ytd.profit >= 0 ? "text-emerald-600" : "text-red-500")}>
+                  {formatCurrency(ytd.profit)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">YTD 이익률{profitNotes.length > 0 && <sup>*</sup>}</p>
+                <p className={cn("text-xl font-bold", ytd.profitRate >= 0 ? "text-emerald-600" : "text-red-500")}>
+                  {formatPercent(ytd.profitRate)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+          {/* 이익 각주: YTD 카드와 아래 표의 월별 이익·이익률에 같이 걸린다 */}
+          {profitNotes.length > 0 && (
+            <p className="text-xs text-muted-foreground">* 이익·이익률(월별 표 포함): {profitNotes.join(" · ")}</p>
+          )}
         </div>
       )}
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="font-semibold text-sm mb-3">매출 vs 총비용 (광고비+원가+배송)</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <ComposedChart data={chartSummary}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
-                  formatter={(val) => formatCurrency(Number(val))}
-                />
-                <Legend />
-                <Bar dataKey="revenue" name="매출" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="adSpend" name="광고비" fill="#dc2626" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="cogs" name="원가" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="shippingCost" name="배송비" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      {/* 매출 vs 총비용: 매출 막대 하나와 비용 3종을 쌓은 막대 하나를 나란히 */}
+      <Card>
+        <CardContent className="p-4">
+          <h3 className="font-semibold text-sm mb-1">매출 vs 총비용</h3>
+          <p className="text-xs text-muted-foreground mb-3">
+            왼쪽 막대는 매출, 오른쪽 막대는 광고비·원가·배송비를 쌓은 값입니다. 잡비는 이익에만 반영하고 막대에는 넣지 않았습니다.
+            {inProgress && ` 흐린 막대(${inProgress.month})는 진행 중인 달이라 ${inProgress.salesDays}일치만 들어 있습니다.`}
+          </p>
+          <ResponsiveContainer width="100%" height={240}>
+            <ComposedChart data={chartSummary} barGap={2}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+              <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(val) => formatCurrency(Number(val))} />
+              <Legend wrapperStyle={{ fontSize: 11 }} itemSorter={null} />
+              <Bar dataKey="revenue" name="매출" stackId="rev" fill={C_ACCENT} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+                {chartSummary.map((m) => <Cell key={m.month} fillOpacity={m.month === inProgress?.month ? IN_PROGRESS_OPACITY : 1} />)}
+              </Bar>
+              {(["adSpend", "cogs", "shippingCost"] as const).map((k, i) => (
+                <Bar key={k} dataKey={k} name={k === "adSpend" ? "광고비" : k === "cogs" ? "원가" : "배송비"} stackId="cost" fill={C_COST[k]}
+                  radius={i === 2 ? [3, 3, 0, 0] : undefined} isAnimationActive={false}>
+                  {chartSummary.map((m) => <Cell key={m.month} fillOpacity={m.month === inProgress?.month ? IN_PROGRESS_OPACITY : 1} />)}
+                </Bar>
+              ))}
+            </ComposedChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="font-semibold text-sm mb-3">이익률 & ROAS 추이</h3>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={chartSummary}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                <YAxis yAxisId="left" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v.toFixed(0)}%`} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v.toFixed(1)}x`} />
-                <ReferenceLine yAxisId="left" y={0} stroke="#ef4444" strokeDasharray="4 4" />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
-                />
-                <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="profitRate" name="이익률(%)" stroke="#10b981" strokeWidth={2} dot />
-                <Line yAxisId="right" type="monotone" dataKey="roas" name="ROAS" stroke="#3b82f6" strokeWidth={2} dot />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      {/* 이익률·ROAS: 단위가 달라 이중축이던 것을 단일축 미니 그래프 두 칸으로(2026-11-04) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {RATIO_CHARTS.map((g) => (
+          <Card key={g.key}>
+            <CardContent className="p-4">
+              <h3 className="font-semibold text-sm mb-2">
+                {g.title}{g.key === "profitRate" && profitNotes.length > 0 && <sup>*</sup>}
+                {inProgress && <span className="ml-1 text-xs font-normal text-muted-foreground">(빈 점: 진행 중인 달)</span>}
+              </h3>
+              <ResponsiveContainer width="100%" height={140}>
+                <LineChart data={chartSummary} margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 9 }} stroke="var(--muted-foreground)" tickFormatter={(v: string) => v.slice(2)} />
+                  <YAxis tick={{ fontSize: 9 }} stroke="var(--muted-foreground)" tickFormatter={g.axis} width={44} />
+                  {g.key === "profitRate" && <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="4 4" />}
+                  <Tooltip contentStyle={tooltipStyle} formatter={(val) => [g.tip(Number(val)), g.title]} />
+                  <Line
+                    type="monotone" dataKey={g.key} stroke={C_LINE} strokeWidth={2} isAnimationActive={false}
+                    dot={(props: { cx?: number; cy?: number; index?: number; payload?: { month: string } }) => {
+                      const { cx, cy, index, payload } = props;
+                      if (cx == null || cy == null) return <g key={`d-${index}`} />;
+                      const live = payload?.month === inProgress?.month;
+                      return <circle key={`d-${index}`} cx={cx} cy={cy} r={3} fill={live ? "var(--card)" : C_LINE} stroke={C_LINE} />;
+                    }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* 매체별 광고비 (월별 스택) */}

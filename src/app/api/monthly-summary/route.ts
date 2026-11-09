@@ -158,13 +158,21 @@ async function getImpl(request: NextRequest) {
     //   2026-04: 매출 32,806,368 · 원가 43,643,260 → 133%. 그 달 공구 차감액이 43,956,367 원이었다.
     //   판 것을 매출에서 뺐으면 그 물건 값도 빼야 이익률이 뜻을 갖는다.
     //   공구를 따로 보는 것 자체는 김호 결정(2026-06-10). 여기서는 그 결정을 원가에도 똑같이 적용한다.
+    // 원가 매칭률: Overview(api/dashboard)와 같은 방식. 제품 판매 행 중 원가표에 (제품, 브랜드)가 있는 행의 비율.
+    //   DB 합산 함수 경로는 행이 묶여 오므로 묶인 원본 행 수(n)로 센다. 그래야 Overview 의 행 단위 비율과 같다.
+    //   미매칭 행은 원가 0 으로 계산돼 이익이 과대 표시된다(2026-11-04 월별 화면 각주용).
+    let cogsRows = 0;
+    let cogsMatchedRows = 0;
     for (const ps of cogsProdData || []) {
       const m = ps.date.slice(0, 7);
       const existing = months.get(m);
       if (!existing) continue;
-      // 위에서 매출을 뺀 그 행이다. 원가도 같이 뺀다. (밸런스랩 전용 규칙 — gonggu.ts 주석 참조)
+      // 위에서 매출을 뺀 그 행이다. 원가도 같이 뺀다. (밸런스랩 전용 규칙. gonggu.ts 주석 참조)
       if (ps.brand === "balancelab" && isGongguInDailySales(ps)) continue;
       const key = `${ps.product}__${ps.brand}`;
+      const rowCount = Number((ps as { n?: number }).n ?? 1) || 1;
+      cogsRows += rowCount;
+      if (costMap.has(key)) cogsMatchedRows += rowCount;
       const unitCost = costMap.get(key) || 0;
       existing.cogs += unitCost * Number(ps.quantity || 0);
     }
@@ -249,6 +257,8 @@ async function getImpl(request: NextRequest) {
 
     return NextResponse.json({
       summary, ytd, year,
+      // 원가 매칭률(0~1, 행 단위). 판매 행이 없으면 null
+      cogsMatchRate: cogsRows > 0 ? cogsMatchedRows / cogsRows : null,
       // 진행 중인 달과 그 달에 판매가 들어온 날 수(0 = 아직 없음). 지난해를 보면 null.
       inProgress: summary.some((m) => m.month === currentMonth) ? { month: currentMonth, salesDays: inProgressDays, salesThrough } : null,
     });
