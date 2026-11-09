@@ -2,7 +2,7 @@
 // 근거: gonggu.ts (공구 줄 형식 A~D), brand-detail (공구 제외·셀러 집계·자체/공구 추이),
 //       dashboard route (자체매출 = 판매 기록 − 공구 판매처 − 형식 A 공구, 주문 수는 차감 없음),
 //       channel-groups (밸런스랩 메타·구글은 스마트스토어로), brand-groups BL_TEST_LINES,
-//       data-sources.ts (gfa_balancelab 2026-07-08 마지막), creatives route (메타 픽셀 구매 전환 막힘).
+//       GFA 미집행(김호 2026-11-02 확인; data-sources.ts 의 07-08 기록과 다름, 김호 말을 따름), creatives route (메타 픽셀 구매 전환 막힘).
 import { buildBrandGuide, h, info, list, p, qa, steps, table, warn } from "./_brand-shared";
 
 const guide = buildBrandGuide({
@@ -44,7 +44,7 @@ const guide = buildBrandGuide({
       ["매체", "사정"],
       [
         ["메타", "밸런스랩 메타 픽셀은 구매 전환이 막혀 있어(건강 분류 제한) 메타가 신고하는 구매·전환매출이 0으로 들어옵니다. 「매체별 광고비」에서 메타 신고 ROAS 가 짧은 가로줄로 나오는 게 이 때문입니다. 메타 성과는 실제 판매 기준 ROAS 로 봅니다."],
-        ["GFA", "밸런스랩 GFA 는 2026-07-08을 마지막으로 집행하지 않습니다. 그 뒤 기간에 GFA 가 없는 건 측정 실패가 아니라 0원입니다."],
+        ["GFA", "밸런스랩은 GFA 를 집행하지 않습니다. 광고 채널은 네이버 파워링크·쇼핑검색·메타입니다. GFA 칸이 비거나 0인 건 측정 실패가 아니라 미집행(0원)입니다."],
         ["구글(P-Max·검색)", "Google Ads 는 2026-05-14부터 일부러 집행을 멈췄습니다."],
         ["쿠팡 광고", "쿠팡 광고는 너티만 집행합니다."],
       ],
