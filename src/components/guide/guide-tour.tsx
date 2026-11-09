@@ -7,8 +7,11 @@
 // - target 이 빈 문자열이면 화면 가운데 카드. 요소가 없거나 지금 화면에 안 보이면(휴대폰에서 숨는
 //   사이드바 등) 그 단계는 빼고, 단계 수도 실제로 보이는 것만 센다.
 // - ← → 로 이동, Enter 는 다음, Esc 는 닫기. 투어 중에는 페이지를 누를 수 없고 말풍선만 눌린다.
-//   스크롤·창 크기 변화·내용 변화가 있으면 위치를 다시 잰다. 말풍선은 아래 → 위 → 오른쪽 → 왼쪽
-//   순으로 들어갈 자리를 찾고, 어디에도 안 들어가면 화면 안쪽으로 끌어들인다.
+// - 스크롤·창 크기 변화·화면 변화(데이터가 늦게 그려짐)가 있으면 단계 수와 위치를 다시 잰다.
+//   지금 단계는 순번이 아니라 단계 자체로 쥐어, 앞쪽 단계가 뒤늦게 나타나도 보던 단계가 유지된다.
+// - 열 때 짚을 요소가 절반도 안 보이면(데이터를 불러오는 중) 최대 10초 「불러오는 중」으로 기다린다.
+//   그 사이 요소가 나타나면 바로 이어 가고, 10초가 지나면 보이는 것만으로 진행한다.
+// - 말풍선은 아래 → 위 → 오른쪽 → 왼쪽 순으로 들어갈 자리를 찾고, 어디에도 안 들어가면 화면 안쪽으로 끌어들인다.
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TourStep } from "@/lib/guides";
@@ -17,6 +20,8 @@ import { RichText } from "./rich-text";
 const MARGIN = 8; // 말풍선과 화면 가장자리 사이
 const GAP = 12; // 말풍선과 강조 요소 사이
 const PAD = 6; // 강조 링이 요소 바깥으로 나오는 폭
+const WAIT_MS = 10_000; // 화면이 덜 그려졌을 때 기다리는 최대 시간
+const RECOUNT_MS = 120; // 화면 변화가 몰릴 때 다시 세기를 한 번으로 묶는 간격
 const DIM = "absolute bg-black/[0.55]";
 const FOCUSABLE = 'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
@@ -24,6 +29,12 @@ const READY: TourStep = {
   target: "",
   title: "가이드 준비 중",
   body: "이 화면의 가이드는 아직 준비 중입니다. 「매뉴얼」 버튼에서 대시보드 기본 사용법을 볼 수 있습니다.",
+};
+
+const LOADING: TourStep = {
+  target: "",
+  title: "화면을 불러오는 중",
+  body: "가이드가 짚을 부분이 아직 화면에 없습니다. 화면이 다 그려진 뒤 「가이드」를 다시 눌러 주세요.",
 };
 
 interface Box {
@@ -46,7 +57,16 @@ function findTarget(name: string): HTMLElement | null {
 
 function visibleSteps(steps: TourStep[]): TourStep[] {
   const shown = steps.filter((s) => s.target === "" || findTarget(s.target) !== null);
-  return shown.length > 0 ? shown : [READY];
+  if (shown.length > 0) return shown;
+  return steps.some((s) => s.target !== "") ? [LOADING] : [READY];
+}
+
+/** 화면 요소를 짚는 단계 중 지금 보이는 게 절반 미만이면 아직 화면을 그리는 중으로 본다 */
+function stillLoading(steps: TourStep[]): boolean {
+  const targets = steps.filter((s) => s.target !== "");
+  if (targets.length === 0) return false;
+  const seen = targets.filter((s) => findTarget(s.target) !== null).length;
+  return seen * 2 < targets.length;
 }
 
 /** 링이 화면 밖으로 잘리지 않게 2px 안쪽으로 당긴다 */
@@ -88,17 +108,24 @@ function placeBubble(spot: Box | null, bw: number, bh: number): { top: number; l
 
 export function GuideTour({ title, steps, onClose }: { title: string; steps: TourStep[]; onClose: () => void }) {
   const source = steps.length > 0 ? steps : [READY];
+  const sourceRef = useRef(source);
   const [list, setList] = useState<TourStep[]>(() => visibleSteps(source));
-  const [index, setIndex] = useState(0);
+  // 지금 단계는 순번이 아니라 단계 자체로 쥔다.
+  const [cur, setCur] = useState<TourStep>(() => visibleSteps(source)[0]);
+  const [waiting, setWaiting] = useState<boolean>(() => stillLoading(source));
   const [spot, setSpot] = useState<Box | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const nextRef = useRef<HTMLButtonElement>(null);
   const frame = useRef(0);
+  const pendingNext = useRef(false);
   const titleId = useId();
   const bodyId = useId();
 
-  const step = list[Math.min(index, list.length - 1)];
+  const found = list.indexOf(cur);
+  const index = found >= 0 ? found : 0;
+  const step = list[index];
   // 링은 화면 가장자리에 붙은 요소(사이드바 로고 등)에서도 잘리지 않게 화면 안쪽으로 당긴다.
   const ring = spot ? insetToViewport(spot) : null;
   const last = index >= list.length - 1;
@@ -142,42 +169,92 @@ export function GuideTour({ title, steps, onClose }: { title: string; steps: Tou
     schedule();
   }, [step, measure, schedule]);
 
-  // 스크롤·창 크기·내용 변화 때 다시 잰다. 창 크기가 바뀌면 보이는 단계도 다시 센다.
-  const listRef = useRef(list);
-  const indexRef = useRef(index);
-  listRef.current = list;
-  indexRef.current = index;
-  const sourceRef = useRef(source);
+  // 보이는 단계를 다시 센다. 보던 단계가 사라졌으면 원래 순서상 그 다음(없으면 마지막) 단계로 옮긴다.
+  const recount = useCallback(() => {
+    const src = sourceRef.current;
+    const fresh = visibleSteps(src);
+    setList((prev) => (fresh.length === prev.length && fresh.every((s, i) => s === prev[i]) ? prev : fresh));
+    setCur((c) => {
+      if (fresh.includes(c)) return c;
+      const at = src.indexOf(c);
+      return fresh.find((s) => src.indexOf(s) >= at) ?? fresh[fresh.length - 1];
+    });
+    if (!stillLoading(src)) setWaiting(false);
+  }, []);
+
+  // 스크롤·창 크기·화면 변화 때 단계 수와 위치를 다시 잰다.
   useEffect(() => {
+    let timer = 0;
+    const later = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        recount();
+        schedule();
+      }, RECOUNT_MS);
+    };
     const onResize = () => {
-      const prevList = listRef.current;
-      const fresh = visibleSteps(sourceRef.current);
-      const same = fresh.length === prevList.length && fresh.every((s, i) => s === prevList[i]);
-      if (!same) {
-        const cur = prevList[Math.min(indexRef.current, prevList.length - 1)];
-        const at = fresh.indexOf(cur);
-        setList(fresh);
-        setIndex(at >= 0 ? at : Math.min(indexRef.current, fresh.length - 1));
-      }
+      recount();
       schedule();
     };
+    const mo =
+      typeof MutationObserver !== "undefined"
+        ? new MutationObserver((records) => {
+            // 투어 자신(말풍선·링)이 바뀐 것은 무시한다.
+            const root = rootRef.current;
+            if (root && records.every((r) => root.contains(r.target))) return;
+            later();
+          })
+        : null;
+    mo?.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-tour", "class", "style", "hidden"],
+    });
     window.addEventListener("scroll", schedule, { capture: true, passive: true });
     window.addEventListener("resize", onResize);
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(schedule) : null;
     ro?.observe(document.body);
     return () => {
+      window.clearTimeout(timer);
+      mo?.disconnect();
       window.removeEventListener("scroll", schedule, { capture: true });
       window.removeEventListener("resize", onResize);
       ro?.disconnect();
       cancelAnimationFrame(frame.current);
     };
-  }, [schedule]);
+  }, [recount, schedule]);
 
-  const next = useCallback(() => {
+  // 기다림은 최대 10초. 지나면 보이는 단계만으로 진행한다.
+  useEffect(() => {
+    if (!waiting) return;
+    const t = window.setTimeout(() => {
+      recount();
+      setWaiting(false);
+    }, WAIT_MS);
+    return () => window.clearTimeout(t);
+  }, [waiting, recount]);
+
+  const advance = useCallback(() => {
     if (last) onClose();
-    else setIndex((i) => Math.min(i + 1, list.length - 1));
-  }, [last, list.length, onClose]);
-  const prev = useCallback(() => setIndex((i) => Math.max(i - 1, 0)), []);
+    else setCur(list[index + 1]);
+  }, [last, list, index, onClose]);
+
+  // 기다리는 중에 「다음」을 누르면 기억해 뒀다가, 화면이 다 그려지는 즉시 넘어간다.
+  const next = useCallback(() => {
+    if (waiting) pendingNext.current = true;
+    else advance();
+  }, [waiting, advance]);
+  const prev = useCallback(() => {
+    if (index > 0) setCur(list[index - 1]);
+  }, [index, list]);
+
+  useEffect(() => {
+    if (!waiting && pendingNext.current) {
+      pendingNext.current = false;
+      advance();
+    }
+  }, [waiting, advance]);
 
   // 키보드: ← → 이동, Enter 다음(말풍선 버튼에 초점이 있으면 그 버튼이 처리), Esc 닫기, Tab 은 말풍선 안에서만.
   useEffect(() => {
@@ -231,7 +308,7 @@ export function GuideTour({ title, steps, onClose }: { title: string; steps: Tou
     "px-3 py-1.5 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40 disabled:cursor-not-allowed";
 
   return createPortal(
-    <div className="fixed inset-0 z-[80]">
+    <div ref={rootRef} className="fixed inset-0 z-[80]">
       {/* 페이지 클릭을 막는 투명 막. 그 위에 강조 요소 자리만 비우고 네 조각으로 어둡게 덮는다. */}
       <div aria-hidden className="absolute inset-0" />
       {ring ? (
@@ -280,13 +357,20 @@ export function GuideTour({ title, steps, onClose }: { title: string; steps: Tou
             </h2>
           </div>
           <span className="num shrink-0 mt-0.5 text-xs font-medium text-muted-foreground" aria-hidden>
-            {index + 1} / {list.length}
+            {index + 1} / {waiting ? "…" : list.length}
           </span>
         </div>
         <p id={bodyId} className="mt-2 text-sm leading-relaxed text-muted-foreground">
           <RichText text={step.body} />
         </p>
+        {waiting && (
+          <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse motion-reduce:animate-none" aria-hidden />
+            화면을 불러오는 중입니다. 다 불러오면 단계가 이어집니다.
+          </p>
+        )}
         <p className="sr-only" aria-live="polite">
+          {waiting ? "화면을 불러오는 중입니다. " : ""}
           {list.length}단계 중 {index + 1}단계. {step.title}
         </p>
         <div className="mt-4 flex items-center justify-between gap-2">
@@ -301,10 +385,11 @@ export function GuideTour({ title, steps, onClose }: { title: string; steps: Tou
               ref={nextRef}
               type="button"
               onClick={next}
-              className={`${btn} hover:opacity-90`}
+              aria-disabled={waiting || undefined}
+              className={`${btn} hover:opacity-90 ${waiting ? "opacity-60 cursor-wait" : ""}`}
               style={{ backgroundColor: "var(--primary)", color: "var(--primary-foreground)" }}
             >
-              {last ? "마침" : "다음"}
+              {waiting ? "불러오는 중" : last ? "마침" : "다음"}
             </button>
           </div>
         </div>
