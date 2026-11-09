@@ -64,15 +64,25 @@ async function getImpl(request: NextRequest) {
 
     // .range(0, 99999) 는 PostgREST db-max-rows(1000)에 막혀 무력했다 → fetchAll 로 전량 조회.
     // 정렬이 없으면 어느 1000행이 올지 비결정적이었으므로 date 정렬도 명시한다.
-    const [salesRows, adRows, funnelRows, prodRows, prevSales] = await Promise.all([
+    // 이전 기간 제품 행(형식-A 공구 차감·제품 분해용). 예전엔 위 5개가 끝난 뒤 따로 기다렸다 → 같이 보낸다(2026-11-04).
+    let prevProdQ = supabase.from("product_sales").select("brand,product,channel,lineup,revenue").gte("date", prevFrom).lte("date", prevTo);
+    if (brand !== "all") prevProdQ = prevProdQ.in("brand", expandBrands(brand));
+    const [salesRows, adRows, funnelRows, prodRows, prevSales, prevProdRows] = await Promise.all([
       fetchAll(salesQ.order("date")),
       fetchAll(adQ.order("date")),
       fetchAll(funnelQ.order("date")),
       fetchAll(prodQ.order("date")),
       fetchAll(prevSalesQ.order("date")),
+      fetchAll(prevProdQ.order("date")),
     ]);
 
-    const insights: { type: "critical" | "warning" | "opportunity" | "info"; text: string; detail?: string; actions?: string[] }[] = [];
+    // ★ 2026-11-04: 기계가 고정 문장으로 내던 권고("예산 50% 감축", "일 예산 20% 증액", "리타겟팅 신설" 등)를 뺐다.
+    //   의도적으로 줄인 예산(예: 밸런스랩 메타 10-29 감액)과 충돌하는 처방을 규칙이 그대로 냈기 때문이다.
+    //   카드에는 수치·원천·기준만 남긴다. 무엇을 할지는 사람이 정한다.
+    //   예외: 전환 추적 미연동 카드의 점검 항목은 예산 처방이 아니라 측정 복구 순서라 남긴다(checks).
+    const insights: { type: "critical" | "warning" | "opportunity" | "info"; text: string; detail?: string; checks?: string[] }[] = [];
+    /** 금액을 만원 단위로. 예: 1234567 → "123만원" */
+    const man = (v: number) => `${Math.round(v / 10000).toLocaleString()}만원`;
 
     // ===== REVENUE ANALYSIS =====
     // ★ 공구 스코프를 dashboard 와 일치시킨다.
@@ -95,10 +105,12 @@ async function getImpl(request: NextRequest) {
     const totalAdSpend = adRows.reduce((s, r) => s + Number(r.spend), 0);
     const roas = totalAdSpend > 0 ? totalRevenue / totalAdSpend : 0;
 
+    // 원천: 매출 = 판매 원장(daily_sales, 공구 제외) / 광고비 = 광고비 원장(daily_ad_spend, GA4 제외)
+    const roasDetail = `매출 ${man(totalRevenue)} ÷ 광고비 ${man(totalAdSpend)}. 매출은 판매 원장(공구 제외), 광고비는 광고비 원장 기준`;
     if (roas < 2.0 && totalAdSpend > 0) {
-      insights.push({ type: "critical", text: `전체 ROAS ${roas.toFixed(2)}x — 목표 3.0x 미달`, detail: `매출 ₩${(totalRevenue/10000).toFixed(0)}만 대비 광고비 ₩${(totalAdSpend/10000).toFixed(0)}만`, actions: ["ROAS 1.0 미만 채널 예산 50% 감축", "상위 ROAS 크리에이티브 예산 집중", "리타겟팅 캠페인 신설 (ROAS 3x+ 기대)"] });
+      insights.push({ type: "critical", text: `전체 ROAS ${roas.toFixed(2)}x (기준 3.0x)`, detail: roasDetail });
     } else if (roas >= 3.0) {
-      insights.push({ type: "opportunity", text: `전체 ROAS ${roas.toFixed(2)}x — 양호! 예산 증액 검토`, detail: `현재 효율이 좋으므로 일 예산 증액 시 매출 성장 가능`, actions: ["일 예산 20% 증액 테스트 (1주)", "상위 소재 A/B 변형 추가", "유사 타겟 확장"] });
+      insights.push({ type: "info", text: `전체 ROAS ${roas.toFixed(2)}x (기준 3.0x 이상)`, detail: roasDetail });
     }
 
     // ===== CHANNEL ANALYSIS =====
@@ -117,11 +129,11 @@ async function getImpl(request: NextRequest) {
       //    "예산 50% 감축"을 권고하면 멀쩡한 채널을 끄게 된다(2026-08 리뷰: 메타가 이 상태였다).
       //    → 데이터 품질 이슈로 분리한다.
       if (d.spend > 100000 && d.convValue <= 0) {
-        insights.push({ type: "warning", text: `${chLabel} 전환 추적 미연동 — 성과 판단 불가`, detail: `광고비 ₩${(d.spend/10000).toFixed(0)}만을 집행했으나 전환값이 0으로 수집됩니다. 실제 성과가 0이라는 뜻이 아니라 측정이 안 되는 상태이므로, 이 채널은 예산 판단에서 제외하고 추적부터 붙여야 합니다.`, actions: ["픽셀/전환 API 연동 상태 확인", "판매처(스마트스토어 등) 전환이 플랫폼에 안 잡히는 구조인지 확인", "추적 복구 전까지 ROAS 기준 증감 판단 보류"] });
+        insights.push({ type: "warning", text: `${chLabel} 전환 추적 미연동: 성과 판단 불가`, detail: `광고비 ${man(d.spend)}을 집행했으나 전환값이 0으로 수집됩니다. 실제 성과가 0이라는 뜻이 아니라 측정이 안 되는 상태이므로, 이 채널은 예산 판단에서 제외하고 추적부터 붙여야 합니다.`, checks: ["픽셀/전환 API 연동 상태 확인", "판매처(스마트스토어 등) 전환이 플랫폼에 안 잡히는 구조인지 확인", "추적 복구 전까지 ROAS 기준 증감 판단 보류"] });
       } else if (d.spend > 100000 && chRoas < 1.0) {
-        insights.push({ type: "critical", text: `${chLabel} ROAS ${chRoas.toFixed(2)}x — 적자 채널`, detail: `광고비 ₩${(d.spend/10000).toFixed(0)}만 투입 대비 전환매출 ₩${(d.convValue/10000).toFixed(0)}만`, actions: [`${chLabel} 일 예산 50% 감축`, "하위 소재 OFF 후 2주 모니터링", "2주간 모니터링 후 중단 여부 결정"] });
+        insights.push({ type: "critical", text: `${chLabel} 플랫폼 ROAS ${chRoas.toFixed(2)}x (기준 1.0x 미만)`, detail: `전환매출 ${man(d.convValue)} ÷ 광고비 ${man(d.spend)}. 전환매출은 매체가 신고한 값이라 실제 판매와 다를 수 있습니다` });
       } else if (d.spend > 100000 && chRoas < 2.0) {
-        insights.push({ type: "warning", text: `${chLabel} ROAS ${chRoas.toFixed(2)}x — 효율 저조`, detail: `크리에이티브 교체 또는 타겟팅 재설정 권장`, actions: ["하위 20% 소재 OFF", "새 크리에이티브 2-3개 테스트", "타겟 연령/관심사 재설정"] });
+        insights.push({ type: "warning", text: `${chLabel} 플랫폼 ROAS ${chRoas.toFixed(2)}x (기준 2.0x 미만)`, detail: `전환매출 ${man(d.convValue)} ÷ 광고비 ${man(d.spend)}. 전환매출은 매체가 신고한 값이라 실제 판매와 다를 수 있습니다` });
       }
     }
 
@@ -144,10 +156,7 @@ async function getImpl(request: NextRequest) {
       const aov = d.orders > 0 ? d.revenue / d.orders : 0;
       const revShare = totalRevenue > 0 ? (d.revenue / totalRevenue) * 100 : 0;
       if (revShare > 40) {
-        insights.push({ type: "info", text: `${brandLabels[brand] || brand} 매출 비중 ${revShare.toFixed(0)}% — 핵심 브랜드`, detail: `AOV ₩${Math.round(aov).toLocaleString()}, 총 ${d.orders}건` });
-      }
-      if (d.orders > 10 && aov > 50000) {
-        insights.push({ type: "opportunity", text: `${brandLabels[brand] || brand} AOV ₩${Math.round(aov).toLocaleString()} — 고가 상품 번들 기회`, detail: `객단가가 높은 고객군. 업셀/크로스셀 전략 검토` });
+        insights.push({ type: "info", text: `${brandLabels[brand] || brand} 매출 비중 ${revShare.toFixed(0)}% (기준 40% 초과)`, detail: `객단가 ${Math.round(aov).toLocaleString()}원, 주문 ${d.orders.toLocaleString()}건. 판매 원장 기준(공구 제외)` });
       }
     }
 
@@ -162,7 +171,7 @@ async function getImpl(request: NextRequest) {
     if (totalSessions > 0 && totalPurchases > 0) {
       const convRate = (totalPurchases / totalSessions) * 100;
       if (convRate < 1.0) {
-        insights.push({ type: "warning", text: `전환율 ${convRate.toFixed(2)}% — 업계 평균(2-3%) 미달`, detail: `세션 ${totalSessions} 중 ${totalPurchases}건 구매. 랜딩페이지 및 상품페이지 최적화 필요` });
+        insights.push({ type: "warning", text: `전환율 ${convRate.toFixed(2)}% (기준 1.0% 미만)`, detail: `주문 ${totalPurchases.toLocaleString()}건 ÷ 세션 ${totalSessions.toLocaleString()}. 주문은 판매 원장(전 채널), 세션은 퍼널 원장(수집되는 채널만)입니다` });
       }
     }
     // 이탈률은 장바구니가 구매보다 클 때만 성립한다. 장바구니는 일부 채널만 수집되는데
@@ -170,9 +179,9 @@ async function getImpl(request: NextRequest) {
     if (totalCartAdds > 0 && totalPurchases <= totalCartAdds) {
       const abandonRate = 100 - (totalPurchases / totalCartAdds) * 100;
       if (abandonRate > 70) {
-        insights.push({ type: "critical", text: `장바구니 이탈률 ${abandonRate.toFixed(0)}% — 심각`, detail: `간편결제 추가, 무료배송 기준 조정, 장바구니 리마인더 설정 권장` });
+        insights.push({ type: "critical", text: `장바구니 이탈률 ${abandonRate.toFixed(0)}% (기준 70% 초과)`, detail: `1 - 주문 ${totalPurchases.toLocaleString()}건 ÷ 장바구니 ${totalCartAdds.toLocaleString()}건. 장바구니는 일부 채널만 수집됩니다` });
       } else if (abandonRate > 50) {
-        insights.push({ type: "warning", text: `장바구니 이탈률 ${abandonRate.toFixed(0)}% — 개선 여지`, detail: `배송비 사전 표시, 결제 단계 간소화 검토` });
+        insights.push({ type: "warning", text: `장바구니 이탈률 ${abandonRate.toFixed(0)}% (기준 50% 초과)`, detail: `1 - 주문 ${totalPurchases.toLocaleString()}건 ÷ 장바구니 ${totalCartAdds.toLocaleString()}건. 장바구니는 일부 채널만 수집됩니다` });
       }
     }
 
@@ -189,7 +198,7 @@ async function getImpl(request: NextRequest) {
       const topProd = topProds[0];
       const topShare = totalRevenue > 0 ? (topProd[1].revenue / totalRevenue) * 100 : 0;
       if (topShare > 20) {
-        insights.push({ type: "info", text: `'${topProd[0]}' 매출 비중 ${topShare.toFixed(0)}% — 히어로 상품`, detail: `이 제품 중심 마케팅 강화 + 연관 상품 번들 추천` });
+        insights.push({ type: "info", text: `'${topProd[0]}' 매출 비중 ${topShare.toFixed(0)}% (기준 20% 초과)`, detail: `${man(topProd[1].revenue)} ÷ 전체 ${man(totalRevenue)}. 제품 판매 원장 기준(공구 제외)` });
       }
     }
 
@@ -207,7 +216,7 @@ async function getImpl(request: NextRequest) {
       const share = totalRevenue > 0 ? (rev / totalRevenue) * 100 : 0;
       const chLabel = CHANNEL_LABELS[ch] || ch;
       if (share > 40) {
-        insights.push({ type: "warning", text: `${chLabel} 매출 비중 ${share.toFixed(0)}% — 채널 집중 리스크`, detail: `특정 채널 의존도가 높습니다. 자사몰 비중 확대 전략 필요` });
+        insights.push({ type: "info", text: `${chLabel} 매출 비중 ${share.toFixed(0)}% (기준 40% 초과)`, detail: `${man(rev)} ÷ 전체 ${man(totalRevenue)}. 판매 원장 기준(공구 제외)` });
       }
     }
 
@@ -215,12 +224,6 @@ async function getImpl(request: NextRequest) {
     // 이전 기간 비교 (prevSales 는 위에서 병렬로 이미 가져옴)
     // ★ 이전 기간에도 현재와 똑같이 형식-A 공구를 빼야 비교가 성립한다.
     //   한쪽만 차감하면 밸런스랩이 항상 "매출 59% 하락"으로 잡혔다(실제로는 +76% 성장, 2026-08 리뷰).
-    const prevProdRows = await fetchAll(
-      (brand !== "all"
-        ? supabase.from("product_sales").select("brand,product,channel,lineup,revenue").gte("date", prevFrom).lte("date", prevTo).in("brand", expandBrands(brand))
-        : supabase.from("product_sales").select("brand,product,channel,lineup,revenue").gte("date", prevFrom).lte("date", prevTo)
-      ).order("date")
-    );
     const prevFormA = sumFormA(prevProdRows);
     const prevRevenue = Math.max(0, (prevSales || []).reduce((s, r) => s + Number(r.revenue), 0) - prevFormA);
 
@@ -287,20 +290,18 @@ async function getImpl(request: NextRequest) {
         }
       }
 
-      let detail = `매출 ${revenueDropPct}% 하락 원인 분석:\n`;
+      // 원인 판정이 아니다. 어디서 줄었는지의 분해일 뿐이라 제목·본문에 '원인'을 쓰지 않는다.
+      let detail = `이전 같은 길이 기간(${prevFrom} ~ ${prevTo}) ${man(prevRevenue)} → 이번 ${man(totalRevenue)}. 10% 넘게 줄어든 항목:\n`;
       if (brandChanges.length > 0) detail += `\n📦 브랜드: ${brandChanges.join(", ")}`;
       if (channelChanges.length > 0) detail += `\n🏪 채널: ${channelChanges.join(", ")}`;
       if (prodChanges.length > 0) detail += `\n🏷️ 제품: ${prodChanges.join(", ")}`;
+      // 판매 원장은 며칠 늦게 들어온다. 기간 끝이 최근이면 감소의 일부는 아직 안 들어온 매출일 수 있다.
+      detail += `\n\n판매 원장은 며칠 늦게 들어와 기간 끝 며칠은 낮게 잡힐 수 있습니다.`;
 
       insights.unshift({
         type: "critical",
-        text: `📉 매출 ${revenueDropPct}% 하락 — 자동 원인 분석`,
+        text: `매출 ${revenueDropPct}% 감소 (이전 같은 기간 대비, 기준 15%)`,
         detail,
-        actions: [
-          brandChanges.length > 0 ? `${brandChanges[0]} 브랜드 집중 점검` : "브랜드별 매출 확인",
-          channelChanges.length > 0 ? `${channelChanges[0]} 채널 광고/프로모션 확인` : "채널별 유입 확인",
-          "경쟁사 프로모션/시즌 영향 확인",
-        ],
       });
     }
 

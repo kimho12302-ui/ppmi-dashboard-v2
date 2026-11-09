@@ -116,7 +116,7 @@ function MediaBudgetInner() {
 
   const formatValue = (v: number) => {
     if (viewMode === "spend") return formatCurrency(v);
-    return v.toLocaleString();
+    return v.toLocaleString("ko-KR");
   };
 
   // CSV 다운로드
@@ -138,27 +138,29 @@ function MediaBudgetInner() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `매체예산분배_${from}_${to}.csv`;
+    a.download = `매체별집행_${from}_${to}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }, [rows, channels, viewMode, from, to, totals, grandTotal, getLabel]);
 
+  // "YYYY-MM-DD" 는 UTC 자정으로 읽힌다. 로컬 접근자(getDay 등)를 쓰면 UTC 보다 늦은 시간대에서
+  // 하루 앞 요일이 나온다 → UTC 접근자로 읽는다(2026-11-04, KST 통일).
   const formatDate = (d: string) => {
-    const dt = new Date(d);
+    const dt = new Date(`${d}T00:00:00Z`);
     const days = ["일", "월", "화", "수", "목", "금", "토"];
-    return `${dt.getMonth() + 1}/${dt.getDate()} (${days[dt.getDay()]})`;
+    return `${dt.getUTCMonth() + 1}/${dt.getUTCDate()} (${days[dt.getUTCDay()]})`;
   };
 
   if (loading) {
     return (
-      <PageShell title="매체예산 분배" description="매체별 광고비 일별 내역">
+      <PageShell title="매체별 집행" description="매체별 광고비 일별 내역">
         <div className="h-64 flex items-center justify-center text-muted-foreground">로딩 중...</div>
       </PageShell>
     );
   }
 
   return (
-    <PageShell title="매체예산 분배" description={`매체별 광고비 일별 내역 (${rows.length}일)`}>
+    <PageShell title="매체별 집행" description={`매체별 광고비 일별 내역 (${rows.length}일)`}>
       {/* 요약 KPI */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-card border rounded-lg p-3">
@@ -167,11 +169,11 @@ function MediaBudgetInner() {
         </div>
         <div className="bg-card border rounded-lg p-3">
           <div className="text-xs text-muted-foreground">총 노출</div>
-          <div className="text-lg font-bold">{grandTotal.impressions.toLocaleString()}</div>
+          <div className="text-lg font-bold">{grandTotal.impressions.toLocaleString("ko-KR")}회</div>
         </div>
         <div className="bg-card border rounded-lg p-3">
           <div className="text-xs text-muted-foreground">총 클릭</div>
-          <div className="text-lg font-bold">{grandTotal.clicks.toLocaleString()}</div>
+          <div className="text-lg font-bold">{grandTotal.clicks.toLocaleString("ko-KR")}회</div>
         </div>
         <div className="bg-card border rounded-lg p-3">
           <div className="text-xs text-muted-foreground">평균 CTR</div>
@@ -196,7 +198,7 @@ function MediaBudgetInner() {
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {m === "spend" ? "광고비" : m === "impressions" ? "노출수" : "클릭수"}
+              {m === "spend" ? "광고비(원)" : m === "impressions" ? "노출수(회)" : "클릭수(회)"}
             </button>
           ))}
         </div>
@@ -285,7 +287,7 @@ function MediaBudgetInner() {
                               v === 0 ? "text-muted-foreground/40" : ""
                             }`}
                           >
-                            {v === 0 ? "—" : formatValue(v)}
+                            {v === 0 ? "-" : formatValue(v)}
                           </td>
                         );
                       })}
@@ -305,7 +307,7 @@ function MediaBudgetInner() {
                   </td>
                   {channels.map((ch) => (
                     <td key={ch} className="py-2.5 px-3 text-right border-r text-xs font-bold">
-                      {getValue(totals[ch]) === 0 ? "—" : formatValue(getValue(totals[ch]))}
+                      {getValue(totals[ch]) === 0 ? "-" : formatValue(getValue(totals[ch]))}
                     </td>
                   ))}
                 </tr>

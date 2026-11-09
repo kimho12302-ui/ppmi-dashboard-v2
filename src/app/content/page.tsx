@@ -101,7 +101,7 @@ function ViewSwitch({ view, onChange }: { view: View; onChange: (v: View) => voi
 
 export default function ContentPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">Loading...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
       <ContentInner />
     </Suspense>
   );

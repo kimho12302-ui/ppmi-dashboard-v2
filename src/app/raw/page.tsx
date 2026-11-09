@@ -4,7 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
-import { formatNumber, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 type TableName = "daily_sales" | "daily_ad_spend" | "daily_funnel" | "product_sales" | "keyword_performance";
 
@@ -41,12 +41,11 @@ function RawInner() {
     return Object.keys(rows[0]);
   }, [rows]);
 
+  // 원본 대조용 화면이라 숫자를 줄이지 않는다(예전엔 "11만" 처럼 축약돼 id·금액을 시트와 맞춰 볼 수 없었다, 2026-11-04).
+  // 객체·배열 칸은 JSON 그대로.
   const formatValue = (val: unknown): string => {
-    if (val === null || val === undefined) return "—";
-    if (typeof val === "number") {
-      if (Math.abs(val) >= 1000) return formatNumber(val);
-      return String(val);
-    }
+    if (val === null || val === undefined) return "-";
+    if (typeof val === "object") return JSON.stringify(val);
     return String(val);
   };
 
@@ -54,7 +53,8 @@ function RawInner() {
   const downloadCSV = () => {
     if (rows.length === 0) return;
     const header = columns.join(",");
-    const body = rows.map((r) => columns.map((c) => `"${String(r[c] ?? "")}"`).join(",")).join("\n");
+    // 값 안의 큰따옴표는 두 번 써서 CSV 칸이 깨지지 않게 한다
+    const body = rows.map((r) => columns.map((c) => `"${String(r[c] ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
     const csv = `\uFEFF${header}\n${body}`;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -101,7 +101,7 @@ function RawInner() {
           ) : (
             <>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-muted-foreground">총 {formatNumber(total)}행 · {columns.length}열</span>
+                <span className="text-sm text-muted-foreground">총 {total.toLocaleString("ko-KR")}행 · {columns.length}열</span>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setPage(Math.max(0, page - 1))}
