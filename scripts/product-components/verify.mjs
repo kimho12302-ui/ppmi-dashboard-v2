@@ -106,7 +106,8 @@ for (const mo of MONTHS) {
 // 공구 판정은 src/lib/gonggu.ts isGonggu || isGongguAggregate 와 같다(밸런스랩만)
 const isGonggu = (r) => r.product !== "공구 합계" && (!!r.lineup || String(r.channel || "").startsWith("공구"));
 const isAgg = (r) => r.product === "공구 합계";
-const line = (p) => (/뉴트리션/.test(p) ? "hair_nutrition" : /중금속/.test(p) ? "hair_metal" : /타액|호르몬/.test(p) ? "saliva"
+// src/lib/brand-groups.ts BL_TEST_LINES 와 같다. 「큐모발 미네랄 추가열람」은 뉴트리션 라인(김호 2026-11-09)
+const line = (p) => (/뉴트리션|미네랄\s*추가열람/.test(p) ? "hair_nutrition" : /중금속/.test(p) ? "hair_metal" : /타액|호르몬/.test(p) ? "saliva"
   : /과민증|지연성|알러지|알레르기|음식물|IgG/i.test(p) ? "food" : /모발/.test(p) ? "hair_etc" : null);
 for (const mo of MONTHS) {
   const inMo = (r) => r.brand === "balancelab" && String(r.date).startsWith(mo);
@@ -131,7 +132,10 @@ for (const mo of MONTHS) {
 }
 
 // ── 4) 밸런스랩 제품별 손익 자체 판매 ──
-const UNIT = { nutrition: 10_000, heavy: 10_000, saliva: 36_650, food: 194_000, supplement: 30_000, paper: 0, etc: 10_000 };
+// src/lib/bl-pnl.ts PNL_PRODUCTS 와 같다. 종이결과지 재료비 4,000원(김호 2026-11-09)
+const UNIT = { nutrition: 10_000, heavy: 10_000, saliva: 36_650, food: 194_000, supplement: 30_000, paper: 4_000, etc: 10_000 };
+// src/lib/bl-pnl.ts isRevenueOnlyProduct 와 같다. 미네랄 추가열람은 매출만 더하고 수량·주문건수 0
+const revenueOnly = (p) => String(p ?? "").replace(/\s+/g, "") === "큐모발미네랄추가열람";
 const pnlKey = (p, cat) => {
   if (p.replace(/\s+/g, "") === "종이결과지") return "paper";
   if (cat === "하루가꿈" || /메디넥스|하루가꿈/.test(p)) return "supplement";
@@ -141,7 +145,7 @@ const pnlKey = (p, cat) => {
 };
 for (const mo of MONTHS) {
   const pick = (rows) => rows.filter((r) => r.brand === "balancelab" && String(r.date).startsWith(mo) && !isAgg(r) && !isGonggu(r));
-  const agg = (rows) => { const m = {}; for (const r of pick(rows)) { const k = pnlKey(r.product, r.category); const g = (m[k] ||= { q: 0, rev: 0, o: 0 }); g.q += +r.quantity || 0; g.rev += +r.revenue || 0; g.o += +r.buyers || 0; } return m; };
+  const agg = (rows) => { const m = {}; for (const r of pick(rows)) { const k = pnlKey(r.product, r.category); const g = (m[k] ||= { q: 0, rev: 0, o: 0 }); g.rev += +r.revenue || 0; if (revenueOnly(r.product)) continue; g.q += +r.quantity || 0; g.o += +r.buyers || 0; } return m; };
   const b = agg(sales), a = agg(expanded);
   console.log(`4) 밸런스랩 ${mo} 제품별 손익 · 자체 판매 (재료비 = 수량 × 단가)`);
   console.log(`   ${pad("제품", 11)}${"수량 전".padStart(8)}${"수량 후".padStart(8)}${"매출 전".padStart(13)}${"매출 후".padStart(13)}${"재료비 전".padStart(12)}${"재료비 후".padStart(12)}${"주문 전".padStart(8)}${"주문 후".padStart(8)}`);

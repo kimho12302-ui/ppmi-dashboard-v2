@@ -7,7 +7,7 @@ import { kstDate } from "@/lib/date";
 import { loadComponentIndex } from "@/lib/product-components-server";
 import { expandSales } from "@/lib/product-components";
 import {
-  PNL_PRODUCTS, GONGGU_UNTAGGED_MONTHS, classifyPnlProduct, classifyAdName, isHeavyIntentKeyword, isCampaignLabelKeyword, isMissingTable,
+  PNL_PRODUCTS, GONGGU_UNTAGGED_MONTHS, classifyPnlProduct, isRevenueOnlyProduct, classifyAdName, isHeavyIntentKeyword, isCampaignLabelKeyword, isMissingTable,
   type PnlProductKey, type PnlMonthInput, type AdBreakdown, type SalesCell, type AdTarget,
 } from "@/lib/bl-pnl";
 
@@ -20,6 +20,8 @@ import {
 //   「뉴트리션 + 맞춤 영양제」 = 뉴트리션 1 + 맞춤영양제 1(영양제 몫은 supplement 로). 수량은 품목마다,
 //   구매자 수는 대표 품목(뉴트리션)에만 남아 주문건수·배송비는 그대로다. 그래서 뉴트리션 매출 칸이
 //   종이결과지·영양제 몫만큼 9월 시트보다 작아진다. 구성표가 없으면 예전과 같다.
+//   「큐모발검사 미네랄」 = 「큐모발 미네랄 추가열람」 1(김호 2026-11-09, 키트·발송 없는 추가 결제)은
+//   뉴트리션 매출에만 더하고 수량·주문건수는 더하지 않는다(재료비·배송비 0).
 // 자체 마케팅비: 시트 손 입력값과 같은 규칙.
 //   광고비 합계(daily_ad_spend 메타·네이버 검색·네이버 쇼핑, GFA 제외)에서
 //   중금속·타액·음식물로 가를 수 있는 몫을 떼고 **나머지는 전부 뉴트리션**으로 둔다.
@@ -54,6 +56,8 @@ function emptyMonth(month: string): PnlMonthInput {
 
 function addSales(cell: SalesCell, r: Record<string, unknown>) {
   cell.revenue += Number(r.revenue) || 0;
+  // 키트·발송 없는 품목(미네랄 추가열람)은 매출만 더한다. 수량 0 → 재료비 0, 주문건수 0 → 배송비 0
+  if (isRevenueOnlyProduct(String(r.product ?? ""))) return;
   cell.quantity += Number(r.quantity) || 0;
   cell.orders += Number(r.buyers) || 0;
 }

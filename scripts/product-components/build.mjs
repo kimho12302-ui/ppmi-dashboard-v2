@@ -26,6 +26,22 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
 const SEED_FILE = join(HERE, "seed.json");
 const SQL_FILE = join(ROOT, "docs", "sql", "2026-11-09-product-components.sql");
+// 김호 11-09 답으로 바뀐 판매 상품만 다시 넣는 증분 SQL (전체 SQL 을 이미 실행한 DB 용)
+const ANSWERS_SQL_FILE = join(ROOT, "docs", "sql", "2026-11-09-product-components-answers.sql");
+const ANSWERED_1109 = [
+  ["nutty", "냠 단호박_낱개"],
+  ["nutty", "바삭! 닭가슴살 * 3개"],
+  ["nutty", "크리스마스 선물세트"],
+  ["nutty", "크리스마스 패키지"],
+  ["nutty", "설날 선물세트"],
+  ["balancelab", "큐모발검사 미네랄"],
+];
+// 원가표(product_costs, 설정 「제품 원가」 탭) 제조원가. 김호 11-09 답
+const COST_FIXES_1109 = [
+  // [판매 상품명, brand, 제조원가, 새로 넣을 때 쓸 판매가·배송비·분류, 근거]
+  ["냠 단호박_낱개", "nutty", 1_000, [0, 3_000, "간식"], "김호 11-09 답: 원가 1,000원 (2026-11-09 조회 때 이미 1,000)"],
+  ["종이결과지", "balancelab", 4_000, [4_000, 3_000, "밸런스랩"], "김호 11-09 답: 종이결과지 재료비 4,000원, 마진 0 (2026-11-09 조회 때 1,000)"],
+];
 const SINCE = "2025-01-01";
 
 // ── 기본 품목 정가 (세트 매출을 나눌 때만 쓴다) ──────────────────────────
@@ -54,6 +70,13 @@ const PRICE = {
 // ── 너티: 이름별로 정한다 (쿠팡 긴 이름은 무게가 팩당 무게라 일반 규칙으로 못 푼다) ──
 const N = { yam: "냠 단호박", crisp: "바삭 닭가슴살", gum: "스트레스제로껌", bar: "에너젯바", puree: "굿모닝퓨레" };
 const one = (c, qty = 1) => [[c, qty]];
+// 김호 11-09 답: 크리스마스 선물세트·크리스마스 패키지·설날 선물세트 = 냠, 바삭, 껌, 에너젯바, 에너지퓨레 각 1개.
+//   「에너지퓨레」는 원장·상품 목록에 그 이름이 없고 너티 퓨레는 하루루틴 「굿모닝퓨레」 하나뿐이라 굿모닝퓨레로 봄(추정).
+const GIFT_SET = [[N.yam, 1], [N.crisp, 1], [N.gum, 1], [N.bar, 1], [N.puree, 1]];
+const GIFT_SET_NOTE = "냠·바삭·껌·에너젯바·에너지퓨레 각 1개. 「에너지퓨레」는 원장·상품 목록에 없는 이름이고 너티 퓨레는 굿모닝퓨레 하나뿐이라 굿모닝퓨레로 봄(추정)";
+
+/** 밸런스랩 「큐모발검사 미네랄」을 푼 기본 품목. src/lib/bl-pnl.ts·brand-groups.ts 가 이 이름을 그대로 본다 */
+const MINERAL_ADDON = "큐모발 미네랄 추가열람";
 
 /** [판매 상품명, 구성 [[품목, 수량]...], note, needs_review]: 판단이 들어간 줄(source manual) */
 const MANUAL = {
@@ -66,13 +89,16 @@ const MANUAL = {
       "쿠팡 이름. 20g×8 = 냠 단호박 한 팩, 단가 8,900 = 쿠팡 냠 단호박 최빈가. 「8개」는 팩 안 조각 수"],
     ["단호박 고구마 양갱 부드러운 노견 간식 부드러운 수제 영양간식 고구마+단호박, 640g, 4개", one(N.yam, 4),
       "품목코드 P00000CK_3 = 냠 단호박 4개입(원가 18,000 = 4,500×4), 640g = 160g×4"],
-    ["냠 단호박_낱개", one(N.yam, 2),
-      "판단: 2개 묶음으로 봄. 원가표 9,000 = 냠 4,500×2, 쿠팡 단가 16,850 = 냠 8,900의 1.9배. 원장에 「냠 단호박 2개」 이름이 따로 없음", true],
+    // 김호 11-09 답: 냠을 뜯어 1개(낱개)만 파는 상품, 원가 1,000원. 냠 단호박 기본 품목으로 풀지 않고 자기 자신 1개.
+    //   (예전 판단 「냠 2개 묶음」은 틀림.) 품목 이름은 원가표(product_costs)·상품 목록과 같은 「냠 단호박_낱개」.
+    ["냠 단호박_낱개", one("냠 단호박_낱개"),
+      "김호 11-09 답: 냠을 뜯어 1개(낱개)만 파는 상품, 원가 1,000원(냠 2개 묶음 아님). 냠 단호박으로 풀지 않고 별도 품목 1개. " +
+      "김호는 실제 판매도 안 한다고 했으나 원장에는 2026-08~11 스마트스토어·쿠팡 판매(개당 16,850~30,000원)가 있음, 충돌 보고"],
     ["너티 강아지 닭가슴살간식 수제간식 바삭칩 개과자 쿠키 80g 1개 닭가슴살", one(N.crisp),
       "쿠팡 이름. 80g 1개 = 바삭 닭가슴살 한 팩(단가 6,550 = 쿠팡 바삭 최빈가)"],
     ["너티 강아지 닭가슴살 수제간식 바삭칩 개과자 쿠키 닭가슴살, 80g, 1개", one(N.crisp), "상품 목록 이름(광고 연결용)"],
     ["바삭! 닭가슴살 * 3개", one(N.crisp, 3),
-      "판단: 이름대로 바삭 3개. 단, 상품 목록 품목코드 P00000CK_2 가 원가표에서는 「냠 단호박 3개입」이라 어긋남", true],
+      "김호 11-09 답: 상품명이 맞음(바삭 3개). 원가표 품목코드 P00000CK_2 가 「냠 단호박 3개입」으로 된 어긋남은 김호 확인 예정"],
     ["바삭! 닭가슴살 * 4개", one(N.crisp, 4), "품목코드 P00000CJ_3 = 바삭 4개입(원가 14,000 = 3,500×4)"],
     ["너티 하루루틴 에너젯바 2개입", one(N.bar, 2), "쿠팡 이름. 매출보고시트 「에너젯바 2개입」"],
     ["너티 강아지 에너지스틱 고단백 저칼로리 수제간식 15p, 3개, 165g, 닭가슴살 (닭가슴살 165g 3개)", one(N.bar, 3),
@@ -87,15 +113,19 @@ const MANUAL = {
     ["사운드 세트", [[N.yam, 1], [N.crisp, 1]], "2025년 옛 이름. 사운드 라인 = 냠·바삭, 단가 17,900 = 「사운드시리즈 냠+바삭」"],
     ["하루루틴시리즈 3종", [[N.gum, 1], [N.bar, 1], [N.puree, 1]], "하루루틴 라인 3종(상품 목록 라인업 하루루틴 = 껌·에너젯바·퓨레) 1개씩"],
     ["하루루틴 세트", [[N.gum, 1], [N.bar, 1], [N.puree, 1]], "2025년 옛 이름. 하루루틴시리즈 3종과 같다고 봄"],
-    ["크리스마스 선물세트", one("크리스마스 선물세트"), "구성 미확인. 풀지 않고 그대로 둠(원가 40,000 이 5종 단품 원가 합과 안 맞음)", true],
-    ["크리스마스 패키지", one("크리스마스 선물세트"), "2025년 옛 이름. 구성 미확인, 그대로 둠", true],
-    ["설날 선물세트", one("설날 선물세트"), "구성 미확인. 풀지 않고 그대로 둠(원가 30,000)", true],
+    ["크리스마스 선물세트", GIFT_SET, `김호 11-09 답: ${GIFT_SET_NOTE}`],
+    ["크리스마스 패키지", GIFT_SET, `2025년 옛 이름. 김호 11-09 답: ${GIFT_SET_NOTE}`],
+    ["설날 선물세트", GIFT_SET, `김호 11-09 답: ${GIFT_SET_NOTE}`],
     ["4종 맛보기 세트", one("4종 맛보기 세트"), "맛보기 샘플(단가 100원 안팎). 품목 수량을 부풀리지 않게 풀지 않음"],
   ],
   balancelab: [
     ["밸런스랩 큐모발검사 뉴트리션 미네랄 중금속 종합영양분석키트", one("큐모발검사 뉴트리션"),
       "상품 목록 YSIET0001_G21(공구 숨꿀) = 뉴트리션. 단가 83,000"],
-    ["큐모발검사 미네랄", one("큐모발검사 미네랄"), "1건 27,000. 어느 품목과도 단가가 안 맞아 그대로 둠", true],
+    // 김호 11-09 답: 중금속만 산 사람이 미네랄 결과를 뒤늦게 보려고 추가 결제만 하는 상품. 새 키트·발송 없음.
+    //   손익은 뉴트리션 매출로 보되 수량·재료비·배송비 0(src/lib/bl-pnl.ts isRevenueOnlyProduct), 광고 라인은 뉴트리션.
+    ["큐모발검사 미네랄", one(MINERAL_ADDON),
+      "김호 11-09 답: 중금속만 산 사람이 미네랄 결과를 뒤늦게 보려고 추가 결제만 하는 상품(새 키트·발송 없음). " +
+      "손익은 큐모발 뉴트리션 매출로 보되 판매수량·재료비·배송비 0, 제품별 광고 성과는 뉴트리션 라인으로 연결"],
   ],
   saip: [
     ["마그네타미니", one("마그네타 미니"), "띄어쓰기만 다름"],
@@ -287,6 +317,79 @@ select p.brand, count(*) as rows, count(distinct p.sale_product) as sale_product
 `;
 }
 
+function answersSql(rows) {
+  const keyOf = (brand, product) => JSON.stringify([brand, product]);
+  const keys = new Set(ANSWERED_1109.map(([b, p]) => keyOf(b, p)));
+  const picked = rows.filter((r) => keys.has(keyOf(r.brand, r.sale_product)));
+  const found = new Set(picked.map((r) => keyOf(r.brand, r.sale_product)));
+  const missing = [...keys].filter((k) => !found.has(k));
+  if (missing.length) throw new Error(`증분 SQL 대상이 시드에 없음: ${missing.join(", ")}`);
+  const values = picked.map((r) => `  (${[r.brand, r.sale_product, r.component, r.qty, r.price_share, r.source, r.needs_review, r.note].map(lit).join(", ")})`);
+  const targets = ANSWERED_1109.map(([b, p]) => `(${lit(b)}, ${lit(p)})`).join(", ");
+  const costSql = COST_FIXES_1109.map(([p, b, mc, [cp, sh, cat], why]) => `-- ${why}
+update product_costs set manufacturing_cost = ${mc} where product = ${lit(p)} and brand = ${lit(b)};
+insert into product_costs (product, brand, cost_price, manufacturing_cost, shipping_cost, category)
+select ${lit(p)}, ${lit(b)}, ${cp}, ${mc}, ${sh}, ${lit(cat)}
+ where not exists (select 1 from product_costs where product = ${lit(p)} and brand = ${lit(b)});`).join("\n\n");
+  const costTargets = COST_FIXES_1109.map(([p, b]) => `(${lit(p)}, ${lit(b)})`).join(", ");
+  return `-- ============================================================
+-- 2026-11-09  판매 상품 구성표 김호 답 반영 (증분)
+-- ============================================================
+--
+--  전제: docs/sql/2026-11-09-product-components.sql 을 이미 실행한 DB.
+--  하는 일
+--    1) 아래 판매 상품 ${ANSWERED_1109.length}개의 구성표 줄만 지우고 다시 넣는다
+--       너티  냠 단호박_낱개 → 냠 단호박_낱개 1 (냠 단호박 2 로 풀던 것 취소)
+--       너티  바삭! 닭가슴살 * 3개 → 바삭 3 그대로, 확인 필요 표시만 끔
+--       너티  크리스마스 선물세트·크리스마스 패키지·설날 선물세트 → 냠·바삭·껌·에너젯바·굿모닝퓨레 각 1
+--       밸런스랩 큐모발검사 미네랄 → 큐모발 미네랄 추가열람 1
+--    2) 원가표(product_costs) 제조원가: 냠 단호박_낱개 1,000(이미 1,000, 그대로), 종이결과지 1,000 → 4,000
+--  만든 곳: node scripts/product-components/build.mjs (전체 SQL 과 같은 시드에서 나온다)
+--  몇 번 실행해도 안전하다.
+--
+--  확인(파일 끝 두 select)
+--    첫째: 판매 상품 ${ANSWERED_1109.length}줄, rows 합 ${picked.length}, needs_review 모두 0
+--          선물세트 3개는 rows 5·share_sum 1.000001(여섯째 자리 반올림 탓, 화면은 합 1 로 다시 나눔), 나머지는 rows 1·share_sum 1
+--    둘째: 냠 단호박_낱개 manufacturing_cost 1000, 종이결과지 manufacturing_cost 4000
+-- ============================================================
+
+begin;
+
+create temp table _pc_answers (
+  brand text, sale_product text, component text, qty numeric, price_share numeric,
+  source text, needs_review boolean, note text
+) on commit drop;
+
+insert into _pc_answers (brand, sale_product, component, qty, price_share, source, needs_review, note) values
+${values.join(",\n")};
+
+delete from product_components p
+ using (select distinct brand, sale_product from _pc_answers) s
+ where p.brand = s.brand and p.sale_product = s.sale_product;
+
+insert into product_components (brand, sale_product, component, qty, price_share, source, needs_review, note)
+select brand, sale_product, component, qty, price_share, source, needs_review, note from _pc_answers;
+
+${costSql}
+
+commit;
+
+-- 확인 1: 구성표
+select brand, sale_product, count(*) as rows, round(sum(price_share), 6) as share_sum,
+       sum(needs_review::int) as needs_review,
+       string_agg(component || ' x' || qty, ', ' order by component) as parts
+  from product_components
+ where (brand, sale_product) in (${targets})
+ group by brand, sale_product order by brand, sale_product;
+
+-- 확인 2: 원가표
+select product, brand, cost_price, manufacturing_cost, shipping_cost
+  from product_costs
+ where (product, brand) in (${costTargets})
+ order by brand, product;
+`;
+}
+
 // ── main ─────────────────────────────────────────────────────────────
 const ledger = await ledgerProducts();
 const ledgerKeys = new Set(ledger.map((p) => `${p.brand}\t${p.product.replace(/\s+/g, "")}`));
@@ -322,10 +425,12 @@ const stats = Object.entries(by).map(([b, s]) => `${b} ${s.rows}줄(판매 상�
 mkdirSync(dirname(SQL_FILE), { recursive: true });
 writeFileSync(SEED_FILE, JSON.stringify({ generated_at: new Date().toISOString(), since: SINCE, rows: out }, null, 1) + "\n", "utf8");
 writeFileSync(SQL_FILE, sql(out, stats), "utf8");
+writeFileSync(ANSWERS_SQL_FILE, answersSql(out), "utf8");
 
 console.log(stats);
 console.log(`seed: ${SEED_FILE}`);
 console.log(`sql : ${SQL_FILE}`);
+console.log(`sql : ${ANSWERS_SQL_FILE} (김호 11-09 답 증분)`);
 if (skipped.length) console.log(`건너뜀: ${skipped.join(", ")}`);
 const review = out.filter((r) => r.needs_review).map((r) => `${r.brand}: ${r.sale_product} → ${r.component}×${r.qty}`);
 if (review.length) console.log(`확인 필요 ${review.length}줄:\n  ${review.join("\n  ")}`);

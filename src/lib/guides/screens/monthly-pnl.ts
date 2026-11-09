@@ -149,12 +149,12 @@ const guide: ScreenGuide = {
           head: ["제품", "재료비 단가(1개)", "자체 배송 횟수", "어떤 상품이 들어가나"],
           rows: [
             [productConfig("supplement").label, won(productConfig("supplement").unitCost), `${productConfig("supplement").selfShipTimes}회`, "상품 이름에 「메디넥스」·「하루가꿈」이 들어가거나 판매 기록 분류가 「하루가꿈」인 것, 또는 「영양제」가 들어가고 「검사」는 없는 단품. 가장 먼저 판정합니다."],
-            [label("nutrition"), won(EX_NUT.unitCost), `${EX_NUT.selfShipTimes}회`, "품목 이름에 「뉴트리션」이 들어간 것. 「+ 종이결과지」·「+ 맞춤 영양제」 세트는 뉴트리션 몫만 여기로 옵니다."],
+            [label("nutrition"), won(EX_NUT.unitCost), `${EX_NUT.selfShipTimes}회`, "품목 이름에 「뉴트리션」이 들어간 것. 「+ 종이결과지」·「+ 맞춤 영양제」 세트는 뉴트리션 몫만 여기로 옵니다. 「큐모발검사 미네랄」(중금속만 산 분이 미네랄 결과를 추가 결제로 여는 상품, 키트·발송 없음)도 매출만 여기에 더하고 판매 수량·주문건수는 0 이라 재료비·배송비가 붙지 않습니다."],
             [label("heavy"), won(productConfig("heavy").unitCost), `${productConfig("heavy").selfShipTimes}회`, "상품 이름에 「중금속」이 들어간 것."],
             [label("saliva"), won(productConfig("saliva").unitCost), `${productConfig("saliva").selfShipTimes}회`, "상품 이름에 「타액」이나 「호르몬」이 들어간 것."],
             [label("food"), won(EX_FOOD.unitCost), `${EX_FOOD.selfShipTimes}회`, "상품 이름에 「과민증」·「지연성」·「알러지」·「알레르기」·「음식물」·「IgG」 중 하나가 들어간 것."],
-            [PAPER.label, won(PAPER.unitCost), `${PAPER.selfShipTimes}회`, "세트에서 풀려 나온 「종이결과지」 몫. 검사와 같이 나가 배송비를 따로 잡지 않습니다. 재료비 단가는 아직 확인 전이라 0원입니다. 버튼이 없고 「합계」에만 들어갑니다."],
-            [ETC.label, won(ETC.unitCost), `${ETC.selfShipTimes}회`, "위 어디에도 안 맞는 상품(옵션 없는 「큐모발검사」, 「큐모발검사 미네랄」 등). 버튼이 없고 「합계」에만 들어갑니다."],
+            [PAPER.label, won(PAPER.unitCost), `${PAPER.selfShipTimes}회`, "세트에서 풀려 나온 「종이결과지」 몫. 검사와 같이 나가 배송비를 따로 잡지 않습니다. 재료비는 판매가와 같은 4,000원이라(김호님 확정) 마진이 0 입니다. 세트 매출을 정가 비율로 나눈 몫이라 할인 판매에서는 몫이 4,000원보다 조금 작아 마진이 약간 마이너스로 보일 수 있습니다. 버튼이 없고 「합계」에만 들어갑니다."],
+            [ETC.label, won(ETC.unitCost), `${ETC.selfShipTimes}회`, "위 어디에도 안 맞는 상품(옵션 없는 「큐모발검사」 등). 버튼이 없고 「합계」에만 들어갑니다."],
           ],
         },
         { kind: "h", text: "「합계」 버튼" },
@@ -439,7 +439,7 @@ const guide: ScreenGuide = {
         {
           kind: "qa",
           q: "다섯 제품 표를 더한 값과 「합계」가 안 맞아요.",
-          a: `「합계」에는 버튼이 없는 「${ETC.label}」(옵션 없는 큐모발검사, 큐모발검사 미네랄 등)가 같이 들어갑니다. 그 몫만큼 「합계」가 큽니다. 공헌 이익율은 더한 값으로 다시 계산하므로 제품별 이익율 평균과도 다릅니다.`,
+          a: `「합계」에는 버튼이 없는 「${PAPER.label}」·「${ETC.label}」(옵션 없는 큐모발검사 등)가 같이 들어갑니다. 그 몫만큼 「합계」가 큽니다. 공헌 이익율은 더한 값으로 다시 계산하므로 제품별 이익율 평균과도 다릅니다.`,
         },
         {
           kind: "qa",
