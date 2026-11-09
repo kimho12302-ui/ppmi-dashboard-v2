@@ -54,6 +54,7 @@ function KeywordsInner() {
   usePrefetch([(tab === "keywords" || tab === "naver") && (brand === "balancelab" || brand === "all") ? saChangesUrl(brand) : null]);
 
   const keywords = useMemo(() => data?.keywords || [], [data]);
+  const showSaLog = brand === "balancelab" || brand === "all";
 
   /* 플랫폼 목록 */
   const platforms = useMemo(() => {
@@ -207,10 +208,11 @@ function KeywordsInner() {
       {tab === "gsc" && <GscSection brand={brand} from={from} to={to} />}
       {tab === "coupang" && <CoupangKeywordSection brand={brand} from={from} to={to} />}
       {tab === "naver" && <NaverSearchTermSection brand={brand} from={from} to={to} />}
+      {/* 밸런스랩 검색광고는 Claude 가 직접 조정한다(2026-10-12~). 무엇을 언제 바꿨고 그 뒤 어떻게 됐는지.
+          숫자(KPI·표)를 먼저 보고 이력은 그 아래에서 본다(2026-11-04, 예전엔 KPI 위에 있었다). */}
+      {tab === "naver" && showSaLog && <SaChangeLog brand={brand} />}
       {tab === "demand" && <SearchDemandSection />}
 
-      {/* 밸런스랩 검색광고는 Claude 가 직접 조정한다(2026-10-12~). 무엇을 언제 바꿨고 그 뒤 어떻게 됐는지. */}
-      {(tab === "keywords" || tab === "naver") && (brand === "balancelab" || brand === "all") && <SaChangeLog brand={brand} />}
 
       {/* 수집 중단을 빈 화면으로 오독하지 않도록 최종 수집일을 명시한다(2026-08 리뷰).
           조회 기간보다 마지막 수집일이 앞서면 "이 기간엔 애초에 데이터가 없다"는 뜻. */}
@@ -234,19 +236,19 @@ function KeywordsInner() {
         <KpiCard
           size="compact"
           title="전환매출"
-          value={totals.hasConvValue ? formatCurrency(totals.convValue) : "—"}
-          confidence={totals.hasConvValue ? undefined : { level: "unmeasurable", note: "전환매출 미수집 — keyword_performance.conversion_value 컬럼 추가 필요" }}
+          value={totals.hasConvValue ? formatCurrency(totals.convValue) : "-"}
+          confidence={totals.hasConvValue ? undefined : { level: "unmeasurable", note: "전환매출 미수집: keyword_performance.conversion_value 컬럼 추가 필요" }}
         />
         <KpiCard
           size="compact"
           title="ROAS"
-          value={totals.hasConvValue ? `${totals.roas.toFixed(2)}x` : "—"}
+          value={totals.hasConvValue ? `${totals.roas.toFixed(2)}x` : "-"}
           confidence={totals.hasConvValue ? undefined : { level: "unmeasurable", note: "전환매출이 없어 계산 불가" }}
         />
         <KpiCard
           size="compact"
           title="매출 0 키워드 비용"
-          value={totals.hasConvValue ? formatCurrency(totals.wasted) : "—"}
+          value={totals.hasConvValue ? formatCurrency(totals.wasted) : "-"}
           subtitle={totals.hasConvValue ? "자를 후보" : undefined}
           confidence={totals.hasConvValue ? undefined : { level: "unmeasurable", note: "전환매출이 없어 판별 불가" }}
         />
@@ -294,28 +296,28 @@ function KeywordsInner() {
       {/* 키워드 테이블 */}
       <Card>
         <CardContent className="p-4 overflow-x-auto">
-          <h3 className="font-semibold mb-4">TOP 50 키워드</h3>
+          <h3 className="font-semibold mb-4">TOP 50 키워드 <span className="md:hidden text-xs font-normal text-muted-foreground">(좁은 화면은 4열만, 넓히면 10열)</span></h3>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left border-b text-muted-foreground">
-                <th className="pb-2 pr-4">#</th>
-                <th className="pb-2 pr-4">플랫폼</th>
+                <th className="pb-2 pr-4 hidden md:table-cell">#</th>
+                <th className="pb-2 pr-4 hidden md:table-cell">플랫폼</th>
                 <th className="pb-2 pr-4">키워드</th>
                 <th className="pb-2 pr-4 text-right">비용</th>
-                <th className="pb-2 pr-4 text-right">노출</th>
+                <th className="pb-2 pr-4 text-right hidden md:table-cell">노출</th>
                 <th className="pb-2 pr-4 text-right">클릭</th>
-                <th className="pb-2 pr-4 text-right">CTR</th>
-                <th className="pb-2 pr-4 text-right">CPC</th>
-                <th className="pb-2 pr-4 text-right">전환</th>
-                <th className="pb-2 pr-4 text-right">전환매출</th>
+                <th className="pb-2 pr-4 text-right hidden md:table-cell">CTR</th>
+                <th className="pb-2 pr-4 text-right hidden md:table-cell">CPC</th>
+                <th className="pb-2 pr-4 text-right hidden md:table-cell">전환</th>
+                <th className="pb-2 pr-4 text-right hidden md:table-cell">전환매출</th>
                 <th className="pb-2 text-right">ROAS</th>
               </tr>
             </thead>
             <tbody>
               {aggregated.map((k, i) => (
                 <tr key={`${k.platform}-${k.keyword}`} className="border-b border-border/50 hover:bg-muted/50">
-                  <td className="py-2 pr-4 text-muted-foreground">{i + 1}</td>
-                  <td className="py-2 pr-4">
+                  <td className="py-2 pr-4 text-muted-foreground hidden md:table-cell">{i + 1}</td>
+                  <td className="py-2 pr-4 hidden md:table-cell">
                     <span
                       className="text-xs px-1.5 py-0.5 rounded"
                       style={{
@@ -328,14 +330,14 @@ function KeywordsInner() {
                   </td>
                   <td className="py-2 pr-4 font-medium">{k.keyword}</td>
                   <td className="py-2 pr-4 text-right">{formatCurrency(k.cost)}</td>
-                  <td className="py-2 pr-4 text-right">{formatNumber(k.impressions)}</td>
+                  <td className="py-2 pr-4 text-right hidden md:table-cell">{formatNumber(k.impressions)}</td>
                   <td className="py-2 pr-4 text-right">{formatNumber(k.clicks)}</td>
-                  <td className="py-2 pr-4 text-right">{formatPercent(k.ctr)}</td>
-                  <td className="py-2 pr-4 text-right">{k.cpc > 0 ? formatCurrency(Math.round(k.cpc)) : "—"}</td>
-                  <td className="py-2 pr-4 text-right">{formatNumber(k.conversions)}</td>
-                  <td className="py-2 pr-4 text-right">{totals.hasConvValue ? (k.convValue > 0 ? formatCurrency(k.convValue) : "0원") : "—"}</td>
+                  <td className="py-2 pr-4 text-right hidden md:table-cell">{formatPercent(k.ctr)}</td>
+                  <td className="py-2 pr-4 text-right hidden md:table-cell">{k.cpc > 0 ? formatCurrency(Math.round(k.cpc)) : "-"}</td>
+                  <td className="py-2 pr-4 text-right hidden md:table-cell">{formatNumber(k.conversions)}</td>
+                  <td className="py-2 pr-4 text-right hidden md:table-cell">{totals.hasConvValue ? (k.convValue > 0 ? formatCurrency(k.convValue) : "0원") : "-"}</td>
                   <td className="py-2 text-right num">
-                    {!totals.hasConvValue ? "—" : k.cost === 0 ? "—" : (
+                    {!totals.hasConvValue ? "-" : k.cost === 0 ? "-" : (
                       <span style={{ color: k.roas >= 1 ? "var(--sig-ok)" : k.convValue === 0 ? "var(--sig-danger)" : "var(--sig-warn)" }}>
                         {k.roas.toFixed(2)}x
                       </span>
@@ -354,6 +356,8 @@ function KeywordsInner() {
           </table>
         </CardContent>
       </Card>
+      {showSaLog && <SaChangeLog brand={brand} />}
+
       {/* 9.3 브랜드 vs 일반 키워드 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {[
@@ -413,20 +417,20 @@ function KeywordsInner() {
         </div>
       )}
 
-      {/* 9.5 버블 그래프 (CTR vs 노출, 버블=비용) — 사분면 참조선 포함 */}
+      {/* 9.5 버블 그래프 (CTR vs 노출, 버블=비용), 사분면 참조선 포함 */}
       {bubbleData.length > 0 && (() => {
-        const avgCtr = bubbleData.reduce((s, d) => s + d.ctr, 0) / bubbleData.length;
-        const avgImp = bubbleData.reduce((s, d) => s + d.impressions, 0) / bubbleData.length;
+        // 평균 CTR 은 키워드별 CTR 의 단순 평균이 아니라 노출 가중(클릭 합 ÷ 노출 합). 노출 10회짜리 키워드의
+        // CTR 10% 가 노출 1만 회짜리와 같은 무게로 들어가 참조선이 오른쪽으로 끌려갔다(2026-11-04).
+        const sumImp = bubbleData.reduce((s, d) => s + d.impressions, 0);
+        const avgCtr = sumImp > 0 ? (bubbleData.reduce((s, d) => s + d.clicks, 0) / sumImp) * 100 : 0;
+        const avgImp = sumImp / bubbleData.length;
         return (
           <Card>
             <CardContent className="p-4">
-              <h3 className="font-semibold text-sm mb-1">키워드 사분면 — CTR vs 노출 (버블 크기 = 비용)</h3>
-              <div className="flex gap-4 text-xs text-muted-foreground mb-3 flex-wrap">
-                <span className="text-green-600 font-medium">●  스타: 고CTR + 고노출</span>
-                <span className="text-blue-600 font-medium">●  잠재력: 고CTR + 저노출</span>
-                <span className="text-yellow-600 font-medium">●  비용최적화: 저CTR + 고노출</span>
-                <span className="text-red-500 font-medium">●  재검토: 저CTR + 저노출</span>
-              </div>
+              <h3 className="font-semibold text-sm mb-1">키워드 사분면: CTR vs 노출 (버블 크기 = 비용)</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                오른쪽 = CTR 평균 이상, 위 = 노출 평균 이상. 전환은 이 그림에 없어 위치만으로 좋고 나쁨을 판정하지 않습니다(전환은 위 표 ROAS 열).
+              </p>
               <ResponsiveContainer width="100%" height={380}>
                 <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -443,7 +447,7 @@ function KeywordsInner() {
                   />
                   <ZAxis type="number" dataKey="cost" range={[40, 400]} name="비용" />
                   <ReferenceLine x={avgCtr} stroke="#94a3b8" strokeDasharray="4 4"
-                    label={{ value: `평균 CTR ${avgCtr.toFixed(1)}%`, position: "top", fontSize: 9, fill: "#94a3b8" }} />
+                    label={{ value: `평균 CTR ${avgCtr.toFixed(1)}% (노출 가중)`, position: "top", fontSize: 9, fill: "#94a3b8" }} />
                   <ReferenceLine y={avgImp} stroke="#94a3b8" strokeDasharray="4 4"
                     label={{ value: `평균 노출 ${avgImp >= 10000 ? (avgImp / 10000).toFixed(0) + "만" : formatNumber(Math.round(avgImp))}`, position: "right", fontSize: 9, fill: "#94a3b8" }} />
                   <Tooltip
@@ -464,11 +468,11 @@ function KeywordsInner() {
                       );
                     }}
                   />
-                  <Scatter name="키워드" data={bubbleData} fill="#2563eb" fillOpacity={0.6} isAnimationActive={false} />
+                  <Scatter name="키워드" data={bubbleData} fill="#475569" fillOpacity={0.55} isAnimationActive={false} />
                 </ScatterChart>
               </ResponsiveContainer>
               <p className="text-xs text-muted-foreground mt-2">
-                💡 참조선 기준: 평균 CTR·노출. 우상단 = 스타 키워드. 큰 버블 = 비용 높음.
+                참조선: CTR 은 노출 가중 평균(클릭 합 ÷ 노출 합), 노출은 키워드당 평균. 비용 상위 30개 키워드만 그립니다.
               </p>
             </CardContent>
           </Card>
@@ -530,17 +534,19 @@ function GscSection({ brand, from, to }: { brand: string; from: string; to: stri
   /* 사분면 기준선 + 분류 */
   const { avgCtr, avgImp, quadrants } = useMemo(() => {
     type BubbleItem = (typeof gscBubbleData)[number];
-    const empty = { avgCtr: 0, avgImp: 0, quadrants: { star: [] as BubbleItem[], potential: [] as BubbleItem[], improve: [] as BubbleItem[], review: [] as BubbleItem[] } };
+    const empty = { avgCtr: 0, avgImp: 0, quadrants: { hiCtrHiImp: [] as BubbleItem[], hiCtrLoImp: [] as BubbleItem[], loCtrHiImp: [] as BubbleItem[], loCtrLoImp: [] as BubbleItem[] } };
     if (!gscBubbleData.length) return empty;
-    const avgCtr = gscBubbleData.reduce((s, d) => s + d.ctr, 0) / gscBubbleData.length;
-    const avgImp = gscBubbleData.reduce((s, d) => s + d.impressions, 0) / gscBubbleData.length;
+    // 평균 CTR 은 노출 가중(클릭 합 ÷ 노출 합). 검색어별 CTR 단순 평균은 노출 적은 검색어에 끌려간다(2026-11-04).
+    const sumImp = gscBubbleData.reduce((s, d) => s + d.impressions, 0);
+    const avgCtr = sumImp > 0 ? (gscBubbleData.reduce((s, d) => s + d.clicks, 0) / sumImp) * 100 : 0;
+    const avgImp = sumImp / gscBubbleData.length;
     return {
       avgCtr, avgImp,
       quadrants: {
-        star:      gscBubbleData.filter(d => d.ctr >= avgCtr && d.impressions >= avgImp),
-        potential: gscBubbleData.filter(d => d.ctr >= avgCtr && d.impressions < avgImp),
-        improve:   gscBubbleData.filter(d => d.ctr < avgCtr && d.impressions >= avgImp),
-        review:    gscBubbleData.filter(d => d.ctr < avgCtr && d.impressions < avgImp),
+        hiCtrHiImp:      gscBubbleData.filter(d => d.ctr >= avgCtr && d.impressions >= avgImp),
+        hiCtrLoImp: gscBubbleData.filter(d => d.ctr >= avgCtr && d.impressions < avgImp),
+        loCtrHiImp:   gscBubbleData.filter(d => d.ctr < avgCtr && d.impressions >= avgImp),
+        loCtrLoImp:    gscBubbleData.filter(d => d.ctr < avgCtr && d.impressions < avgImp),
       },
     };
   }, [gscBubbleData]);
@@ -592,13 +598,10 @@ function GscSection({ brand, from, to }: { brand: string; from: string; to: stri
       {view === "bubble" && (
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-semibold text-sm mb-1">구글 유입 검색어 사분면 — CTR vs 노출 (버블 크기 = 클릭수)</h3>
-            <div className="flex gap-4 text-xs mb-3 flex-wrap">
-              <span className="text-green-600 font-medium">● 스타: 고CTR + 고노출</span>
-              <span className="text-blue-600 font-medium">● 잠재력: 고CTR + 저노출</span>
-              <span className="text-amber-500 font-medium">● 개선필요: 저CTR + 고노출</span>
-              <span className="text-red-500 font-medium">● 재검토: 저CTR + 저노출</span>
-            </div>
+            <h3 className="font-semibold text-sm mb-1">구글 유입 검색어 사분면: CTR vs 노출 (버블 크기 = 클릭수)</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              오른쪽 = CTR 평균 이상(노출 가중), 위 = 노출 평균 이상. 구매 전환은 GSC 에 없어 위치만 보여 주고 판정하지 않습니다.
+            </p>
             {gscBubbleData.length === 0 ? (
               <p className="text-sm text-muted-foreground py-8 text-center">데이터가 없습니다. (GSC 권한 또는 날짜 범위 확인)</p>
             ) : (
@@ -619,7 +622,7 @@ function GscSection({ brand, from, to }: { brand: string; from: string; to: stri
                   />
                   <ZAxis type="number" dataKey="clicks" range={[30, 600]} name="클릭" />
                   <ReferenceLine x={avgCtr} stroke="#94a3b8" strokeDasharray="4 4"
-                    label={{ value: `평균 ${avgCtr.toFixed(1)}%`, position: "insideTopRight", fontSize: 9, fill: "#94a3b8" }} />
+                    label={{ value: `평균 ${avgCtr.toFixed(1)}% (노출 가중)`, position: "insideTopRight", fontSize: 9, fill: "#94a3b8" }} />
                   <ReferenceLine y={avgImp} stroke="#94a3b8" strokeDasharray="4 4"
                     label={{ value: `평균 ${avgImp >= 10000 ? (avgImp / 10000).toFixed(0) + "만" : formatNumber(Math.round(avgImp))}`, position: "right", fontSize: 9, fill: "#94a3b8" }} />
                   <Tooltip
@@ -638,23 +641,20 @@ function GscSection({ brand, from, to }: { brand: string; from: string; to: stri
                       );
                     }}
                   />
-                  <Scatter name="스타" data={quadrants.star} fill="#16a34a" fillOpacity={0.75} isAnimationActive={false} />
-                  <Scatter name="잠재력" data={quadrants.potential} fill="#2563eb" fillOpacity={0.75} isAnimationActive={false} />
-                  <Scatter name="개선필요" data={quadrants.improve} fill="#d97706" fillOpacity={0.75} isAnimationActive={false} />
-                  <Scatter name="재검토" data={quadrants.review} fill="#dc2626" fillOpacity={0.75} isAnimationActive={false} />
+                  <Scatter name="검색어" data={gscBubbleData} fill="#475569" fillOpacity={0.55} isAnimationActive={false} />
                 </ScatterChart>
               </ResponsiveContainer>
             )}
             {gscBubbleData.length > 0 && (
               <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
                 {[
-                  { label: "스타", count: quadrants.star.length, color: "text-green-600", desc: "집중 투자" },
-                  { label: "잠재력", count: quadrants.potential.length, color: "text-blue-600", desc: "순위 상승 시 효과" },
-                  { label: "개선필요", count: quadrants.improve.length, color: "text-amber-500", desc: "제목/설명 최적화" },
-                  { label: "재검토", count: quadrants.review.length, color: "text-red-500", desc: "가치 낮음" },
+                  { label: "오른쪽 위", count: quadrants.hiCtrHiImp.length, desc: "CTR 평균 이상 · 노출 평균 이상" },
+                  { label: "오른쪽 아래", count: quadrants.hiCtrLoImp.length, desc: "CTR 평균 이상 · 노출 평균 미만" },
+                  { label: "왼쪽 위", count: quadrants.loCtrHiImp.length, desc: "CTR 평균 미만 · 노출 평균 이상" },
+                  { label: "왼쪽 아래", count: quadrants.loCtrLoImp.length, desc: "CTR 평균 미만 · 노출 평균 미만" },
                 ].map(q => (
                   <div key={q.label} className="bg-muted/40 rounded p-2">
-                    <span className={`font-semibold ${q.color}`}>{q.label} ({q.count}개)</span>
+                    <span className="font-semibold">{q.label} {q.count}개</span>
                     <p className="text-muted-foreground mt-0.5">{q.desc}</p>
                   </div>
                 ))}

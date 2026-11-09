@@ -8,9 +8,7 @@ import { useFetch } from "@/hooks/use-dashboard-data";
 import { BRAND_LABELS, BRAND_COLORS, CHANNEL_LABELS, type DailyAdSpend } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatPercent } from "@/lib/utils";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-} from "recharts";
+import { kstDate, kstMonth } from "@/lib/date";
 
 interface PacingData {
   daysInMonth: number; daysElapsed: number; daysRemaining: number; dateProgress: number;
@@ -34,15 +32,28 @@ export default function BudgetPage() {
 
 function BudgetInner() {
   const { brandMap, channelMap } = useConfig();
-  const now = new Date();
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const today = now.toISOString().split("T")[0];
+  // KST 기준(2026-11-04). 예전엔 달 시작은 브라우저 로컬, 오늘은 UTC(toISOString)라
+  // KST 00:00~09:00 에는 오늘이 어제로 잘렸고, 해외 시간대에선 달 시작까지 어긋났다.
+  const month = kstMonth();
+  const monthStart = `${month}-01`;
+  const today = kstDate();
+  const [yearNum, monthNum] = month.split("-").map(Number);
 
   const { data: pacing, loading: pacingLoading } = useFetch<PacingData>(`/api/pacing?brand=all`);
   const { data: adsData, loading: adsLoading } = useFetch<{ ads: DailyAdSpend[] }>(`/api/ads?from=${monthStart}&to=${today}`);
   const loading = pacingLoading || adsLoading;
 
   const ads = useMemo(() => (adsData?.ads || []).filter((r) => !r.channel.startsWith("ga4_")), [adsData]);
+
+  // 광고비 원장이 들어온 날 수(행이 있는 날짜 수). 「월말 예상」·「일 평균」의 분모.
+  // 예전 분모는 오늘 날짜(daysElapsed)라, 수집이 하루 이틀 밀리면 아직 안 들어온 날을 0원 집행으로 쳐서
+  // 월말 예상이 작게 나왔다(2026-11-04).
+  const ledger = useMemo(() => {
+    const days = new Set<string>();
+    for (const r of ads) days.add(r.date);
+    const sorted = Array.from(days).sort();
+    return { days: sorted.length, through: sorted[sorted.length - 1] || null };
+  }, [ads]);
 
   // 채널별 집행 (매체비, 목표 비교는 채널 단위 목표가 없어 집행/비중만)
   const byChannel = useMemo(() => {
@@ -64,7 +75,8 @@ function BudgetInner() {
   const actualAd = t?.actual.ad || 0;
   const consumption = t?.achievement.ad || 0;        // 집행/목표
   const dateProgress = t?.dateProgress || 0;
-  const projected = t ? Math.round(t.remaining.dailyAvgAd * t.daysInMonth) : 0; // 월말 예상 집행
+  const dailyAvg = ledger.days > 0 ? actualAd / ledger.days : 0;            // 원장이 들어온 날 기준 일 평균
+  const projected = t ? Math.round(dailyAvg * t.daysInMonth) : 0;            // 월말 예상 집행
   const remaining = t?.remaining.ad ?? 0;            // 목표-집행 (음수=초과)
   const hasTarget = !!t?.hasTarget && targetAd > 0;
 
@@ -74,7 +86,7 @@ function BudgetInner() {
 
   if (loading) {
     return (
-      <PageShell title="예산 현황" description="이번 달 광고 예산 집행 현황" hideFilters>
+      <PageShell title="예산 페이싱" description="이번 달 광고 예산 집행 현황" hideFilters>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i} className="p-5 animate-pulse"><CardContent className="p-0"><div className="h-8 w-28 bg-muted rounded" /></CardContent></Card>
@@ -85,7 +97,7 @@ function BudgetInner() {
   }
 
   return (
-    <PageShell title="예산 현황" description={`${now.getFullYear()}년 ${now.getMonth() + 1}월 광고 예산 집행 (${t?.daysElapsed ?? 0}/${t?.daysInMonth ?? 0}일, 매체비 기준)`} hideFilters>
+    <PageShell title="예산 페이싱" description={`${yearNum}년 ${monthNum}월 광고 예산 집행 (${t?.daysElapsed ?? 0}/${t?.daysInMonth ?? 0}일 경과, 광고비 원장 ${ledger.days}일치${ledger.through ? ` · ${ledger.through}까지` : ""}, 매체비 기준)`} hideFilters>
       {!hasTarget && (
         <Card><CardContent className="p-4 text-sm text-muted-foreground">
           이번 달 광고예산 목표가 없습니다. <a href="/settings?tab=targets" className="text-primary hover:underline">설정 &gt; 목표설정</a>에서 등록하면 목표 대비 소진율이 표시됩니다.
@@ -103,10 +115,10 @@ function BudgetInner() {
 
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard title="목표 광고예산" value={hasTarget ? formatCurrency(targetAd) : "—"} subtitle="이번 달 매체비 목표" />
-        <KpiCard title="집행" value={formatCurrency(actualAd)} subtitle={hasTarget ? `소진율 ${pct(consumption)} · 날짜 ${pct(dateProgress)}` : `일 평균 ${formatCurrency(Math.round(actualAd / Math.max(t?.daysElapsed || 1, 1)))}`} />
-        <KpiCard title="월말 예상" value={formatCurrency(projected)} subtitle={hasTarget ? (projOver ? `목표 ${formatCurrency(targetAd)} 초과 예상` : `목표 대비 ${pct(targetAd > 0 ? projected / targetAd : 0)}`) : undefined} />
-        <KpiCard title="잔여 예산" value={hasTarget ? formatCurrency(remaining) : "—"} subtitle={hasTarget ? `가용 일 ${formatCurrency(Math.round(t!.remaining.reqDailyAd))} (잔여 ${t!.daysRemaining}일)` : undefined} />
+        <KpiCard title="목표 광고예산" value={hasTarget ? formatCurrency(targetAd) : "-"} subtitle="이번 달 매체비 목표" />
+        <KpiCard title="집행" value={formatCurrency(actualAd)} subtitle={hasTarget ? `소진율 ${pct(consumption)} · 날짜 ${pct(dateProgress)}` : `일 평균 ${formatCurrency(Math.round(dailyAvg))} (원장 ${ledger.days}일)`} />
+        <KpiCard title="월말 예상" value={formatCurrency(projected)} subtitle={`일 평균 × ${t?.daysInMonth ?? 0}일 (원장 ${ledger.days}일 기준)${hasTarget ? (projOver ? ` · 목표 ${formatCurrency(targetAd)} 초과 예상` : ` · 목표 대비 ${pct(targetAd > 0 ? projected / targetAd : 0)}`) : ""}`} />
+        <KpiCard title="잔여 예산" value={hasTarget ? formatCurrency(remaining) : "-"} subtitle={hasTarget ? `가용 일 ${formatCurrency(Math.round(t!.remaining.reqDailyAd))} (잔여 ${t!.daysRemaining}일)` : undefined} />
       </div>
 
       {/* 소진 페이스 바 */}
@@ -162,31 +174,18 @@ function BudgetInner() {
         </CardContent>
       </Card>
 
-      {/* 채널별 분배 */}
-      <Card>
-        <CardContent className="p-4">
-          <h3 className="font-semibold mb-4">매체별 집행 분배</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={byChannel} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-              <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={80} />
-              <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
-              <Bar dataKey="spent" name="집행" fill="#2563eb" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      {/* 채널 비중 테이블 */}
+      {/* 매체별 집행: 예전엔 막대그래프와 표가 같은 금액을 두 번 보여 줬다(2026-11-04 하나로).
+          매체별 일별 내역은 「매체별 집행」 화면에 있다. */}
       <Card>
         <CardContent className="p-4 overflow-x-auto">
+          <h3 className="font-semibold mb-3">매체별 집행 (이번 달)</h3>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left border-b text-muted-foreground">
                 <th className="pb-2 pr-4">매체</th>
                 <th className="pb-2 pr-4 text-right">집행</th>
-                <th className="pb-2 text-right">비중</th>
+                <th className="pb-2 pr-4 text-right">비중</th>
+                <th className="pb-2 w-1/3"><span className="sr-only">비중 막대</span></th>
               </tr>
             </thead>
             <tbody>
@@ -194,9 +193,17 @@ function BudgetInner() {
                 <tr key={c.channel} className="border-b border-border/50">
                   <td className="py-2 pr-4">{c.label}</td>
                   <td className="py-2 pr-4 text-right font-medium">{formatCurrency(c.spent)}</td>
-                  <td className="py-2 text-right">{formatPercent(c.share)}</td>
+                  <td className="py-2 pr-4 text-right">{formatPercent(c.share)}</td>
+                  <td className="py-2">
+                    <div className="h-2 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-slate-500" style={{ width: `${Math.min(100, c.share)}%` }} />
+                    </div>
+                  </td>
                 </tr>
               ))}
+              {byChannel.length === 0 && (
+                <tr><td colSpan={4} className="py-6 text-center text-muted-foreground">집행 데이터 없음</td></tr>
+              )}
             </tbody>
           </table>
         </CardContent>
