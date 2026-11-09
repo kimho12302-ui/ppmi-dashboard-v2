@@ -16,12 +16,13 @@ interface Insight {
   type: InsightType;
   text: string;
   detail?: string;
-  actions?: string[];
+  /** 측정 복구용 점검 항목(전환 추적 미연동 카드만). 예산 처방은 내지 않는다 */
+  checks?: string[];
 }
 
 export default function InsightsPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">Loading...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
       <InsightsInner />
     </Suspense>
   );
@@ -40,7 +41,7 @@ function InsightsInner() {
   const levelConfig: Record<InsightType, { icon: string; border: string; badge: string; badgeLabel: string }> = {
     critical: { icon: "🔴", border: "border-l-red-500 bg-red-500/5", badge: "bg-red-500/10 text-red-600", badgeLabel: "즉시 대응" },
     warning: { icon: "🟡", border: "border-l-amber-500 bg-amber-500/5", badge: "bg-amber-500/10 text-amber-600", badgeLabel: "주의" },
-    opportunity: { icon: "🟢", border: "border-l-emerald-500 bg-emerald-500/5", badge: "bg-emerald-500/10 text-emerald-600", badgeLabel: "기회" },
+    opportunity: { icon: "🟢", border: "border-l-emerald-500 bg-emerald-500/5", badge: "bg-emerald-500/10 text-emerald-600", badgeLabel: "참고" },
     info: { icon: "🔵", border: "border-l-blue-500 bg-blue-500/5", badge: "bg-blue-500/10 text-blue-600", badgeLabel: "참고" },
   };
 
@@ -124,11 +125,11 @@ function InsightsInner() {
                       <p className="text-sm text-muted-foreground whitespace-pre-line mb-2">{insight.detail}</p>
                     )}
 
-                    {insight.actions && insight.actions.length > 0 && (
+                    {insight.checks && insight.checks.length > 0 && (
                       <div className="mt-2 space-y-1">
-                        <p className="text-xs font-medium text-muted-foreground">권장 액션:</p>
+                        <p className="text-xs font-medium text-muted-foreground">점검할 것:</p>
                         <ul className="space-y-0.5">
-                          {insight.actions.map((action, j) => (
+                          {insight.checks.map((action, j) => (
                             <li key={j} className="text-xs text-muted-foreground flex items-start gap-1.5">
                               <span className="text-primary mt-0.5">&bull;</span>
                               <span>{action}</span>
@@ -149,7 +150,8 @@ function InsightsInner() {
       <Card>
         <CardContent className="p-4">
           <p className="text-xs text-muted-foreground">
-            💡 규칙 기반 자동 감지: ROAS &lt; 1 적자채널, 전체 ROAS 목표 미달, 전환율/장바구니 이탈률, 매출 15%+ 하락 시 브랜드/채널/제품별 원인 분석.
+            규칙 기반 자동 감지: 전체 ROAS(기준 3.0x), 매체별 플랫폼 ROAS(1.0x·2.0x 미만), 전환 추적 미연동, 전환율·장바구니 이탈률, 브랜드·채널·제품 매출 비중, 이전 같은 기간 대비 15% 넘는 매출 감소의 브랜드·채널·제품별 분해.
+            카드는 수치·원천·기준만 보여 줍니다. 예산을 늘릴지 줄일지 같은 처방은 내지 않습니다(의도적으로 조정한 예산과 충돌하기 때문).
           </p>
         </CardContent>
       </Card>
