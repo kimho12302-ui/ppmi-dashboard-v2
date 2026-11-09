@@ -4,7 +4,8 @@ import { Suspense, useMemo, useState, useCallback } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch, useFilterParams } from "@/hooks/use-dashboard-data";
-import { BRAND_LABELS, CHANNEL_LABELS, type DailyAdSpend } from "@/lib/types";
+import { BRAND_LABELS, CHANNEL_LABELS, type DailyAdTotal } from "@/lib/types";
+import { dailyAdsUrl } from "@/lib/api-urls";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency } from "@/lib/utils";
 import { daysBetween } from "@/lib/bucket";
@@ -30,9 +31,8 @@ function MediaBudgetInner() {
   const { channelMap } = useConfig();
   const [viewMode, setViewMode] = useState<ViewMode>("spend");
 
-  const { data, loading } = useFetch<{ ads: DailyAdSpend[] }>(
-    `/api/ads?from=${from}&to=${to}${brand !== "all" ? `&brand=${brand}` : ""}`
-  );
+  // 날짜 × 매체 합계만 받는다(2026-11-09, 원본 행 대비 약 1/6). 이 화면은 날짜·매체·광고비·노출·클릭만 쓴다.
+  const { data, loading } = useFetch<{ ads: DailyAdTotal[] }>(dailyAdsUrl(brand, from, to));
 
   const ads = useMemo(
     () => (data?.ads || []).filter((r) => !r.channel.startsWith("ga4_")),

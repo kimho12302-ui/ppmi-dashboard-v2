@@ -5,7 +5,8 @@ import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
-import { BRAND_LABELS, BRAND_COLORS, CHANNEL_LABELS, type DailyAdSpend } from "@/lib/types";
+import { BRAND_LABELS, BRAND_COLORS, CHANNEL_LABELS, type DailyAdTotal } from "@/lib/types";
+import { dailyAdsUrl } from "@/lib/api-urls";
 import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatPercent } from "@/lib/utils";
 import { kstDate, kstMonth } from "@/lib/date";
@@ -40,7 +41,8 @@ function BudgetInner() {
   const [yearNum, monthNum] = month.split("-").map(Number);
 
   const { data: pacing, loading: pacingLoading } = useFetch<PacingData>(`/api/pacing?brand=all`);
-  const { data: adsData, loading: adsLoading } = useFetch<{ ads: DailyAdSpend[] }>(`/api/ads?from=${monthStart}&to=${today}`);
+  // 날짜 × 매체 합계만 받는다(2026-11-09). 이 화면은 행마다 날짜·매체·광고비만 쓴다.
+  const { data: adsData, loading: adsLoading } = useFetch<{ ads: DailyAdTotal[] }>(dailyAdsUrl("all", monthStart, today));
   const loading = pacingLoading || adsLoading;
 
   const ads = useMemo(() => (adsData?.ads || []).filter((r) => !r.channel.startsWith("ga4_")), [adsData]);

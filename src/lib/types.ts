@@ -40,6 +40,12 @@ export interface DailyAdSpend {
   search_impression_share?: number;
 }
 
+/** /api/ads?shape=daily 한 줄: (날짜, 매체) 합계. 브랜드·reach 같은 행 단위 칸은 없다(api-urls.ts dailyAdsUrl). */
+export type DailyAdTotal = Pick<DailyAdSpend, "date" | "channel" | "spend" | "impressions" | "clicks" | "conversions" | "conversion_value"> & {
+  /** 합친 원본 행 수 */
+  n: number;
+};
+
 export interface DailyFunnel {
   date: string;
   brand: string;

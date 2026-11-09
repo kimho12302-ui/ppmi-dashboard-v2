@@ -16,7 +16,7 @@ export const productSalesUrl = (brand: string, from: string, to: string) =>
 export const channelAdsUrl = (brand: string, from: string, to: string) =>
   brand && brand !== "all" ? `/api/ads?from=${from}&to=${to}&brand=${brand}&shape=channel` : `/api/ads?from=${from}&to=${to}&shape=channel`;
 
-// shape=daily: (날짜, 채널) 합계만(매체별 예산 화면용, 2026-11-09). 원본 430KB → 수십 KB.
+// shape=daily: (날짜, 채널) 합계만(예산 페이싱·매체별 집행 화면용, 2026-11-09). 원본 430KB → 수십 KB.
 // /ads 화면은 행마다 brand·reach 를 써서 원본 행을 그대로 받는다.
 export const dailyAdsUrl = (brand: string, from: string, to: string) =>
   brand && brand !== "all" ? `/api/ads?from=${from}&to=${to}&brand=${brand}&shape=daily` : `/api/ads?from=${from}&to=${to}&shape=daily`;
