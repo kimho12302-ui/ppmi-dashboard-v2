@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { kstDate } from "@/lib/date";
+import { fetchAll } from "@/lib/db";
 
 const DAY_MS = 86400000;
 
@@ -91,65 +92,117 @@ const INACTIVE_SOURCES: Record<string, { since: string; note: string }> = {
   },
 };
 
-async function getLatestByChannel(channel: string, brand?: string): Promise<string | null> {
-  let q = supabase.from("daily_ad_spend").select("date").eq("channel", channel);
-  if (brand) q = q.eq("brand", brand);
-  const { data } = await q.order("date", { ascending: false }).limit(1);
-  return data?.[0]?.date || null;
-}
-
 /**
- * @param nonZeroCols 이 컬럼들 중 하나라도 0보다 커야 '데이터 있음'으로 본다.
+ * 소스 하나의 "최신 입력일"을 무엇으로 재는지. 예전엔 소스마다 질의 함수(fetcher)를 따로 불러
+ * 소스 15개 = 질의 15개가 한꺼번에 나갔다(+하트비트 1개). 2026-11-09 속도 수정으로 판정 규칙을 값으로 적고,
+ * 표마다 최근 LATEST_WINDOW_DAYS 일을 한 번에 읽어 JS 에서 같은 규칙으로 최신일을 고른다.
+ * 그 창 안에 행이 없는 소스(오래 멈춘 채널)만 예전처럼 단건 질의로 찾는다. 결과는 예전과 같다:
+ *   창 안에 맞는 행이 있으면 그중 가장 늦은 날이 곧 전체에서 가장 늦은 날이다(창은 오늘 이후로 열려 있다).
  *
- * 값이 전부 0인 행을 '있음'으로 세면 안 된다. 실제로 쿠팡 퍼널 업로드가 빈 날짜까지
- * 0으로 채워 넣는 바람에, 07-17 이후 값이 전무한데도 배너가 07-28 정상으로 표시됐다
- * (2026-07-29 확인). 수기 소스는 '행의 존재'가 아니라 '값의 존재'로 판정해야 한다.
+ * - ad      : daily_ad_spend. positiveSpend=true 면 spend>0 행만 (0원 행을 '입력됨'으로 세지 않는다)
+ * - funnel  : daily_funnel. nonZero 열 중 하나라도 0보다 커야 '데이터 있음' (아래 설명)
+ * - sales   : daily_sales 의 최신 date
  */
-async function getLatestFunnelByChannel(
-  channel: string,
-  brand?: string,
-  nonZeroCols?: string[]
-): Promise<string | null> {
-  let query = supabase.from("daily_funnel").select("date").eq("channel", channel);
-  if (brand) query = query.eq("brand", brand);
-  if (nonZeroCols?.length) query = query.or(nonZeroCols.map((c) => `${c}.gt.0`).join(","));
-  const { data } = await query.order("date", { ascending: false }).limit(1);
-  return data?.[0]?.date || null;
-}
+type Probe =
+  | { kind: "ad"; channel: string; brand?: string; positiveSpend: boolean }
+  | { kind: "funnel"; channel: string; brand?: string; nonZero?: string[] }
+  | { kind: "sales" };
+
+/** 한 번에 읽는 최근 일수. 멈춘 지 이보다 오래된 소스만 따로 묻는다. */
+const LATEST_WINDOW_DAYS = 60;
 
 /**
- * 광고비 소스의 최신 입력일.
+ * 광고비 소스의 최신 입력일 규칙(positiveSpend).
  *
  * 기본은 0원 행을 '입력됨'으로 세지 않는다 (쿠팡 광고 업로드처럼 빈 날짜가 0으로 깔릴 수 있어서).
- *
- * @param countZeroRows GFA 전용. GFA 는 DB에 쓰는 경로 네 곳이 **전부** 0원을 건너뛴다
+ * GFA 는 예외(positiveSpend=false). GFA 는 DB에 쓰는 경로 네 곳이 **전부** 0원을 건너뛴다
  *   (import_sheet_gfa_to_db `cost<=0: continue`, reverse_sync_paid 동일, sync_ho_dashboard `gfa_cost>0`,
  *   push_bl_gfa 는 아웃바운드). 그래서 GFA 의 0원 행은 사람이 폼으로 직접 넣은 것뿐이고,
  *   그건 '집행이 없었음을 확인했다'는 기록이다. 그걸 안 세면 집행을 멈춘 기간 내내
  *   "입력 안 했다"가 뜨고, 0을 아무리 넣어도 사라지지 않는다(2026-09-15 확인).
+ *
+ * 퍼널 소스의 nonZero: 이 컬럼들 중 하나라도 0보다 커야 '데이터 있음'으로 본다.
+ * 값이 전부 0인 행을 '있음'으로 세면 안 된다. 실제로 쿠팡 퍼널 업로드가 빈 날짜까지
+ * 0으로 채워 넣는 바람에, 07-17 이후 값이 전무한데도 배너가 07-28 정상으로 표시됐다
+ * (2026-07-29 확인). 수기 소스는 '행의 존재'가 아니라 '값의 존재'로 판정해야 한다.
  */
-async function getLatestSpendByChannel(
-  channel: string,
-  brand?: string,
-  countZeroRows = false
-): Promise<string | null> {
-  let q = supabase.from("daily_ad_spend").select("date").eq("channel", channel);
-  if (!countZeroRows) q = q.gt("spend", 0);
-  if (brand) q = q.eq("brand", brand);
+const adProbe = (channel: string, brand?: string, positiveSpend = false): Probe => ({ kind: "ad", channel, brand, positiveSpend });
+const funnelProbe = (channel: string, brand?: string, nonZero?: string[]): Probe => ({ kind: "funnel", channel, brand, nonZero });
+
+type Row = Record<string, unknown> & { date: string; channel: string; brand: string | null };
+
+/** 이 행이 probe 의 조건에 맞는가. 아래 단건 질의(latestByQuery)의 필터와 같은 뜻이어야 한다. */
+function rowMatches(probe: Probe, r: Row): boolean {
+  if (probe.kind === "sales") return false;
+  if (r.channel !== probe.channel) return false;
+  if (probe.brand && r.brand !== probe.brand) return false;
+  if (probe.kind === "ad") return !probe.positiveSpend || Number(r.spend ?? 0) > 0;
+  if (probe.nonZero?.length) return probe.nonZero.some((c) => r[c] != null && Number(r[c]) > 0);
+  return true;
+}
+
+/** 단건 질의(예전 방식). 창 안에 행이 없는 소스와 창 읽기가 실패했을 때 쓴다. 오류는 null(예전과 같음). */
+async function latestByQuery(probe: Probe): Promise<string | null> {
+  if (probe.kind === "sales") {
+    const { data } = await supabase.from("daily_sales").select("date").order("date", { ascending: false }).limit(1);
+    return data?.[0]?.date || null;
+  }
+  const table = probe.kind === "ad" ? "daily_ad_spend" : "daily_funnel";
+  let q = supabase.from(table).select("date").eq("channel", probe.channel);
+  if (probe.kind === "ad" && probe.positiveSpend) q = q.gt("spend", 0);
+  if (probe.brand) q = q.eq("brand", probe.brand);
+  if (probe.kind === "funnel" && probe.nonZero?.length) q = q.or(probe.nonZero.map((c) => `${c}.gt.0`).join(","));
   const { data } = await q.order("date", { ascending: false }).limit(1);
   return data?.[0]?.date || null;
 }
 
-async function getLatestFromTable(table: string): Promise<string | null> {
-  const { data } = await supabase.from(table).select("date").order("date", { ascending: false }).limit(1);
-  return data?.[0]?.date || null;
+/** 표 하나의 최근 창을 한 번에 읽는다. 실패하면 null(그 표의 소스는 전부 단건 질의로). */
+async function readWindow(table: "daily_ad_spend" | "daily_funnel", probes: Probe[], since: string): Promise<Row[] | null> {
+  const channels = Array.from(new Set(probes.flatMap((p) => (p.kind === "sales" ? [] : [p.channel]))));
+  if (!channels.length) return [];
+  const extra = table === "daily_ad_spend"
+    ? ["spend"]
+    : Array.from(new Set(probes.flatMap((p) => (p.kind === "funnel" ? p.nonZero || [] : []))));
+  const cols = ["date", "channel", "brand", ...extra].join(",");
+  try {
+    return await fetchAll<Row>(supabase.from(table).select(cols).in("channel", channels).gte("date", since));
+  } catch {
+    return null;
+  }
+}
+
+/** 모든 소스의 최신 입력일. 키 = 소스 id. */
+async function latestDates(defs: SourceDef[]): Promise<Map<string, string | null>> {
+  const since = kstDate(-LATEST_WINDOW_DAYS);
+  const ads = defs.filter((d) => d.probe.kind === "ad").map((d) => d.probe);
+  const funnels = defs.filter((d) => d.probe.kind === "funnel").map((d) => d.probe);
+  const [adRows, funnelRows] = await Promise.all([
+    readWindow("daily_ad_spend", ads, since),
+    readWindow("daily_funnel", funnels, since),
+  ]);
+  const out = new Map<string, string | null>();
+  await Promise.all(defs.map(async (def) => {
+    const rows = def.probe.kind === "ad" ? adRows : def.probe.kind === "funnel" ? funnelRows : null;
+    let best: string | null = null;
+    if (rows) for (const r of rows) if (rowMatches(def.probe, r) && (!best || r.date > best)) best = r.date;
+    if (!best) {
+      try {
+        best = await latestByQuery(def.probe);
+      } catch {
+        best = null;
+      }
+    }
+    out.set(def.id, best);
+  }));
+  return out;
 }
 
 interface SourceDef {
   id: string;
   label: string;
   type: "auto" | "manual";
-  fetcher: () => Promise<string | null>;
+  /** 최신 입력일을 재는 규칙(위 Probe). */
+  probe: Probe;
   metrics: MetricKey[];
   /** 수기 입력 폼으로 보내는 링크. mode=manual 인데 없으면 화면에 '입력 위치 미정'으로 뜬다. */
   entry?: string;
@@ -175,26 +228,26 @@ const ASIDE_ACTION = "aside 자동 수집(매일 07:36)이 늦음. 설정 > 일�
 
 const SOURCE_DEFS: SourceDef[] = [
   // Auto - API
-  { id: "meta_ads", label: "Meta 광고비", type: "auto", metrics: ["adSpend", "roas"], fetcher: () => getLatestByChannel("meta") },
-  { id: "google_ads", label: "Google Ads", type: "auto", metrics: ["adSpend", "roas"], fetcher: () => getLatestByChannel("google_pmax") },
+  { id: "meta_ads", label: "Meta 광고비", type: "auto", metrics: ["adSpend", "roas"], probe: adProbe("meta") },
+  { id: "google_ads", label: "Google Ads", type: "auto", metrics: ["adSpend", "roas"], probe: adProbe("google_pmax") },
   // GA4 는 D-1 집계라 당일 수집 전에는 어제 데이터가 없는 게 정상이다. 2일까지 허용한다.
-  { id: "ga4", label: "GA4 (카페24 세션)", type: "auto", metrics: ["funnel"], lagDays: 2, fetcher: () => getLatestFunnelByChannel("cafe24", undefined, ["sessions"]) },
-  { id: "naver_sa", label: "네이버 검색광고", type: "auto", metrics: ["adSpend", "roas"], fetcher: () => getLatestByChannel("naver_search") },
-  { id: "naver_shopping", label: "네이버 쇼핑광고", type: "auto", metrics: ["adSpend", "roas"], fetcher: () => getLatestByChannel("naver_shopping") },
+  { id: "ga4", label: "GA4 (카페24 세션)", type: "auto", metrics: ["funnel"], lagDays: 2, probe: funnelProbe("cafe24", undefined, ["sessions"]) },
+  { id: "naver_sa", label: "네이버 검색광고", type: "auto", metrics: ["adSpend", "roas"], probe: adProbe("naver_search") },
+  { id: "naver_shopping", label: "네이버 쇼핑광고", type: "auto", metrics: ["adSpend", "roas"], probe: adProbe("naver_shopping") },
   // 아래 여섯(쿠팡 광고비·GFA 사입/너티·스마트스토어 둘·카페24 퍼널)은 2026-09-18 부터 aside 자동 수집이다(collector).
   // 남은 manual 은 판매실적 엑셀 업로드와 미운영 소스뿐이다.
-  { id: "coupang_ads", label: "쿠팡 광고비", type: "auto", collector: "coupang-ads", metrics: ["adSpend"], entry: "/settings?tab=upload", entryLabel: "엑셀 업로드", fetcher: () => getLatestSpendByChannel("coupang_ads") },
+  { id: "coupang_ads", label: "쿠팡 광고비", type: "auto", collector: "coupang-ads", metrics: ["adSpend"], entry: "/settings?tab=upload", entryLabel: "엑셀 업로드", probe: adProbe("coupang_ads", undefined, true) },
   // GFA 는 브랜드별 입력 주기가 달라 통합 최신일이 결측을 가림 (2026-07 사용성 리뷰) → 브랜드별 분리
-  { id: "gfa_saip", label: "GFA (사입)", type: "auto", collector: "gfa-spend", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "saip", true) },
-  { id: "gfa_nutty", label: "GFA (너티)", type: "auto", collector: "gfa-spend", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "nutty", true) },
-  { id: "gfa_ironpet", label: "GFA (아이언펫)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "ironpet", true) },
-  { id: "gfa_balancelab", label: "GFA (밸런스랩)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", fetcher: () => getLatestSpendByChannel("gfa", "balancelab", true) },
-  { id: "sales", label: "판매실적", type: "manual", metrics: ["revenue"], entry: "/settings?tab=upload", entryLabel: "판매 엑셀 업로드", fetcher: () => getLatestFromTable("daily_sales") },
-  { id: "coupang_funnel", label: "쿠팡 퍼널", type: "manual", metrics: ["funnel"], entry: "/settings?tab=upload", entryLabel: "엑셀 업로드", fetcher: () => getLatestFunnelByChannel("coupang", "all", ["sessions", "impressions", "cart_adds", "purchases"]) },
-  { id: "smartstore_ironpet", label: "스마트스토어 (아이언펫)", type: "auto", collector: "smartstore-inflow", metrics: ["funnel"], entry: "/settings?tab=daily#smartstore", entryLabel: "스마트스토어 퍼널 입력", fetcher: () => getLatestFunnelByChannel("smartstore", "all", ["sessions", "subscribers", "repurchases"]) },
-  { id: "smartstore_balancelab", label: "스마트스토어 (밸런스랩)", type: "auto", collector: "smartstore-inflow", metrics: ["funnel"], entry: "/settings?tab=daily#smartstore", entryLabel: "스마트스토어 퍼널 입력", fetcher: () => getLatestFunnelByChannel("smartstore", "balancelab", ["sessions", "subscribers", "repurchases"]) },
+  { id: "gfa_saip", label: "GFA (사입)", type: "auto", collector: "gfa-spend", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", probe: adProbe("gfa", "saip", false) },
+  { id: "gfa_nutty", label: "GFA (너티)", type: "auto", collector: "gfa-spend", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", probe: adProbe("gfa", "nutty", false) },
+  { id: "gfa_ironpet", label: "GFA (아이언펫)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", probe: adProbe("gfa", "ironpet", false) },
+  { id: "gfa_balancelab", label: "GFA (밸런스랩)", type: "manual", metrics: ["adSpend"], entry: "/settings?tab=daily#gfa", entryLabel: "GFA 광고비 입력", probe: adProbe("gfa", "balancelab", false) },
+  { id: "sales", label: "판매실적", type: "manual", metrics: ["revenue"], entry: "/settings?tab=upload", entryLabel: "판매 엑셀 업로드", probe: { kind: "sales" } },
+  { id: "coupang_funnel", label: "쿠팡 퍼널", type: "manual", metrics: ["funnel"], entry: "/settings?tab=upload", entryLabel: "엑셀 업로드", probe: funnelProbe("coupang", "all", ["sessions", "impressions", "cart_adds", "purchases"]) },
+  { id: "smartstore_ironpet", label: "스마트스토어 (아이언펫)", type: "auto", collector: "smartstore-inflow", metrics: ["funnel"], entry: "/settings?tab=daily#smartstore", entryLabel: "스마트스토어 퍼널 입력", probe: funnelProbe("smartstore", "all", ["sessions", "subscribers", "repurchases"]) },
+  { id: "smartstore_balancelab", label: "스마트스토어 (밸런스랩)", type: "auto", collector: "smartstore-inflow", metrics: ["funnel"], entry: "/settings?tab=daily#smartstore", entryLabel: "스마트스토어 퍼널 입력", probe: funnelProbe("smartstore", "balancelab", ["sessions", "subscribers", "repurchases"]) },
   // GA4 세션과 같은 행에 저장되므로 수기 전용 필드로만 판정한다.
-  { id: "cafe24_funnel", label: "카페24 퍼널", type: "auto", collector: "cafe24-cart", metrics: ["funnel"], entry: "/settings?tab=daily#cafe24", entryLabel: "카페24 퍼널 입력", fetcher: () => getLatestFunnelByChannel("cafe24", "all", ["cart_adds", "purchases", "repurchases"]) },
+  { id: "cafe24_funnel", label: "카페24 퍼널", type: "auto", collector: "cafe24-cart", metrics: ["funnel"], entry: "/settings?tab=daily#cafe24", entryLabel: "카페24 퍼널 입력", probe: funnelProbe("cafe24", "all", ["cart_adds", "purchases", "repurchases"]) },
 ];
 
 // 하트비트 소스명 매핑 (고장 원인 구분용)
@@ -285,6 +338,7 @@ export async function getSourceStatuses(): Promise<{
   const yesterday = kstDate(-1);
   const staleRunCutoff = kstDate(-2);
 
+  const latestPromise = latestDates(SOURCE_DEFS);
   const { data: hbData } = await supabase
     .from("sync_heartbeat")
     .select("source,last_run,last_success,latest_data_date,rows_written,ok,note");
@@ -296,14 +350,12 @@ export async function getSourceStatuses(): Promise<{
     .map((h) => classifyCollector(h, yesterday, staleRunCutoff))
     .sort((a, b) => (a.health === "running" ? 1 : 0) - (b.health === "running" ? 1 : 0));
 
+  // 소스 15개의 최신일을 표마다 한 번에 읽는다(위 latestDates). 하트비트와 동시에.
+  const latestById = await latestPromise;
+
   const sources = await Promise.all(
     SOURCE_DEFS.map(async (def): Promise<SourceStatus> => {
-      let latestDate: string | null = null;
-      try {
-        latestDate = await def.fetcher();
-      } catch {
-        latestDate = null;
-      }
+      const latestDate = latestById.get(def.id) ?? null;
       // 소스별 허용 지연을 적용한다(기본 1일 = 어제까지).
       const lag = def.lagDays ?? 1;
       const freshCutoff = lag === 1 ? yesterday : kstDate(-lag);
