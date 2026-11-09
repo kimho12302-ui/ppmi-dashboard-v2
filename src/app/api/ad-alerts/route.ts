@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cachedGET } from "@/lib/api-cache";
+import { fetchAll } from "@/lib/db";
 
 // 광고 이상 신호. 2026-09-18 신설.
 // 예전 aside 루틴(네이버 광고 일별 리포트)이 내던 판단을 대시보드로 옮겼다. 루틴은 김호가 껐다.
@@ -36,26 +37,23 @@ async function gfaSeries(since: string): Promise<CampaignSeries[]> {
   return [...m.values()];
 }
 
-async function coupangSeries(since: string): Promise<CampaignSeries[]> {
-  const cols = "row_key,date,campaign,spend,clicks,orders_1d,file,read_at";
-  const { count, error } = await supabase.from("raw_coupang_keyword").select("row_key", { count: "exact", head: true }).gte("date", since);
-  if (error) throw error;
-  const pages = Math.ceil((count || 0) / 1000);
-  const res = await Promise.all(Array.from({ length: pages }, (_, i) =>
-    supabase.from("raw_coupang_keyword").select(cols).gte("date", since).order("row_key").range(i * 1000, i * 1000 + 999)));
-  const rows: { date: string; campaign: string | null; spend: number; clicks: number; orders_1d: number; file: string | null; read_at: string | null }[] = [];
-  for (const r of res) { if (r.error) throw r.error; rows.push(...(r.data || [])); }
-  if (rows.length !== (count || 0)) throw new Error(`쿠팡 행 수 불일치 ${count}/${rows.length}`);
+// 쿠팡 원본은 하루 수백 행(키워드 x 지면 x 파일)이라 통째로 읽으면 DB 가 막힌다.
+// 2026-11-09 속도 수정: 예전엔 21일치 약 25,000행을 건수 세기(5초) 뒤 25개 질의로 동시에 읽다가
+// 함수 시간 초과로 500("[object Object]")이 났고, 그동안 다른 화면까지 같이 느려졌다.
+//   1순위: DB 안에서 (날짜 x 캠페인)으로 합친 함수 coupang_campaign_daily 한 번 (docs/sql/2026-11-09-perf-rpc.sql).
+//   함수가 아직 없으면(PGRST202) 판단에 실제로 쓰는 날만 읽는다. judge() 는 마지막 날부터 ZERO_CONV_DAYS 일만
+//   보므로 그보다 오래된 날은 결과에 영향이 없다. 건수 세기 없이 필요한 열만 1,000행씩 나눠 읽는다.
+// 두 길 모두 "날짜마다 가장 늦게 읽은 파일 하나만" 규칙이 같다(키워드 탭 coupang_keyword_summary 와도 같다).
+// ※ coupang_keyword_summary 는 날짜를 합쳐 버리고 캠페인 이름을 상품명으로 바꾸므로 여기 쓸 수 없다.
+const COUPANG_RPC = "coupang_campaign_daily";
+const FAR_FUTURE = "2999-12-31";
+const JUDGE_WINDOW_DAYS = Math.max(ZERO_CONV_DAYS, 2); // 전일 대비(2일)와 무전환(ZERO_CONV_DAYS일) 중 긴 쪽
 
-  const latest = new Map<string, { file: string | null; at: string }>();
-  for (const r of rows) {
-    const at = r.read_at || "";
-    const cur = latest.get(r.date);
-    if (!cur || at > cur.at) latest.set(r.date, { file: r.file, at });
-  }
+interface CoupangDayRow { date: string; campaign: string | null; spend: number | null; clicks: number | null; orders_1d: number | null }
+
+function toCoupangSeries(rows: CoupangDayRow[]): CampaignSeries[] {
   const m = new Map<string, CampaignSeries>();
   for (const r of rows) {
-    if (latest.get(r.date)?.file !== r.file) continue;
     const name = r.campaign || "(캠페인 없음)";
     const s = m.get(name) || { source: "쿠팡" as const, campaign: name, brand: "너티", days: new Map() };
     const d = s.days.get(r.date) || { date: r.date, spend: 0, conv: 0, clicks: 0 };
@@ -64,6 +62,47 @@ async function coupangSeries(since: string): Promise<CampaignSeries[]> {
     m.set(name, s);
   }
   return [...m.values()];
+}
+
+/** 함수가 없을 때의 길. 마지막 날을 먼저 찾고 그 날부터 JUDGE_WINDOW_DAYS 일만 읽는다. */
+async function coupangRowsLean(since: string): Promise<CoupangDayRow[]> {
+  const top = await supabase.from("raw_coupang_keyword").select("date").gte("date", since).order("date", { ascending: false }).limit(1);
+  if (top.error) throw top.error;
+  const last = top.data?.[0]?.date as string | undefined;
+  if (!last) return [];
+  const windowFrom = daysBefore(last, JUDGE_WINDOW_DAYS - 1);
+  const from = windowFrom > since ? windowFrom : since;
+  type Raw = CoupangDayRow & { file: string | null; read_at: string | null };
+  const rows = await fetchAll<Raw>(
+    // 날짜 순 + row_key 로 순서를 고정한다(날짜 인덱스로 범위를 좁히게).
+    supabase.from("raw_coupang_keyword").select("row_key,date,campaign,spend,clicks,orders_1d,file,read_at").gte("date", from).order("date"),
+    "row_key",
+  );
+  const latest = new Map<string, { file: string | null; at: string }>();
+  for (const r of rows) {
+    const at = r.read_at || "";
+    const cur = latest.get(r.date);
+    if (!cur || at > cur.at) latest.set(r.date, { file: r.file, at });
+  }
+  return rows.filter((r) => latest.get(r.date)?.file === r.file);
+}
+
+async function coupangSeries(since: string): Promise<CampaignSeries[]> {
+  const rpc = await supabase.rpc(COUPANG_RPC, { p_from: since, p_to: FAR_FUTURE });
+  if (!rpc.error) return toCoupangSeries((rpc.data || []) as CoupangDayRow[]);
+  if (rpc.error.code !== "PGRST202") throw rpc.error; // 함수 없음만 대체 경로로. 다른 오류는 그대로 드러낸다
+  return toCoupangSeries(await coupangRowsLean(since));
+}
+
+/** PostgrestError 는 Error 가 아닌 평범한 객체라 String() 하면 "[object Object]" 가 된다. */
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object") {
+    const o = e as { message?: unknown; code?: unknown; details?: unknown };
+    const text = [o.message, o.details, o.code ? `(${String(o.code)})` : ""].filter((x) => x && String(x).trim()).join(" ");
+    return text || JSON.stringify(e);
+  }
+  return String(e);
 }
 
 function judge(series: CampaignSeries[]) {
@@ -111,7 +150,8 @@ async function getImpl() {
       { headers: { "Cache-Control": "s-maxage=600, stale-while-revalidate=3600" } },
     );
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    console.error("ad-alerts error:", e);
+    return NextResponse.json({ error: errorMessage(e) }, { status: 500 });
   }
 }
 
