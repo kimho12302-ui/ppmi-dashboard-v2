@@ -7,6 +7,7 @@ import { expandBrands } from "@/lib/brand-groups";
 import { masterByPid } from "@/lib/product-master";
 import { blTestLineOrNull } from "@/lib/brand-groups";
 import { cachedGET } from "@/lib/api-cache";
+import { isGonggu, isGongguAggregate } from "@/lib/gonggu";
 
 /**
  * 제품(상품) 단위 광고 성과.
@@ -34,9 +35,23 @@ async function getImpl(req: NextRequest) {
     // 같은 기간 실제 판매. 제품 정본(상품번호 → 판매 제품명)으로 광고와 잇는다.
     // 플랫폼 신고 전환매출은 매체마다 같은 주문을 자기 기여로 세서 실매출을 넘는다.
     // 제품 단위에서도 마찬가지라, 실판매를 같이 보여줘야 판단이 된다.
-    let sq = supabase.from("product_sales").select("product,brand,revenue,quantity").gte("date", from).lte("date", to);
+    let sq = supabase.from("product_sales").select("product,brand,channel,lineup,revenue,quantity").gte("date", from).lte("date", to);
     if (brand !== "all") sq = sq.in("brand", expandBrands(brand));
     const salesRows = await fetchAll(sq);
+    // ★ 실매출은 공구 판매를 뺀다(2026-11-09). 공구는 셀러가 자기 채널에서 팔아 광고와 상관없이
+    //   팔리는데, 검사 라인으로 이으면 공구까지 실매출에 들어가 실 ROAS 가 부풀었다
+    //   (2026-10 뉴트리션 1,941,000원 = 자체 969,000 + 공구 972,000).
+    //   공구 판정은 공용 규칙(gonggu.ts isGonggu)이고 밸런스랩에만 쓴다. 펫은 lineup 이 정규
+    //   라인업이라 같은 규칙을 쓰면 정상 판매가 통째로 빠진다.
+    //   연결 여부(이름·라인이 판매 원장에 있는가)는 공구 포함 전체 판매로 정한다. 공구로만 팔린
+    //   제품은 「미연결」이 아니라 「연결됨, 자체 실매출 0」이다.
+    const isExcludedGonggu = (r: Record<string, unknown>): boolean => {
+      if (r.brand !== "balancelab") return false;
+      const row = { product: r.product as string | null, channel: r.channel as string | null, lineup: r.lineup as string | null };
+      return isGonggu(row) || isGongguAggregate(row);
+    };
+    const linkedNames = new Set<string>();
+    const linkedLines = new Set<string>();
     const salesByProduct = new Map<string, { revenue: number; quantity: number }>();
     // ★ 밸런스랩은 판매 원장이 옵션까지 쪼개진 SKU 다
     //   ("큐모발검사 중금속", "큐모발검사 중금속 + 종이결과지", "큐음식물 과민증 검사 식단관리").
@@ -55,12 +70,16 @@ async function getImpl(req: NextRequest) {
     };
     for (const r of salesRows as Record<string, unknown>[]) {
       const k = String(r.product);
+      const line = lineKey(r.brand, k);
+      linkedNames.add(k);
+      if (line) linkedLines.add(line);
+      if (isExcludedGonggu(r)) continue;
+
       const cur = salesByProduct.get(k) || { revenue: 0, quantity: 0 };
       cur.revenue += Number(r.revenue) || 0;
       cur.quantity += Number(r.quantity) || 0;
       salesByProduct.set(k, cur);
 
-      const line = lineKey(r.brand, k);
       if (line) {
         const lc = salesByLine.get(line) || { revenue: 0, quantity: 0 };
         lc.revenue += Number(r.revenue) || 0;
@@ -101,16 +120,17 @@ async function getImpl(req: NextRequest) {
         const m = masterByPid(p.product_id);
         const adLine = lineKey(p.brand, p.product_name);
         const lineSale = adLine ? salesByLine.get(adLine) : undefined;
+        const nameLinked = linkedNames.has(p.product_name);
         const salesName = m?.product
-          ?? (salesByProduct.has(p.product_name) ? p.product_name : null)
-          ?? (lineSale ? p.product_name : null);
+          ?? (nameLinked ? p.product_name : null)
+          ?? (adLine && linkedLines.has(adLine) ? p.product_name : null);
         const sale = m?.product
           ? salesByProduct.get(m.product)
-          : (salesByProduct.get(p.product_name) ?? lineSale);
+          : (nameLinked ? salesByProduct.get(p.product_name) : lineSale);
         return {
           ...p,
           roas: p.spend > 0 ? p.conversion_value / p.spend : 0,
-          // 정본으로 이어붙인 실제 판매. 상품번호가 시트에 없으면 null 로 두고
+          // 정본으로 이어붙인 실제 판매(밸런스랩은 공구 제외). 상품번호가 시트에 없으면 null 로 두고
           // 화면이 '연결 안 됨'과 '판매 0'을 구분해 말할 수 있게 한다.
           salesProduct: salesName,
           actualRevenue: salesName ? (sale?.revenue ?? 0) : null,

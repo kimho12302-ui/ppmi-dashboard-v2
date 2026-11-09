@@ -68,6 +68,8 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
     );
   }
 
+  // 밸런스랩 실매출은 공구를 뺀 값이다(공구는 광고와 상관없이 팔린다). 펫은 따로 빼는 공구가 없어 문구를 붙이지 않는다.
+  const hasGongguRule = brand === "balancelab" || brand === "all";
   const totalSpend = products.reduce((s, p) => s + p.spend, 0);
   // ★ 신고 전환매출이 아니라 **실매출** 0 을 기준으로 센다. 신고는 부풀어 있어
   //   "신고 0" 이 실제로는 팔린 경우가 있고, 그 반대도 있다.
@@ -78,7 +80,7 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
       <div className="flex items-baseline justify-between gap-2 flex-wrap mb-3">
         <h3 className="font-semibold text-sm">
           제품별 광고 성과 <span className="text-xs text-muted-foreground font-normal">
-            광고 상품·캠페인 단위 · 실매출은 판매 원장 기준
+            광고 상품·캠페인 단위 · 실매출은 판매 원장 기준{hasGongguRule && " (공구 제외)"}
             {typeof data?.linkedCount === "number" && ` · 판매 연결 ${data.linkedCount}/${products.length}종`}
           </span>
         </h3>
