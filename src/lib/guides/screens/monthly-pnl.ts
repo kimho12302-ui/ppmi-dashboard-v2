@@ -16,6 +16,7 @@ const pct = (r: number | null) => (r === null ? "빈칸" : `${(r * 100).toFixed(
 const RATE = `${(GONGGU_COMMISSION_RATE * 100).toFixed(1)}%`;
 const label = (k: (typeof PNL_SELECTABLE)[number]) => productConfig(k).label;
 const ETC = productConfig("etc");
+const PAPER = productConfig("paper");
 
 // 계산 예시(가상의 숫자). 식은 화면과 같은 함수로 계산한다.
 const EX_NUT = productConfig("nutrition");
@@ -51,7 +52,7 @@ const guide: ScreenGuide = {
     {
       target: "pnl-product-buttons",
       title: "제품 버튼",
-      body: `${PNL_SELECTABLE.map(label).join(" · ")} · 「합계」 중 하나를 고르면 아래 두 표가 그 제품으로 바뀝니다. 「합계」에는 버튼이 따로 없는 「${ETC.label}」도 들어가서, 다섯 제품을 더한 값보다 클 수 있습니다.`,
+      body: `${PNL_SELECTABLE.map(label).join(" · ")} · 「합계」 중 하나를 고르면 아래 두 표가 그 제품으로 바뀝니다. 「합계」에는 버튼이 따로 없는 「${PAPER.label}」·「${ETC.label}」도 들어가서, 다섯 제품을 더한 값보다 클 수 있습니다.`,
     },
     {
       target: "pnl-excel",
@@ -142,16 +143,17 @@ const guide: ScreenGuide = {
       id: "products",
       title: "제품 버튼과 합계",
       blocks: [
-        { kind: "p", text: "판매 기록의 상품 이름을 보고 아래 제품 중 하나로 나눕니다. 위에서부터 먼저 맞는 규칙이 이깁니다." },
+        { kind: "p", text: "판매 기록은 먼저 판매 상품 구성표로 기본 품목까지 풉니다. 「큐모발검사 뉴트리션 + 종이결과지」는 뉴트리션 1 + 종이결과지 1, 「큐모발검사 뉴트리션 + 맞춤 영양제」는 뉴트리션 1 + 맞춤영양제 1 입니다. 판매 수량은 품목마다 1개씩, 매출은 품목 정가 비율로 나누고, 주문건수는 검사 쪽에만 둡니다(배송비가 두 번 잡히지 않게). 그다음 품목 이름을 보고 아래 제품 중 하나로 나눕니다. 위에서부터 먼저 맞는 규칙이 이깁니다." },
         {
           kind: "table",
           head: ["제품", "재료비 단가(1개)", "자체 배송 횟수", "어떤 상품이 들어가나"],
           rows: [
             [productConfig("supplement").label, won(productConfig("supplement").unitCost), `${productConfig("supplement").selfShipTimes}회`, "상품 이름에 「메디넥스」·「하루가꿈」이 들어가거나 판매 기록 분류가 「하루가꿈」인 것, 또는 「영양제」가 들어가고 「검사」는 없는 단품. 가장 먼저 판정합니다."],
-            [label("nutrition"), won(EX_NUT.unitCost), `${EX_NUT.selfShipTimes}회`, "상품 이름에 「뉴트리션」이 들어간 것. 「큐모발검사 뉴트리션 + 맞춤 영양제」 묶음도 여기로 옵니다."],
+            [label("nutrition"), won(EX_NUT.unitCost), `${EX_NUT.selfShipTimes}회`, "품목 이름에 「뉴트리션」이 들어간 것. 「+ 종이결과지」·「+ 맞춤 영양제」 세트는 뉴트리션 몫만 여기로 옵니다."],
             [label("heavy"), won(productConfig("heavy").unitCost), `${productConfig("heavy").selfShipTimes}회`, "상품 이름에 「중금속」이 들어간 것."],
             [label("saliva"), won(productConfig("saliva").unitCost), `${productConfig("saliva").selfShipTimes}회`, "상품 이름에 「타액」이나 「호르몬」이 들어간 것."],
             [label("food"), won(EX_FOOD.unitCost), `${EX_FOOD.selfShipTimes}회`, "상품 이름에 「과민증」·「지연성」·「알러지」·「알레르기」·「음식물」·「IgG」 중 하나가 들어간 것."],
+            [PAPER.label, won(PAPER.unitCost), `${PAPER.selfShipTimes}회`, "세트에서 풀려 나온 「종이결과지」 몫. 검사와 같이 나가 배송비를 따로 잡지 않습니다. 재료비 단가는 아직 확인 전이라 0원입니다. 버튼이 없고 「합계」에만 들어갑니다."],
             [ETC.label, won(ETC.unitCost), `${ETC.selfShipTimes}회`, "위 어디에도 안 맞는 상품(옵션 없는 「큐모발검사」, 「큐모발검사 미네랄」 등). 버튼이 없고 「합계」에만 들어갑니다."],
           ],
         },
@@ -160,7 +162,7 @@ const guide: ScreenGuide = {
           kind: "list",
           items: [
             "제품마다 따로 계산한 뒤 더합니다. 제품마다 단가와 배송 횟수가 달라서 매출만 더해 한 번에 계산하면 틀리기 때문입니다.",
-            `「${ETC.label}」가 합계에만 들어가므로, 다섯 제품 표를 손으로 더한 값과 「합계」가 다를 수 있습니다.`,
+            `「${PAPER.label}」·「${ETC.label}」가 합계에만 들어가므로, 다섯 제품 표를 손으로 더한 값과 「합계」가 다를 수 있습니다.`,
             "「공헌 이익율」은 더한 공헌 이익 ÷ 더한 매출로 다시 계산합니다. 제품별 이익율의 평균이 아닙니다.",
             "「합계」에서는 광고 외 마케팅비를 넣을 수 없습니다. 자체 표 안내 글도 「입력은 제품 하나를 고른 화면에서」로 바뀝니다.",
           ],
@@ -422,7 +424,7 @@ const guide: ScreenGuide = {
         {
           kind: "qa",
           q: "시트 「★브랜드별 매출」 숫자와 이 화면 숫자가 다릅니다.",
-          a: `흔한 이유는 다섯 가지입니다. ① 공구 공헌 이익: 시트 W열은 재료비를 두 번 빼고 화면은 한 번 뺍니다. ② 재료비 단가: ${label("saliva")}는 시트 수식(10,000·30,000) 대신 김호님이 확정한 ${won(productConfig("saliva").unitCost)}을 씁니다. ③ 묶음 상품: 시트는 「뉴트리션 + 맞춤 영양제」에서 영양제 몫을 손으로 떼어 영양제 블록에 적었지만, 화면은 한 상품이라 전부 뉴트리션으로 셉니다. ④ 공구/자체 구분: 2025-12 ~ 2026-05 는 판매 기록을 Sales 시트 「브랜드명」 기준으로 바로잡은 값이라 시트 손 입력과 다를 수 있습니다. ⑤ 이번 달·지난달: 판매 기록이 최근 5일쯤 늦게 들어옵니다.`,
+          a: `흔한 이유는 다섯 가지입니다. ① 공구 공헌 이익: 시트 W열은 재료비를 두 번 빼고 화면은 한 번 뺍니다. ② 재료비 단가: ${label("saliva")}는 시트 수식(10,000·30,000) 대신 김호님이 확정한 ${won(productConfig("saliva").unitCost)}을 씁니다. ③ 세트 상품: 화면은 「뉴트리션 + 맞춤 영양제」·「뉴트리션 + 종이결과지」를 구성표로 풀어 영양제·종이결과지 몫(정가 비율)을 떼어 냅니다. 시트는 영양제 몫만 손으로 떼었고 종이결과지 몫은 뉴트리션에 그대로 두어, 뉴트리션 매출이 종이결과지 몫(1개 약 4,000원)만큼 시트보다 작을 수 있습니다. ④ 공구/자체 구분: 2025-12 ~ 2026-05 는 판매 기록을 Sales 시트 「브랜드명」 기준으로 바로잡은 값이라 시트 손 입력과 다를 수 있습니다. ⑤ 이번 달·지난달: 판매 기록이 최근 5일쯤 늦게 들어옵니다.`,
         },
         {
           kind: "qa",

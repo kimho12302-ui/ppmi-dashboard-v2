@@ -15,6 +15,7 @@ import { periodKey, periodAxis } from "@/lib/sales-period";
 import { ChannelMixChart } from "@/components/judge/channel-mix-chart";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { isGonggu as isGongguRow, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
+import { buildComponentIndex, expandSales, type ComponentRow } from "@/lib/product-components";
 import { Suspense, useMemo, useState } from "react";
 import {
   BarChart, Bar, ScatterChart, Scatter, ZAxis, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine,
@@ -72,6 +73,7 @@ function SalesPageInner() {
     blDaily?: { date: string; self: number; gonggu: number }[];
     gongguSalesTotal?: number;
     brandRevenueTrend?: { date: string; [brand: string]: number | string }[];
+    productComponents?: ComponentRow[];
   }>(`/api/dashboard?${params}&raw=sales,products,prevSales&lean=1`);
   // 채널 효율 칸은 로딩 화면 동안 마운트되지 않으므로, 대시보드 응답을 기다리지 않게 미리 같이 부른다.
   // (응답은 채널 수십 줄이라 가볍다. 상품 추이는 보일 때 부르므로 미리 부르지 않는다.)
@@ -228,9 +230,11 @@ function SalesPageInner() {
   }, [products]);
 
   /* TOP 제품 */
+  // 판매 상품을 구성표로 기본 품목까지 풀어 센다(2026-11-09, src/lib/product-components.ts).
+  // 「스트레스제로껌 2개」는 껌 2개, 「뉴트리션 + 종이결과지」는 뉴트리션 1 + 종이결과지 1. 표가 없으면 그대로.
   const topProducts = useMemo(() => {
     const map: Record<string, { revenue: number; quantity: number; product: string; brand: string }> = {};
-    for (const r of products) {
+    for (const r of expandSales(products, buildComponentIndex(data?.productComponents))) {
       const key = `${r.brand}-${r.product}`;
       if (!map[key]) map[key] = { revenue: 0, quantity: 0, product: r.product, brand: r.brand };
       map[key].revenue += r.revenue || 0;
@@ -239,7 +243,7 @@ function SalesPageInner() {
     return Object.values(map)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10);
-  }, [products]);
+  }, [products, data?.productComponents]);
 
   if (loading) {
     return (

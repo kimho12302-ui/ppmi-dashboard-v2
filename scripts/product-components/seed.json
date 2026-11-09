@@ -1,0 +1,1946 @@
+{
+ "generated_at": "2026-11-09T11:19:48.226Z",
+ "since": "2025-01-01",
+ "rows": [
+  {
+   "brand": "balancelab",
+   "sale_product": "맞춤영양제",
+   "component": "맞춤영양제",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "메디넥스 씨맥스 고함량 영국산 DSM 비타민C 가루형 2000mg 100포 CMAX",
+   "component": "메디넥스 씨맥스 고함량 영국산 DSM 비타민C 가루형 2000mg 100포 CMAX",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "밸런스랩 큐모발검사 뉴트리션 미네랄 중금속 종합영양분석키트",
+   "component": "큐모발검사 뉴트리션",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "상품 목록 YSIET0001_G21(공구 숨꿀) = 뉴트리션. 단가 83,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 뉴트리션",
+   "component": "큐모발검사 뉴트리션",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 뉴트리션 + 맞춤 영양제",
+   "component": "맞춤영양제",
+   "qty": 1,
+   "price_share": 0.3125,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐모발검사 뉴트리션 99,000원, 맞춤영양제 45,000원). 자체판매 단품 최빈가 99,000(109,000 도 있음) / 맞춤영양제 단품 45,000, 뉴트리션+영양제 144,000 = 99,000+45,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 뉴트리션 + 맞춤 영양제",
+   "component": "큐모발검사 뉴트리션",
+   "qty": 1,
+   "price_share": 0.6875,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐모발검사 뉴트리션 99,000원, 맞춤영양제 45,000원). 자체판매 단품 최빈가 99,000(109,000 도 있음) / 맞춤영양제 단품 45,000, 뉴트리션+영양제 144,000 = 99,000+45,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 뉴트리션 + 맞춤 영양제 + 종이결과지",
+   "component": "맞춤영양제",
+   "qty": 1,
+   "price_share": 0.304054,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐모발검사 뉴트리션 99,000원, 맞춤영양제 45,000원, 종이결과지 4,000원). 자체판매 단품 최빈가 99,000(109,000 도 있음) / 맞춤영양제 단품 45,000, 뉴트리션+영양제 144,000 = 99,000+45,000 / 「+ 종이결과지」 상품과 단품의 차이: 뉴트리션 103,000−99,000, 중금속 74,000−70,000, 69,000−65,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 뉴트리션 + 맞춤 영양제 + 종이결과지",
+   "component": "종이결과지",
+   "qty": 1,
+   "price_share": 0.027027,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐모발검사 뉴트리션 99,000원, 맞춤영양제 45,000원, 종이결과지 4,000원). 자체판매 단품 최빈가 99,000(109,000 도 있음) / 맞춤영양제 단품 45,000, 뉴트리션+영양제 144,000 = 99,000+45,000 / 「+ 종이결과지」 상품과 단품의 차이: 뉴트리션 103,000−99,000, 중금속 74,000−70,000, 69,000−65,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 뉴트리션 + 맞춤 영양제 + 종이결과지",
+   "component": "큐모발검사 뉴트리션",
+   "qty": 1,
+   "price_share": 0.668919,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐모발검사 뉴트리션 99,000원, 맞춤영양제 45,000원, 종이결과지 4,000원). 자체판매 단품 최빈가 99,000(109,000 도 있음) / 맞춤영양제 단품 45,000, 뉴트리션+영양제 144,000 = 99,000+45,000 / 「+ 종이결과지」 상품과 단품의 차이: 뉴트리션 103,000−99,000, 중금속 74,000−70,000, 69,000−65,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 뉴트리션 + 종이결과지",
+   "component": "종이결과지",
+   "qty": 1,
+   "price_share": 0.038835,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐모발검사 뉴트리션 99,000원, 종이결과지 4,000원). 자체판매 단품 최빈가 99,000(109,000 도 있음) / 「+ 종이결과지」 상품과 단품의 차이: 뉴트리션 103,000−99,000, 중금속 74,000−70,000, 69,000−65,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 뉴트리션 + 종이결과지",
+   "component": "큐모발검사 뉴트리션",
+   "qty": 1,
+   "price_share": 0.961165,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐모발검사 뉴트리션 99,000원, 종이결과지 4,000원). 자체판매 단품 최빈가 99,000(109,000 도 있음) / 「+ 종이결과지」 상품과 단품의 차이: 뉴트리션 103,000−99,000, 중금속 74,000−70,000, 69,000−65,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 미네랄",
+   "component": "큐모발검사 미네랄",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": true,
+   "note": "1건 27,000. 어느 품목과도 단가가 안 맞아 그대로 둠"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 중금속",
+   "component": "큐모발검사 중금속",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 중금속 + 종이결과지",
+   "component": "종이결과지",
+   "qty": 1,
+   "price_share": 0.054054,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐모발검사 중금속 70,000원, 종이결과지 4,000원). 자체판매 단품 최빈가 70,000 / 「+ 종이결과지」 상품과 단품의 차이: 뉴트리션 103,000−99,000, 중금속 74,000−70,000, 69,000−65,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐모발검사 중금속 + 종이결과지",
+   "component": "큐모발검사 중금속",
+   "qty": 1,
+   "price_share": 0.945946,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐모발검사 중금속 70,000원, 종이결과지 4,000원). 자체판매 단품 최빈가 70,000 / 「+ 종이결과지」 상품과 단품의 차이: 뉴트리션 103,000−99,000, 중금속 74,000−70,000, 69,000−65,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐음식물 과민증 검사 식단관리",
+   "component": "큐음식물 과민증 검사 식단관리",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐타액호르몬검사",
+   "component": "큐타액호르몬검사",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐타액호르몬검사 + 종이결과지",
+   "component": "종이결과지",
+   "qty": 1,
+   "price_share": 0.026144,
+   "source": "auto",
+   "needs_review": false,
+   "note": "상품 목록에만 있는 이름(광고 연결용). 이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐타액호르몬검사 149,000원, 종이결과지 4,000원). 단품 판매가 149,000 / 「+ 종이결과지」 상품과 단품의 차이: 뉴트리션 103,000−99,000, 중금속 74,000−70,000, 69,000−65,000"
+  },
+  {
+   "brand": "balancelab",
+   "sale_product": "큐타액호르몬검사 + 종이결과지",
+   "component": "큐타액호르몬검사",
+   "qty": 1,
+   "price_share": 0.973856,
+   "source": "auto",
+   "needs_review": false,
+   "note": "상품 목록에만 있는 이름(광고 연결용). 이름 규칙 「+」 로 이은 세트 · 매출 나누기: 정가 비율(큐타액호르몬검사 149,000원, 종이결과지 4,000원). 단품 판매가 149,000 / 「+ 종이결과지」 상품과 단품의 차이: 뉴트리션 103,000−99,000, 중금속 74,000−70,000, 69,000−65,000"
+  },
+  {
+   "brand": "ironpet",
+   "sale_product": "반려견 영양분석 키트",
+   "component": "반려견 영양분석 키트",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "4종 맛보기 세트",
+   "component": "4종 맛보기 세트",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "맛보기 샘플(단가 100원 안팎). 품목 수량을 부풀리지 않게 풀지 않음"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "굿모닝 퓨레",
+   "component": "굿모닝퓨레",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "2025년 옛 이름"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "굿모닝퓨레",
+   "component": "굿모닝퓨레",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "냠",
+   "component": "냠 단호박",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "2025년 옛 이름"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "냠 단호박",
+   "component": "냠 단호박",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "냠 단호박 2개",
+   "component": "냠 단호박",
+   "qty": 2,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "상품 목록에만 있는 이름(광고 연결용). 이름 규칙 「2개」"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "냠 단호박 3개",
+   "component": "냠 단호박",
+   "qty": 3,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "상품 목록에만 있는 이름(광고 연결용). 이름 규칙 「3개」"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "냠 단호박_낱개",
+   "component": "냠 단호박",
+   "qty": 2,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": true,
+   "note": "판단: 2개 묶음으로 봄. 원가표 9,000 = 냠 4,500×2, 쿠팡 단가 16,850 = 냠 8,900의 1.9배. 원장에 「냠 단호박 2개」 이름이 따로 없음"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "너티 강아지 닭가슴살 수제간식 바삭칩 개과자 쿠키 닭가슴살, 80g, 1개",
+   "component": "바삭 닭가슴살",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "상품 목록에만 있는 이름(광고 연결용). 상품 목록 이름(광고 연결용)"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "너티 강아지 닭가슴살간식 수제간식 바삭칩 개과자 쿠키 80g 1개 닭가슴살",
+   "component": "바삭 닭가슴살",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "쿠팡 이름. 80g 1개 = 바삭 닭가슴살 한 팩(단가 6,550 = 쿠팡 바삭 최빈가)"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "너티 강아지 에너지스틱 고단백 저칼로리 수제간식 15p, 3개, 165g, 닭가슴살 (닭가슴살 165g 3개)",
+   "component": "에너젯바",
+   "qty": 3,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "쿠팡 이름. 165g = 11g×15 한 팩, 단가 19,900 = 매출보고시트 에너젯바 3개입"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "너티 강아지 파우치 퓨레 대용량 짜먹는간식 연어맛 스틱간식 720g, 4개",
+   "component": "굿모닝퓨레",
+   "qty": 4,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "720g = 180g×4"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "너티 강아지 파우치 퓨레 짜먹는간식 연어맛 스틱간식 360g, 2개",
+   "component": "굿모닝퓨레",
+   "qty": 2,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "상품 목록에만 있는 이름(광고 연결용). 상품 목록 이름(광고 연결용). 360g = 180g×2"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "너티 강아지 하루루틴 스트레스제로껌, 5개, 225g, 닭고기",
+   "component": "스트레스제로껌",
+   "qty": 5,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "매출보고시트 「스트레스제로껌 5개」 28,900 과 단가 같음"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "너티 냠냠 강아지 노령견 노견 간식 부드러운 수제 영양간식 20g 8개 고구마",
+   "component": "냠 단호박",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "쿠팡 이름. 20g×8 = 냠 단호박 한 팩, 단가 8,900 = 쿠팡 냠 단호박 최빈가. 「8개」는 팩 안 조각 수"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "너티 반려동물 퓨레 스틱 약먹이기 대용량 짜먹는 간식 15p, 2개, 180g, 연어",
+   "component": "굿모닝퓨레",
+   "qty": 2,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "쿠팡 이름. 180g = 12g×15 한 팩, 단가 9,900 = 매출보고시트 굿모닝퓨레 2개입"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "너티 반려동물 퓨레 스틱 약먹이기 대용량 짜먹는 간식 15p, 3개, 180g, 연어 (연어 180g 3개)",
+   "component": "굿모닝퓨레",
+   "qty": 3,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "쿠팡 이름. 단가 13,900 = 매출보고시트 굿모닝퓨레 3개입"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "너티 하루루틴 에너젯바 2개입",
+   "component": "에너젯바",
+   "qty": 2,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "쿠팡 이름. 매출보고시트 「에너젯바 2개입」"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "단호박 고구마 양갱 부드러운 노견 간식 부드러운 수제 영양간식 고구마+단호박, 640g, 4개",
+   "component": "냠 단호박",
+   "qty": 4,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "품목코드 P00000CK_3 = 냠 단호박 4개입(원가 18,000 = 4,500×4), 640g = 160g×4"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "바삭",
+   "component": "바삭 닭가슴살",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "2025년 옛 이름"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "바삭 닭가슴살",
+   "component": "바삭 닭가슴살",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "바삭 닭가슴살 2개",
+   "component": "바삭 닭가슴살",
+   "qty": 2,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「2개」"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "바삭 닭가슴살 3개",
+   "component": "바삭 닭가슴살",
+   "qty": 3,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「3개」"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "바삭! 닭가슴살 * 3개",
+   "component": "바삭 닭가슴살",
+   "qty": 3,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": true,
+   "note": "판단: 이름대로 바삭 3개. 단, 상품 목록 품목코드 P00000CK_2 가 원가표에서는 「냠 단호박 3개입」이라 어긋남"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "바삭! 닭가슴살 * 4개",
+   "component": "바삭 닭가슴살",
+   "qty": 4,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "품목코드 P00000CJ_3 = 바삭 4개입(원가 14,000 = 3,500×4)"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "사운드 세트",
+   "component": "냠 단호박",
+   "qty": 1,
+   "price_share": 0.527778,
+   "source": "manual",
+   "needs_review": false,
+   "note": "2025년 옛 이름. 사운드 라인 = 냠·바삭, 단가 17,900 = 「사운드시리즈 냠+바삭」 · 매출 나누기: 정가 비율(냠 단호박 19,000원, 바삭 닭가슴살 17,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "사운드 세트",
+   "component": "바삭 닭가슴살",
+   "qty": 1,
+   "price_share": 0.472222,
+   "source": "manual",
+   "needs_review": false,
+   "note": "2025년 옛 이름. 사운드 라인 = 냠·바삭, 단가 17,900 = 「사운드시리즈 냠+바삭」 · 매출 나누기: 정가 비율(냠 단호박 19,000원, 바삭 닭가슴살 17,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "사운드시리즈 냠+바삭",
+   "component": "냠 단호박",
+   "qty": 1,
+   "price_share": 0.527778,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「냠N+바삭N」 · 매출 나누기: 정가 비율(냠 단호박 19,000원, 바삭 닭가슴살 17,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "사운드시리즈 냠+바삭",
+   "component": "바삭 닭가슴살",
+   "qty": 1,
+   "price_share": 0.472222,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「냠N+바삭N」 · 매출 나누기: 정가 비율(냠 단호박 19,000원, 바삭 닭가슴살 17,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "사운드시리즈 냠1+바삭2",
+   "component": "냠 단호박",
+   "qty": 1,
+   "price_share": 0.358491,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「냠N+바삭N」 · 매출 나누기: 정가 비율(냠 단호박 19,000원, 바삭 닭가슴살 17,000원×2). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "사운드시리즈 냠1+바삭2",
+   "component": "바삭 닭가슴살",
+   "qty": 2,
+   "price_share": 0.641509,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「냠N+바삭N」 · 매출 나누기: 정가 비율(냠 단호박 19,000원, 바삭 닭가슴살 17,000원×2). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "사운드시리즈 냠2+바삭1",
+   "component": "냠 단호박",
+   "qty": 2,
+   "price_share": 0.690909,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「냠N+바삭N」 · 매출 나누기: 정가 비율(냠 단호박 19,000원×2, 바삭 닭가슴살 17,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "사운드시리즈 냠2+바삭1",
+   "component": "바삭 닭가슴살",
+   "qty": 1,
+   "price_share": 0.309091,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「냠N+바삭N」 · 매출 나누기: 정가 비율(냠 단호박 19,000원×2, 바삭 닭가슴살 17,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "사운드시리즈 냠2+바삭2",
+   "component": "냠 단호박",
+   "qty": 2,
+   "price_share": 0.527778,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「냠N+바삭N」 · 매출 나누기: 정가 비율(냠 단호박 19,000원×2, 바삭 닭가슴살 17,000원×2). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "사운드시리즈 냠2+바삭2",
+   "component": "바삭 닭가슴살",
+   "qty": 2,
+   "price_share": 0.472222,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「냠N+바삭N」 · 매출 나누기: 정가 비율(냠 단호박 19,000원×2, 바삭 닭가슴살 17,000원×2). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "설날 선물세트",
+   "component": "설날 선물세트",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": true,
+   "note": "구성 미확인. 풀지 않고 그대로 둠(원가 30,000)"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "스트레스 제로 껌",
+   "component": "스트레스제로껌",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "2025년 옛 이름"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "스트레스제로껌",
+   "component": "스트레스제로껌",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "스트레스제로껌 2개",
+   "component": "스트레스제로껌",
+   "qty": 2,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「2개」"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "스트레스제로껌 3개",
+   "component": "스트레스제로껌",
+   "qty": 3,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「3개」"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "스트레스제로껌 4개",
+   "component": "스트레스제로껌",
+   "qty": 4,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "이름 규칙 「4개」"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "에너젯바",
+   "component": "에너젯바",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "에너젯바 2개",
+   "component": "에너젯바",
+   "qty": 2,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "상품 목록에만 있는 이름(광고 연결용). 이름 규칙 「2개」"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "에너젯바 3개",
+   "component": "에너젯바",
+   "qty": 3,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "상품 목록에만 있는 이름(광고 연결용). 이름 규칙 「3개」"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "크리스마스 선물세트",
+   "component": "크리스마스 선물세트",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": true,
+   "note": "구성 미확인. 풀지 않고 그대로 둠(원가 40,000 이 5종 단품 원가 합과 안 맞음)"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "크리스마스 패키지",
+   "component": "크리스마스 선물세트",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": true,
+   "note": "2025년 옛 이름. 구성 미확인, 그대로 둠"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "하루루틴 세트",
+   "component": "굿모닝퓨레",
+   "qty": 1,
+   "price_share": 0.266667,
+   "source": "manual",
+   "needs_review": false,
+   "note": "2025년 옛 이름. 하루루틴시리즈 3종과 같다고 봄 · 매출 나누기: 정가 비율(스트레스제로껌 19,000원, 에너젯바 25,000원, 굿모닝퓨레 16,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 25,000(반값 12,500) / 자사몰 단품 최빈가 16,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "하루루틴 세트",
+   "component": "스트레스제로껌",
+   "qty": 1,
+   "price_share": 0.316667,
+   "source": "manual",
+   "needs_review": false,
+   "note": "2025년 옛 이름. 하루루틴시리즈 3종과 같다고 봄 · 매출 나누기: 정가 비율(스트레스제로껌 19,000원, 에너젯바 25,000원, 굿모닝퓨레 16,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 25,000(반값 12,500) / 자사몰 단품 최빈가 16,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "하루루틴 세트",
+   "component": "에너젯바",
+   "qty": 1,
+   "price_share": 0.416667,
+   "source": "manual",
+   "needs_review": false,
+   "note": "2025년 옛 이름. 하루루틴시리즈 3종과 같다고 봄 · 매출 나누기: 정가 비율(스트레스제로껌 19,000원, 에너젯바 25,000원, 굿모닝퓨레 16,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 25,000(반값 12,500) / 자사몰 단품 최빈가 16,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "하루루틴시리즈 3종",
+   "component": "굿모닝퓨레",
+   "qty": 1,
+   "price_share": 0.266667,
+   "source": "manual",
+   "needs_review": false,
+   "note": "하루루틴 라인 3종(상품 목록 라인업 하루루틴 = 껌·에너젯바·퓨레) 1개씩 · 매출 나누기: 정가 비율(스트레스제로껌 19,000원, 에너젯바 25,000원, 굿모닝퓨레 16,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 25,000(반값 12,500) / 자사몰 단품 최빈가 16,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "하루루틴시리즈 3종",
+   "component": "스트레스제로껌",
+   "qty": 1,
+   "price_share": 0.316667,
+   "source": "manual",
+   "needs_review": false,
+   "note": "하루루틴 라인 3종(상품 목록 라인업 하루루틴 = 껌·에너젯바·퓨레) 1개씩 · 매출 나누기: 정가 비율(스트레스제로껌 19,000원, 에너젯바 25,000원, 굿모닝퓨레 16,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 25,000(반값 12,500) / 자사몰 단품 최빈가 16,000"
+  },
+  {
+   "brand": "nutty",
+   "sale_product": "하루루틴시리즈 3종",
+   "component": "에너젯바",
+   "qty": 1,
+   "price_share": 0.416667,
+   "source": "manual",
+   "needs_review": false,
+   "note": "하루루틴 라인 3종(상품 목록 라인업 하루루틴 = 껌·에너젯바·퓨레) 1개씩 · 매출 나누기: 정가 비율(스트레스제로껌 19,000원, 에너젯바 25,000원, 굿모닝퓨레 16,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 25,000(반값 12,500) / 자사몰 단품 최빈가 16,000"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "[맛보기샘플] 고네이티브독 연어 치킨 오리 청어 40g 4종",
+   "component": "[맛보기샘플] 고네이티브독 연어 치킨 오리 청어 40g 4종",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "맛보기 샘플. 풀지 않음"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "강아지 덴탈 트릿 레날 60g",
+   "component": "강아지 덴탈 트릿 레날 60g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "강아지 덴탈 트릿 스트루바이트 60g 결석 덴탈껌",
+   "component": "강아지 덴탈 트릿 스트루바이트 60g 결석 덴탈껌",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "강아지 덴탈 트릿 오베시티 60g 비만 하드 덴탈껌",
+   "component": "강아지 덴탈 트릿 오베시티 60g 비만 하드 덴탈껌",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "강아지 덴탈 트릿 조인트 60g 관절 하드 덴탈껌",
+   "component": "강아지 덴탈 트릿 조인트 60g 관절 하드 덴탈껌",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "게더 앤드레스 밸리 50g + 비건 프리에이커 치킨 50g 강아지 사료 샘플",
+   "component": "게더 앤드레스 밸리 50g + 비건 프리에이커 치킨 50g 강아지 사료 샘플",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "다른 회사 사료 샘플(단가 100원 안팎). 풀지 않음"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "고네이티브 스몰브리드 연어 4kg 시금치 생강 강아지 프리미엄 사료",
+   "component": "고네이티브 스몰브리드 연어 4kg 시금치 생강 강아지 프리미엄 사료",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "고네이티브 스몰브리드 오리 4kg 강아지 프리미엄 사료\r",
+   "component": "고네이티브 스몰브리드 오리 4kg 강아지 프리미엄 사료\r",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "고네이티브 스몰브리드 청어 12kg 강아지 프리미엄 사료",
+   "component": "고네이티브 스몰브리드 청어 12kg 강아지 프리미엄 사료",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "고네이티브 스몰브리드 청어 4kg 강아지 사료 면역력",
+   "component": "고네이티브 스몰브리드 청어 4kg 강아지 사료 면역력",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "고네이티브 스몰브리드 치킨 12kg 강아지 프리미엄 사료 대용량",
+   "component": "고네이티브 스몰브리드 치킨 12kg 강아지 프리미엄 사료 대용량",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "고네이티브 스몰브리드 치킨 4kg 브로콜리 감자",
+   "component": "고네이티브 스몰브리드 치킨 4kg 브로콜리 감자",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "그레인프리 치킨과 파스닙 200g",
+   "component": "그레인프리 치킨과 파스닙 200g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "나우 독 프레쉬 굿 그레이비 스몰 40g 강아지 사료 샘플",
+   "component": "나우 독 프레쉬 굿 그레이비 스몰 40g 강아지 사료 샘플",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "덴탈 트릿 하이포알러제닉 포크 60g",
+   "component": "덴탈 트릿 하이포알러제닉 포크 60g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "독 사료 1.8kg 강아지 사료 칠면조 닭고기",
+   "component": "독 사료 1.8kg 강아지 사료 칠면조 닭고기",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "독 오리 브로콜리 미니 100g 5개",
+   "component": "퀴노아 독 오리 브로콜리 미니 100g",
+   "qty": 5,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "100g 5개 묶음(원가표 P00000CT_6)"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "라이트 치킨과 애호박 400g",
+   "component": "라이트 치킨과 애호박 400g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "라이트 칠면조와 샐러리 400g",
+   "component": "라이트 칠면조와 샐러리 400g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "레이앤이본 닥터레이 안타레스 강아지 종양 영양제 항산화제",
+   "component": "레이앤이본 닥터레이 안타레스 강아지 종양 영양제 항산화제",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "레이앤이본 닥터레이 프라피스 강아지 구강 스프레이 기관지",
+   "component": "레이앤이본 닥터레이 프라피스 강아지 구강 스프레이 기관지",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "마그네타",
+   "component": "마그네타",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "마그네타 미니",
+   "component": "마그네타 미니",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "마그네타미니",
+   "component": "마그네타 미니",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "띄어쓰기만 다름"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "멧돼지&사과+대구&오렌지 100g",
+   "component": "오션 독 대구&오렌지 미니알갱이 100g",
+   "qty": 1,
+   "price_share": 0.507246,
+   "source": "manual",
+   "needs_review": false,
+   "note": "100g 두 종 세트(원가 4,800 = 2,500×2 안팎) · 매출 나누기: 정가 비율(펌킨 독 멧돼지&사과 미니알갱이 100g 3,400원, 오션 독 대구&오렌지 미니알갱이 100g 3,500원). 100g 단품 최빈가 / 100g 단품 최빈가"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "멧돼지&사과+대구&오렌지 100g",
+   "component": "펌킨 독 멧돼지&사과 미니알갱이 100g",
+   "qty": 1,
+   "price_share": 0.492754,
+   "source": "manual",
+   "needs_review": false,
+   "note": "100g 두 종 세트(원가 4,800 = 2,500×2 안팎) · 매출 나누기: 정가 비율(펌킨 독 멧돼지&사과 미니알갱이 100g 3,400원, 오션 독 대구&오렌지 미니알갱이 100g 3,500원). 100g 단품 최빈가 / 100g 단품 최빈가"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "바나퀸 조인트",
+   "component": "바나퀸 조인트",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "바나퀸조인트",
+   "component": "바나퀸 조인트",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "띄어쓰기만 다름"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "베가",
+   "component": "베가",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "스몰브리드 독 연어 치킨 오리 청어 40g 4종 세트",
+   "component": "[맛보기샘플] 고네이티브독 연어 치킨 오리 청어 40g 4종",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "같은 맛보기 샘플의 다른 이름"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "스몰브리드 연어 1.5kg",
+   "component": "스몰브리드 연어 1.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "스몰브리드 오리 1.5kg",
+   "component": "스몰브리드 오리 1.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "스몰브리드 청어 1.5kg",
+   "component": "스몰브리드 청어 1.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "스몰브리드 치킨 1.5kg",
+   "component": "스몰브리드 치킨 1.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "앤세스트럴 독 닭고기&석류 미니 바이트 2.5kg",
+   "component": "앤세스트럴 독 닭고기&석류 미니 바이트 2.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "앤세스트럴 독 닭고기&석류 미니 바이트 7kg",
+   "component": "앤세스트럴 독 닭고기&석류 미니 바이트 7kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "앤세스트럴 독 닭고기&석류 미디움 12kg",
+   "component": "앤세스트럴 독 닭고기&석류 미디움 12kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "앤세스트럴 캣 닭고기 석류 50g",
+   "component": "앤세스트럴 캣 닭고기 석류 50g",
+   "qty": 5,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "판단: 이름은 50g 하나지만 단가 9,000~9,500 = 50g 1,900×5. 5개 묶음으로 셈"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "엔세스트럴 캣 닭고기 석류 1.5kg 고양이 당뇨 사료",
+   "component": "엔세스트럴 캣 닭고기 석류 1.5kg 고양이 당뇨 사료",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "엔세스트럴 캣 닭고기 석류 5kg",
+   "component": "엔세스트럴 캣 닭고기 석류 5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오리젠 스몰브리드 독 오리지날 2kg 전연령 강아지사료",
+   "component": "오리젠 스몰브리드 독 오리지날 2kg 전연령 강아지사료",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오리젠 스몰브리드 독 퍼피 2kg 닭고기 칠면조 간식",
+   "component": "오리젠 스몰브리드 독 퍼피 2kg 닭고기 칠면조 간식",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오리젠6 식스피쉬 독 사료 2kg 강아지 사료 단백질 미네랄",
+   "component": "오리젠6 식스피쉬 독 사료 2kg 강아지 사료 단백질 미네랄",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오메가3",
+   "component": "오메가3",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 대구&오렌지 미니알갱이 100g",
+   "component": "오션 독 대구&오렌지 미니알갱이 100g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 대구&오렌지 미니알갱이 2.5kg",
+   "component": "오션 독 대구&오렌지 미니알갱이 2.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 대구&오렌지 미니알갱이 7kg",
+   "component": "오션 독 대구&오렌지 미니알갱이 7kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 대구&오렌지 미디움알갱이 12kg",
+   "component": "오션 독 대구&오렌지 미디움알갱이 12kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 멧돼지&사과 맛보기 샘플",
+   "component": "오션 독 멧돼지&사과 미니알갱이 100g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "단가 2,900 = 100g 단품"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 멧돼지&사과 미니알갱이 100g",
+   "component": "오션 독 멧돼지&사과 미니알갱이 100g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 멧돼지&사과 미니알갱이 2.5kg",
+   "component": "오션 독 멧돼지&사과 미니알갱이 2.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 멧돼지&사과 미니알갱이 7kg",
+   "component": "오션 독 멧돼지&사과 미니알갱이 7kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 멧돼지&사과 미디움 알갱이 12kg",
+   "component": "오션 독 멧돼지&사과 미디움 알갱이 12kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 청어&오렌지 미니 100g",
+   "component": "오션 독 청어&오렌지 미니 100g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 청어&오렌지 미니 100g 5개",
+   "component": "오션 독 청어&오렌지 미니 100g",
+   "qty": 5,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "단가 약 17,000 = 100g 단품 3,400×5"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 청어&오렌지 미니 7kg",
+   "component": "오션 독 청어&오렌지 미니 7kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 독 청어&오렌지 미니알갱이 2.5kg",
+   "component": "오션 독 청어&오렌지 미니알갱이 2.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 청어&오렌지 미니알갱이 2.5kg",
+   "component": "오션 독 청어&오렌지 미니알갱이 2.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "「독」만 빠진 같은 상품(품목코드 P00000CR)"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 캣 대구&오렌지 5kg",
+   "component": "오션 캣 대구&오렌지 5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 캣 청어 오렌지 5kg",
+   "component": "오션 캣 청어 오렌지 5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "오션 캣 청어&오렌지 1.5kg",
+   "component": "오션 캣 청어&오렌지 1.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "처방식 독 가스트로인테스티널 2kg 위장 소화 건강",
+   "component": "처방식 독 가스트로인테스티널 2kg 위장 소화 건강",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "처방식 독 울트라하이포 12kg 알러지 아토피 대용량",
+   "component": "처방식 독 울트라하이포 12kg 알러지 아토피 대용량",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "처방식 독 울트라하이포 50g",
+   "component": "처방식 독 울트라하이포 50g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "처방식 독 인테스티널 울트라케어 로우팻 50g",
+   "component": "처방식 독 인테스티널 울트라케어 로우팻 50g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "카놉틱",
+   "component": "카놉틱",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "캣 대구 오렌지 1.5kg 고양이 사료",
+   "component": "캣 대구 오렌지 1.5kg 고양이 사료",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "캣 오리 브로콜리 아스파라거스 1.5kg",
+   "component": "캣 오리 브로콜리 아스파라거스 1.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "퀴노아 독 오리 브로콜리 미니 2.5kg",
+   "component": "퀴노아 독 오리 브로콜리 미니 2.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "퀴노아 독 오리 코코넛 강황 미디움 2.5kg",
+   "component": "퀴노아 독 오리 코코넛 강황 미디움 2.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "퀴노아 캣 오리 브로콜리 5kg",
+   "component": "퀴노아 캣 오리 브로콜리 5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "퀴노아 캣 오리 브로콜리 아스파라거스 50g 5개 중성화 체중관리",
+   "component": "퀴노아 캣 오리 브로콜리 아스파라거스 50g",
+   "qty": 5,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "50g 5개 묶음, 단가 약 10,000 = 50g 2,000×5"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "퀴노아 캣 유리너리 오리 1.5kg",
+   "component": "퀴노아 캣 유리너리 오리 1.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "퀴노아 캣 유리너리 오리 50g",
+   "component": "퀴노아 캣 유리너리 오리 50g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "퀴노아 캣 유리너리 오리 50g 5개",
+   "component": "퀴노아 캣 유리너리 오리 50g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "판단: 이름은 5개지만 단가 2,000 이 50g 단품과 같고 원가표도 단품과 같은 1,400. 1개로 셈"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "퀴노아 캣 유리너리 오리 5kg",
+   "component": "퀴노아 캣 유리너리 오리 5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "퀴노아 캣 유리너리 오리 브로콜리 미니 100g",
+   "component": "퀴노아 캣 유리너리 오리 브로콜리 미니 100g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "트로피컬 독 돼지고기 열대과일 미니 알갱이 1.5KG",
+   "component": "트로피컬 독 돼지고기 열대과일 미니 알갱이 1.5KG",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "트로피컬 독 돼지고기 열대과일 미니 알갱이 100g 샘플",
+   "component": "트로피컬 독 돼지고기 열대과일 미니 알갱이 100g 샘플",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "트로피컬 독 돼지고기 열대과일 미디움 알갱이 10kg",
+   "component": "트로피컬 독 돼지고기 열대과일 미디움 알갱이 10kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "트로피컬 독 연어 열대과일 미니 알갱이 1.5Kg",
+   "component": "트로피컬 독 연어 열대과일 미니 알갱이 1.5Kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "트로피컬 독 연어 열대과일 미니 알갱이 100g",
+   "component": "트로피컬 독 연어 열대과일 미니 알갱이 100g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "트로피컬 독 연어 열대과일 미니 알갱이 5kg",
+   "component": "트로피컬 독 연어 열대과일 미니 알갱이 5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "트로피컬 독 연어 열대과일 미디움 알갱이 10kg",
+   "component": "트로피컬 독 연어 열대과일 미디움 알갱이 10kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "트로피컬 캣 닭고기 열대과일 50g 고양이 샘플",
+   "component": "트로피컬 캣 닭고기 열대과일 50g 고양이 샘플",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 강아지 덴탈 트릿 가스트로인테스티널 60g 강아지 간식",
+   "component": "파미나 벳라이프 강아지 덴탈 트릿 가스트로인테스티널 60g 강아지 간식",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 가스트로인테스티널 50g 소화 건강",
+   "component": "파미나 벳라이프 처방식 독 가스트로인테스티널 50g 소화 건강",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 레날 2kg 강아지 신부전 신장 관리",
+   "component": "파미나 벳라이프 처방식 독 레날 2kg 강아지 신부전 신장 관리",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 레날 50g 강아지 신부전 신장 관리",
+   "component": "파미나 벳라이프 처방식 독 레날 50g 강아지 신부전 신장 관리",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 스트루바이트 2kg 강아지 결석관리",
+   "component": "파미나 벳라이프 처방식 독 스트루바이트 2kg 강아지 결석관리",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 스트루바이트 50g 강아지 결석관리",
+   "component": "파미나 벳라이프 처방식 독 스트루바이트 50g 강아지 결석관리",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 오베시티 50g 다이어트 당뇨",
+   "component": "파미나 벳라이프 처방식 독 오베시티 50g 다이어트 당뇨",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 옥살레이트 2kg 비뇨계 건강 관리\r",
+   "component": "파미나 벳라이프 처방식 독 옥살레이트 2kg 비뇨계 건강 관리\r",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 옥살레이트 50g 비뇨계 건강 관리",
+   "component": "파미나 벳라이프 처방식 독 옥살레이트 50g 비뇨계 건강 관리",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 울트라하이포 2kg 강아지 사료",
+   "component": "파미나 벳라이프 처방식 독 울트라하이포 2kg 강아지 사료",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 인테스티널 울트라케어 로우팻 2kg",
+   "component": "파미나 벳라이프 처방식 독 인테스티널 울트라케어 로우팻 2kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 카디악 2kg 심장 건강 관리",
+   "component": "파미나 벳라이프 처방식 독 카디악 2kg 심장 건강 관리",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 벳라이프 처방식 독 카디악 50g 심장 건강 관리",
+   "component": "파미나 벳라이프 처방식 독 카디악 50g 심장 건강 관리",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 N&D 퀴노아 독 오리 코코넛 강황 미디움 알갱이 100g 5개 피부 피모 관리",
+   "component": "파미나 N&D 퀴노아 독 오리 코코넛 강황 미디움 알갱이 100g 강아지 피부 피모",
+   "qty": 5,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "100g 단품 3,700, 5개 묶음 16,800"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 N&D 퀴노아 독 오리 코코넛 강황 미디움 알갱이 100g 강아지 피부 피모",
+   "component": "파미나 N&D 퀴노아 독 오리 코코넛 강황 미디움 알갱이 100g 강아지 피부 피모",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 N&D 트로피컬 캣 닭고기 열대과일 1.5kg 고양이 사료",
+   "component": "파미나 N&D 트로피컬 캣 닭고기 열대과일 1.5kg 고양이 사료",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 N&D 펌킨 독 닭고기 석류 미니 알갱이 100g 5개",
+   "component": "펌킨 독 닭고기 석류 미니 알갱이 100g",
+   "qty": 5,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "100g 5개 묶음(원가 12,000)"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "파미나 N&D 프라임 캣 멧돼지 사과 5kg 고양이 사료",
+   "component": "파미나 N&D 프라임 캣 멧돼지 사과 5kg 고양이 사료",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "판크레타",
+   "component": "판크레타",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "퍼피 치킨과 호박 200g",
+   "component": "퍼피 치킨과 호박 200g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "펌킨 독 닭고기 석류 미디움 알갱이 12kg",
+   "component": "펌킨 독 닭고기 석류 미디움 알갱이 12kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "펌킨 독 닭고기&석류 미니 바이트 2.5kg",
+   "component": "펌킨 독 닭고기&석류 미니 바이트 2.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "펌킨 독 멧돼지&사과 미니알갱이 100g",
+   "component": "펌킨 독 멧돼지&사과 미니알갱이 100g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "펌킨 독 멧돼지&사과 미니알갱이 100g 5개",
+   "component": "펌킨 독 멧돼지&사과 미니알갱이 100g",
+   "qty": 5,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "단가 16,930 = 100g 단품 3,314×5.1"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "펌킨 독 멧돼지&사과 미니알갱이 2.5kg",
+   "component": "펌킨 독 멧돼지&사과 미니알갱이 2.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "펌킨 독 멧돼지&사과 미니알갱이 7kg",
+   "component": "펌킨 독 멧돼지&사과 미니알갱이 7kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "펌킨 독 멧돼지&사과 미디움 알갱이 12kg",
+   "component": "펌킨 독 멧돼지&사과 미디움 알갱이 12kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "프라임 캣 닭고기 석류 1.5kg",
+   "component": "프라임 캣 닭고기 석류 1.5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "프라임 캣 닭고기 석류 50g",
+   "component": "프라임 캣 닭고기 석류 50g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "프라임 캣 닭고기 석류 5kg",
+   "component": "프라임 캣 닭고기 석류 5kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "프라임 캣 멧돼지 사과 1.5kg 고양이 사료",
+   "component": "프라임 캣 멧돼지 사과 1.5kg 고양이 사료",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "프라임 캣 멧돼지 사과 50g",
+   "component": "프라임 캣 멧돼지 사과 50g",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "프로키온",
+   "component": "프로키온",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "화이트 독 농어&스피룰리나 미니 알갱이 100g",
+   "component": "화이트 독 농어&스피룰리나 미니 알갱이 100g",
+   "qty": 5,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "판단: 이름은 100g 하나지만 단가 18,000 = 5개 묶음값(다른 100g 단품은 3,400)"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "화이트 독 농어&스피룰리나 미니 알갱이 100g 5개 강아지 사료 맛보기",
+   "component": "화이트 독 농어&스피룰리나 미니 알갱이 100g",
+   "qty": 5,
+   "price_share": 1,
+   "source": "manual",
+   "needs_review": false,
+   "note": "100g 5개 묶음"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "화이트 독 농어&스피룰리나 미니 알갱이 2kg",
+   "component": "화이트 독 농어&스피룰리나 미니 알갱이 2kg",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  },
+  {
+   "brand": "saip",
+   "sale_product": "후코이카",
+   "component": "후코이카",
+   "qty": 1,
+   "price_share": 1,
+   "source": "auto",
+   "needs_review": false,
+   "note": "단품, 그대로"
+  }
+ ]
+}

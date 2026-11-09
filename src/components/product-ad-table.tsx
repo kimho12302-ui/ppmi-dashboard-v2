@@ -16,6 +16,8 @@ interface ProductAdRow {
   conversion_value: number;
   roas: number;
   salesProduct: string | null;
+  /** 이 줄로 합친 광고 상품 이름들(같은 기본 품목으로 이어지는 광고는 한 줄) */
+  adNames?: string[];
   actualRevenue: number | null;
   actualQuantity: number | null;
   actualRoas: number | null;
@@ -32,7 +34,7 @@ interface LineupRow { lineup: string; brand: string; spend: number; conversion_v
  */
 export function ProductAdTable({ from, to, brand }: { from: string; to: string; brand: string }) {
   const { data, loading } = useFetch<{
-    available: boolean; products: ProductAdRow[]; lineups: LineupRow[]; linkedCount?: number; reason?: string;
+    available: boolean; products: ProductAdRow[]; lineups: LineupRow[]; linkedCount?: number; reason?: string; componentsReady?: boolean;
   }>(`/api/product-ads?from=${from}&to=${to}&brand=${brand}`);
 
   if (loading) {
@@ -80,7 +82,7 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
       <div className="flex items-baseline justify-between gap-2 flex-wrap mb-3">
         <h3 className="font-semibold text-sm">
           제품별 광고 성과 <span className="text-xs text-muted-foreground font-normal">
-            광고 상품·캠페인 단위 · 실매출은 판매 원장 기준{hasGongguRule && " (공구 제외)"}
+            {data?.componentsReady ? "기본 품목 단위(묶음·세트는 구성표로 풀어 셈)" : "광고 상품·캠페인 단위"} · 실매출은 판매 원장 기준{hasGongguRule && " (공구 제외)"}
             {typeof data?.linkedCount === "number" && ` · 판매 연결 ${data.linkedCount}/${products.length}종`}
           </span>
         </h3>
@@ -124,7 +126,12 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
           <tbody>
             {products.slice(0, 20).map(p => (
               <tr key={`${p.brand}-${p.product_id}`} className="border-b last:border-0">
-                <td className="py-2 truncate max-w-[280px]" title={p.product_name}>{p.product_name}</td>
+                <td className="py-2 truncate max-w-[280px]" title={(p.adNames && p.adNames.length ? p.adNames : [p.product_name]).join("\n")}>
+                  {p.product_name}
+                  {p.adNames && p.adNames.length > 1 && (
+                    <span className="text-xs text-muted-foreground ml-1">광고 {p.adNames.length}개 합침</span>
+                  )}
+                </td>
                 <td className="py-2 text-right num font-medium">{formatCurrency(p.spend)}</td>
                 <td className="py-2 text-right num">{formatNumber(p.clicks)}</td>
                 <td className="py-2 text-right num">{formatNumber(p.conversions)}</td>

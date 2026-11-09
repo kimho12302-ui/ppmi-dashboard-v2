@@ -6,6 +6,8 @@ import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { isGonggu, isGongguAggregate, formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
+import { loadComponentIndex } from "@/lib/product-components-server";
+import { expandSales } from "@/lib/product-components";
 
 // Channel name mapping (English → Korean)
 const CHANNEL_LABELS: Record<string, string> = {
@@ -64,12 +66,13 @@ async function getImpl(request: NextRequest) {
 
     // .range(0, 99999) 는 PostgREST db-max-rows(1000)에 막혀 무력했다 → fetchAll 로 전량 조회.
     // 정렬이 없으면 어느 1000행이 올지 비결정적이었으므로 date 정렬도 명시한다.
-    const [rawSalesRows, adRows, funnelRows, prodRows, rawPrevSales] = await Promise.all([
+    const [rawSalesRows, adRows, funnelRows, prodRows, rawPrevSales, components] = await Promise.all([
       fetchAll(salesQ.order("date")),
       fetchAll(adQ.order("date")),
       fetchAll(funnelQ.order("date")),
       fetchAll(prodQ.order("date")),
       fetchAll(prevSalesQ.order("date")),
+      loadComponentIndex(),
     ]);
 
     const insights: { type: "critical" | "warning" | "opportunity" | "info"; text: string; detail?: string; actions?: string[] }[] = [];
@@ -86,9 +89,10 @@ async function getImpl(request: NextRequest) {
 
     // 공구를 제외한 제품 행. 제품 비중의 분자는 이걸 써야 분모(totalRevenue)와 스코프가 맞는다.
     // (분자만 공구 포함이면 '큐모발검사 매출 비중 499% — 히어로 상품' 같은 값이 나온다.)
-    const selfProdRows = prodRows.filter(
+    // 제품 단위(히어로 상품·제품별 하락)는 구성표로 기본 품목까지 푼 행으로 센다(2026-11-09, src/lib/product-components.ts).
+    const selfProdRows = expandSales(prodRows.filter(
       (r) => !isGongguAggregate(r) && !(r.brand === "balancelab" && isGonggu(r))
-    );
+    ), components);
 
     const totalRevenue = salesRows.reduce((s, r) => s + Number(r.revenue), 0);
     const _totalOrders = salesRows.reduce((s, r) => s + Number(r.orders), 0); // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -258,7 +262,7 @@ async function getImpl(request: NextRequest) {
       // Product-level drill — 현재(selfProdRows)와 같이 공구를 제외해야 비교가 성립한다.
       // prevProdRows 는 위에서 이미 조회했으므로 추가 왕복 없이 재사용한다.
       const prevProdMap = new Map<string, number>();
-      for (const r of prevProdRows) {
+      for (const r of expandSales(prevProdRows, components)) {
         if (isGongguAggregate(r)) continue;
         if (r.brand === "balancelab" && isGonggu(r)) continue;
         prevProdMap.set(r.product, (prevProdMap.get(r.product) || 0) + Number(r.revenue));
@@ -303,4 +307,4 @@ async function getImpl(request: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "product_sales"], ["brand", "from", "to"]);
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "product_sales", "product_components"], ["brand", "from", "to"]);
