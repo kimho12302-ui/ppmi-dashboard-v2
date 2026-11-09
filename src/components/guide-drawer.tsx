@@ -13,7 +13,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { COMMON_GUIDE, resolveGuide, type Guide, type GuideItem } from "@/lib/guides";
+import { COMMON_GUIDE, resolveGuide, type Guide, type GuideItem } from "@/lib/guides/v1";
 
 type GuideTab = "screen" | "basics";
 
