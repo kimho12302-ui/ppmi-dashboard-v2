@@ -9,7 +9,7 @@ import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { BRAND_LABELS, AD_CHANNEL_COLORS } from "@/lib/types";
 import { bucketize, bucketAxis, bucketLabel, isAfterLastData, lastDataDate, GRAN_LABELS, type Gran } from "@/lib/bucket";
-import { StoreDetailChart } from "@/components/store-detail-chart";
+import { StoreDetailChartView } from "@/components/store-detail-chart";
 import { SectionHeading } from "@/components/ui/section";
 import { ProductAdTable } from "@/components/product-ad-table";
 import { ProductTrendChart } from "@/components/product-trend-chart";
@@ -258,7 +258,8 @@ function BrandInner({ brand }: { brand: string }) {
       </Card>
 
       {/* 판매처 개별 추이 — 개요와 같은 컴포넌트를 쓴다 */}
-      <StoreDetailChart brand={brand} from={from} to={to} />
+      {/* 판매처 상세는 위에서 받은 channel-groups 를 그대로 쓴다(같은 API 두 번 호출 제거, 2026-11-09) */}
+      <StoreDetailChartView data={cg} from={from} to={to} />
 
       {/* 판매처(채널)별 성과 */}
       <Card>
