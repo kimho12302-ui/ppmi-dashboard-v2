@@ -37,22 +37,23 @@ export function DataFreshness() {
   return (
     <span className="num inline-flex items-center gap-2 self-start sm:self-auto text-xs text-muted-foreground whitespace-nowrap">
       {working ? (
-        <span className="inline-flex items-center gap-1" aria-live="polite">
+        <span data-tour="shell-data-time" className="inline-flex items-center gap-1" aria-live="polite">
           <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" aria-hidden />
           갱신 중
         </span>
       ) : snap.failed ? (
-        <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400" role="status" title="새 값을 받지 못해 직전에 받은 숫자를 보여 주고 있습니다. 새로고침을 눌러 다시 받아 보세요.">
+        <span data-tour="shell-data-time" className="inline-flex items-center gap-1 text-red-600 dark:text-red-400" role="status" title="새 값을 받지 못해 직전에 받은 숫자를 보여 주고 있습니다. 새로고침을 눌러 다시 받아 보세요.">
           <span className="w-1.5 h-1.5 rounded-full bg-red-500" aria-hidden />
           갱신 실패 · 직전 값 표시 중{snap.oldestAsOf ? ` (${kstClock(snap.oldestAsOf)})` : ""}
         </span>
       ) : snap.oldestAsOf ? (
-        <span title="서버가 이 숫자를 DB 에서 읽은 시각입니다. 최대 5분 지난 값일 수 있고, 수집·업로드가 끝나면 바로 새로 읽습니다.">
+        <span data-tour="shell-data-time" title="서버가 이 숫자를 DB 에서 읽은 시각입니다. 최대 5분 지난 값일 수 있고, 수집·업로드가 끝나면 바로 새로 읽습니다.">
           데이터 기준 {kstClock(snap.oldestAsOf)}
         </span>
       ) : null}
       <button
         type="button"
+        data-tour="shell-refresh"
         onClick={onClick}
         disabled={working}
         className="px-2 py-0.5 rounded-md border bg-card hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

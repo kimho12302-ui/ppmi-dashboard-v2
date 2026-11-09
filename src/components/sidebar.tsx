@@ -106,6 +106,7 @@ export function Sidebar() {
         {/* Logo = 대시보드 상태 화면 입구 (2026-11-06). 메뉴 항목은 늘리지 않고 로고로만 들어간다. */}
         <Link
           href="/status"
+          data-tour="sidebar-logo"
           title="대시보드 상태 보기"
           aria-label="대시보드 상태 보기"
           className={cn(
@@ -119,7 +120,7 @@ export function Sidebar() {
         </Link>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <nav data-tour="sidebar-nav" className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {NAV_ITEMS.map((item) => {
             const isActive =
               item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
@@ -174,6 +175,7 @@ export function Sidebar() {
 
       {/* Mobile Bottom Nav */}
       <nav
+        data-tour="sidebar-nav"
         className="lg:hidden fixed bottom-0 inset-x-0 z-50 border-t flex items-center justify-around h-16 px-2"
         style={{ backgroundColor: "var(--sidebar-bg)", borderColor: "var(--sidebar-border)" }}
       >
