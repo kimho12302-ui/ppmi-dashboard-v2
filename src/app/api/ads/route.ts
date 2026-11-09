@@ -55,6 +55,27 @@ async function getImpl(req: NextRequest) {
       return NextResponse.json({ ads: Array.from(byChannel.values()), prevAds: [] });
     }
 
+    // ★ ?shape=daily (2026-11-09, 매체별 예산 화면용): (날짜, 채널) 합계만 보낸다.
+    //   그 화면은 날짜 × 채널로 광고비·노출·클릭을 더하기만 하고 이전 기간도 브랜드도 안 쓴다.
+    //   8/1~ 기준 원본 430KB(전 칸 1,900행)가 몇십 KB 로 준다. 더하는 순서는 원본 행 순서 그대로라 합계가 같다.
+    //   /ads 화면은 행마다 brand(구매 전환 측정 여부 판정)·reach 를 써서 이 모양으로 바꿀 수 없다.
+    if (sp.get("shape") === "daily") {
+      const rows = await fetchAll(query.select("date,channel,spend,clicks,impressions,conversions,conversion_value"));
+      const byDay = new Map<string, { date: string; channel: string; spend: number; clicks: number; impressions: number; conversions: number; conversion_value: number; n: number }>();
+      for (const r of rows) {
+        const k = `${r.date}|${r.channel}`;
+        const g = byDay.get(k) || { date: r.date, channel: r.channel, spend: 0, clicks: 0, impressions: 0, conversions: 0, conversion_value: 0, n: 0 };
+        g.spend += r.spend || 0;
+        g.clicks += r.clicks || 0;
+        g.impressions += r.impressions || 0;
+        g.conversions += r.conversions || 0;
+        g.conversion_value += r.conversion_value || 0;
+        g.n += 1;
+        byDay.set(k, g);
+      }
+      return NextResponse.json({ ads: Array.from(byDay.values()), prevAds: [] });
+    }
+
     const [ads, prevAds] = await Promise.all([fetchAll(query), fetchAll(prevQuery)]);
 
     return NextResponse.json({ ads, prevAds });
