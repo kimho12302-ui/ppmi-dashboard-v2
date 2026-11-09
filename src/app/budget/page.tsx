@@ -117,7 +117,7 @@ function BudgetInner() {
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="목표 광고예산" value={hasTarget ? formatCurrency(targetAd) : "-"} subtitle="이번 달 매체비 목표" />
-        <KpiCard title="집행" value={formatCurrency(actualAd)} subtitle={hasTarget ? `소진율 ${pct(consumption)} · 집계 진행 ${pct(adProgress)}` : `일 평균 ${formatCurrency(Math.round(dailyAvg))} (원장 ${adDays}일)`} />
+        <KpiCard title="집행" value={formatCurrency(actualAd)} subtitle={hasTarget ? `소진율 ${pct(consumptionThrough)} · 집계 진행 ${pct(adProgress)} (어제까지 기준)` : `일 평균 ${formatCurrency(Math.round(dailyAvg))} (원장 ${adDays}일)`} />
         <KpiCard title="월말 예상" value={formatCurrency(projected)} subtitle={`일 평균 × ${t?.daysInMonth ?? 0}일 (원장 ${adDays}일 기준)${hasTarget ? (projOver ? ` · 목표 ${formatCurrency(targetAd)} 초과 예상` : ` · 목표 대비 ${pct(targetAd > 0 ? projected / targetAd : 0)}`) : ""}`} />
         <KpiCard title="잔여 예산" value={hasTarget ? formatCurrency(remaining) : "-"} subtitle={hasTarget ? `가용 일 ${formatCurrency(Math.round(t!.remaining.reqDailyAd))} (잔여 ${t!.adDaysRemaining}일)` : undefined} />
       </div>
@@ -133,7 +133,7 @@ function BudgetInner() {
               </span>
             </div>
             <div className="relative h-3 bg-muted rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, consumptionThrough * 100)}%`, backgroundColor: consumption > 1 ? "#ef4444" : overPace ? "#f59e0b" : "#10b981" }} />
+              <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, consumptionThrough * 100)}%`, backgroundColor: consumptionThrough > 1 ? "#ef4444" : overPace ? "#f59e0b" : "#10b981" }} />
               <div className="absolute top-0 h-full w-0.5 bg-foreground/60" style={{ left: `${Math.min(100, adProgress * 100)}%` }} title="집계 진행률" />
             </div>
             <p className="text-xs text-muted-foreground">소진 {pct(consumptionThrough)} · 집계 진행 {pct(adProgress)} (세로선, 광고비 원장 {adDays}일 ÷ {t?.daysInMonth ?? 0}일). 둘 다 원장이 들어온 날까지 기준입니다. 소진이 세로선보다 오른쪽이면 예산보다 빠르게 쓰는 중.</p>
