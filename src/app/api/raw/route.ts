@@ -31,30 +31,30 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // 총 개수
-    const { count, error: countErr } = await supabase
-      .from(table)
-      .select("*", { count: "exact", head: true });
-
-    if (countErr) throw countErr;
-
-    // 데이터. 모든 표에 date 열이 있지는 않다(2026-09-21: raw_naver_search_term 이 이 정렬로 500 이 났다).
+    // 2026-11-09 속도 수정: 예전엔 표 전체 건수를 정확히 세느라(count exact) 큰 표에서 16초가 걸렸고
+    // 그동안 DB 가 같이 느려졌다. 이제 데이터 질의 한 번에 "추정" 건수(작은 결과는 정확, 큰 표는 통계값)를 같이 받고,
+    // 다음 쪽이 있는지는 한 행 더 받아(limit+1) 직접 확인한다. 응답 모양(rows·total)은 그대로이고
+    // hasMore·totalIsEstimate 를 더했다. total 은 적어도 지금까지 본 행 수 + (다음 쪽이 있으면 1) 이다.
+    //
+    // 모든 표에 date 열이 있지는 않다(2026-09-21: raw_naver_search_term 이 이 정렬로 500 이 났다).
     // 정렬이 안 되면 정렬 없이 한 번 더 본다. 표를 아예 못 보는 것보다 순서가 없는 편이 낫다.
-    let { data, error } = await supabase
-      .from(table)
-      .select("*")
-      .order("date", { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) {
-      ({ data, error } = await supabase
-        .from(table)
-        .select("*")
-        .range(offset, offset + limit - 1));
-    }
+    const page = (ordered: boolean) => {
+      const q = supabase.from(table).select("*", { count: "estimated" });
+      return (ordered ? q.order("date", { ascending: false }) : q).range(offset, offset + limit);
+    };
+    let { data, error, count } = await page(true);
+    if (error) ({ data, error, count } = await page(false));
     if (error) throw error;
 
-    return NextResponse.json({ rows: data || [], total: count || 0 });
+    const all = data || [];
+    const hasMore = all.length > limit;
+    const rows = all.slice(0, limit);
+    const seen = offset + rows.length + (hasMore ? 1 : 0);
+    // 마지막 쪽이면 정확한 건수를 안다. 쪽 범위를 넘겨 빈 결과면 추정값을 그대로 쓴다.
+    const exact = !hasMore && rows.length > 0;
+    const total = exact ? seen : Math.max(count ?? 0, seen);
+
+    return NextResponse.json({ rows, total, hasMore, totalIsEstimate: !exact });
   } catch (error) {
     // 사유를 감추지 않는다. "Failed to fetch data" 만 보면 표가 없는 건지 열이 없는 건지 알 수 없다.
     const why = error instanceof Error ? error.message : String(error);
