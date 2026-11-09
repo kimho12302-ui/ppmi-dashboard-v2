@@ -13,6 +13,8 @@ import { kstDate, kstMonth } from "@/lib/date";
 
 interface PacingData {
   daysInMonth: number; daysElapsed: number; daysRemaining: number; dateProgress: number;
+  // 광고비 원장이 들어온 날 기준(오늘 장중 행 제외, 어제까지). 인사이트 페이싱 카드와 같은 값이다.
+  adThrough: string | null; adDays: number; adProgress: number; adDaysRemaining: number;
   hasTarget: boolean;
   target: { ad: number };
   actual: { ad: number };
@@ -47,16 +49,6 @@ function BudgetInner() {
 
   const ads = useMemo(() => (adsData?.ads || []).filter((r) => !r.channel.startsWith("ga4_")), [adsData]);
 
-  // 광고비 원장이 들어온 날 수(행이 있는 날짜 수). 「월말 예상」·「일 평균」의 분모.
-  // 예전 분모는 오늘 날짜(daysElapsed)라, 수집이 하루 이틀 밀리면 아직 안 들어온 날을 0원 집행으로 쳐서
-  // 월말 예상이 작게 나왔다(2026-11-04).
-  const ledger = useMemo(() => {
-    const days = new Set<string>();
-    for (const r of ads) days.add(r.date);
-    const sorted = Array.from(days).sort();
-    return { days: sorted.length, through: sorted[sorted.length - 1] || null };
-  }, [ads]);
-
   // 채널별 집행 (매체비, 목표 비교는 채널 단위 목표가 없어 집행/비중만)
   const byChannel = useMemo(() => {
     const map: Record<string, number> = {};
@@ -76,14 +68,21 @@ function BudgetInner() {
   const targetAd = t?.target.ad || 0;
   const actualAd = t?.actual.ad || 0;
   const consumption = t?.achievement.ad || 0;        // 집행/목표
-  const dateProgress = t?.dateProgress || 0;
-  const dailyAvg = ledger.days > 0 ? actualAd / ledger.days : 0;            // 원장이 들어온 날 기준 일 평균
+  // ★ 한 기준으로 맞춤(2026-11-09): 「월말 예상」·「일 평균」·세로선·「잔여 ○일」 모두 광고비 원장이 들어온 날(어제까지) 기준.
+  //   예전엔 세로선·잔여 일은 오늘 날짜(달력), 월말 예상은 이 화면이 직접 센 날 수(오늘 장중 행 포함)라
+  //   같은 화면 안에서 분모가 셋이었고, 「가용 일」 금액은 원장 기준으로 나눈 값인데 옆 글자는 달력 잔여 일이었다.
+  //   기준은 /api/pacing 의 adDays·adProgress 다(인사이트 「목표 대비 페이싱」 카드와 같은 값).
+  const adDays = t?.adDays ?? 0;
+  const adProgress = t?.adProgress ?? 0;                 // 집계 진행률 = 원장 날 수 ÷ 이번 달 일수
+  const dailyAvg = t?.remaining.dailyAvgAd ?? 0;          // 원장이 들어온 날까지 집행 ÷ 그 날 수
   const projected = t ? Math.round(dailyAvg * t.daysInMonth) : 0;            // 월말 예상 집행
   const remaining = t?.remaining.ad ?? 0;            // 목표-집행 (음수=초과)
   const hasTarget = !!t?.hasTarget && targetAd > 0;
+  // 페이스 판정용 소진율: 세로선과 같은 날(원장 마지막 날)까지의 집행으로 잰다. 오늘 장중 집행은 빼야 같은 날끼리 비교가 된다.
+  const consumptionThrough = targetAd > 0 ? (dailyAvg * adDays) / targetAd : 0;
 
-  // 페이스 판정: 소진율 vs 날짜진행률
-  const overPace = hasTarget && consumption > dateProgress + 0.05;
+  // 페이스 판정: 원장까지 소진율 vs 집계 진행률
+  const overPace = hasTarget && consumptionThrough > adProgress + 0.05;
   const projOver = hasTarget && projected > targetAd;
 
   if (loading) {
@@ -99,7 +98,7 @@ function BudgetInner() {
   }
 
   return (
-    <PageShell title="예산 페이싱" description={`${yearNum}년 ${monthNum}월 광고 예산 집행 (${t?.daysElapsed ?? 0}/${t?.daysInMonth ?? 0}일 경과, 광고비 원장 ${ledger.days}일치${ledger.through ? ` · ${ledger.through}까지` : ""}, 매체비 기준)`} hideFilters>
+    <PageShell title="예산 페이싱" description={`${yearNum}년 ${monthNum}월 광고 예산 집행 (${t?.daysElapsed ?? 0}/${t?.daysInMonth ?? 0}일 경과, 광고비 원장 ${adDays}일치${t?.adThrough ? ` · ${t.adThrough}까지` : ""}, 매체비 기준)`} hideFilters>
       {!hasTarget && (
         <Card><CardContent className="p-4 text-sm text-muted-foreground">
           이번 달 광고예산 목표가 없습니다. <a href="/settings?tab=targets" className="text-primary hover:underline">설정 &gt; 목표설정</a>에서 등록하면 목표 대비 소진율이 표시됩니다.
@@ -118,9 +117,9 @@ function BudgetInner() {
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="목표 광고예산" value={hasTarget ? formatCurrency(targetAd) : "-"} subtitle="이번 달 매체비 목표" />
-        <KpiCard title="집행" value={formatCurrency(actualAd)} subtitle={hasTarget ? `소진율 ${pct(consumption)} · 날짜 ${pct(dateProgress)}` : `일 평균 ${formatCurrency(Math.round(dailyAvg))} (원장 ${ledger.days}일)`} />
-        <KpiCard title="월말 예상" value={formatCurrency(projected)} subtitle={`일 평균 × ${t?.daysInMonth ?? 0}일 (원장 ${ledger.days}일 기준)${hasTarget ? (projOver ? ` · 목표 ${formatCurrency(targetAd)} 초과 예상` : ` · 목표 대비 ${pct(targetAd > 0 ? projected / targetAd : 0)}`) : ""}`} />
-        <KpiCard title="잔여 예산" value={hasTarget ? formatCurrency(remaining) : "-"} subtitle={hasTarget ? `가용 일 ${formatCurrency(Math.round(t!.remaining.reqDailyAd))} (잔여 ${t!.daysRemaining}일)` : undefined} />
+        <KpiCard title="집행" value={formatCurrency(actualAd)} subtitle={hasTarget ? `소진율 ${pct(consumption)} · 집계 진행 ${pct(adProgress)}` : `일 평균 ${formatCurrency(Math.round(dailyAvg))} (원장 ${adDays}일)`} />
+        <KpiCard title="월말 예상" value={formatCurrency(projected)} subtitle={`일 평균 × ${t?.daysInMonth ?? 0}일 (원장 ${adDays}일 기준)${hasTarget ? (projOver ? ` · 목표 ${formatCurrency(targetAd)} 초과 예상` : ` · 목표 대비 ${pct(targetAd > 0 ? projected / targetAd : 0)}`) : ""}`} />
+        <KpiCard title="잔여 예산" value={hasTarget ? formatCurrency(remaining) : "-"} subtitle={hasTarget ? `가용 일 ${formatCurrency(Math.round(t!.remaining.reqDailyAd))} (잔여 ${t!.adDaysRemaining}일)` : undefined} />
       </div>
 
       {/* 소진 페이스 바 */}
@@ -134,10 +133,10 @@ function BudgetInner() {
               </span>
             </div>
             <div className="relative h-3 bg-muted rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, consumption * 100)}%`, backgroundColor: consumption > 1 ? "#ef4444" : overPace ? "#f59e0b" : "#10b981" }} />
-              <div className="absolute top-0 h-full w-0.5 bg-foreground/60" style={{ left: `${Math.min(100, dateProgress * 100)}%` }} title="날짜 진행률" />
+              <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, consumptionThrough * 100)}%`, backgroundColor: consumption > 1 ? "#ef4444" : overPace ? "#f59e0b" : "#10b981" }} />
+              <div className="absolute top-0 h-full w-0.5 bg-foreground/60" style={{ left: `${Math.min(100, adProgress * 100)}%` }} title="집계 진행률" />
             </div>
-            <p className="text-xs text-muted-foreground">소진 {pct(consumption)} · 날짜 진행 {pct(dateProgress)} (세로선). 소진이 날짜선보다 오른쪽이면 예산보다 빠르게 쓰는 중.</p>
+            <p className="text-xs text-muted-foreground">소진 {pct(consumptionThrough)} · 집계 진행 {pct(adProgress)} (세로선, 광고비 원장 {adDays}일 ÷ {t?.daysInMonth ?? 0}일). 둘 다 원장이 들어온 날까지 기준입니다. 소진이 세로선보다 오른쪽이면 예산보다 빠르게 쓰는 중.</p>
           </CardContent>
         </Card>
       )}
@@ -151,7 +150,8 @@ function BudgetInner() {
               const label = brandMap[b.brand]?.label || BRAND_LABELS[b.brand] || b.brand;
               const color = brandMap[b.brand]?.color || BRAND_COLORS[b.brand] || "#6b7280";
               const over = b.adConsumption > 1;
-              const fast = b.targetAd > 0 && b.adConsumption > dateProgress + 0.05;
+              // 브랜드별 집행은 오늘 장중 행까지 들어 있다(API 가 브랜드별 원장까지 합계를 주지 않음). 세로선은 집계 진행률.
+              const fast = b.targetAd > 0 && b.adConsumption > adProgress + 0.05;
               const barColor = over ? "#ef4444" : fast ? "#f59e0b" : color;
               return (
                 <div key={b.brand} className="space-y-1">
@@ -164,7 +164,7 @@ function BudgetInner() {
                   </div>
                   <div className="relative w-full h-2.5 bg-muted rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (b.targetAd > 0 ? b.adConsumption : 0) * 100)}%`, backgroundColor: barColor }} />
-                    {b.targetAd > 0 && <div className="absolute top-0 h-full w-0.5 bg-foreground/50" style={{ left: `${Math.min(100, dateProgress * 100)}%` }} title="날짜 진행률" />}
+                    {b.targetAd > 0 && <div className="absolute top-0 h-full w-0.5 bg-foreground/50" style={{ left: `${Math.min(100, adProgress * 100)}%` }} title="집계 진행률" />}
                   </div>
                 </div>
               );
