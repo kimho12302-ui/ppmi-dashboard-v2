@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { expandBrands } from "@/lib/brand-groups";
 import { masterByPid } from "@/lib/product-master";
-import { classifyBlProduct } from "@/lib/brand-groups";
+import { blTestLineOrNull } from "@/lib/brand-groups";
 import { cachedGET } from "@/lib/api-cache";
 
 /**
@@ -43,7 +43,16 @@ async function getImpl(req: NextRequest) {
     //   광고는 검사 제품 단위라 이름이 정확히 같은 것만 이으면 옵션 매출이 통째로 빠진다
     //   (중금속이 65,000원으로 나왔는데 + 종이결과지 209,000원이 누락됐다, 2026-09-29).
     //   검사 라인 분류기(brand-groups 의 단일 정본)로 묶어 같은 라인끼리 합산한다.
+    // ★ 라인 묶음은 밸런스랩 검사 제품만이다(키 = 브랜드|라인). 어느 라인에도 안 맞는 이름은
+    //   묶지 않는다. 예전엔 "etc" 라는 이름의 묶음이 생겨, 라인 밖 광고 상품이 라인 밖 판매 전체와
+    //   이어졌다(밸런스랩검사 광고에 비타민C 매출, 펫 브랜드는 정본에 없는 상품이 그 브랜드 판매 전체).
+    //   그런 상품은 「미연결」로 둔다(2026-11-09).
     const salesByLine = new Map<string, { revenue: number; quantity: number }>();
+    const lineKey = (brand: unknown, product: unknown): string | null => {
+      if (brand !== "balancelab") return null;
+      const line = blTestLineOrNull(String(product));
+      return line ? `balancelab|${line}` : null;
+    };
     for (const r of salesRows as Record<string, unknown>[]) {
       const k = String(r.product);
       const cur = salesByProduct.get(k) || { revenue: 0, quantity: 0 };
@@ -51,7 +60,7 @@ async function getImpl(req: NextRequest) {
       cur.quantity += Number(r.quantity) || 0;
       salesByProduct.set(k, cur);
 
-      const line = classifyBlProduct(k);
+      const line = lineKey(r.brand, k);
       if (line) {
         const lc = salesByLine.get(line) || { revenue: 0, quantity: 0 };
         lc.revenue += Number(r.revenue) || 0;
@@ -90,7 +99,7 @@ async function getImpl(req: NextRequest) {
         // ① 스마트스토어 상품번호로 정본 조회(GFA 경로). ② 제품명이 판매 원장에 그대로 있으면 그것.
         // ③ 밸런스랩은 검사 라인으로 묶어 옵션 SKU 까지 합산.
         const m = masterByPid(p.product_id);
-        const adLine = classifyBlProduct(p.product_name);
+        const adLine = lineKey(p.brand, p.product_name);
         const lineSale = adLine ? salesByLine.get(adLine) : undefined;
         const salesName = m?.product
           ?? (salesByProduct.has(p.product_name) ? p.product_name : null)

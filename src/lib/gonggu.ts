@@ -136,3 +136,71 @@ export function resolveSalesLineup(
   }
   return "";
 }
+
+// ── 자체매출에서 형식-A 공구 빼기 (2026-11-09 단일화) ─────────────────
+// 밸런스랩 형식-A 공구는 product_sales 에 channel="smartstore"+lineup="셀러명" 으로 들어오고,
+// 같은 금액이 daily_sales 의 같은 날짜·같은 판매처 행에 자체매출처럼 섞여 있다.
+// 예전엔 화면마다 빼는 방식이 달랐다.
+//  - /api/dashboard: 그날 밸런스랩 **모든** daily_sales 행에서 그날 공구 전액을 뺌
+//    (판매처 행이 둘 이상인 날은 공구를 두 번 빼게 됨)
+//  - /api/channel-groups·insights: 판매처 구분 없이 smartstore 합계에서 뺌
+//  - /api/pacing: 날짜 합으로 빼고 0 아래도 허용
+// 실측(2025-12~2026-11-09): 형식-A 공구 109행 전부 channel="smartstore", 밸런스랩 daily_sales
+// smartstore 합계 = product_sales smartstore 합계(145,791,068원). 그래서 공구 행과 **같은 날짜·
+// 같은 판매처**의 밸런스랩 daily_sales 행에서만 뺀다. 판매처를 smartstore 로 박아 두지 않는다
+// (다른 판매처로 공구가 들어와도 그 판매처에서 빠지게).
+
+/** 원 단위 오차(0.0000001원 같은 소수 찌꺼기)를 0 으로 본다. 7일치가 304,999.99999 대 305,000 이었다. */
+const roundWon = (v: number) => Math.round(v);
+
+export interface FormASource extends GongguRow {
+  date: string;
+  brand?: string | null;
+  revenue: number | string | null;
+}
+
+/**
+ * product_sales 행 → 형식-A 공구 금액 (키: `날짜|판매처`).
+ * brand 칸이 있으면 밸런스랩만 센다(insights 처럼 여러 브랜드가 섞여 들어오는 호출부 대비).
+ * brand 칸이 없으면 호출부가 이미 밸런스랩으로 걸렀다고 본다.
+ */
+export function formAByDateChannel(rows: readonly FormASource[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const r of rows || []) {
+    if (r.brand != null && r.brand !== "balancelab") continue;
+    if (!isGongguInDailySales(r)) continue;
+    const k = `${String(r.date).slice(0, 10)}|${r.channel || ""}`;
+    m.set(k, (m.get(k) || 0) + Number(r.revenue || 0));
+  }
+  return m;
+}
+
+/** 형식-A 공구 합계(빼야 할 총액). */
+export function formATotal(map: ReadonlyMap<string, number>): number {
+  let s = 0;
+  map.forEach((v) => { s += v; });
+  return s;
+}
+
+/**
+ * daily_sales 행에서 형식-A 공구를 뺀 새 배열(원본은 그대로).
+ * 밸런스랩 행 중 공구와 날짜·판매처가 같은 행에서만 빼고, 같은 날짜·판매처 행이 여럿이면
+ * 앞 행부터 남은 금액만큼 차례로 뺀다(한 번만 빠지게). 행마다 0 아래로는 내려가지 않는다.
+ */
+export function subtractFormAGonggu<T extends { brand?: string | null; date: string; channel?: string | null; revenue: number | string | null }>(
+  rows: readonly T[],
+  map: ReadonlyMap<string, number>,
+): T[] {
+  if (!map.size) return [...(rows || [])];
+  const left = new Map(map);
+  return (rows || []).map((r) => {
+    if (r.brand !== "balancelab") return r;
+    const k = `${String(r.date).slice(0, 10)}|${r.channel || ""}`;
+    const g = left.get(k) || 0;
+    if (g <= 0) return r;
+    const rev = Number(r.revenue || 0);
+    const take = Math.min(rev, g);
+    left.set(k, g - take);
+    return { ...r, revenue: roundWon(rev - take) === 0 ? 0 : rev - take };
+  });
+}

@@ -78,3 +78,14 @@ export function classifyBlProduct(product: string): string {
   for (const line of BL_TEST_LINES) if (line.match.test(p)) return line.key;
   return "etc";
 }
+
+/**
+ * 검사 라인 키, 안 맞으면 null. `classifyBlProduct` 의 "etc" 는 '못 묶음'이라는 뜻인데
+ * 문자열이라 참으로 읽혀, 광고와 판매를 잇는 곳(/api/product-ads)에서 "etc" 끼리 이어져
+ * 검사 라인 밖 판매 전체가 한 광고 상품 실매출로 붙었다(2026-11-09, 밸런스랩검사 광고에
+ * 메디넥스 비타민C 225,600원). 잇는 용도에는 이 함수를 쓴다.
+ */
+export function blTestLineOrNull(product: string): string | null {
+  const key = classifyBlProduct(product);
+  return key === "etc" ? null : key;
+}

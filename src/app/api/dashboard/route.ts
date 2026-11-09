@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { masterByProduct } from "@/lib/product-master";
-import { isGonggu, isGongguAggregate, gongguSeller, isGongguInDailySales } from "@/lib/gonggu";
+import { isGonggu, isGongguAggregate, gongguSeller, isGongguInDailySales, formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
 
 const RAW_KEYS = ["sales", "ads", "products", "prevSales", "prevAds"] as const;
@@ -52,7 +52,7 @@ async function getImpl(req: NextRequest) {
     else adQuery = adQuery.neq("brand", "all");
 
     // 직전기간도 형식-A 공구를 날짜별로 빼려면 date·brand 가 필요하다(2026-10-15).
-    let prevSalesQ = supabase.from("daily_sales").select("date, brand, revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total").not("channel", "like", "공구%");
+    let prevSalesQ = supabase.from("daily_sales").select("date, brand, channel, revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total").not("channel", "like", "공구%");
     if (brand !== "all") prevSalesQ = prevSalesQ.in("brand", expandBrands(brand));
     else prevSalesQ = prevSalesQ.neq("brand", "all");
 
@@ -186,29 +186,13 @@ async function getImpl(req: NextRequest) {
     }
 
     // ── 형식-A 공구 차감: 밸런스랩 daily_sales smartstore 에 셀러 공구가 섞여 자체매출 부풀림 ──
-    // product_sales(gongguData)의 형식-A(채널이 공구*가 아닌 공구)를 날짜별로 구해 balancelab 매출에서 차감.
-    const formAByDate = new Map<string, number>();
-    for (const r of gongguData || []) {
-      if (isGongguInDailySales(r)) formAByDate.set((r as { date: string }).date, (formAByDate.get((r as { date: string }).date) || 0) + Number((r as { revenue: number }).revenue || 0));
-    }
-    // 헤드라인/트렌드/브랜드 집계에 쓰는 자체매출 보정본 (raw sales 반환값은 그대로 유지)
-    const subtractFormA = <T extends { brand: string; date: string; revenue: number }>(rows: T[], byDate: Map<string, number>): T[] =>
-      rows.map((r) => {
-        if (r.brand === "balancelab") {
-          const g = byDate.get(r.date) || 0;
-          if (g > 0) return { ...r, revenue: Math.max(0, Number(r.revenue) - g) };
-        }
-        return r;
-      });
-    const adjSales = subtractFormA(sales || [], formAByDate);
+    // 공구 행과 날짜·판매처가 같은 밸런스랩 daily_sales 행에서만 뺀다(gonggu.ts subtractFormAGonggu,
+    // channel-groups·insights·pacing 과 같은 함수). raw sales 반환값은 차감본(adjSales)이다.
+    const adjSales = subtractFormAGonggu(sales || [], formAByDateChannel(gongguData || []));
 
     // ★ 직전기간도 같은 규칙으로 뺀다(2026-10-15 김호 결정). 예전엔 이번 기간만 빼서 밸런스랩 전기 대비가
-    //   공구가 많던 달 기준으로 부풀려 비교됐다. 같은 판정 함수(isGongguInDailySales)·같은 날짜 매칭.
-    const prevFormAByDate = new Map<string, number>();
-    for (const r of (prevGongguData || []) as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
-      if (isGongguInDailySales(r)) prevFormAByDate.set(r.date, (prevFormAByDate.get(r.date) || 0) + Number(r.revenue || 0));
-    }
-    const adjPrevSales = subtractFormA(prevSales || [], prevFormAByDate);
+    //   공구가 많던 달 기준으로 부풀려 비교됐다. 같은 함수·같은 날짜·판매처 매칭.
+    const adjPrevSales = subtractFormAGonggu(prevSales || [], formAByDateChannel(prevGongguData || []));
 
     // ── KPI 계산 ──
     // gongguSalesTotal은 더하지 않음: lineup 기반 공구 매출은 daily_sales smartstore에 이미 포함

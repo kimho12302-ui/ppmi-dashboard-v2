@@ -133,7 +133,7 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
                 {/* 상품번호가 시트에 없으면 '연결 안 됨'(—). 연결됐는데 0이면 진짜 안 팔린 것. */}
                 <td className="py-2 text-right num">
                   {p.actualRevenue === null
-                    ? <span className="text-muted-foreground" title="상품 목록 시트 G열에 상품번호가 없습니다">미연결</span>
+                    ? <span className="text-muted-foreground" title="판매와 이을 상품을 찾지 못했습니다. 상품 목록 시트 G열에 상품번호가 없고, 이름도 판매 원장·검사 라인과 맞지 않습니다">미연결</span>
                     : formatCurrency(p.actualRevenue)}
                 </td>
                 <td className="py-2 text-right num font-medium"

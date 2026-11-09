@@ -4,7 +4,7 @@ import { expandBrands } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
-import { isGongguInDailySales } from "@/lib/gonggu";
+import { formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
 
 // 채널(판매처) 성과 — 판매처별 매출 vs 그 판매처를 끌어온 광고비.
@@ -63,24 +63,23 @@ async function periodData(from: string, to: string, brand: string) {
   let salesQ = supabase.from("daily_sales").select("date,brand,channel,revenue")
     .gte("date", from).lte("date", to).neq("channel", "total").not("channel", "like", "공구%");
   if (brand !== "all") salesQ = salesQ.in("brand", expandBrands(brand));
-  const sales = await fetchAll(salesQ);
+  const rawSales = await fetchAll(salesQ);
   // 광고비: brand도 가져와 밸런스랩 메타/구글 분리. ga4 제외.
   let adsQ = supabase.from("daily_ad_spend").select("date,brand,channel,spend")
     .gte("date", from).lte("date", to).not("channel", "like", "ga4_%");
   adsQ = brand !== "all" ? adsQ.in("brand", expandBrands(brand)) : adsQ.neq("brand", "all");
   const ads = await fetchAll(adsQ);
-  // 밸런스랩 형식-A 공구 → smartstore 매출에서 차감.
-  let formA = 0;
-  const formAByDate: Record<string, number> = {};
+  // 밸런스랩 형식-A 공구 → 공구 행과 날짜·판매처가 같은 밸런스랩 매출 행에서 뺀다
+  // (gonggu.ts subtractFormAGonggu, 오버뷰 /api/dashboard 와 같은 함수).
+  let formA = new Map<string, number>();
   if (brand === "all" || brand === "balancelab") {
     const ps = await fetchAll(
       supabase.from("product_sales").select("date,channel,lineup,product,revenue")
         .gte("date", from).lte("date", to).eq("brand", "balancelab")
     );
-    for (const r of ps as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
-      if (isGongguInDailySales(r)) { const v = Number(r.revenue || 0); formA += v; formAByDate[r.date] = (formAByDate[r.date] || 0) + v; }
-    }
+    formA = formAByDateChannel(ps as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]);
   }
+  const sales = subtractFormAGonggu(rawSales as { date: string; brand: string; channel: string; revenue: number }[], formA);
 
   const byDate: Record<string, DayAgg> = {};
   const day = (d: string): DayAgg => (byDate[d] ||= { rev: {}, ad: {}, blMG: 0 });
@@ -90,10 +89,6 @@ async function periodData(from: string, to: string, brand: string) {
     const v = Number(r.revenue || 0);
     revByCh[r.channel] = (revByCh[r.channel] || 0) + v;
     const dd = day(r.date); dd.rev[r.channel] = (dd.rev[r.channel] || 0) + v;
-  }
-  revByCh["smartstore"] = Math.max(0, (revByCh["smartstore"] || 0) - formA);
-  for (const d in formAByDate) {
-    if (byDate[d]) byDate[d].rev["smartstore"] = Math.max(0, (byDate[d].rev["smartstore"] || 0) - formAByDate[d]);
   }
 
   const adByCh: Record<string, number> = {};
