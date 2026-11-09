@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { expandBrands } from "@/lib/brand-groups";
 import { cachedGET } from "@/lib/api-cache";
+import { META_PURCHASE_UNTRACKED_BRANDS } from "@/lib/conversion-tracking";
 
 // 메타 소재별 성과. 2026-10-13 원천 교체.
 //
@@ -13,7 +14,8 @@ import { cachedGET } from "@/lib/api-cache";
 //
 // ★ 밸런스랩 픽셀은 건강 분류로 구매(Purchase)가 막혀 있고 상세조회(ViewContent)는 살아 있다.
 //   구매·ROAS 로 그리면 모든 소재가 0 으로 보이므로 purchaseTracked=false 를 같이 준다.
-const PURCHASE_UNTRACKED = new Set(["balancelab"]);
+//   목록은 src/lib/conversion-tracking.ts 한곳에 둔다(광고·퍼널 화면과 공유).
+const PURCHASE_UNTRACKED = META_PURCHASE_UNTRACKED_BRANDS;
 
 interface Row {
   date: string; brand: string; ad_id: string; ad_name: string | null; campaign_name: string | null;

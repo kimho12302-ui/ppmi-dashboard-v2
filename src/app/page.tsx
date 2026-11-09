@@ -2,28 +2,33 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
-import { StoreDetailChart } from "@/components/store-detail-chart";
 import { KpiCard, type KpiConfidence } from "@/components/ui/kpi-card";
 import { SectionHeading } from "@/components/ui/section";
 import { AttributionGap } from "@/components/attribution-gap";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
-import { dashboardUrl, channelGroupsUrl, brandDetailUrl } from "@/lib/api-urls";
+import { dashboardUrl, brandDetailUrl } from "@/lib/api-urls";
 import { useDataStatus } from "@/hooks/use-data-status";
 import { useConfig } from "@/hooks/use-config";
 import {
-  BRAND_LABELS, BRAND_COLORS, CHANNEL_LABELS, CHANNEL_COLORS,
-  SALES_CHANNEL_COLORS,
+  BRAND_LABELS, BRAND_COLORS, CHANNEL_LABELS, CHANNEL_COLORS, SALES_CHANNEL_COLORS, brandColor,
 } from "@/lib/types";
 import { formatCurrency, formatNumber, formatPercent, formatRoas, isRoasUntracked } from "@/lib/utils";
 import {
-  Area, ComposedChart, LineChart, Line, ReferenceLine, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, PieChart, Pie, Cell, Legend,
+  Area, ComposedChart, ReferenceLine, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import Link from "next/link";
 import { kstDate } from "@/lib/date";
 
-type KpiKey = "revenue" | "adSpend" | "roas" | "orders" | "profit" | "profitRate" | "ctr" | "aov" | null;
+// 2026-11-04 정리: 같은 숫자를 두 번 보여 주거나 다른 화면이 맡는 카드를 뺐다.
+//  - 누적 매출·광고비 → 목표 페이싱은 인사이트, 일별 흐름은 아래 트렌드
+//  - 매체별 ROAS 가로막대·드릴다운 → 신고 ROAS 라 합산 불가. 아래 「광고 신고 vs 실제」 표와 /ads 가 맡는다
+//  - 브랜드 매출 비중 파이 → 사업 그룹 카드와 같은 숫자
+//  - 판매처 상세(StoreDetailChart) → 브랜드 화면과 /channel 판매처 성과
+//  - 밸런스랩 공구 매출 카드 → /sales 밸런스랩 구역
+//  - 퍼널 전환 요약 → 원천마다 재는 법이 달라 /funnel 원천별 단계표로 링크만
+type KpiKey = "revenue" | "adSpend" | "orders" | "profit" | "aov" | null;
 
 interface DashboardData {
   kpi: {
@@ -31,33 +36,27 @@ interface DashboardData {
     roas: number; roasPrev: number; orders: number; ordersPrev: number;
     profit: number; profitPrev: number; mer: number; merPrev: number;
     aov: number; aovPrev: number; cogs: number; shippingCost: number;
-    miscCost: number; matchedRate: number;
+    miscCost: number; matchedRate: number; profitPrevEstimated?: boolean;
   };
   trend: { date: string; revenue: number; adSpend: number; maRevenue: number; maAdSpend: number; roas: number; [k: string]: string | number }[];
-  channels: { channel: string; spend: number; roas: number }[];
+  channels: { channel: string; spend: number; roas: number; reportedRevenue?: number }[];
+  salesLastDate?: string | null;
   brandRevenue: { brand: string; revenue: number; orders: number }[];
-  brandProfit: { brand: string; revenue: number; orders: number; adSpend: number; cogs: number; profit: number; margin: number }[];
+  brandProfit: { brand: string; revenue: number; orders: number; adSpend: number; adSpendToSalesDate?: number; cogs: number; profit: number; margin: number }[];
   salesByChannel: { channel: string; revenue: number }[];
   topProducts: { product: string; revenue: number; quantity: number; brand: string }[];
-  productRevenueTotal?: number;
-  funnelSummary: { sessions: number; cartAdds: number; purchases: number; repurchases: number; convRate: number };
   groupRevenue?: { group: string; label: string; revenue: number; orders: number }[];
   blTestLines?: { key: string; label: string; preLaunch: boolean; revenue: number; quantity: number }[];
   petBrands?: { brand: string; label: string; revenue: number; orders: number }[];
   saipBrands?: { label: string; revenue: number; quantity: number }[];
-  gongguSales: { seller: string; revenue: number; orders: number }[];
   gongguSalesTotal: number;
-  selfSalesTotal: number;
-  dailyGongguTotal: number;
-  dailyGonggu?: Record<string, number>;
-  anomalies: { brand: string; metric: string; change: number; current: number; previous: number }[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  targets: any[];
 }
+
+const TOOLTIP_STYLE = { backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 };
 
 export default function OverviewPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">불러오는 중...</div>}>
       <OverviewInner />
     </Suspense>
   );
@@ -67,12 +66,8 @@ function OverviewInner() {
   const { brand, from, to } = useFilterParams();
   const { brandMap, channelMap } = useConfig();
   const { data, loading } = useFetch<DashboardData>(dashboardUrl(brand || "all", from, to));
-  // 판매처 차트·브랜드 상세는 로딩 화면 동안 마운트되지 않는다. 대시보드 응답을 기다리지 않게 같이 부른다.
-  // (목표 페이싱·이상치 카드는 2026-11-03 인사이트 화면으로 옮겼다.)
-  usePrefetch([
-    channelGroupsUrl(brand || "all", from, to),
-    brand && brand !== "all" ? brandDetailUrl(brand, from, to) : null,
-  ]);
+  // 브랜드 상세는 로딩 화면 동안 마운트되지 않는다. 대시보드 응답을 기다리지 않게 같이 부른다.
+  usePrefetch([brand && brand !== "all" ? brandDetailUrl(brand, from, to) : null]);
   const { data: status } = useDataStatus();
   const [selectedKpi, setSelectedKpi] = useState<KpiKey>(null);
 
@@ -83,26 +78,28 @@ function OverviewInner() {
   );
   const events = eventsData?.events || [];
 
-  // === 서버 KPI 직접 사용 ===
   const kpi = data?.kpi || {
     revenue: 0, revenuePrev: 0, adSpend: 0, adSpendPrev: 0,
     roas: 0, roasPrev: 0, orders: 0, ordersPrev: 0,
     profit: 0, profitPrev: 0, mer: 0, merPrev: 0, aov: 0, aovPrev: 0,
-    cogs: 0, shippingCost: 0, miscCost: 0, matchedRate: 0,
+    cogs: 0, shippingCost: 0, miscCost: 0, matchedRate: 0, profitPrevEstimated: true,
   };
 
-  // === 서버 집계 데이터 직접 사용 ===
+  // 판매 원장이 들어온 마지막 날. 판매 동기화는 며칠 늦게 들어와 그 뒤 날짜의 매출 0 은 "판매 0" 이 아니다.
+  // 전사 기준(data-status)을 먼저 쓴다. 필터 범위의 마지막 판매일은 그 브랜드가 실제로 안 팔린 날과 구분이 안 된다.
+  const salesSource = status?.sources.find((s) => s.id === "sales");
+  const salesLastDate = salesSource?.latestDate || data?.salesLastDate || null;
+
   const brandBreakdown = useMemo(() => {
     return (data?.brandProfit || []).map((b) => ({
       brand: b.brand,
       label: brandMap[b.brand]?.label || BRAND_LABELS[b.brand] || b.brand,
-      color: brandMap[b.brand]?.color || BRAND_COLORS[b.brand] || "#6b7280",
+      color: brandMap[b.brand]?.color || brandColor(b.brand),
       revenue: b.revenue,
       orders: b.orders,
       adSpend: b.adSpend,
+      adSpendToSalesDate: b.adSpendToSalesDate ?? b.adSpend,
       profit: b.profit,
-      profitRate: b.margin,
-      roas: b.adSpend > 0 ? b.revenue / b.adSpend : 0,
       aov: b.orders > 0 ? b.revenue / b.orders : 0,
     })).filter(b => b.revenue > 0 || b.adSpend > 0).sort((a, b) => b.revenue - a.revenue);
   }, [data, brandMap]);
@@ -117,17 +114,6 @@ function OverviewInner() {
     })).sort((a, b) => b.spend - a.spend);
   }, [data, channelMap]);
 
-  // 전환 추적이 없는 채널은 ROAS 차트에서 빼고 이름만 밝힌다.
-  // 0 막대로 그리면 '성과가 나쁜 채널'로 읽혀 예산 판단을 왜곡한다.
-  const trackedChannelAds = useMemo(
-    () => channelAds.filter((c) => !isRoasUntracked(c.roas, c.spend)),
-    [channelAds]
-  );
-  const untrackedChannels = useMemo(
-    () => channelAds.filter((c) => isRoasUntracked(c.roas, c.spend)),
-    [channelAds]
-  );
-
   const channelSales = useMemo(() => {
     return (data?.salesByChannel || []).map((c) => ({
       channel: c.channel,
@@ -138,97 +124,54 @@ function OverviewInner() {
   }, [data, channelMap]);
 
   // 서버가 기간 전체 날짜를 0 으로 채워 보낸다. 오늘(KST) 이후 날짜만 축에서 뺀다.
-  // ROAS 는 비율이라 광고비가 0 인 날은 0x 가 아니라 빈칸(null, 선이 끊김)으로 둔다(2026-10-28).
+  // 판매 원장 마지막 날 이후의 매출은 0 이 아니라 아직 안 들어온 값이라 null(선이 0 으로 꺾이지 않게).
+  // 광고비는 매체 API 가 따로 들어오므로 그대로 둔다. ROAS 우측축은 뺐다(이중축은 두 선의 교차를 의미 있어 보이게 만든다).
   const dailyTrend = useMemo(() => {
     const today = kstDate();
     return (data?.trend || []).filter((t) => t.date <= today).map((t) => ({
-      date: t.date.slice(5), revenue: t.revenue, adSpend: t.adSpend, maRevenue: t.maRevenue, maAdSpend: t.maAdSpend,
-      roas: (t.adSpend || 0) > 0 ? Number(t.roas) || 0 : null,
+      date: t.date.slice(5),
+      revenue: salesLastDate && t.date > salesLastDate ? null : t.revenue,
+      adSpend: t.adSpend,
     }));
-  }, [data]);
+  }, [data, salesLastDate]);
+  const pendingTrendDays = useMemo(
+    () => (salesLastDate ? (data?.trend || []).filter((t) => t.date > salesLastDate && t.date <= kstDate()).length : 0),
+    [data, salesLastDate]
+  );
 
-  const funnelSummary = data?.funnelSummary || { sessions: 0, cartAdds: 0, purchases: 0, repurchases: 0, convRate: 0 };
   const topProducts = useMemo(() => data?.topProducts || [], [data]);
   const gongguSalesTotal = data?.gongguSalesTotal || 0;
-  const selfSalesTotal = data?.selfSalesTotal || 0;
-  const gongguSales = data?.gongguSales || [];
-  const dailyGongguTotal = data?.dailyGongguTotal || 0;
 
-  // 브랜드/제품 비중 파이차트
-  const shareData = useMemo(() => {
-    if (brand && brand !== "all") {
-      const PRODUCT_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#ec4899", "#06b6d4", "#84cc16"];
-      return {
-        title: "제품 매출 비중 (상위 5 + 기타)",
-        // charts.csv Part-to-Whole 규칙: 파이는 최대 6조각. 그 이상은 서로 구분이 안 된다.
-        data: (() => {
-          const top = topProducts.slice(0, 5);
-          // 기타 = 전체 제품 매출 − 상위 5. API 가 상위 5개만 주므로 합계를 따로 받아 뺀다.
-          const topSum = top.reduce((s, p) => s + p.revenue, 0);
-          const restSum = Math.max(0, (data?.productRevenueTotal ?? topSum) - topSum);
-          return restSum > 0 ? [...top, { product: "기타", revenue: restSum, quantity: 0, brand: "" }] : top;
-        })().map((p, i) => ({
-          name: p.product.length > 15 ? p.product.slice(0, 15) + "…" : p.product,
-          value: p.revenue,
-          color: PRODUCT_COLORS[i % PRODUCT_COLORS.length],
-        })),
-      };
-    }
-    return {
-      title: "브랜드 매출 비중",
-      data: (data?.brandRevenue || [])
-        .filter(b => b.revenue > 0)
-        .map((b) => ({
-          name: brandMap[b.brand]?.label || BRAND_LABELS[b.brand] || b.brand,
-          value: b.revenue,
-          color: brandMap[b.brand]?.color || BRAND_COLORS[b.brand] || "#6b7280",
-        }))
-        .sort((a, b) => b.value - a.value),
-    };
-  }, [data, topProducts, brand, brandMap]);
-
-  // 누적 매출
-  const cumulativeData = useMemo(() => {
-    const today = kstDate();
-    const trend = (data?.trend || []).filter((t) => t.date <= today);
-    if (trend.length === 0) return [];
-    let cumRev = 0, cumAd = 0;
-    return trend.map((t) => {
-      cumRev += t.revenue;
-      cumAd += t.adSpend;
-      return { date: t.date.slice(5), cumRevenue: cumRev, cumAdSpend: cumAd };
-    });
-  }, [data]);
-
+  // 경고. 판매 원장 마지막 날 이후는 매출이 비어 있어 넣으면 가짜 하락·가짜 ROAS 미달이 뜬다.
   const warnings = useMemo(() => {
     const results: string[] = [];
     for (const b of brandBreakdown) {
-      if (b.roas > 0 && b.roas < 1) results.push(`${b.label} ROAS ${b.roas.toFixed(2)}x — 광고비 대비 전환 부족`);
+      const ad = b.adSpendToSalesDate;
+      const roas = ad > 0 ? b.revenue / ad : 0;
+      if (roas > 0 && roas < 1) results.push(`${b.label} ROAS ${roas.toFixed(2)}x, 광고비 대비 매출 부족`);
     }
-    // 추세 조기경보: 매출 7일 이동평균 모멘텀 (마지막 MA vs 7일 전 MA)
-    const trend = data?.trend || [];
+    // 추세 조기경보: 매출 7일 이동평균 모멘텀 (마지막 MA vs 7일 전 MA). 서버 MA 는 그날까지의 7일 평균이라
+    // 판매 원장 마지막 날까지로 자르면 그 앞 값은 동기화 지연에 오염되지 않는다.
+    const trend = (data?.trend || []).filter((t) => !salesLastDate || t.date <= salesLastDate);
     if (trend.length >= 14) {
       const last = trend[trend.length - 1]?.maRevenue || 0;
-      const prev = trend[trend.length - 8]?.maRevenue || 0; // 7일 전 이동평균
+      const prev = trend[trend.length - 8]?.maRevenue || 0;
       if (prev > 0) {
         const chg = (last - prev) / prev;
-        if (chg <= -0.15) results.push(`매출 7일 추세 ${(chg * 100).toFixed(0)}% 하락 — 모멘텀 둔화 (이동평균 ${formatCurrency(Math.round(prev))} → ${formatCurrency(Math.round(last))})`);
+        if (chg <= -0.15) results.push(`매출 7일 추세 ${(chg * 100).toFixed(0)}% 하락: 이동평균 ${formatCurrency(Math.round(prev))} → ${formatCurrency(Math.round(last))} (판매 원장 ${trend[trend.length - 1].date.slice(5)}까지)`);
       }
     }
     return results;
-  }, [brandBreakdown, data]);
+  }, [brandBreakdown, data, salesLastDate]);
 
   const pctChange = (cur: number, prev: number) => {
     if (prev === 0) return cur > 0 ? 100 : undefined;
     return ((cur - prev) / Math.abs(prev)) * 100;
   };
 
-  /* ────────────────────────────────────────────────────────────────
-     측정 신뢰도.
-     "0원"과 "측정이 안 됨"은 다른 사건인데 화면은 둘 다 0으로 찍고 있었다.
-     메타 토큰이 만료된 동안 광고비가 0으로 표시됐고, 그 화면을 보고
-     "메타 집행을 안 했나 보다"로 읽혔다. 그래서 숫자 옆에 등급을 붙인다.
-     ──────────────────────────────────────────────────────────────── */
+  /* ── 측정 신뢰도 ──
+     "0원"과 "측정이 안 됨"은 다른 사건이다. 메타 토큰이 만료된 동안 광고비가 0으로 표시돼
+     "메타 집행을 안 했나 보다"로 읽혔다. 그래서 숫자 옆에 등급을 붙인다. */
 
   // 비교 구간 길이. "전기간"은 캘린더 전월이 아니라 직전 같은 길이의 구간이다.
   const periodDays = useMemo(() => {
@@ -238,18 +181,15 @@ function OverviewInner() {
   }, [from, to]);
   const changeLabel = periodDays > 0 ? `직전 ${periodDays}일 대비` : undefined;
 
-  // 고장난 자동 수집이 오염시키는 지표 (미운영은 여기 안 들어온다 — 0이 사실이므로)
+  // 고장난 자동 수집이 오염시키는 지표 (미운영은 여기 안 들어온다. 0이 사실이므로)
   const impacted = status?.impactedMetrics || {};
   const brokenAd = impacted.adSpend || [];
   const brokenAdNames = brokenAd.map((x) => x.label).join(", ");
-  // 미운영 광고 채널: 목록에 없는 이유가 '고장'이 아니라 '안 돌림'이라는 걸 밝히는 용도
   const inactiveAdSources = (status?.sources || []).filter(
     (s) => s.status === "inactive" && s.metrics.includes("adSpend")
   );
 
-  // 판매실적은 수기 업로드다. 선택 기간의 끝보다 업로드가 뒤처지면 매출·주문·이익이
-  // 전부 과소 집계된다 (기간 마지막 며칠이 통째로 0).
-  const salesSource = status?.sources.find((s) => s.id === "sales");
+  // 판매실적은 수기 업로드다. 선택 기간의 끝보다 업로드가 뒤처지면 매출·주문·이익이 과소 집계된다.
   const salesGapDays = useMemo(() => {
     const latest = salesSource?.latestDate;
     if (!latest || !to || latest >= to) return 0;
@@ -262,6 +202,8 @@ function OverviewInner() {
   const revenueConfidence: KpiConfidence | undefined = salesGapNote
     ? { level: "partial", note: salesGapNote }
     : undefined;
+  // 같은 사유를 두 번 인쇄하지 않는다. 보조 카드는 레일·배지만 남기고 각주는 위 카드가 맡는다.
+  const quiet = (c: KpiConfidence | undefined): KpiConfidence | undefined => (c ? { ...c, note: "" } : undefined);
 
   const adSpendConfidence: KpiConfidence | undefined = brokenAd.length > 0
     ? {
@@ -293,11 +235,10 @@ function OverviewInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kpi.matchedRate, matchedPct, salesGapDays, salesSource?.latestDate]);
 
-  // 목표는 "달" 단위로 등록된다. 이전에는 조회 기간과 무관하게 항상 오늘이 속한 달의 목표를 써서
-  // 7월을 조회해도 8월 목표와 비교됐고, 브랜드 목표가 없으면 조용히 전사(_all) 목표로 폴백해
-  // 펫 실적을 전사 목표와 비교했다(2026-08 수정).
+  // 목표는 "달" 단위로 등록된다.
   //  (a) 선택 기간의 from 이 속한 달의 목표를 쓴다
-  //  (b) 기간이 두 달 이상 걸치면 비교 자체가 성립하지 않으므로 배지를 숨긴다
+  //  (b) 기간이 두 달 이상 걸치면 비교 자체가 성립하지 않으므로 막대를 숨긴다(기본 30일은 대개 두 달에 걸친다.
+  //      이번 달 목표 진척은 인사이트 「목표 대비 페이싱」이 기간과 상관없이 보여 준다)
   //  (c) 브랜드 목표가 없어 전사로 폴백하면 라벨에 그 사실을 표시한다
   const { targets, targetIsCompanyWide } = useMemo(() => {
     const t = targetsData?.targets || {};
@@ -312,9 +253,8 @@ function OverviewInner() {
     return { targets: fallback || null, targetIsCompanyWide: !!fallback && b !== "all" };
   }, [targetsData, brand, from, to]);
 
-  // ★ 목표는 달 전체(31일) 기준인데 실적은 선택 기간(예: 15일치)이다.
-  //   달성률만 찍으면 "22.6%밖에 못 했다"로 읽히는데, 기간 경과가 48%인지 90%인지에 따라
-  //   같은 22.6%가 전혀 다른 뜻이 된다. 경과율을 같은 막대에 세운다.
+  // 목표는 달 전체 기준인데 실적은 선택 기간이다. 경과율을 같은 막대에 세운다(합계 지표인 매출·광고비만).
+  // ROAS 같은 비율 지표에는 경과율이 의미가 없어 목표 막대를 달지 않는다.
   const targetElapsedPercent = useMemo(() => {
     if (!from || !to || from.slice(0, 7) !== to.slice(0, 7)) return undefined;
     const [y, m] = from.slice(0, 7).split("-").map(Number);
@@ -335,40 +275,36 @@ function OverviewInner() {
 
   const toggleKpi = (key: KpiKey) => setSelectedKpi((prev) => (prev === key ? null : key));
 
-  /* P11.2 CSV 내보내기 */
+  /* CSV 내보내기 */
   const exportCSV = () => {
     const rows: string[] = [];
-    // KPI 요약
     rows.push("=== KPI 요약 ===");
     rows.push("항목,값,전기간");
     rows.push(`매출,${kpi.revenue},${kpi.revenuePrev}`);
     rows.push(`광고비,${kpi.adSpend},${kpi.adSpendPrev}`);
     rows.push(`ROAS,${kpi.roas.toFixed(2)},${kpi.roasPrev.toFixed(2)}`);
     rows.push(`주문수,${kpi.orders},${kpi.ordersPrev}`);
-    rows.push(`이익,${kpi.profit},${kpi.profitPrev}`);
+    rows.push(`이익,${kpi.profit},${kpi.profitPrev}${kpi.profitPrevEstimated ? " (전기간은 원가율 가정 추정)" : ""}`);
     rows.push(`MER,${kpi.mer.toFixed(2)},${kpi.merPrev.toFixed(2)}`);
     rows.push("");
-    // 일별 트렌드
     rows.push("=== 일별 트렌드 ===");
     rows.push("날짜,매출,광고비,이동평균매출,이동평균광고비");
     for (const t of data?.trend || []) {
       rows.push(`${t.date},${t.revenue},${t.adSpend},${t.maRevenue},${t.maAdSpend}`);
     }
     rows.push("");
-    // 브랜드별
     rows.push("=== 브랜드별 매출 ===");
     rows.push("브랜드,매출,주문수");
     for (const b of data?.brandRevenue || []) {
       rows.push(`${b.brand},${b.revenue},${b.orders}`);
     }
     rows.push("");
-    // 매체별 광고비
     rows.push("=== 매체별 광고비 ===");
-    rows.push("매체,광고비,ROAS");
+    rows.push("매체,광고비,ROAS(신고)");
     for (const c of data?.channels || []) {
       rows.push(`${c.channel},${c.spend},${c.roas.toFixed(2)}`);
     }
-    const csv = "\uFEFF" + rows.join("\n");
+    const csv = "﻿" + rows.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -378,16 +314,14 @@ function OverviewInner() {
     URL.revokeObjectURL(url);
   };
 
+  // 카드를 누르면 그 숫자의 분해. ROAS·MER 는 매체 신고값으로 쪼개면 합이 실매출 ROAS 와 맞지 않아 분해하지 않는다.
   const drilldownData = useMemo(() => {
     if (!selectedKpi) return null;
     const configs: Record<string, { title: string; type: "brand" | "channel"; valueKey: string; format: (v: number) => string }> = {
       revenue: { title: "브랜드별 매출", type: "brand", valueKey: "revenue", format: formatCurrency },
       orders: { title: "브랜드별 주문 수", type: "brand", valueKey: "orders", format: formatNumber },
       adSpend: { title: "매체별 광고비", type: "channel", valueKey: "spend", format: formatCurrency },
-      roas: { title: "매체별 ROAS (플랫폼 신고 기준)", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
       profit: { title: "브랜드별 통상이익", type: "brand", valueKey: "profit", format: formatCurrency },
-      profitRate: { title: "브랜드별 이익률", type: "brand", valueKey: "profitRate", format: (v) => formatPercent(v) },
-      ctr: { title: "매체별 ROAS", type: "channel", valueKey: "roas", format: (v) => `${v.toFixed(2)}x` },
       aov: { title: "브랜드별 객단가", type: "brand", valueKey: "aov", format: (v) => formatCurrency(Math.round(v)) },
     };
     const c = configs[selectedKpi];
@@ -412,12 +346,11 @@ function OverviewInner() {
     );
   }
 
+  const profitRateText = kpi.revenue > 0 ? `이익률 ${formatPercent((kpi.profit / kpi.revenue) * 100)}` : undefined;
+
   return (
     <PageShell title="Overview" description="PPMI 마케팅 대시보드 전체 현황">
-      {/* ── 선택 기간 실적 ──
-          기존에는 KPI 9개가 전부 같은 크기로 4열에 깔려 있었다. 균일 그리드는
-          "무엇을 먼저 봐야 하는지"를 지운다. 매출·광고비·ROAS 를 hero 로 띄우고
-          나머지는 compact 로 눌러 스캔만 되게 한다. */}
+      {/* ── 선택 기간 실적 ── 매출·광고비·ROAS 를 hero 로, 나머지는 compact 로 눌러 스캔만 되게 한다. */}
       <SectionHeading
         eyebrow="Performance"
         title="선택 기간 실적"
@@ -429,27 +362,70 @@ function OverviewInner() {
           </button>
         }
       />
-      {/* 모바일에서 hero 3장을 세로로 쌓으면 603px 를 먹는다. 매출만 전폭으로 두고
-          광고비·ROAS 를 2열로 붙여 한 행을 줄인다. 헤드라인이 무엇인지도 더 분명해진다. */}
+      {/* 모바일에서 hero 3장을 세로로 쌓으면 603px 를 먹는다. 매출만 전폭으로 두고 광고비·ROAS 를 2열로 붙인다. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <KpiCard size="hero" className="col-span-2 sm:col-span-1" title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} changeLabel={changeLabel} confidence={revenueConfidence} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
         <KpiCard size="hero" title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, kpi.adSpendPrev)} changeLabel={changeLabel} confidence={adSpendConfidence} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
-        <KpiCard size="hero" title="ROAS" value={`${(kpi.roas || 0).toFixed(2)}x`} change={pctChange(kpi.roas, kpi.roasPrev)} changeLabel={changeLabel} confidence={roasConfidence} target={targetProp(kpi.roas, targets?.roas_target, "목표")} onClick={() => toggleKpi("roas")} active={selectedKpi === "roas"} />
+        <KpiCard size="hero" title="ROAS" subtitle="판매 원장 매출 ÷ 매체비" value={`${(kpi.roas || 0).toFixed(2)}x`} change={pctChange(kpi.roas, kpi.roasPrev)} changeLabel={changeLabel} confidence={roasConfidence} />
       </div>
       {/* MER 은 잡비가 있을 때만 나온다. 열 수를 고정하면 없는 날 오른쪽에 빈 칸이 남는다. */}
-      <div className={`grid grid-cols-2 gap-2.5 ${(kpi.miscCost || 0) > 0 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
-        <KpiCard size="compact" title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, kpi.ordersPrev)} changeLabel={changeLabel} confidence={revenueConfidence} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
-        <KpiCard size="compact" title="이익" value={formatCurrency(kpi.profit)} change={pctChange(kpi.profit, kpi.profitPrev)} changeLabel={changeLabel} confidence={profitConfidence} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
-        <KpiCard size="compact" title="이익률" value={kpi.revenue > 0 ? formatPercent((kpi.profit / kpi.revenue) * 100) : "—"} confidence={profitConfidence} onClick={() => toggleKpi("profitRate")} active={selectedKpi === "profitRate"} />
-        {/* MER은 매출/(매체비+잡비), ROAS는 매출/매체비. 잡비가 0인 달에는 두 값이 완전히 같아
-            카드 두 개가 같은 숫자를 보여준다. 잡비가 있을 때만 별도 카드로 낸다. */}
+      <div className={`grid grid-cols-2 gap-2.5 ${(kpi.miscCost || 0) > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
+        <KpiCard size="compact" title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, kpi.ordersPrev)} changeLabel={changeLabel} confidence={quiet(revenueConfidence)} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
+        {/* 이익률은 이익 카드 안에 적는다(같은 각주를 두 카드가 반복하던 것을 하나로).
+            직전 기간 이익은 원가율 가정 추정치라 증감률을 내지 않는다. */}
+        <KpiCard size="compact" title="이익" value={formatCurrency(kpi.profit)} subtitle={profitRateText}
+          change={kpi.profitPrevEstimated ? undefined : pctChange(kpi.profit, kpi.profitPrev)} changeLabel={kpi.profitPrevEstimated ? undefined : changeLabel}
+          confidence={profitConfidence} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
+        {/* MER은 매출/(매체비+잡비). 잡비가 0인 달에는 ROAS 와 같은 숫자라 잡비가 있을 때만 낸다. */}
         {(kpi.miscCost || 0) > 0 && (
-          <KpiCard size="compact" title="MER" value={`${(kpi.mer || 0).toFixed(2)}x`} change={pctChange(kpi.mer, kpi.merPrev)} changeLabel={changeLabel} confidence={roasConfidence} onClick={() => toggleKpi("ctr")} active={selectedKpi === "ctr"} />
+          <KpiCard size="compact" title="MER" value={`${(kpi.mer || 0).toFixed(2)}x`} change={pctChange(kpi.mer, kpi.merPrev)} changeLabel={changeLabel} confidence={quiet(roasConfidence)} />
         )}
-        <KpiCard size="compact" title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "—"} change={pctChange(kpi.aov, kpi.aovPrev)} changeLabel={changeLabel} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
+        <KpiCard size="compact" title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "-"} change={pctChange(kpi.aov, kpi.aovPrev)} changeLabel={changeLabel} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
       </div>
 
-      {/* 사업 그룹 뷰: 펫(너티+아이언펫+사입) vs 밸런스랩(검사 라인별) */}
+      {/* 드릴다운 */}
+      {drilldownData && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-sm">{drilldownData.title}</h3>
+              <button onClick={() => setSelectedKpi(null)} className="text-xs text-muted-foreground hover:text-foreground">닫기 ✕</button>
+            </div>
+            <div className="space-y-2">
+              {drilldownData.rows.map((row) => {
+                const maxVal = Math.max(...drilldownData.rows.map((r) => Math.abs(r.value)));
+                const barW = maxVal > 0 ? (Math.abs(row.value) / maxVal) * 100 : 0;
+                return (
+                  <div key={row.label} className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }} />
+                    <span className="text-sm w-24 flex-shrink-0">{row.label}</span>
+                    <div className="flex-1 h-5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${barW}%`, backgroundColor: row.value >= 0 ? row.color : "var(--sig-danger)" }} />
+                    </div>
+                    <span className={`text-sm font-medium w-24 text-right flex-shrink-0 ${row.value < 0 ? "text-red-500" : ""}`}>{row.formatted}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 경고 */}
+      {warnings.length > 0 && (
+        <div className="space-y-2">
+          {warnings.map((w, i) => (
+            <Card key={i} className="border-l-4 border-l-amber-500 bg-amber-500/5">
+              <CardContent className="p-3 flex items-center gap-2">
+                <span>⚠️</span>
+                <span className="text-sm">{w}</span>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* 사업 그룹 뷰: 펫(너티+아이언펫+사입) vs 밸런스랩 */}
       {(brand === "all" || !brand) && (data?.groupRevenue || []).length > 0 && (
         <SectionHeading eyebrow="Business Mix" title="사업 그룹" note="펫(너티·아이언펫·사입) vs 밸런스랩" />
       )}
@@ -470,7 +446,7 @@ function OverviewInner() {
                     <span className="text-xs text-muted-foreground">주문 {formatNumber(g.orders)}</span>
                   </div>
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${share}%`, backgroundColor: g.group === "pet" ? "#ea580c" : "#2563eb" }} />
+                    <div className="h-full rounded-full" style={{ width: `${share}%`, backgroundColor: brandColor(g.group) }} />
                   </div>
                   {/* 펫은 브랜드별 분해. 사입은 우리 브랜드가 아니라 유통이므로 그 아래 유통 브랜드까지 편다. */}
                   {g.group === "pet" && (data?.petBrands || []).length > 0 && (
@@ -498,7 +474,7 @@ function OverviewInner() {
                       ))}
                     </div>
                   )}
-                  {/* 밸런스랩은 검사 라인별 분해 (타액·음식물과민증은 런칭 전 → 0이어도 항상 표시) */}
+                  {/* 밸런스랩은 검사 라인별 분해 (타액·음식물과민증은 런칭 전이라 0이어도 항상 표시) */}
                   {g.group === "balancelab" && (data?.blTestLines || []).length > 0 && (
                     <div className="pt-1 space-y-1">
                       {(data?.blTestLines || []).map(l => (
@@ -537,137 +513,77 @@ function OverviewInner() {
         </Card>
       )}
 
-      {/* 드릴다운 */}
-      {drilldownData && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-sm">{drilldownData.title}</h3>
-              <button onClick={() => setSelectedKpi(null)} className="text-xs text-muted-foreground hover:text-foreground">닫기 ✕</button>
+      {/* 일별 트렌드 */}
+      <SectionHeading eyebrow="Trend" title="일별 흐름" note="선택 기간 일별" />
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
+            <div>
+              <h3 className="font-semibold">일별 매출 · 광고비</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                가로 = 날짜, 세로 = 원. 매출은 판매 원장(자체매출), 광고비는 매체비 합계
+                {pendingTrendDays > 0 && salesLastDate ? `. 매출은 ${salesLastDate.slice(5)}까지 들어와 그 뒤 ${pendingTrendDays}일은 비워 둡니다(판매 동기화 대기)` : ""}
+              </p>
             </div>
-            <div className="space-y-2">
-              {drilldownData.rows.map((row) => {
-                const maxVal = Math.max(...drilldownData.rows.map((r) => Math.abs(r.value)));
-                const barW = maxVal > 0 ? (Math.abs(row.value) / maxVal) * 100 : 0;
-                return (
-                  <div key={row.label} className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }} />
-                    <span className="text-sm w-24 flex-shrink-0">{row.label}</span>
-                    <div className="flex-1 h-5 bg-muted rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${barW}%`, backgroundColor: row.value >= 0 ? row.color : "#ef4444" }} />
-                    </div>
-                    <span className={`text-sm font-medium w-24 text-right flex-shrink-0 ${row.value < 0 ? "text-red-500" : ""}`}>{row.formatted}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 경고 */}
-      {warnings.length > 0 && (
-        <div className="space-y-2">
-          {warnings.map((w, i) => (
-            <Card key={i} className="border-l-4 border-l-amber-500 bg-amber-500/5">
-              <CardContent className="p-3 flex items-center gap-2">
-                <span>⚠️</span>
-                <span className="text-sm">{w}</span>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* 일별 트렌드 + 브랜드 비중 */}
-      <SectionHeading eyebrow="Trend" title="추이와 비중" note="선택 기간 일별" />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">일별 매출 · 광고비 트렌드</h3>
-              {events.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {events.map(e => (
-                    <span key={e.id} className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border" style={{ borderColor: e.color, color: e.color }} title={e.title}>
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: e.color }} />{e.date.slice(5)} {e.title}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            <DeferredResponsiveContainer width="100%" height={260}>
-              <ComposedChart data={dailyTrend} margin={{ top: 24, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                <YAxis yAxisId="won" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-                <YAxis yAxisId="roas" orientation="right" tick={{ fontSize: 11 }} stroke="#10b981" tickFormatter={(v) => `${v}x`} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val, name) => (val == null ? "-" : name === "ROAS" ? `${Number(val).toFixed(2)}x` : formatCurrency(Number(val)))} />
-                <Legend />
-                <Area isAnimationActive={false} yAxisId="won" type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} />
-                <Area isAnimationActive={false} yAxisId="won" type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} />
-                <Line isAnimationActive={false} yAxisId="roas" type="monotone" dataKey="roas" name="ROAS" stroke="#10b981" strokeWidth={2} dot={false} />
+            {events.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
                 {events.map(e => (
-                  <ReferenceLine key={e.id} yAxisId="won" x={e.date} stroke={e.color} strokeDasharray="4 4" strokeWidth={2}
-                    label={(props: { viewBox?: { x: number; y: number; width: number; height: number } }) => {
-                      const vb = props.viewBox;
-                      if (!vb) return <g />;
-                      const title = e.title.length > 10 ? e.title.slice(0, 10) + "…" : e.title;
-                      const w = title.length * 6 + 8;
-                      return (
-                        <g style={{ pointerEvents: "none" }}>
-                          <rect x={vb.x + 2} y={vb.y} width={w} height={15} rx={3} fill={e.color} fillOpacity={0.9} />
-                          <text x={vb.x + 6} y={vb.y + 10.5} fill="#fff" fontSize={9} fontWeight={700}>{title}</text>
-                        </g>
-                      );
-                    }} />
+                  <span key={e.id} className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border" style={{ borderColor: e.color, color: e.color }} title={e.title}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: e.color }} />{e.date.slice(5)} {e.title}
+                  </span>
                 ))}
-              </ComposedChart>
-            </DeferredResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="font-semibold mb-4">{shareData.title}</h3>
-            {shareData.data.length > 0 ? (
-              <DeferredResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie isAnimationActive={false} data={shareData.data} cx="50%" cy="50%" innerRadius={45} outerRadius={85} dataKey="value" nameKey="name"
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    label={({ name, percent }: any) => `${name || ''} ${((percent || 0) * 100).toFixed(0)}%`} labelLine={false}
-                  >
-                    {shareData.data.map((e, i) => <Cell key={i} fill={e.color} />)}
-                  </Pie>
-                  <Tooltip formatter={(val) => formatCurrency(Number(val))} />
-                </PieChart>
-              </DeferredResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[260px] text-muted-foreground">데이터 없음</div>
+              </div>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+          <DeferredResponsiveContainer width="100%" height={260}>
+            <ComposedChart data={dailyTrend} margin={{ top: 24, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
+              <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
+              <Legend />
+              <Area isAnimationActive={false} type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} connectNulls={false} />
+              <Area isAnimationActive={false} type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} />
+              {events.map(e => (
+                <ReferenceLine key={e.id} x={e.date.slice(5)} stroke={e.color} strokeDasharray="4 4" strokeWidth={2}
+                  label={(props: { viewBox?: { x: number; y: number; width: number; height: number } }) => {
+                    const vb = props.viewBox;
+                    if (!vb) return <g />;
+                    const title = e.title.length > 10 ? e.title.slice(0, 10) + "…" : e.title;
+                    const w = title.length * 6 + 8;
+                    return (
+                      <g style={{ pointerEvents: "none" }}>
+                        <rect x={vb.x + 2} y={vb.y} width={w} height={15} rx={3} fill={e.color} fillOpacity={0.9} />
+                        <text x={vb.x + 6} y={vb.y + 10.5} fill="#fff" fontSize={9} fontWeight={700}>{title}</text>
+                      </g>
+                    );
+                  }} />
+              ))}
+            </ComposedChart>
+          </DeferredResponsiveContainer>
+        </CardContent>
+      </Card>
 
-      {/* 매체별 광고비 + 판매처별 매출 — 두 축은 조인되지 않는다(매체=메타/네이버, 판매처=스마트스토어/자사몰) */}
+      {/* 광고 신고 vs 실제: 매체별 신고 ROAS 는 이 표에서만 본다(합산 불가) */}
       <SectionHeading eyebrow="Attribution" title="광고 신고 vs 실제" note="채널 ROAS 를 더하면 실매출을 넘습니다" />
       <AttributionGap channels={data?.channels || []} actualRevenue={kpi.revenue} adSpend={kpi.adSpend} />
 
-      <SectionHeading eyebrow="Channels" title="매체와 판매처" note="두 축은 조인되지 않습니다 (매체=집행, 판매처=주문)" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* 매체별 광고비 + 판매처별 매출 + TOP 5 제품. 두 축(매체·판매처)은 조인되지 않는다. */}
+      <SectionHeading eyebrow="Channels & Products" title="매체 · 판매처 · 제품" note="매체=집행, 판매처=주문. 두 축은 조인되지 않습니다" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">매체별 광고비 <span className="text-xs text-muted-foreground font-normal">광고 집행 기준</span></h3>
+              <h3 className="font-semibold">매체별 광고비 <span className="text-xs text-muted-foreground font-normal">ROAS 는 매체 신고값</span></h3>
               <Link href="/ads" className="text-xs text-primary hover:underline">상세 →</Link>
             </div>
             <div className="space-y-2">
               {channelAds.slice(0, 6).map((c) => (
                 <div key={c.channel} className="flex items-center gap-2 text-sm">
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-                  <span className="flex-1">{c.label}</span>
+                  <span className="flex-1 truncate">{c.label}</span>
                   <span className="font-medium">{formatCurrency(c.spend)}</span>
-                  <span className={`w-16 text-right ${isRoasUntracked(c.roas, c.spend) ? "text-muted-foreground/60 italic" : "text-muted-foreground"}`}>
+                  <span className={`w-14 text-right ${isRoasUntracked(c.roas, c.spend) ? "text-muted-foreground/60 italic" : "text-muted-foreground"}`}>
                     {formatRoas(c.roas, c.spend)}
                   </span>
                 </div>
@@ -696,95 +612,18 @@ function OverviewInner() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold">판매처별 매출 <span className="text-xs text-muted-foreground font-normal">주문 기준</span></h3>
-              <Link href="/sales" className="text-xs text-primary hover:underline">상세 →</Link>
+              <Link href="/channel" className="text-xs text-primary hover:underline">상세 →</Link>
             </div>
             <div className="space-y-2">
               {channelSales.slice(0, 6).map((c) => (
                 <div key={c.channel} className="flex items-center gap-2 text-sm">
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-                  <span className="flex-1">{c.label}</span>
+                  <span className="flex-1 truncate">{c.label}</span>
                   <span className="font-medium">{formatCurrency(c.revenue)}</span>
                 </div>
               ))}
               {channelSales.length === 0 && <div className="text-sm text-muted-foreground">데이터 없음</div>}
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* 누적 매출 */}
-      {cumulativeData.length > 1 && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold">누적 매출 · 광고비</h3>
-              {targets?.revenue_target && (
-                <span className="text-xs text-muted-foreground">목표: {formatCurrency(targets.revenue_target)}</span>
-              )}
-            </div>
-            <DeferredResponsiveContainer width="100%" height={260}>
-              <LineChart data={cumulativeData} margin={{ top: 24, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => formatCurrency(Number(val))} />
-                <Legend />
-                <Line isAnimationActive={false} type="monotone" dataKey="cumRevenue" name="누적 매출" stroke="#2563eb" strokeWidth={2} dot={false} />
-                <Line isAnimationActive={false} type="monotone" dataKey="cumAdSpend" name="누적 광고비" stroke="#dc2626" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
-                {targets?.revenue_target && (
-                  <ReferenceLine y={targets.revenue_target} stroke="#10b981" strokeDasharray="6 3" label={{ value: "목표", position: "right", fontSize: 10, fill: "#10b981" }} />
-                )}
-                {events.map(e => (
-                  <ReferenceLine key={e.id} x={e.date} stroke={e.color} strokeDasharray="4 4" strokeWidth={2}
-                    label={(props: { viewBox?: { x: number; y: number; width: number; height: number } }) => {
-                      const vb = props.viewBox;
-                      if (!vb) return <g />;
-                      const title = e.title.length > 10 ? e.title.slice(0, 10) + "…" : e.title;
-                      const w = title.length * 6 + 8;
-                      return (
-                        <g style={{ pointerEvents: "none" }}>
-                          <rect x={vb.x + 2} y={vb.y} width={w} height={15} rx={3} fill={e.color} fillOpacity={0.9} />
-                          <text x={vb.x + 6} y={vb.y + 10.5} fill="#fff" fontSize={9} fontWeight={700}>{title}</text>
-                        </g>
-                      );
-                    }} />
-                ))}
-              </LineChart>
-            </DeferredResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 퍼널 요약 + TOP 5 제품 */}
-      <SectionHeading eyebrow="Funnel & Products" title="퍼널과 제품" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold">퍼널 전환 요약</h3>
-              <Link href="/funnel" className="text-xs text-primary hover:underline">상세 →</Link>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              {[
-                { label: "세션", value: funnelSummary.sessions, color: "#3b82f6" },
-                { label: "장바구니", value: funnelSummary.cartAdds, color: "#f59e0b" },
-                { label: "구매", value: funnelSummary.purchases, color: "#10b981" },
-                { label: "재구매", value: funnelSummary.repurchases, color: "#8b5cf6" },
-              ].map((step, i) => (
-                <div key={step.label} className="flex-1 text-center">
-                  <div className="text-xs text-muted-foreground mb-1">{step.label}</div>
-                  <div className="text-lg font-bold" style={{ color: step.color }}>{formatNumber(step.value)}</div>
-                  {i < 3 && <div className="text-muted-foreground mt-1">→</div>}
-                </div>
-              ))}
-            </div>
-            {/* 단일 전환율을 찍지 않는다. 분모(세션)는 세션이 잡히는 채널만이고
-                분자(구매)는 daily_sales의 전 채널 주문이라 서로 다른 모집단이다.
-                매출 78%를 차지하는 스마트스토어는 세션이 수기라 대개 비어 있어,
-                합산 전환율이 21%처럼 성립 불가능한 값으로 나왔다(2026-07 확인). */}
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              단계별 모집단이 달라 합산 전환율은 표시하지 않습니다. 채널별은 <Link href="/funnel" className="text-primary hover:underline">퍼널</Link>에서 보세요.
-            </p>
           </CardContent>
         </Card>
 
@@ -798,7 +637,7 @@ function OverviewInner() {
               {topProducts.slice(0, 5).map((p, i) => (
                 <div key={`${p.brand}-${p.product}`} className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground w-4">{i + 1}</span>
-                  <span className="text-xs px-1 py-0.5 rounded" style={{ backgroundColor: `${BRAND_COLORS[p.brand] || '#6b7280'}20`, color: BRAND_COLORS[p.brand] || '#6b7280' }}>
+                  <span className="text-xs px-1 py-0.5 rounded shrink-0" style={{ backgroundColor: `${BRAND_COLORS[p.brand] || "#6b7280"}20`, color: BRAND_COLORS[p.brand] || "#6b7280" }}>
                     {BRAND_LABELS[p.brand] || p.brand}
                   </span>
                   <span className="flex-1 truncate">{p.product}</span>
@@ -810,193 +649,84 @@ function OverviewInner() {
           </CardContent>
         </Card>
       </div>
-
-      {/* 매체별 ROAS */}
-      {channelAds.length > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-baseline gap-2">
-                <h3 className="font-semibold">매체별 ROAS</h3>
-                {/* 각 플랫폼이 자기 기여로 신고한 값이라 채널 간 합산은 실매출을 넘는다. 비교용으로만 쓴다. */}
-                <span className="text-xs text-muted-foreground">플랫폼 신고 기준 · 합산 불가</span>
-              </div>
-              <Link href="/ads" className="text-xs text-primary hover:underline">상세 →</Link>
-            </div>
-            {untrackedChannels.length > 0 && (
-              <p className="text-xs text-muted-foreground mb-2">
-                전환 미연동 제외: {untrackedChannels.map((c) => c.label).join(", ")}
-              </p>
-            )}
-            <DeferredResponsiveContainer width="100%" height={200}>
-              <BarChart data={trackedChannelAds.slice(0, 8).map(c => ({ label: c.label, roas: c.roas, color: c.color }))} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis type="number" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v.toFixed(1)}x`} />
-                <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={80} />
-                <ReferenceLine x={1} stroke="#ef4444" strokeDasharray="4 4" />
-                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }} formatter={(val) => `${Number(val).toFixed(2)}x`} />
-                <Bar isAnimationActive={false} dataKey="roas" fill="#10b981" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </DeferredResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 브랜드 상세 */}
-      {/* 판매처 개별 추이 — 브랜드 페이지와 같은 컴포넌트. 판매처를 눌러 매출·광고비·ROAS 를 함께 본다. */}
-      <StoreDetailChart brand={brand || "all"} from={from} to={to} />
+      {/* 퍼널: 단계별 모집단(세션은 일부 채널, 구매는 전 판매처)이 달라 합산 숫자를 여기 두지 않는다. */}
+      <p className="text-xs text-muted-foreground">
+        유입 → 장바구니 → 구매 전환은 판매처마다 유입을 재는 방법이 달라 합치지 않습니다.{" "}
+        <Link href="/funnel" className="text-primary hover:underline">퍼널 화면에서 판매처별 단계와 전환율 보기 →</Link>
+      </p>
 
       {brand && brand !== "all" && <BrandDetailSection brand={brand} from={from} to={to} />}
-
-      {/* 밸런스랩 공구 매출 */}
-      {(gongguSalesTotal > 0 || selfSalesTotal > 0 || dailyGongguTotal > 0) && (
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="font-semibold">밸런스랩 공구 매출 <span className="text-xs font-normal text-muted-foreground">(헤드라인 매출엔 미포함 · 별도 집계)</span></h3>
-              <Link href="/sales" className="text-xs text-primary hover:underline">상세 →</Link>
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">자체매출 (헤드라인 포함)</p>
-                <p className="text-lg font-bold text-blue-500">{formatCurrency(selfSalesTotal)}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">공구매출 (product_sales)</p>
-                <p className="text-lg font-bold text-purple-500">{formatCurrency(gongguSalesTotal)}</p>
-              </div>
-              {dailyGongguTotal > 0 && (
-                <div className="text-center">
-                  <p className="text-xs text-muted-foreground">스마트스토어 공구 채널</p>
-                  <p className="text-lg font-bold text-purple-400">{formatCurrency(dailyGongguTotal)}</p>
-                </div>
-              )}
-              {gongguSales.slice(0, 1).map((s) => (
-                <div key={s.seller} className="text-center">
-                  <p className="text-xs text-muted-foreground">공구_{s.seller}</p>
-                  <p className="text-lg font-bold">{formatCurrency(s.revenue)}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </PageShell>
   );
 }
 
+// 브랜드를 하나 고르면 라인업과 공구 셀러를 더 편다.
+// (판매처별 매출·제품 TOP 10 은 위 「판매처별 매출」·「TOP 5 제품」과 같은 숫자라 2026-11-04 뺐다. 전체 제품은 /sales.)
 function BrandDetailSection({ brand, from, to }: { brand: string; from: string; to: string }) {
   const { data } = useFetch<{
     lineupBreakdown: { lineup: string; revenue: number; quantity: number }[];
-    topProducts: { product: string; revenue: number; quantity: number }[];
-    channelBreakdown: { channel: string; revenue: number; quantity: number }[];
     gongguSales: { seller: string; revenue: number; orders: number }[];
     gongguSalesTotal: number;
     selfSalesTotal: number;
   }>(brandDetailUrl(brand, from, to));
 
   const lineups = data?.lineupBreakdown || [];
-  const tops = data?.topProducts || [];
-  const channels = (data?.channelBreakdown || []).filter(c => c.revenue > 0);
   const gongguSales = data?.gongguSales || [];
   const gongguTotal = data?.gongguSalesTotal || 0;
   const selfTotal = data?.selfSalesTotal || 0;
-  const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6", "#f97316", "#ec4899"];
+  const barColor = brandColor(brand);
 
-  if (lineups.length === 0 && tops.length === 0 && channels.length === 0 && gongguSales.length === 0) return null;
+  if (lineups.length === 0 && gongguSales.length === 0) return null;
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {lineups.length > 0 && (
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-3">라인업별 매출</h3>
-              <div className="space-y-2">
-                {lineups.map((l, i) => {
-                  const maxRev = lineups[0]?.revenue || 1;
-                  return (
-                    <div key={l.lineup} className="flex items-center gap-2 text-sm">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                      <span className="flex-1 truncate">{l.lineup}</span>
-                      <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${(l.revenue / maxRev) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
-                      </div>
-                      <span className="font-medium w-20 text-right">{formatCurrency(l.revenue)}</span>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {lineups.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold mb-3">라인업별 매출</h3>
+            <div className="space-y-2">
+              {lineups.map((l) => {
+                const maxRev = lineups[0]?.revenue || 1;
+                return (
+                  <div key={l.lineup} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 truncate">{l.lineup}</span>
+                    <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${(l.revenue / maxRev) * 100}%`, backgroundColor: barColor }} />
                     </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        {tops.length > 0 && (
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-3">제품 TOP 10</h3>
-              <div className="space-y-2">
-                {tops.slice(0, 10).map((p, i) => (
-                  <div key={p.product} className="flex items-center gap-2 text-sm">
-                    <span className="text-xs text-muted-foreground w-5">{i + 1}</span>
-                    <span className="flex-1 truncate">{p.product}</span>
-                    <span className="font-medium">{formatCurrency(p.revenue)}</span>
-                    <span className="text-muted-foreground text-xs w-12 text-right">{formatNumber(p.quantity)}개</span>
+                    <span className="font-medium w-24 text-right">{formatCurrency(l.revenue)}</span>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        {channels.length > 1 && (
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-3">판매처별 매출</h3>
-              <div className="space-y-2">
-                {channels.map((c, i) => {
-                  const maxRev = channels[0]?.revenue || 1;
-                  return (
-                    <div key={c.channel} className="flex items-center gap-2 text-sm">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                      <span className="flex-1 truncate capitalize">{c.channel}</span>
-                      <div className="w-24 h-2 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${(c.revenue / maxRev) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
-                      </div>
-                      <span className="font-medium w-20 text-right">{formatCurrency(c.revenue)}</span>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {gongguSales.length > 0 && (
+        <Card>
+          <CardContent className="p-4">
+            <h3 className="font-semibold mb-1">공구 셀러별 매출 <span className="text-xs font-normal text-muted-foreground">헤드라인 매출엔 미포함</span></h3>
+            <div className="flex gap-4 text-xs text-muted-foreground mb-3">
+              <span>자체판매 <span className="font-medium text-foreground">{formatCurrency(selfTotal)}</span></span>
+              <span>공구 <span className="font-medium text-foreground">{formatCurrency(gongguTotal)}</span></span>
+            </div>
+            <div className="space-y-2">
+              {gongguSales.map((s) => {
+                const maxRev = gongguSales[0]?.revenue || 1;
+                return (
+                  <div key={s.seller} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 truncate">{s.seller}</span>
+                    <span className="text-muted-foreground text-xs w-12 text-right">{formatNumber(s.orders)}건</span>
+                    <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${(s.revenue / maxRev) * 100}%`, backgroundColor: barColor }} />
                     </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        {gongguSales.length > 0 && (
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-1">공구 셀러별 매출</h3>
-              <div className="flex gap-4 text-xs text-muted-foreground mb-3">
-                <span>자체판매 <span className="font-medium text-foreground">{formatCurrency(selfTotal)}</span></span>
-                <span>공구 <span className="font-medium text-foreground">{formatCurrency(gongguTotal)}</span></span>
-              </div>
-              <div className="space-y-2">
-                {gongguSales.map((s, i) => {
-                  const maxRev = gongguSales[0]?.revenue || 1;
-                  return (
-                    <div key={s.seller} className="flex items-center gap-2 text-sm">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                      <span className="flex-1 truncate">{s.seller}</span>
-                      <span className="text-muted-foreground text-xs w-12 text-right">{formatNumber(s.orders)}건</span>
-                      <div className="w-20 h-2 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${(s.revenue / maxRev) * 100}%`, backgroundColor: COLORS[i % COLORS.length] }} />
-                      </div>
-                      <span className="font-medium w-20 text-right">{formatCurrency(s.revenue)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+                    <span className="font-medium w-24 text-right">{formatCurrency(s.revenue)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

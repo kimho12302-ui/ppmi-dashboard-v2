@@ -12,6 +12,7 @@ import { kstDate } from "@/lib/date";
 import { formatNumber, cn } from "@/lib/utils";
 import { buildControlChart, CONTROL_MIN_DAYS, CONTROL_SIGMA, CONTROL_IMPLAUSIBLE_RATE, CONTROL_RUN_LENGTH, type ControlPoint } from "@/lib/judge-charts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
+import { SINGLE_BRAND_FUNNEL_NOTE } from "@/components/judge/source-funnel-steps";
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, ReferenceArea } from "recharts";
 
 const ACCENT = "var(--sig-danger)";
@@ -51,8 +52,8 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
   const header = (
     <div className="mb-3">
       <h3 className="font-semibold">일별 구매 전환율 관리도</h3>
-      <p className="text-xs text-muted-foreground mt-0.5">판단: 전환율이 떨어지거나 오른 날이 우연한 흔들림인지, 따로 원인을 찾아야 하는 날인지</p>
-      <p className="text-[11px] text-muted-foreground">방식: Laney p′ 관리도. 유입이 적은 날일수록 한계선이 넓어지고, 실제 흔들림 폭(σz)으로 보정합니다</p>
+      <p className="text-xs text-muted-foreground mt-0.5">가로 = 날짜, 세로 = 전환율(같은 원천의 구매 ÷ 유입, %). 점선 = 그날의 한계선, 가는 선 = 기간 평균</p>
+      <p className="text-xs text-muted-foreground">판단: 전환율이 떨어지거나 오른 날이 우연한 흔들림인지, 따로 원인을 찾아야 하는 날인지</p>
     </div>
   );
 
@@ -68,7 +69,7 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
       <Card><CardContent className="p-4">{header}
         <p className="text-sm text-muted-foreground">
           {single
-            ? "이 브랜드는 유입이 펫 3개 브랜드 합산으로만 기록돼 단독 전환율을 계산할 수 없습니다. 브랜드 필터를 '펫'으로 바꾸면 통합 스토어 기준으로 볼 수 있습니다."
+            ? SINGLE_BRAND_FUNNEL_NOTE
             : "이 기간에 유입이 수집된 원천이 없어 그리지 않습니다."}
         </p>
       </CardContent></Card>
@@ -116,11 +117,6 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
                 <><b style={{ color: ACCENT }}>{chart.runs.length}구간</b> {CONTROL_RUN_LENGTH}일 이상 연속 {chart.runs.map((r) => `${md(r.start)}~${md(r.end)} ${r.side === "below" ? "평균 아래" : "평균 위"} ${r.days}일`).join(", ")}</>
               )}
             </>
-          )}
-          {chart.enough && latest && (
-            <span className="text-muted-foreground">
-              {" "}· 판정 가능한 마지막 날 {md(latest.date)}: {latest.status === "out" ? "한계선 밖" : latest.lcl == null ? "상한 안 (그날은 하한이 0% 아래라 하락은 판정 불가)" : "한계선 안"}
-            </span>
           )}
         </p>
 
@@ -181,21 +177,28 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
           </LineChart>
         </DeferredResponsiveContainer>
 
-        <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
+        {/* 계산 방식·제외 규칙은 접어 둔다(2026-11-04). 결론과 그래프가 먼저 읽혀야 한다. 빠진 날 안내는 펼치지 않아도 보인다. */}
+        {(pendingDays > 0 || missingDays > 0) && (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            점을 그리지 않은 날: {[
+              pendingDays > 0 ? `판매 동기화 대기 ${pendingDays}일${data?.salesLastDate ? `(${md(data.salesLastDate)} 이후)` : ""}` : null,
+              missingDays > 0 ? `유입 미수집 ${missingDays}일` : null,
+            ].filter(Boolean).join(" · ")}. 0 으로 그리면 하락 이탈로 잘못 뜹니다.
+          </p>
+        )}
+        <details className="mt-1 text-[11px] text-muted-foreground">
+          <summary className="cursor-pointer select-none hover:text-foreground">계산 방식 보기</summary>
+          <div className="mt-1 space-y-0.5">
+          <p>방식: Laney p′ 관리도. 유입이 적은 날일수록 한계선이 넓어지고, 실제 흔들림 폭(σz)으로 보정합니다.</p>
+          {chart.enough && latest && (
+            <p>판정 가능한 마지막 날 {md(latest.date)}: {latest.status === "out" ? "한계선 밖" : latest.lcl == null ? "상한 안 (그날은 하한이 0% 아래라 하락은 판정 불가)" : "한계선 안"}.</p>
+          )}
           <p>
             전환율 = 같은 원천의 구매 ÷ 유입. 점선 = 그날의 ±{CONTROL_SIGMA}σ 한계(p̄ ± {CONTROL_SIGMA}·√(p̄(1−p̄)/유입)·σz), 판정 가능한 {chart.n}일로 계산
             {chart.sigmaZ != null ? `, σz ${chart.sigmaZ.toFixed(2)}` : ""}.
             {chart.enough && ` 하한이 0% 위로 올라온 날 ${chart.lclDays}일${chart.lclDays === 0 ? "(하루 구매가 적어 0건인 날도 정상 범위라 하루 단위 하락은 가려낼 수 없습니다. 연속 규칙으로 봅니다)" : ""}.`}
           </p>
           <p>연속 규칙: 판정 가능한 날 기준 {CONTROL_RUN_LENGTH}일 이상 연속으로 평균선 한쪽에 머문 구간을 칠합니다. 점을 그리지 않은 날은 건너뜁니다(끊지도 잇지도 않음).</p>
-          {(pendingDays > 0 || missingDays > 0) && (
-            <p>
-              점을 그리지 않은 날: {[
-                pendingDays > 0 ? `판매 동기화 대기 ${pendingDays}일${data?.salesLastDate ? `(${md(data.salesLastDate)} 이후)` : ""}` : null,
-                missingDays > 0 ? `유입 미수집 ${missingDays}일` : null,
-              ].filter(Boolean).join(" · ")}. 0 으로 그리면 하락 이탈로 잘못 뜹니다.
-            </p>
-          )}
           {implausible.length > 0 && (
             <p>
               수집 오류 의심으로 뺀 날: {implausible.map((p) => `${md(p.date)} 구매 ${formatNumber(p.orders || 0)} ÷ 유입 ${formatNumber(p.sessions || 0)}`).join(", ")}.
@@ -203,7 +206,8 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
             </p>
           )}
           {active.note && <p>{active.note}</p>}
-        </div>
+          </div>
+        </details>
       </CardContent>
     </Card>
   );

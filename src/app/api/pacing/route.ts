@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { isGongguInDailySales } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
+import { kstDate, kstMonth } from "@/lib/date";
 
 // 목표 대비 페이싱 (통계시트 "광고 예산안" 재현)
 // 현재 월에 대해 엔티티별: 날짜진행률 vs 매출/광고비/ROAS/광고비비중 목표·현황·달성률 + 잔여 + 필요 일런레이트
@@ -13,19 +14,31 @@ import { cachedGET } from "@/lib/api-cache";
 
 const BRANDS = ["nutty", "ironpet", "saip", "balancelab"];
 
+/**
+ * 이 일수보다 판매가 들어온 날이 적으면 "달성 가능/불가" 판정을 하지 않는다(2026-11-03).
+ * 3일치 일평균으로 한 달을 내다보면 하루 공구·주말 하나에 결론이 뒤집힌다.
+ */
+const PACING_MIN_DAYS = 7;
+
+/** 원장 마지막 날짜(KST 날짜 문자열)가 이 달 안에서 며칠째까지인지. 이 달 이전이면 0, 이후면 말일. */
+function coveredDays(lastDate: string | null, monthStart: string, monthEnd: string, daysInMonth: number): number {
+  if (!lastDate || lastDate < monthStart) return 0;
+  if (lastDate > monthEnd) return daysInMonth;
+  return Number(lastDate.slice(8, 10));
+}
+
 async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const brand = sp.get("brand") || "all";
   // 현재 월(KST) 기본
-  const nowKst = new Date(Date.now() + 32400000);
-  const month = sp.get("month") || nowKst.toISOString().slice(0, 7);
+  const month = sp.get("month") || kstMonth();
 
   try {
     const [yy, mm] = month.split("-").map(Number);
     const daysInMonth = new Date(yy, mm, 0).getDate();
     const monthStart = `${month}-01`;
     const monthEnd = `${month}-${String(daysInMonth).padStart(2, "0")}`;
-    const todayStr = nowKst.toISOString().slice(0, 10);
+    const todayStr = kstDate();
 
     // 경과일: 이번 달이면 오늘까지, 과거 달이면 전체, 미래 달이면 0
     let daysElapsed: number;
@@ -54,12 +67,30 @@ async function getImpl(req: NextRequest) {
     const needGonggu = brand === "balancelab" || brand === "all";
     const psQ = supabase.from("product_sales").select("date,channel,lineup,product,revenue").gte("date", monthStart).lte("date", monthEnd).eq("brand", "balancelab");
 
-    // 1회 병렬 배치 (이전: 순차 3회)
-    const [targetsRes, sales, ads, psRows] = await Promise.all([
+    // ★ 원장이 어디까지 들어왔는지(2026-11-03). 판매 동기화는 며칠 늦다. 오늘·어제가 비어 있는 건
+    //   "안 팔렸다"가 아니라 "아직 안 들어왔다"라서, 실적 일평균을 달력 경과일로 나누면 과소 계산된다
+    //   (11-03 실측: 판매는 11-02까지인데 3일로 나눠 일평균 147만 → 실제 220만).
+    //   하루치가 한 번에 써지므로 브랜드 필터와 무관하게 전체 최대 날짜로 본다(/api/funnel-control 과 같은 방식).
+    //   오늘은 넣지 않는다. 광고비는 오늘 행이 장중에 일부만 들어와 있어(11-03 실측: 메타·네이버 일부) 하루로 세면 일평균이 깎인다.
+    const salesLastQ = supabase.from("daily_sales").select("date").neq("channel", "total").lt("date", todayStr)
+      .order("date", { ascending: false }).limit(1);
+    const adLastQ = supabase.from("daily_ad_spend").select("date").not("channel", "like", "ga4_%").lt("date", todayStr)
+      .order("date", { ascending: false }).limit(1);
+
+    // 1회 병렬 배치
+    const [targetsRes, sales, ads, psRows, salesLastRes, adLastRes] = await Promise.all([
       tQ, fetchAll(salesQ), fetchAll(adQ),
       needGonggu ? fetchAll(psQ) : Promise.resolve([] as unknown[]),
+      salesLastQ, adLastQ,
     ]);
     const targetsData = targetsRes.data;
+    if (salesLastRes.error) throw salesLastRes.error;
+    if (adLastRes.error) throw adLastRes.error;
+    const salesThrough: string | null = salesLastRes.data?.[0]?.date ?? null;
+    const adThrough: string | null = adLastRes.data?.[0]?.date ?? null;
+    // 판매·광고비가 들어온 날 수(이 달 1일부터 원장 마지막 날까지). 일평균의 분모.
+    const salesDays = coveredDays(salesThrough, monthStart, monthEnd, daysInMonth);
+    const adDays = coveredDays(adThrough, monthStart, monthEnd, daysInMonth);
 
     // 형식-A 공구 날짜별 차감액 (밸런스랩)
     const formAByDate = new Map<string, number>();
@@ -92,21 +123,33 @@ async function getImpl(req: NextRequest) {
     // 잔여 + 필요 일런레이트
     const remainingRevenue = Math.max(0, targetRevenue - actualRevenue);
     const remainingAd = targetAd - actualAd; // 음수면 예산 초과
-    const reqDailyRevenue = daysRemaining > 0 ? remainingRevenue / daysRemaining : 0;
-    const reqDailyAd = daysRemaining > 0 ? Math.max(0, remainingAd) / daysRemaining : 0;
-    const dailyAvgRevenue = daysElapsed > 0 ? actualRevenue / daysElapsed : 0;
-    const dailyAvgAd = daysElapsed > 0 ? actualAd / daysElapsed : 0;
+    // 남은 날 = 아직 실적이 안 들어온 날(오늘·동기화 대기일 포함). 실적 일평균 = 들어온 날 수로 나눈 값.
+    const salesDaysRemaining = Math.max(0, daysInMonth - salesDays);
+    const adDaysRemaining = Math.max(0, daysInMonth - adDays);
+    const reqDailyRevenue = salesDaysRemaining > 0 ? remainingRevenue / salesDaysRemaining : 0;
+    const reqDailyAd = adDaysRemaining > 0 ? Math.max(0, remainingAd) / adDaysRemaining : 0;
+    // 일평균의 분자도 같은 날까지만 더한다(오늘 장중 행 제외).
+    const revenueThrough = salesThrough ? sales.filter((r) => r.date <= salesThrough).reduce((s, r) => s + Number(r.revenue || 0), 0) : 0;
+    const adThroughSum = adThrough ? ads.filter((r) => r.date <= adThrough).reduce((s, r) => s + Number(r.spend || 0), 0) : 0;
+    const dailyAvgRevenue = salesDays > 0 ? revenueThrough / salesDays : 0;
+    const dailyAvgAd = adDays > 0 ? adThroughSum / adDays : 0;
+    // 기준선(마커)도 들어온 날 기준. 달력 진행률과 비교하면 동기화 지연만큼 늘 뒤처져 보인다.
+    const salesProgress = daysInMonth > 0 ? salesDays / daysInMonth : 0;
+    const adProgress = daysInMonth > 0 ? adDays / daysInMonth : 0;
+    // 판매가 PACING_MIN_DAYS 일 미만 들어온 달은 판정하지 않는다(초반이라 판단 보류).
+    const early = salesDays < PACING_MIN_DAYS && salesDays < daysInMonth;
 
     const revAchievement = targetRevenue > 0 ? actualRevenue / targetRevenue : 0;
     const adConsumption = targetAd > 0 ? actualAd / targetAd : 0;
     const roasAchievement = targetRoas > 0 ? actualRoas / targetRoas : 0;
 
-    // 페이스 판정: 매출 달성률 vs 날짜진행률
-    // ahead = 달성률 > 진행률*1.0, behind = 달성률 < 진행률*0.9
-    let paceStatus: "ahead" | "on_track" | "behind" | "n/a" = "n/a";
-    if (daysElapsed > 0 && targetRevenue > 0) {
-      if (revAchievement >= dateProgress) paceStatus = "ahead";
-      else if (revAchievement >= dateProgress * 0.9) paceStatus = "on_track";
+    // 페이스 판정: 매출 달성률 vs 판매가 들어온 날 기준 진행률
+    // ahead = 달성률 > 진행률*1.0, behind = 달성률 < 진행률*0.9. 초반(early)이면 판정하지 않는다.
+    let paceStatus: "ahead" | "on_track" | "behind" | "early" | "n/a" = "n/a";
+    if (salesDays > 0 && targetRevenue > 0) {
+      if (early) paceStatus = "early";
+      else if (revAchievement >= salesProgress) paceStatus = "ahead";
+      else if (revAchievement >= salesProgress * 0.9) paceStatus = "on_track";
       else paceStatus = "behind";
     }
 
@@ -180,7 +223,10 @@ async function getImpl(req: NextRequest) {
 
     return NextResponse.json({
       month, brand,
+      // daysElapsed·dateProgress 는 달력 기준(예산 현황 화면이 쓴다). 실적 판단은 아래 salesDays·adDays 기준.
       daysInMonth, daysElapsed, daysRemaining, dateProgress,
+      salesThrough, adThrough, salesDays, adDays, salesProgress, adProgress,
+      salesDaysRemaining, adDaysRemaining, minJudgeDays: PACING_MIN_DAYS,
       weekly,
       hasTarget: (targetsData || []).length > 0 && targetRevenue > 0,
       target: { revenue: targetRevenue, ad: targetAd, roas: targetRoas, adRatio: targetAdRatio },

@@ -242,7 +242,7 @@ async function getImpl(req: NextRequest) {
         //   그 비율은 물리적으로 성립하지 않으므로 숫자를 내지 않고 사유만 밝힌다.
         rate: cartCoverage.valid ? (cartCoverage.purch / cartCoverage.cart) * 100 : null,
         rateNote: cartCoverage.valid
-          ? (cartCoverage.partial ? `장바구니 수집 채널(${cartCoverage.channels.join("·")}) 기준 — 다른 채널은 장바구니 미수집이라 제외` : null)
+          ? (cartCoverage.partial ? `장바구니 수집 채널(${cartCoverage.channels.join("·")}) 기준. 다른 채널은 장바구니 미수집이라 제외` : null)
           : "장바구니 수집이 구매보다 적어 전환율을 산출하지 않습니다 (장바구니=수기·GA4, 구매=주문 데이터로 소스가 달라 커버리지가 어긋남)",
         rateBase: cartCoverage.cart, rateNum: cartCoverage.purch },
     ];

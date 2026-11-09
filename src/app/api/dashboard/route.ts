@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { masterByProduct } from "@/lib/product-master";
-import { isGonggu, isGongguAggregate, gongguSeller, isGongguInDailySales } from "@/lib/gonggu";
+import { isGonggu, isGongguAggregate, isGongguInDailySales } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
 
 const RAW_KEYS = ["sales", "ads", "products", "prevSales", "prevAds"] as const;
@@ -38,7 +38,6 @@ async function getImpl(req: NextRequest) {
     const diff = toDate.getTime() - fromDate.getTime();
     const prevFrom = new Date(fromDate.getTime() - diff - 86400000).toISOString().slice(0, 10);
     const prevTo = new Date(fromDate.getTime() - 86400000).toISOString().slice(0, 10);
-    const currentMonth = to.slice(0, 7);
 
     // ── 쿼리 빌드 (모두 독립적 → 아래에서 한 번에 병렬 실행) ──
     // channel="total"은 Total 탭 집계값 — 채널별 합과 중복이므로 제외
@@ -82,7 +81,7 @@ async function getImpl(req: NextRequest) {
     // ── 모든 DB 호출을 1회 병렬 배치로 실행 (이전: 순차 12회 왕복) ──
     const [
       sales, adSpend, prevSales, prevAd, cogsProdData, prodData, gongguData,
-      productCostsRes, shippingRes, miscRes, funnelRes, targetRes, prevGongguData,
+      productCostsRes, shippingRes, miscRes, prevGongguData,
     ] = await Promise.all([
       fetchAll(salesQuery),
       fetchAll(adQuery),
@@ -94,15 +93,13 @@ async function getImpl(req: NextRequest) {
       supabase.from("product_costs").select("product,brand,cost_price,manufacturing_cost,shipping_cost"),
       supabase.from("shipping_costs").select("*").gte("month", from.slice(0, 7)).lte("month", to.slice(0, 7)),
       supabase.from("misc_costs").select("*").gte("date", from).lte("date", to),
-      supabase.from("daily_funnel").select("*").gte("date", from).lte("date", to),
-      supabase.from("monthly_targets").select("*").eq("month", currentMonth),
+      // (daily_funnel·monthly_targets 조회는 2026-11-04 뺐다. 받던 퍼널 요약·목표는 화면 어디서도 쓰지 않았다.
+      //  Overview 목표 막대는 /api/targets, 퍼널은 /api/funnel·/api/funnel-control 이 맡는다.)
       prevGongguPromise,
     ]);
     const productCostsData = productCostsRes.data;
     const shippingData = shippingRes.data;
     const miscData = miscRes.data;
-    const funnelData = funnelRes.data;
-    const targetData = targetRes.data;
 
     // ── Product costs (COGS) 맵 ──
     const costMap = new Map<string, { manufacturing_cost: number; shipping_cost: number }>();
@@ -144,44 +141,16 @@ async function getImpl(req: NextRequest) {
       totalMiscCost += Number(r.amount || 0);
     }
 
-    // ── 공구 분석 (밸런스랩) — lineup 기반 셀러 감지 ──
-    // "공구 합계" 행은 집계 행이므로 모든 계산에서 제외
-    // KPI에 gongguSalesTotal을 더하지 않음: 일부 날짜는 daily_sales에 이미 포함됨
-    let gongguSales: { seller: string; revenue: number; orders: number }[] = [];
-    let selfSalesTotal = 0;
+    // ── 공구 합계 (밸런스랩) — lineup 기반 셀러 감지 ──
+    // "공구 합계" 집계 행은 isGonggu 가 false 라 여기 더해지지 않는다.
+    // KPI에 gongguSalesTotal을 더하지 않음: 일부 날짜는 daily_sales에 이미 포함됨. 화면은 「공구 ○원 별도」 안내에만 쓴다.
+    // (셀러별 분해·daily_sales 공구 채널 합계는 2026-11-04 뺐다. Overview 공구 카드를 빼서 쓰는 곳이 없다.
+    //  공구 셀러·추이는 /sales 밸런스랩 구역과 /brand/balancelab 이 /api/dashboard?lean=1·/api/brand-detail 로 본다.)
     let gongguSalesTotal = 0;
-    const gongguChannelMap = new Map<string, number>();
-    const gongguByDate = new Map<string, number>();
     if (brand === "balancelab" || brand === "all") {
-      const sellerMap = new Map<string, { revenue: number; orders: number }>();
       for (const r of gongguData || []) {
-        // "공구 합계" 집계 행은 isGonggu 가 false 반환 → 자체판매에도 가산되지 않음
         if (isGongguAggregate(r)) continue;
-        if (isGonggu(r)) {
-          const seller = gongguSeller(r) || "기타";
-          const e = sellerMap.get(seller) || { revenue: 0, orders: 0 };
-          e.revenue += Number(r.revenue); e.orders += Number(r.quantity || 0);
-          sellerMap.set(seller, e);
-          gongguSalesTotal += Number(r.revenue);
-          const chKey = `공구_${seller}`;
-          gongguChannelMap.set(chKey, (gongguChannelMap.get(chKey) || 0) + Number(r.revenue));
-          gongguByDate.set(r.date, (gongguByDate.get(r.date) || 0) + Number(r.revenue));
-        } else {
-          selfSalesTotal += Number(r.revenue);
-        }
-      }
-      gongguSales = Array.from(sellerMap.entries()).map(([seller, d]) => ({ seller, ...d })).sort((a, b) => b.revenue - a.revenue);
-    }
-
-    // ── P2-2: daily_sales 공구 채널(공구_*) — 헤드라인에선 제외되지만 어디에도 안 보이면 숨겨짐 → 공구 섹션에 별도 노출 ──
-    let dailyGongguTotal = 0;
-    const dailyGongguByCh = new Map<string, number>();
-    if (brand === "balancelab" || brand === "all") {
-      const dg = await fetchAll(supabase.from("daily_sales").select("channel,revenue").gte("date", from).lte("date", to).eq("brand", "balancelab").like("channel", "공구%"));
-      for (const r of dg) {
-        const rev = Number(r.revenue || 0);
-        dailyGongguTotal += rev;
-        dailyGongguByCh.set(r.channel, (dailyGongguByCh.get(r.channel) || 0) + rev);
+        if (isGonggu(r)) gongguSalesTotal += Number(r.revenue);
       }
     }
 
@@ -210,6 +179,9 @@ async function getImpl(req: NextRequest) {
     }
     const adjPrevSales = subtractFormA(prevSales || [], prevFormAByDate);
 
+    // 판매 원장(이 필터 범위)이 들어온 마지막 날. 그 뒤 날짜는 판매 0 이 아니라 동기화 대기다.
+    const salesLastDate = (sales || []).reduce((m: string, r: { date: string }) => (r.date > m ? r.date : m), "") || null;
+
     // ── KPI 계산 ──
     // gongguSalesTotal은 더하지 않음: lineup 기반 공구 매출은 daily_sales smartstore에 이미 포함
     const totalRevenue = adjSales.reduce((s, r) => s + Number(r.revenue), 0);
@@ -234,6 +206,8 @@ async function getImpl(req: NextRequest) {
     const prevAdSpendTotal = prevNonGa4Ad.reduce((s, r) => s + Number(r.spend), 0);
     const prevRoas = prevAdSpendTotal > 0 ? prevRevenue / prevAdSpendTotal : 0;
     const cogsRate = totalRevenue > 0 ? totalCOGS / totalRevenue : 0;
+    // ★ 직전 기간 이익은 추정이다: 원가를 이번 기간 원가율로 가정하고 배송비·잡비를 넣지 않는다.
+    //   그래서 화면은 이익 증감률을 내지 않는다(kpi.profitPrevEstimated). 값은 CSV 내보내기용으로만 남긴다.
     const prevProfit = prevRevenue - prevAdSpendTotal - (prevRevenue * cogsRate);
     const prevMer = prevAdSpendTotal > 0 ? prevRevenue / prevAdSpendTotal : 0;
     const prevAov = prevOrders > 0 ? prevRevenue / prevOrders : 0;
@@ -284,24 +258,6 @@ async function getImpl(req: NextRequest) {
       //   화면이 그 차이를 보여줄 수 있게 원값을 같이 내린다.
       reportedRevenue: d.revenue,
     }));
-    // 신고 합계. 실매출과 나란히 놓으면 귀속 중복이 얼마나 되는지 바로 보인다.
-    const reportedRevenueTotal = Array.from(channelMap.values()).reduce((a, d) => a + d.revenue, 0);
-
-    // ── Channel ROAS trend ──
-    const chRoasMap = new Map<string, Map<string, { spend: number; cv: number }>>();
-    for (const r of nonGa4Ad) {
-      if (!chRoasMap.has(r.date)) chRoasMap.set(r.date, new Map());
-      const dm = chRoasMap.get(r.date)!;
-      const e = dm.get(r.channel) || { spend: 0, cv: 0 };
-      e.spend += Number(r.spend); e.cv += Number(r.conversion_value || 0);
-      dm.set(r.channel, e);
-    }
-    const channelRoasTrend = Array.from(chRoasMap.entries()).sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, cm]) => {
-        const row: Record<string, unknown> = { date };
-        cm.forEach((d, ch) => { row[ch] = d.spend > 0 ? Math.round((d.cv / d.spend) * 100) / 100 : 0; });
-        return row;
-      });
 
     // ── Brand breakdown ──
     const brandRevMap = new Map<string, { revenue: number; orders: number }>();
@@ -369,6 +325,13 @@ async function getImpl(req: NextRequest) {
     // ── Brand profit ──
     const brandAdMap = new Map<string, number>();
     for (const r of nonGa4Ad) brandAdMap.set(r.brand, (brandAdMap.get(r.brand) || 0) + Number(r.spend));
+    // 판매 원장이 들어온 마지막 날까지의 광고비. 판매 동기화가 며칠 늦어 그 뒤 날짜는 광고비만 있고 매출이 0 이다.
+    // 기간 전체 광고비로 ROAS 경고를 내면 "ROAS 1 미만"이 동기화 지연 때문에 뜬다(2026-11-04).
+    const brandAdToSalesMap = new Map<string, number>();
+    for (const r of nonGa4Ad) {
+      if (salesLastDate && r.date > salesLastDate) continue;
+      brandAdToSalesMap.set(r.brand, (brandAdToSalesMap.get(r.brand) || 0) + Number(r.spend));
+    }
     const brandCogsMap = new Map<string, number>();
     for (const ps of cogsProdData || []) {
       if (isCogsGonggu(ps)) continue;
@@ -381,21 +344,8 @@ async function getImpl(req: NextRequest) {
       const ad = brandAdMap.get(b) || 0;
       const cogs = brandCogsMap.get(b) || 0;
       const p = rev - ad - cogs;
-      return { brand: b, revenue: rev, orders, adSpend: ad, cogs, profit: p, margin: rev > 0 ? (p / rev * 100) : 0 };
+      return { brand: b, revenue: rev, orders, adSpend: ad, adSpendToSalesDate: brandAdToSalesMap.get(b) || 0, cogs, profit: p, margin: rev > 0 ? (p / rev * 100) : 0 };
     });
-
-    // ── Brand revenue trend ──
-    const brandTrendMap = new Map<string, Record<string, number>>();
-    for (const r of adjSales) {
-      if (r.brand === "all") continue;
-      const e = brandTrendMap.get(r.date) || {};
-      const bl = brandLabels[r.brand] || r.brand;
-      e[bl] = (e[bl] || 0) + Number(r.revenue);
-      brandTrendMap.set(r.date, e);
-    }
-    // 공구 매출 brandTrend 반영 생략: daily_sales에 이미 포함
-    const brandRevenueTrend = Array.from(brandTrendMap.entries()).sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, d]) => ({ date, ...d }));
 
     // ── Sales by channel ──
     const salesChMap = new Map<string, number>();
@@ -412,52 +362,9 @@ async function getImpl(req: NextRequest) {
       prodMap.set(r.product, e);
     }
     const topProducts = Array.from(prodMap.entries()).map(([product, d]) => ({ product, ...d })).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-    // 파이의 「기타」 조각 분모. 상위 5개만 내려보내면 화면이 상위 5개끼리 100% 를 나눠
-    // "오메가3 31%" 처럼 부풀려 보였다(실제 펫 매출 대비 약 12%, 2026-10-13). 같은 스코프의 합계를 같이 준다.
-    const productRevenueTotal = Array.from(prodMap.values()).reduce((s, d) => s + d.revenue, 0);
 
-    // ── Funnel summary ──
-    // purchases는 daily_sales의 orders와 동일 소스 사용 (daily_funnel.purchases는 brand="all" 혼합으로 부정확)
-    const funnelRows = funnelData || [];
-    const funnelSummary = {
-      sessions: funnelRows.reduce((s, r) => s + Number(r.sessions || 0), 0),
-      cartAdds: funnelRows.reduce((s, r) => s + Number(r.cart_adds || 0), 0),
-      purchases: totalOrders, // daily_sales 기준으로 통일 (funnel purchases는 brand="all" 혼재)
-      repurchases: funnelRows.reduce((s, r) => s + Number(r.repurchases || 0), 0),
-    };
-    const convRate = funnelSummary.sessions > 0 ? (funnelSummary.purchases / funnelSummary.sessions) * 100 : 0;
-
-    // ── Targets ──
-    const targets = (targetData || []).filter(r => matchesBrand(r.brand, brand));
-
-    // ── Anomaly detection ──
-    const anomalies: { brand: string; metric: string; change: number; current: number; previous: number }[] = [];
-    const sortedDates = Array.from(new Set((sales || []).map(r => r.date))).sort();
-    if (sortedDates.length >= 2) {
-      const lastDate = sortedDates[sortedDates.length - 1];
-      const prevDate = sortedDates[sortedDates.length - 2];
-      const dayRevMap = new Map<string, Map<string, number>>();
-      const dayAdMap = new Map<string, Map<string, number>>();
-      for (const r of adjSales) {
-        if (r.date !== lastDate && r.date !== prevDate) continue;
-        if (!dayRevMap.has(r.date)) dayRevMap.set(r.date, new Map());
-        dayRevMap.get(r.date)!.set(r.brand, (dayRevMap.get(r.date)!.get(r.brand) || 0) + Number(r.revenue));
-      }
-      for (const r of nonGa4Ad) {
-        if (r.date !== lastDate && r.date !== prevDate) continue;
-        if (!dayAdMap.has(r.date)) dayAdMap.set(r.date, new Map());
-        dayAdMap.get(r.date)!.set(r.brand, (dayAdMap.get(r.date)!.get(r.brand) || 0) + Number(r.spend));
-      }
-      for (const b of ["nutty", "ironpet", "saip", "balancelab"]) {
-        const label = brandLabels[b] || b;
-        const curRev = dayRevMap.get(lastDate)?.get(b) || 0;
-        const pRev = dayRevMap.get(prevDate)?.get(b) || 0;
-        if (pRev > 0) { const c = ((curRev - pRev) / pRev) * 100; if (Math.abs(c) >= 30) anomalies.push({ brand: label, metric: "매출", change: c, current: curRev, previous: pRev }); }
-        const curAd = dayAdMap.get(lastDate)?.get(b) || 0;
-        const pAd = dayAdMap.get(prevDate)?.get(b) || 0;
-        if (pAd > 0) { const c = ((curAd - pAd) / pAd) * 100; if (Math.abs(c) >= 30) anomalies.push({ brand: label, metric: "광고비", change: c, current: curAd, previous: pAd }); }
-      }
-    }
+    // (이상치 감지는 2026-11-03 뺐다. 마지막 이틀 브랜드별 ±30% 를 이상치로 불러 하루 1~2건 브랜드가 -100% 로 떴다.
+    //  표본 크기를 감안한 판정은 /funnel 관리도(Laney p′)가 한다. 인사이트 화면은 그쪽으로 링크만 둔다.)
 
     // Raw data — sales는 form-A 공구 차감본(adjSales)으로 반환해
     // /sales 페이지가 재집계해도 오버뷰 헤드라인과 동일한 자체매출이 되도록 함.
@@ -531,15 +438,13 @@ async function getImpl(req: NextRequest) {
         aov, aovPrev: prevAov,
         cogs: totalCOGS, shippingCost: totalShippingCost, miscCost: totalMiscCost,
         matchedRate: totalProducts > 0 ? matchedProducts / totalProducts : 0,
+        // 직전 기간 이익은 원가율 가정으로 만든 추정치라 증감률을 내지 않는다(위 prevProfit 주석).
+        profitPrevEstimated: true,
       },
-      trend, channels, channelRoasTrend, reportedRevenueTotal,
-      brandRevenue, brandRevenueTrend, brandProfit, groupRevenue, blTestLines, petBrands, saipBrands,
-      salesByChannel, topProducts, productRevenueTotal,
-      funnelSummary: { ...funnelSummary, convRate },
-      targets,
-      gongguSales, gongguSalesTotal, selfSalesTotal,
-      dailyGongguTotal, dailyGonggu: Object.fromEntries(dailyGongguByCh),
-      anomalies,
+      trend, channels, salesLastDate,
+      brandRevenue, brandProfit, groupRevenue, blTestLines, petBrands, saipBrands,
+      salesByChannel, topProducts,
+      gongguSalesTotal,
     });
   } catch (error) {
     console.error("Dashboard API error:", error);
@@ -548,4 +453,4 @@ async function getImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "monthly_targets", "product_costs", "product_sales", "shipping_costs"], ["brand", "from", "lean", "raw", "to"]);
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_sales", "misc_costs", "product_costs", "product_sales", "shipping_costs"], ["brand", "from", "lean", "raw", "to"]);

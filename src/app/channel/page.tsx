@@ -5,10 +5,10 @@ import { PageShell } from "@/components/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatWon, cn } from "@/lib/utils";
-import { bucketAxis, bucketKey, bucketLabel, type Gran } from "@/lib/bucket";
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
-} from "recharts";
+import { bucketAxis, bucketKey, bucketLabel, lastDataDate, type Gran } from "@/lib/bucket";
+import { SALES_GROUP_COLORS } from "@/lib/types";
+import { DeferredResponsiveContainer } from "@/components/deferred-chart";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
 
 interface SubAd { channel: string; label: string; spend: number; }
 interface Group {
@@ -27,7 +27,7 @@ interface ChannelGroupsData {
 
 
 function Delta({ v, invert = false }: { v: number | null; invert?: boolean }) {
-  if (v === null || !isFinite(v)) return <span className="text-muted-foreground/50">—</span>;
+  if (v === null || !isFinite(v)) return <span className="text-muted-foreground/50">-</span>;
   const up = v >= 0;
   const good = invert ? !up : up;
   const color = Math.abs(v) < 1 ? "text-muted-foreground" : good ? "text-emerald-600" : "text-red-500";
@@ -47,18 +47,18 @@ function RoasText({ r, a }: { r: number; a: number }) {
   return <span style={{ color: roasColor(roas) }}>{roas.toFixed(1)}x</span>;
 }
 
-function CellTd({ r, a }: { r: number; a: number }) {
+function CellTd({ r, a, pending = false }: { r: number; a: number; pending?: boolean }) {
   return (
     <td className="py-2 px-3 text-right whitespace-nowrap">
-      <div>{formatWon(r)}</div>
-      <div className="text-[11px] text-muted-foreground">{formatWon(a)} · <RoasText r={r} a={a} /></div>
+      <div>{pending ? <span className="text-muted-foreground">판매 미수집</span> : formatWon(r)}</div>
+      <div className="text-[11px] text-muted-foreground">{formatWon(a)} · {pending ? "-" : <RoasText r={r} a={a} />}</div>
     </td>
   );
 }
 
 export default function ChannelPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">불러오는 중...</div>}>
       <ChannelInner />
     </Suspense>
   );
@@ -67,9 +67,15 @@ export default function ChannelPage() {
 function ChannelInner() {
   const { brand, from, to } = useFilterParams();
   const { data, loading } = useFetch<ChannelGroupsData>(`/api/channel-groups?from=${from}&to=${to}&brand=${brand}`);
-  const [gran, setGran] = useState<Gran>("day");
+  // 표 기본 단위는 주별(2026-11-04). 일별은 30일이면 30줄이라 화면이 길어진다. 버튼으로 일별·월별을 고른다.
+  const [gran, setGran] = useState<Gran>("week");
 
   const series = useMemo(() => data?.series || [], [data]);
+  // 판매 원장이 들어온 마지막 날(매출이 하나라도 있는 마지막 날). 그 뒤 날짜는 판매 0 이 아니라 동기화 대기다.
+  const salesLast = useMemo(
+    () => lastDataDate(series.filter((r) => (r.naver?.revenue || 0) + (r.jasamol?.revenue || 0) + (r.coupang?.revenue || 0) + (r.other?.revenue || 0) > 0)),
+    [series]
+  );
   const buckets = useMemo(() => {
     const m: Record<string, { naver: { r: number; a: number }; jasamol: { r: number; a: number }; coupang: { r: number; a: number }; other: { r: number; a: number } }> = {};
     const empty = () => ({ naver: { r: 0, a: 0 }, jasamol: { r: 0, a: 0 }, coupang: { r: 0, a: 0 }, other: { r: 0, a: 0 } });
@@ -89,19 +95,41 @@ function ChannelInner() {
       const b = m[key];
       const totalRev = b.naver.r + b.jasamol.r + b.coupang.r + b.other.r;
       const totalAd = b.naver.a + b.jasamol.a + b.coupang.a + b.other.a;
-      return { key, label: bucketLabel(key, gran), ...b, totalRev, totalAd };
+      // 마지막 판매일 뒤에 시작한 칸은 매출이 아직 안 들어온 칸이다(0원·0.0x 로 찍지 않는다).
+      const pending = !!salesLast && key > bucketKey(salesLast, gran);
+      return { key, label: bucketLabel(key, gran), ...b, totalRev, totalAd, pending };
     });
-  }, [series, gran, from, to]);
+  }, [series, gran, from, to, salesLast]);
 
-  // 이 차트는 ROAS(비율)만 그린다. 광고비 0 인 구간은 0x 가 아니라 빈칸(null)이라 선이 끊긴다.
-  const ratio = (r: number, a: number) => (a > 0 ? +(r / a).toFixed(2) : null);
-  const chartData = useMemo(() => buckets.map((b) => ({
-    label: b.label,
-    스마트스토어: ratio(b.naver.r, b.naver.a),
-    자사몰: ratio(b.jasamol.r, b.jasamol.a),
-    쿠팡: ratio(b.coupang.r, b.coupang.a),
-    전체: ratio(b.totalRev, b.totalAd),
-  })), [buckets]);
+  // 판매처별 주간 ROAS 스몰 멀티플(2026-11-04). 예전에는 일별 ROAS 선 4개를 한 축에 겹쳐 그려 하루하루 출렁임에 묻혔다.
+  // 주 단위로 접고 판매처마다 칸을 나눈다. 광고비가 0 인 판매처는 ROAS 가 없어 칸을 만들지 않는다.
+  // 마지막 판매일 뒤에 시작한 주는 0 이 아니라 판매 미수집이라 비운다. 점선 = 그 판매처의 기간 ROAS.
+  const weekly = useMemo(() => {
+    if (!series.length) return { weeks: [] as string[], byGroup: {} as Record<string, (number | null)[]> };
+    const last = salesLast;
+    const weeks = bucketAxis(from, to, "week");
+    const acc: Record<string, Record<string, { r: number; a: number }>> = {};
+    for (const row of series) {
+      if (last && row.date > last) continue; // 광고비만 있고 매출이 아직 안 들어온 날
+      const k = bucketKey(row.date, "week");
+      for (const g of ["naver", "jasamol", "coupang", "other"] as const) {
+        const cell = row[g];
+        if (!cell) continue;
+        acc[g] = acc[g] || {};
+        const w = (acc[g][k] = acc[g][k] || { r: 0, a: 0 });
+        w.r += cell.revenue || 0; w.a += cell.adSpend || 0;
+      }
+    }
+    const byGroup: Record<string, (number | null)[]> = {};
+    for (const g of Object.keys(acc)) {
+      byGroup[g] = weeks.map((wk) => {
+        const w = acc[g][wk];
+        if (!w || w.a <= 0 || (last && wk > bucketKey(last, "week"))) return null;
+        return +(w.r / w.a).toFixed(2);
+      });
+    }
+    return { weeks, byGroup };
+  }, [series, from, to, salesLast]);
 
   if (loading) {
     return (
@@ -114,30 +142,22 @@ function ChannelInner() {
   }
 
   const groups = data?.groups || [];
-  const total = data?.total;
 
   return (
     <PageShell title="판매처 성과" description="판매처별 매출 vs 그 판매처를 끌어온 광고비 · 원 단위 · 전기간 대비">
-      {/* 통합 요약 */}
-      {total && (
-        <Card>
-          <CardContent className="p-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div><p className="text-xs text-muted-foreground">총 매출 (자체)</p><p className="text-lg font-bold">{formatWon(total.revenue)}</p></div>
-            <div><p className="text-xs text-muted-foreground">총 광고비</p><p className="text-lg font-bold">{formatWon(total.adSpend)}</p></div>
-            <div><p className="text-xs text-muted-foreground">통합 ROAS</p><p className="text-lg font-bold">{total.roas.toFixed(2)}x</p></div>
-            <div><p className="text-xs text-muted-foreground">광고비 비중</p><p className="text-lg font-bold">{total.adRatio.toFixed(1)}%</p></div>
-          </CardContent>
-        </Card>
-      )}
-
+      {/* 통합 요약(총 매출·총 광고비·통합 ROAS·광고비 비중)은 2026-11-04 뺐다. Overview 상단 카드와 같은 숫자다. */}
       {/* 채널그룹 카드 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {groups.map((g) => (
-          <Card key={g.key} className="border-t-4" style={{ borderTopColor: roasColor(g.roas) }}>
+          // ★ 광고비 0 인 판매처(자사몰 등)는 ROAS 가 정의되지 않는다. 0.00x 빨강으로 찍으면
+          //   "광고 성과 최악" 으로 읽히므로 표 셀(RoasText)과 같이 "-" 로 두고 색·경고선도 넣지 않는다(2026-11-03).
+          <Card key={g.key} className="border-t-4" style={{ borderTopColor: g.adSpend > 0 ? roasColor(g.roas) : "var(--border)" }}>
             <CardContent className="p-5 space-y-4">
               <div className="flex items-start justify-between">
                 <h3 className="font-semibold text-sm">{g.label}</h3>
-                <span className="text-lg font-bold" style={{ color: roasColor(g.roas) }}>{g.roas.toFixed(2)}x</span>
+                {g.adSpend > 0
+                  ? <span className="text-lg font-bold" style={{ color: roasColor(g.roas) }}>{g.roas.toFixed(2)}x</span>
+                  : <span className="text-lg font-bold text-muted-foreground" title="광고비가 없어 ROAS 를 계산하지 않습니다">-</span>}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -162,18 +182,65 @@ function ChannelInner() {
               </div>
               <div className="border-t pt-2 flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">ROAS 전기간 대비</span>
-                <span className="font-medium"><Delta v={g.roasDelta} /></span>
+                <span className="font-medium"><Delta v={g.adSpend > 0 ? g.roasDelta : null} /></span>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* 기간별 ROAS 추이 (일/주/월) */}
+      {/* 판매처별 주간 ROAS (스몰 멀티플) */}
       <Card>
-        <CardContent className="p-4 space-y-4">
+        <CardContent className="p-4">
+          <h3 className="font-semibold text-sm">판매처별 주간 ROAS</h3>
+          <p className="text-xs text-muted-foreground mt-0.5 mb-3">
+            가로 = 주(월요일 시작), 세로 = 그 판매처 매출 ÷ 그 판매처를 끌어온 광고비(배). 점선 = 선택 기간 ROAS. 판매처마다 축이 따로입니다
+          </p>
+          {groups.filter((g) => g.adSpend > 0).length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">선택한 기간에 광고비가 쓰인 판매처가 없습니다.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {groups.filter((g) => g.adSpend > 0).map((g) => {
+                const pts = weekly.weeks.map((wk, i) => ({ week: wk, v: weekly.byGroup[g.key]?.[i] ?? null }));
+                return (
+                  <div key={g.key} className="rounded-lg border p-2 min-w-0">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-xs font-medium truncate flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SALES_GROUP_COLORS[g.key] || "#6b7280" }} />
+                        {g.label}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground shrink-0">기간 {g.roas.toFixed(2)}x</span>
+                    </div>
+                    <DeferredResponsiveContainer width="100%" height={72}>
+                      <LineChart data={pts} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}>
+                        <XAxis dataKey="week" hide />
+                        <YAxis hide domain={[0, "auto"]} />
+                        <ReferenceLine y={g.roas} stroke="var(--muted-foreground)" strokeDasharray="2 3" strokeOpacity={0.7} ifOverflow="extendDomain" />
+                        <Tooltip cursor={false}
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const p = payload[0].payload as { week: string; v: number | null };
+                            return <div className="rounded border bg-card px-1.5 py-1 text-[10px] shadow-sm">{bucketLabel(p.week, "week")} 주 · {p.v == null ? "광고비 0 또는 미수집" : `${p.v.toFixed(2)}x`}</div>;
+                          }} />
+                        <Line type="linear" dataKey="v" stroke="var(--muted-foreground)" strokeWidth={1.5} dot={{ r: 1.5 }} connectNulls={false} isAnimationActive={false} />
+                      </LineChart>
+                    </DeferredResponsiveContainer>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            앞뒤 주가 기간에 일부만 걸치면 그 주는 일부 날짜만 더한 값입니다. 마지막 판매일{salesLast ? ` ${salesLast.slice(5)}` : ""} 뒤 날짜는 매출·광고비 모두 빼고 계산하고, 그 뒤에 시작한 주는 비웁니다(판매 동기화 대기).
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* 기간별 표 (일/주/월): 각 셀 = 매출 / 광고비 · ROAS */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <h3 className="font-semibold text-sm">기간별 추이 — 매출 / 광고비 / ROAS</h3>
+            <h3 className="font-semibold text-sm">기간별 매출 · 광고비 · ROAS</h3>
             <div className="flex gap-0.5 rounded-lg bg-muted p-1">
               {([["day", "일별"], ["week", "주별"], ["month", "월별"]] as const).map(([k, lbl]) => (
                 <button key={k} onClick={() => setGran(k)}
@@ -183,58 +250,36 @@ function ChannelInner() {
               ))}
             </div>
           </div>
-
-          {chartData.length === 0 ? (
+          {buckets.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center">선택한 기간에 데이터가 없습니다.</p>
           ) : (
-            <>
-              {/* ROAS 추이 라인차트 */}
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                  <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}x`} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
-                    formatter={(v) => (v == null ? "-" : `${Number(v).toFixed(2)}x`)}
-                  />
-                  <Legend />
-                  <Line type="monotone" dataKey="스마트스토어" stroke="#10b981" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="자사몰" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="쿠팡" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="전체" stroke="#6b7280" strokeWidth={2} strokeDasharray="4 2" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-
-              {/* 상세 표: 각 셀 = 매출 / 광고비 · ROAS */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-left border-b text-muted-foreground">
-                      <th className="pb-2 pr-3">기간</th>
-                      <th className="pb-2 px-3 text-right">스마트스토어<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
-                      <th className="pb-2 px-3 text-right">자사몰<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
-                      <th className="pb-2 px-3 text-right">쿠팡<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
-                      <th className="pb-2 pl-3 text-right">전체<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left border-b text-muted-foreground">
+                    <th className="pb-2 pr-3">기간</th>
+                    <th className="pb-2 px-3 text-right">스마트스토어<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
+                    <th className="pb-2 px-3 text-right">자사몰<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
+                    <th className="pb-2 px-3 text-right">쿠팡<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
+                    <th className="pb-2 pl-3 text-right">전체<span className="block text-[10px] font-normal">매출 / 광고비·ROAS</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {buckets.slice().reverse().map((b) => (
+                    <tr key={b.key} className="border-b border-border/50">
+                      <td className="py-2 pr-3 font-medium whitespace-nowrap">{b.label}</td>
+                      <CellTd r={b.naver.r} a={b.naver.a} pending={b.pending} />
+                      <CellTd r={b.jasamol.r} a={b.jasamol.a} pending={b.pending} />
+                      <CellTd r={b.coupang.r} a={b.coupang.a} pending={b.pending} />
+                      <td className="py-2 pl-3 text-right whitespace-nowrap">
+                        <div className="font-semibold">{b.pending ? <span className="font-normal text-muted-foreground">판매 미수집</span> : formatWon(b.totalRev)}</div>
+                        <div className="text-[11px] text-muted-foreground">{formatWon(b.totalAd)} · {b.pending ? "-" : <RoasText r={b.totalRev} a={b.totalAd} />}</div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {buckets.slice().reverse().map((b) => (
-                      <tr key={b.key} className="border-b border-border/50">
-                        <td className="py-2 pr-3 font-medium whitespace-nowrap">{b.label}</td>
-                        <CellTd r={b.naver.r} a={b.naver.a} />
-                        <CellTd r={b.jasamol.r} a={b.jasamol.a} />
-                        <CellTd r={b.coupang.r} a={b.coupang.a} />
-                        <td className="py-2 pl-3 text-right whitespace-nowrap">
-                          <div className="font-semibold">{formatWon(b.totalRev)}</div>
-                          <div className="text-[11px] text-muted-foreground">{formatWon(b.totalAd)} · <RoasText r={b.totalRev} a={b.totalAd} /></div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
           <p className="text-[11px] text-muted-foreground/70">
             스마트스토어=스마트스토어 매출÷(네이버검색+쇼핑+GFA+밸런스랩메타) · 자사몰=카페24÷(메타·구글, 밸런스랩 제외) · 쿠팡=쿠팡÷쿠팡광고. 밸런스랩은 스마트스토어 전용이라 메타도 여기 포함. 매출은 공구 제외 자체매출. 주별=월요일 기준.

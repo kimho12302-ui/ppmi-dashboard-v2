@@ -3,34 +3,28 @@
 import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
-import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
-import { channelAdsUrl } from "@/lib/api-urls";
+import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { LazyMount } from "@/components/lazy-mount";
 import { matchesBrand } from "@/lib/brand-groups";
 import { ProductTrendChart } from "@/components/product-trend-chart";
 import { CHANNEL_LABELS, SALES_CHANNEL_COLORS, BRAND_LABELS, BRAND_COLORS, type DailySales, type ProductSales } from "@/lib/types";
+
+// 카테고리 분류는 브랜드마다 체계가 달라(너티=라인업, 아이언펫=키트/추가, 사입=유통 브랜드, 밸런스랩=검사/기타)
+// 여러 브랜드를 한 막대에 섞으면 읽을 수 없다. 브랜드 하나를 골랐을 때만 그린다(2026-11-04).
+const CATEGORY_BRANDS = ["nutty", "ironpet", "saip", "balancelab"];
 import { useConfig } from "@/hooks/use-config";
-import { daysBetween, lastDataDate } from "@/lib/bucket";
+import { lastDataDate } from "@/lib/bucket";
 import { periodKey, periodAxis } from "@/lib/sales-period";
 import { ChannelMixChart } from "@/components/judge/channel-mix-chart";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { isGonggu as isGongguRow, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
 import { Suspense, useMemo, useState } from "react";
 import {
-  BarChart, Bar, ScatterChart, Scatter, ZAxis, XAxis, YAxis, Tooltip, CartesianGrid, Legend, ReferenceLine,
+  BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 
-// 탭 제거 — 모든 섹션을 한 페이지에 표시
-type ViewTab = "trend" | "channel" | "category" | "product" | "gonggu";
-
 /* 브랜드별 카테고리 분류 (기획서 4.1) */
-const CATEGORY_MAP: Record<string, Record<string, string>> = {
-  nutty: {}, // lineup으로 분류
-  ironpet: {}, // lineup → "키트" / "기타"
-  saip: {}, // lineup → 파미나/테라카니스/닥터레이
-  balancelab: {}, // lineup → 검사/기타
-};
 function getCategory(brand: string, product: string, lineup?: string): string {
   if (brand === "nutty") return lineup || "기타";
   if (brand === "ironpet") {
@@ -50,11 +44,10 @@ function getCategory(brand: string, product: string, lineup?: string): string {
   }
   return lineup || "기타";
 }
-void CATEGORY_MAP;
 
 export default function SalesPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-muted-foreground">로딩 중...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">불러오는 중...</div>}>
       <SalesPageInner />
     </Suspense>
   );
@@ -71,14 +64,10 @@ function SalesPageInner() {
     prevSales: DailySales[];
     blDaily?: { date: string; self: number; gonggu: number }[];
     gongguSalesTotal?: number;
-    brandRevenueTrend?: { date: string; [brand: string]: number | string }[];
   }>(`/api/dashboard?${params}&raw=sales,products,prevSales&lean=1`);
-  // 채널 효율 칸은 로딩 화면 동안 마운트되지 않으므로, 대시보드 응답을 기다리지 않게 미리 같이 부른다.
-  // (응답은 채널 수십 줄이라 가볍다. 상품 추이는 보일 때 부르므로 미리 부르지 않는다.)
-  usePrefetch([channelAdsUrl(brand, from, to)]);
+  // (채널 효율 사분면은 2026-11-03 뺐다: 신고 전환으로 만든 CAC·ROAS 라 매체 간 비교가 성립하지 않는다.
+  //  매체 효율은 /ads 매체별 상세 표와 네이버 캠페인 12주 스몰 멀티플이 본다.)
   const { brandMap, channelMap } = useConfig();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [tab, setTab] = useState<ViewTab>("trend");
 
   const sales = useMemo(() => {
     const all = data?.sales || [];
@@ -113,31 +102,6 @@ function SalesPageInner() {
     if (prev === 0) return cur > 0 ? 100 : undefined;
     return ((cur - prev) / Math.abs(prev)) * 100;
   };
-
-  /* 브랜드별 누적 매출 트렌드 — API의 brandRevenueTrend 사용 (공구 포함) */
-  const brandColors: Record<string, string> = { 너티: "#dc2626", 아이언펫: "#ea580c", 사입: "#92400e", 밸런스랩: "#2563eb" };
-  const activeBrands = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of data?.brandRevenueTrend || []) {
-      Object.keys(r).filter((k) => k !== "date").forEach((k) => set.add(k));
-    }
-    return Array.from(set);
-  }, [data?.brandRevenueTrend]);
-  // 축 = 선택 기간 전체(오늘까지). 서버는 매출이 있는 날만 보내므로 빈 날을 0 으로 채운다(2026-10-28).
-  // 마지막 매출 날짜 이후는 판매 0 이 아니라 동기화 지연이라 null(막대 없음).
-  const dailyTrend = useMemo(() => {
-    const rows = data?.brandRevenueTrend || [];
-    if (!rows.length) return [];
-    const byDate = new Map(rows.map((r) => [r.date, r]));
-    const last = lastDataDate(rows);
-    const days = Array.from(new Set([...daysBetween(from, to), ...byDate.keys()])).sort();
-    return days.map((d) => {
-      const r = byDate.get(d);
-      const row: Record<string, string | number | null> = { date: d.slice(5) };
-      for (const bl of activeBrands) row[bl] = d > last ? null : Number(r?.[bl] || 0);
-      return row;
-    });
-  }, [data?.brandRevenueTrend, activeBrands, from, to]);
 
   /* 채널별 */
   const byChannel = useMemo(() => {
@@ -260,68 +224,32 @@ function SalesPageInner() {
 
   return (
     <PageShell title="매출 분석" description="판매처별·브랜드별 매출 트렌드">
-      {/* 탭 */}
-      {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard title="매출" value={formatCurrency(totals.revenue)} change={pctChange(totals.revenue, prevTotals.revenue)} />
-        <KpiCard title="주문 수" value={formatNumber(totals.orders)} change={pctChange(totals.orders, prevTotals.orders)} />
-        <KpiCard title="평균 객단가" value={totals.aov > 0 ? formatCurrency(Math.round(totals.aov)) : "—"} change={pctChange(totals.aov, prevTotals.aov)} />
+      {/* KPI: 매출이 이 화면의 대표 지표라 hero, 주문·객단가는 보조(compact). */}
+      <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
+        <KpiCard size="hero" title="매출" subtitle="판매 원장 자체매출(공구 제외)" value={formatCurrency(totals.revenue)} change={pctChange(totals.revenue, prevTotals.revenue)} changeLabel="직전 같은 기간 대비" />
+        <div className="grid grid-cols-2 sm:grid-cols-1 gap-2.5">
+          <KpiCard size="compact" title="주문 수" value={formatNumber(totals.orders)} change={pctChange(totals.orders, prevTotals.orders)} />
+          <KpiCard size="compact" title="평균 객단가" value={totals.aov > 0 ? formatCurrency(Math.round(totals.aov)) : "-"} change={pctChange(totals.aov, prevTotals.aov)} />
+        </div>
       </div>
 
-      {(
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="font-semibold mb-4">브랜드별 누적 매출 트렌드</h3>
-            <DeferredResponsiveContainer width="100%" height={300}>
-              <BarChart data={dailyTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                <YAxis
-                  tick={{ fontSize: 11 }}
-                  stroke="var(--muted-foreground)"
-                  tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "var(--card)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 8,
-                    fontSize: 12,
-                  }}
-                  formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))}
-                />
-                <Legend />
-                {activeBrands.map((bl) => (
-                  <Bar isAnimationActive={false}
-                    key={bl}
-                    dataKey={bl}
-                    name={bl}
-                    stackId="brand"
-                    fill={brandColors[bl] || "#6b7280"}
-                    radius={activeBrands.indexOf(bl) === activeBrands.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                  />
-                ))}
-              </BarChart>
-            </DeferredResponsiveContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 판단용: 채널별 매출 구성 (2026-11-03). 예전 '주별/월별 매출' 합계 막대를 판매처별로 쌓았다.
+      {/* 판단용: 매출 구성 (2026-11-03). 예전 '주별/월별 매출' 합계 막대를 판매처별로 쌓았다.
+          2026-11-04 「판매처 / 브랜드」 쌓기 토글을 붙이고 「브랜드별 누적 매출 트렌드」(일별 브랜드 막대)를 뺐다.
           막대 높이(그 주·월 합계)는 예전과 같다. 기간 합계는 아래 판매처 카드가 보여 준다. */}
       <ChannelMixChart sales={sales} channels={byChannel} from={from} to={to} />
 
-      {(
+      {CATEGORY_BRANDS.includes(brand) && byCategory.length > 0 && (
         <Card>
           <CardContent className="p-4">
-            <h3 className="font-semibold mb-4">카테고리별 매출</h3>
+            <h3 className="font-semibold">카테고리별 매출</h3>
+            <p className="text-xs text-muted-foreground mt-0.5 mb-3">가로 = 원(상품 판매 원장), {BRAND_LABELS[brand] || brand} 분류 기준</p>
             <DeferredResponsiveContainer width="100%" height={Math.max(200, byCategory.length * 35)}>
               <BarChart data={byCategory} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                 <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={100} />
                 <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
-                <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill={BRAND_COLORS[brand] || "#6b7280"} radius={[0, 4, 4, 0]} />
               </BarChart>
             </DeferredResponsiveContainer>
           </CardContent>
@@ -410,14 +338,14 @@ function SalesPageInner() {
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-muted-foreground">자체매출</p>
                 <p className="text-2xl font-bold text-blue-500">{formatCurrency(gongguData.selfTotal)}</p>
-                <p className="text-xs text-muted-foreground">{gongguData.total > 0 ? `${((gongguData.selfTotal / gongguData.total) * 100).toFixed(1)}%` : "—"}</p>
+                <p className="text-xs text-muted-foreground">{gongguData.total > 0 ? `${((gongguData.selfTotal / gongguData.total) * 100).toFixed(1)}%` : "-"}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-muted-foreground">공구매출</p>
                 <p className="text-2xl font-bold text-purple-500">{formatCurrency(gongguData.gongguTotal)}</p>
-                <p className="text-xs text-muted-foreground">{gongguData.total > 0 ? `${((gongguData.gongguTotal / gongguData.total) * 100).toFixed(1)}%` : "—"}</p>
+                <p className="text-xs text-muted-foreground">{gongguData.total > 0 ? `${((gongguData.gongguTotal / gongguData.total) * 100).toFixed(1)}%` : "-"}</p>
               </CardContent>
             </Card>
           </div>
@@ -489,7 +417,7 @@ function SalesPageInner() {
                         <td className="py-2 pr-4 font-medium">{s.seller}</td>
                         <td className="py-2 pr-4 text-right">{formatCurrency(s.revenue)}</td>
                         <td className="py-2 pr-4 text-right">{formatNumber(s.quantity)}</td>
-                        <td className="py-2 text-right">{gongguData.gongguTotal > 0 ? `${((s.revenue / gongguData.gongguTotal) * 100).toFixed(1)}%` : "—"}</td>
+                        <td className="py-2 text-right">{gongguData.gongguTotal > 0 ? `${((s.revenue / gongguData.gongguTotal) * 100).toFixed(1)}%` : "-"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -502,121 +430,6 @@ function SalesPageInner() {
         </div>
       )}
 
-      {/* P11.4 채널별 CAC vs ROAS 사분면 */}
-      <ChannelEfficiencySection brand={brand} from={from} to={to} />
     </PageShell>
-  );
-}
-
-/* ── P11.4 채널 효율 사분면 ── */
-interface ChannelAdData {
-  channel: string; spend: number; clicks: number; impressions: number;
-  conversions: number; conversion_value: number; roas: number; ctr: number; cpc: number;
-}
-const CH_LABELS: Record<string, string> = {
-  meta: "Meta", naver_search: "네이버검색", naver_shopping: "네이버쇼핑",
-  google_search: "구글검색", google_pmax: "P-Max", coupang_ads: "쿠팡광고", gfa: "GFA",
-};
-
-function ChannelEfficiencySection({ brand, from, to }: { brand: string; from: string; to: string }) {
-  const { data } = useFetch<{ ads: ChannelAdData[] }>(channelAdsUrl(brand, from, to));
-
-  const scatterData = useMemo(() => {
-    const ads = data?.ads || [];
-    // Aggregate by channel
-    const map: Record<string, ChannelAdData> = {};
-    for (const r of ads) {
-      if (r.channel.startsWith("ga4_")) continue;
-      if (!map[r.channel]) map[r.channel] = { channel: r.channel, spend: 0, clicks: 0, impressions: 0, conversions: 0, conversion_value: 0, roas: 0, ctr: 0, cpc: 0 };
-      map[r.channel].spend += r.spend || 0;
-      map[r.channel].clicks += r.clicks || 0;
-      map[r.channel].conversions += r.conversions || 0;
-      map[r.channel].conversion_value += r.conversion_value || 0;
-    }
-    const channels = Object.values(map).filter(c => c.spend > 0);
-    if (channels.length === 0) return [];
-
-    return channels.map(c => ({
-      channel: c.channel,
-      name: CH_LABELS[c.channel] || c.channel,
-      spend: c.spend,
-      cac: c.conversions > 0 ? Math.round(c.spend / c.conversions) : c.spend,
-      roas: c.conversion_value > 0 ? c.conversion_value / c.spend : 0,
-      conversions: c.conversions,
-    }));
-  }, [data]);
-
-  if (scatterData.length < 2) return null;
-
-  // 가중평균(전체 합산 기준): 단순 채널 평균은 소액·고ROAS 채널에 기준선이 왜곡됨
-  const _totSpend = scatterData.reduce((s, d) => s + d.spend, 0);
-  const _totConv = scatterData.reduce((s, d) => s + d.conversions, 0);
-  const _totConvValue = scatterData.reduce((s, d) => s + d.roas * d.spend, 0);
-  const avgCac = _totConv > 0 ? _totSpend / _totConv : 0;
-  const avgRoas = _totSpend > 0 ? _totConvValue / _totSpend : 0;
-
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <h3 className="font-semibold text-sm mb-1">채널 효율 사분면 — CAC vs ROAS</h3>
-        <div className="flex gap-4 text-xs text-muted-foreground mb-3 flex-wrap">
-          <span className="text-green-600 font-medium">● 좌상단: 저CAC + 고ROAS (최적)</span>
-          <span className="text-yellow-600 font-medium">● 우상단: 고CAC + 고ROAS (규모확대)</span>
-          <span className="text-blue-600 font-medium">● 좌하단: 저CAC + 저ROAS (최적화필요)</span>
-          <span className="text-red-500 font-medium">● 우하단: 고CAC + 저ROAS (재검토)</span>
-        </div>
-        <DeferredResponsiveContainer width="100%" height={320}>
-          <ScatterChart margin={{ top: 20, right: 30, bottom: 30, left: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis
-              type="number" dataKey="cac" name="CAC"
-              tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
-              label={{ value: "CAC (원)", position: "insideBottom", offset: -10, fontSize: 11, fill: "var(--muted-foreground)" }}
-              tickFormatter={(v) => `${(v / 1000).toFixed(0)}K`}
-            />
-            <YAxis
-              type="number" dataKey="roas" name="ROAS"
-              tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
-              label={{ value: "ROAS", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--muted-foreground)" }}
-              tickFormatter={(v) => `${v.toFixed(1)}x`}
-            />
-            <ZAxis type="number" dataKey="spend" range={[60, 500]} name="광고비" />
-            <ReferenceLine x={avgCac} stroke="#94a3b8" strokeDasharray="4 4"
-              label={{ value: `평균 CAC`, position: "top", fontSize: 9, fill: "#94a3b8" }} />
-            <ReferenceLine y={avgRoas} stroke="#94a3b8" strokeDasharray="4 4"
-              label={{ value: `평균 ROAS`, position: "right", fontSize: 9, fill: "#94a3b8" }} />
-            <Tooltip
-              contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
-              formatter={(val, name) => {
-                const v = Number(val);
-                if (name === "CAC") return [formatCurrency(v), name];
-                if (name === "ROAS") return [`${v.toFixed(2)}x`, name];
-                if (name === "광고비") return [formatCurrency(v), name];
-                return [v, name];
-              }}
-              labelFormatter={(_, payload) => payload?.[0]?.payload?.name || ""}
-            />
-            <Scatter isAnimationActive={false}
-              data={scatterData}
-              shape={(props: { cx?: number; cy?: number; fill?: string; payload?: { name: string; spend: number } }) => {
-                const { cx = 0, cy = 0, fill = "#6366f1", payload } = props;
-                if (!payload) return <g />;
-                const r = Math.sqrt(payload.spend / 5000) + 10;
-                return (
-                  <g>
-                    <circle cx={cx} cy={cy} r={r} fill={fill} fillOpacity={0.7} stroke={fill} strokeWidth={1} />
-                    <text x={cx} y={cy - r - 3} textAnchor="middle" fontSize={10} fill="var(--foreground)">{payload.name}</text>
-                  </g>
-                );
-              }}
-              fill="#6366f1"
-            />
-          </ScatterChart>
-        </DeferredResponsiveContainer>
-        <p className="text-xs text-muted-foreground mt-2">
-          💡 버블 크기 = 광고비. 전환수 0인 채널은 CAC = 광고비 원금으로 표시.
-        </p>
-      </CardContent>
-    </Card>
   );
 }

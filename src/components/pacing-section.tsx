@@ -14,12 +14,22 @@ interface PacingData {
   daysElapsed: number;
   daysRemaining: number;
   dateProgress: number;
+  /** 판매·광고 원장이 들어온 마지막 날짜와, 이 달 안에서 들어온 날 수(일평균의 분모). */
+  salesThrough: string | null;
+  adThrough: string | null;
+  salesDays: number;
+  adDays: number;
+  salesProgress: number;
+  adProgress: number;
+  salesDaysRemaining: number;
+  adDaysRemaining: number;
+  minJudgeDays: number;
   hasTarget: boolean;
   target: { revenue: number; ad: number; roas: number; adRatio: number };
   actual: { revenue: number; revenueOwn: number; gonggu: number; orders: number; ad: number; roas: number; adRatio: number };
   achievement: { revenue: number; ad: number; roas: number };
   remaining: { revenue: number; ad: number; reqDailyRevenue: number; reqDailyAd: number; dailyAvgRevenue: number; dailyAvgAd: number };
-  paceStatus: "ahead" | "on_track" | "behind" | "n/a";
+  paceStatus: "ahead" | "on_track" | "behind" | "early" | "n/a";
   weekly: {
     week: string; days: number; startDay: number; endDay: number;
     targetRevenue: number; actualRevenue: number; revAchievement: number;
@@ -37,6 +47,7 @@ const PACE = {
   ahead: { label: "목표 초과 페이스", cls: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30", dot: "#10b981" },
   on_track: { label: "정상 페이스", cls: "bg-amber-500/10 text-amber-600 border-amber-500/30", dot: "#f59e0b" },
   behind: { label: "페이스 미달", cls: "bg-red-500/10 text-red-600 border-red-500/30", dot: "#ef4444" },
+  early: { label: "초반 · 판단 보류", cls: "bg-muted text-muted-foreground border-border", dot: "#6b7280" },
   "n/a": { label: "데이터 부족", cls: "bg-muted text-muted-foreground border-border", dot: "#6b7280" },
 };
 
@@ -74,10 +85,15 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
     );
   }
 
-  const pace = PACE[data.paceStatus];
+  const pace = PACE[data.paceStatus] || PACE["n/a"];
   const { target, actual, achievement, remaining, dateProgress } = data;
+  // 마커(기준선)는 판매·광고비가 들어온 날 기준. 달력 진행률과 비교하면 동기화 지연만큼 늘 뒤처져 보인다.
+  const salesProgress = data.salesProgress ?? dateProgress;
+  const adProgress = data.adProgress ?? dateProgress;
+  const early = data.paceStatus === "early";
   const monthLabel = `${Number(data.month.slice(5))}월`;
   const monthStart = `${data.month}-01`;
+  const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 
   // 판정 문장: "달성 가능한가"를 필요 런레이트 대비 현재 페이스로 답한다.
   const verdict = (() => {
@@ -87,16 +103,22 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
       return { cls: "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
         text: `${monthLabel} 목표 달성. 매출 ${formatCurrency(actual.revenue)} (목표 ${pct(achievement.revenue)}).` };
     }
-    if (data.daysRemaining <= 0) {
+    if (data.salesDaysRemaining <= 0) {
       return { cls: "border-red-500 bg-red-500/10 text-red-600",
         text: `${monthLabel} 종료. 목표 ${pct(achievement.revenue)}로 마감, ${short} 미달.` };
     }
+    // ★ 판매가 며칠치밖에 안 들어온 초반에는 "달성 가능/불가" 를 말하지 않는다(2026-11-03).
+    //   11-03 에 3일치(실제 판매는 2일치)로 "사실상 달성 불가" 빨간 문장이 떴다.
+    if (early) {
+      return { cls: "border-muted bg-muted/50 text-muted-foreground",
+        text: `${monthLabel} 판매 ${data.salesDays}일치 집계${data.salesThrough ? `(${md(data.salesThrough)}까지)` : ""} · 목표까지 ${short}. 초반이라 판단 보류 (판매가 ${data.minJudgeDays}일 이상 들어오면 달성 가능 여부를 판정합니다).` };
+    }
     if (avg <= 0) {
       return { cls: "border-muted bg-muted/50 text-muted-foreground",
-        text: `${monthLabel} 잔여 ${data.daysRemaining}일. 목표까지 ${short} 남았습니다.` };
+        text: `${monthLabel} 잔여 ${data.salesDaysRemaining}일. 목표까지 ${short} 남았습니다.` };
     }
     const mult = req / avg;
-    const base = `${monthLabel} 잔여 ${data.daysRemaining}일 · 목표까지 ${short} · 필요 일매출 ${formatCurrency(req)} (현재 일평균 ${formatCurrency(avg)})`;
+    const base = `${monthLabel} 잔여 ${data.salesDaysRemaining}일 · 목표까지 ${short} · 필요 일매출 ${formatCurrency(req)} (판매 ${data.salesDays}일치 일평균 ${formatCurrency(avg)})`;
     if (mult <= 1.1) {
       return { cls: "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
         text: `${base}. 현재 페이스로 달성 가능합니다.` };
@@ -112,8 +134,8 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
   const scopeDiffers = !!from && from !== monthStart;
 
   const rows = [
-    { key: "매출", target: target.revenue, actual: actual.revenue, ach: achievement.revenue, marker: dateProgress, fmt: formatCurrency, color: "#2563eb" },
-    { key: "광고비", target: target.ad, actual: actual.ad, ach: achievement.ad, marker: dateProgress, fmt: formatCurrency, color: "#dc2626", invert: true },
+    { key: "매출", target: target.revenue, actual: actual.revenue, ach: achievement.revenue, marker: salesProgress, fmt: formatCurrency, color: "#2563eb" },
+    { key: "광고비", target: target.ad, actual: actual.ad, ach: achievement.ad, marker: adProgress, fmt: formatCurrency, color: "#dc2626", invert: true },
     { key: "ROAS", target: target.roas, actual: actual.roas, ach: achievement.roas, marker: undefined, fmt: (v: number) => `${v.toFixed(2)}x`, color: "#10b981" },
     { key: "광고비 비중", target: target.adRatio, actual: actual.adRatio, ach: target.adRatio > 0 ? actual.adRatio / target.adRatio : 0, marker: undefined, fmt: (v: number) => pct(v), color: "#8b5cf6", invert: true },
   ];
@@ -125,12 +147,12 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground text-xs">{open ? "▾" : "▸"}</span>
             <h3 className="font-semibold">목표 대비 페이싱 · {monthLabel} 누적</h3>
-            <span className="text-xs text-muted-foreground">{monthStart} ~ {data.month}-{String(data.daysElapsed).padStart(2, "0")}</span>
+            <span className="text-xs text-muted-foreground">{monthStart} ~ {data.salesThrough && data.salesThrough >= monthStart ? data.salesThrough : "판매 미집계"}</span>
             <span className={`text-xs px-2 py-0.5 rounded-full border ${pace.cls}`}>{pace.label}</span>
             {!open && <span className="text-xs text-muted-foreground">매출 달성 {pct(achievement.revenue)}</span>}
           </div>
           <div className="text-xs text-muted-foreground">
-            {monthLabel} {data.daysElapsed}/{data.daysInMonth}일 경과 ({pct(dateProgress)}) · 잔여 {data.daysRemaining}일
+            {monthLabel} {data.daysElapsed}/{data.daysInMonth}일 경과 · 판매 {data.salesDays}일치·광고비 {data.adDays}일치 집계 · 잔여 {data.salesDaysRemaining}일
           </div>
         </button>
 
@@ -158,16 +180,16 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
         {/* 광고예산 초과 경고 (의사결정 즉시 신호) */}
         {remaining.ad < 0 && (
           <div className="rounded-lg border-l-4 border-red-500 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-600">
-            ⚠ 광고예산 초과: {formatCurrency(Math.abs(remaining.ad))} — 목표 {formatCurrency(target.ad)} 대비 {pct(target.ad > 0 ? actual.ad / target.ad : 0)} 소진 (날짜 진행 {pct(dateProgress)})
+            ⚠ 광고예산 초과: {formatCurrency(Math.abs(remaining.ad))}, 목표 {formatCurrency(target.ad)} 대비 {pct(target.ad > 0 ? actual.ad / target.ad : 0)} 소진 (광고비 집계 {data.adDays}일치, 진행 {pct(adProgress)})
           </div>
         )}
-        {/* 날짜 진행률 바 */}
-        <ProgressBar value={dateProgress} color="#94a3b8" />
+        {/* 날짜 진행률 바: 판매가 들어온 날 기준 */}
+        <ProgressBar value={salesProgress} color="#94a3b8" />
 
         {/* 지표별 목표 vs 현황 vs 달성률 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
           {rows.map((r) => {
-            const behind = r.marker !== undefined && !r.invert && r.ach < r.marker * 0.9;
+            const behind = !early && r.marker !== undefined && !r.invert && r.ach < r.marker * 0.9;
             return (
               <div key={r.key} className="space-y-1">
                 <div className="flex items-baseline justify-between text-sm">
@@ -190,9 +212,9 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
             <p className="text-sm font-bold">{formatCurrency(remaining.revenue)}</p>
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground">필요 일매출 (잔여 {data.daysRemaining}일)</p>
+            <p className="text-[11px] text-muted-foreground">필요 일매출 (잔여 {data.salesDaysRemaining}일)</p>
             <p className="text-sm font-bold text-blue-600">{formatCurrency(Math.round(remaining.reqDailyRevenue))}
-              <span className="text-[10px] text-muted-foreground font-normal"> / 현재 {formatCurrency(Math.round(remaining.dailyAvgRevenue))}</span>
+              <span className="text-[10px] text-muted-foreground font-normal"> / 현재 {formatCurrency(Math.round(remaining.dailyAvgRevenue))} ({data.salesDays}일 평균)</span>
             </p>
           </div>
           <div>
@@ -202,7 +224,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
           <div>
             <p className="text-[11px] text-muted-foreground">가용 일광고비</p>
             <p className="text-sm font-bold text-red-600">{formatCurrency(Math.round(remaining.reqDailyAd))}
-              <span className="text-[10px] text-muted-foreground font-normal"> / 현재 {formatCurrency(Math.round(remaining.dailyAvgAd))}</span>
+              <span className="text-[10px] text-muted-foreground font-normal"> / 현재 {formatCurrency(Math.round(remaining.dailyAvgAd))} ({data.adDays}일 평균)</span>
             </p>
           </div>
         </div>
@@ -228,7 +250,8 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
                       <td className="py-1 pr-2 font-medium">{wk.week} <span className="text-muted-foreground">({wk.startDay}~{wk.endDay}일)</span>{wk.state === "current" && <span className="ml-1 text-amber-600">●</span>}</td>
                       <td className="text-right py-1 px-2 text-muted-foreground">{formatCurrency(wk.targetRevenue)}</td>
                       <td className="text-right py-1 px-2 font-medium">{formatCurrency(wk.actualRevenue)}</td>
-                      <td className={`text-right py-1 px-2 font-semibold ${wk.state !== "future" && wk.revAchievement < 0.9 ? "text-red-500" : wk.revAchievement >= 1 ? "text-emerald-600" : ""}`}>
+                      {/* 진행 중인 주는 주 전체 목표와 비교하면 늘 미달로 보여 빨갛게 칠하지 않는다. */}
+                      <td className={`text-right py-1 px-2 font-semibold ${wk.state === "past" && wk.revAchievement < 0.9 ? "text-red-500" : wk.revAchievement >= 1 ? "text-emerald-600" : ""}`}>
                         {wk.state === "future" ? "-" : pct(wk.revAchievement)}
                       </td>
                       <td className="text-right py-1 pl-2 text-muted-foreground">{wk.actualRevenue > 0 ? pct(wk.adRatio) : "-"}</td>
@@ -244,19 +267,20 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
         {(b === "all" || b === "pet") && data.perBrand.length > 0 && (
           <div className="pt-2 border-t space-y-2">
             <p className="text-xs text-muted-foreground">
-              브랜드별 매출 달성률 (마커=날짜진행률 {pct(dateProgress)}) · 목표는 <b>공구 포함</b> 기준
+              브랜드별 매출 달성률 (마커=판매 집계 진행률 {pct(salesProgress)}) · 목표는 <b>공구 포함</b> 기준{early ? " · 초반이라 색 판정 보류" : ""}
             </p>
             {data.perBrand.filter(pb => pb.targetRevenue > 0).map((pb) => {
               const roasOk = pb.targetRoas > 0 && pb.actualRoas >= pb.targetRoas * 0.9;
+              const barColor = early ? "#94a3b8" : pb.revAchievement >= salesProgress * 0.9 ? "#10b981" : "#ef4444";
               return (
               <div key={pb.brand} className="flex items-center gap-3 text-sm">
                 <span className="w-16 flex-shrink-0 text-xs">{BRAND_LABELS[pb.brand] || pb.brand}</span>
-                <div className="flex-1"><ProgressBar value={pb.revAchievement} marker={dateProgress} color={pb.revAchievement >= dateProgress * 0.9 ? "#10b981" : "#ef4444"} /></div>
+                <div className="flex-1"><ProgressBar value={pb.revAchievement} marker={salesProgress} color={barColor} /></div>
                 <span className="w-12 text-right text-xs font-medium">{pct(pb.revAchievement)}</span>
                 {/* ROAS 목표 대비 (매출 달성했어도 ROAS 미달이면 크리에이티브 점검 신호)
                     공구가 있는 브랜드는 자체매출 기준 ROAS를 괄호로 병기한다 — 공구는 광고와 무관해
                     포함 기준만 보면 광고 성과를 과대평가하게 된다(밸런스랩 7월: 9.6x vs 자체 1.8x). */}
-                <span className={`w-32 text-right text-[11px] ${pb.targetRoas > 0 ? (roasOk ? "text-emerald-600" : "text-red-500") : "text-muted-foreground"}`}
+                <span className={`w-32 text-right text-[11px] ${pb.targetRoas > 0 && !early ? (roasOk ? "text-emerald-600" : "text-red-500") : "text-muted-foreground"}`}
                   title={pb.gonggu > 0 ? "실제 ROAS(공구 포함) / 목표 ROAS · 괄호=자체매출 기준(광고 성과)" : "실제 ROAS / 목표 ROAS"}>
                   ROAS {pb.actualRoas.toFixed(1)}/{pb.targetRoas > 0 ? pb.targetRoas.toFixed(1) : "-"}x
                   {pb.gonggu > 0 && <span className="text-muted-foreground"> (자체 {(pb.actualRoasOwn ?? 0).toFixed(1)}x)</span>}

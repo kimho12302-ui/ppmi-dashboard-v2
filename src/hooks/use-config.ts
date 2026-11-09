@@ -63,8 +63,9 @@ export function useConfig() {
 
   const brandMap = useMemo(() => {
     const m: Record<string, { label: string; color: string }> = {};
+    // 색은 types.ts 가 정본이다(같은 대상 = 모든 화면 같은 색). 설정 DB 색은 types.ts 에 없는 새 키에만 쓴다.
     brands.forEach((b) => {
-      m[b.key] = { label: b.label, color: b.color };
+      m[b.key] = { label: b.label, color: BRAND_COLORS[b.key] || b.color };
     });
     return m;
   }, [brands]);
@@ -72,7 +73,7 @@ export function useConfig() {
   const channelMap = useMemo(() => {
     const m: Record<string, { label: string; color: string; type: string }> = {};
     channels.forEach((c) => {
-      m[c.key] = { label: c.label, color: c.color, type: c.type };
+      m[c.key] = { label: c.label, color: CHANNEL_COLORS[c.key] || c.color, type: c.type };
     });
     return m;
   }, [channels]);

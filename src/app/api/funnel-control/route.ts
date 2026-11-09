@@ -76,7 +76,7 @@ async function getImpl(req: NextRequest) {
     const salesChannels = Array.from(new Set(sources.map((s) => s.sales.channel)));
 
     const [funnelRows, salesRows, lastRow] = await Promise.all([
-      fetchAll(supabase.from("daily_funnel").select("id,date,brand,channel,sessions")
+      fetchAll(supabase.from("daily_funnel").select("id,date,brand,channel,sessions,cart_adds")
         .gte("date", from).lte("date", to).in("brand", funnelBrands).in("channel", funnelChannels).order("date")),
       fetchAll(supabase.from("daily_sales").select("id,date,brand,channel,orders")
         .gte("date", from).lte("date", to).in("brand", salesBrands).in("channel", salesChannels).order("date")),
@@ -89,9 +89,14 @@ async function getImpl(req: NextRequest) {
 
     const out = sources.map((s) => {
       const sessions = new Map<string, number>();
+      // 장바구니는 유입과 "같은 행"에서만 읽는다(2026-11-03, /funnel 원천별 단계표용).
+      // 예: 펫 카페24 유입은 nutty|cafe24(GA4) 행인데 장바구니는 all|cafe24(수기) 행에 있다.
+      //     다른 행을 가져오면 모집단이 다른 숫자를 한 원천처럼 잇게 되므로 가져오지 않는다.
+      const carts = new Map<string, number>();
       for (const r of funnelRows) {
         if (r.brand !== s.funnel.brand || r.channel !== s.funnel.channel) continue;
         sessions.set(r.date, (sessions.get(r.date) || 0) + (Number(r.sessions) || 0));
+        carts.set(r.date, (carts.get(r.date) || 0) + (Number(r.cart_adds) || 0));
       }
       const orders = new Map<string, number>();
       for (const r of salesRows) {
@@ -104,6 +109,7 @@ async function getImpl(req: NextRequest) {
         // 행이 없으면 null(미수집). 0 이면 0. 둘 다 판정에서 빠지지만 의미가 다르다.
         sessions: sessions.has(date) ? sessions.get(date)! : null,
         orders: orders.get(date) || 0,
+        cartAdds: carts.get(date) || 0,
       }));
       const totalSessions = days.reduce((a, d) => a + (d.sessions || 0), 0);
       return { key: s.key, label: s.label, note: s.note || null, totalSessions, days };

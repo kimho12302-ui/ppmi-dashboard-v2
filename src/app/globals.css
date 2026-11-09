@@ -70,30 +70,16 @@
     --sig-idle-surface: rgb(100 116 139 / 0.08);
     --sig-idle-border: rgb(100 116 139 / 0.28);
 
-    /* Brand colors */
-    --brand-nutty: #dc2626;
-    --brand-ironpet: #ea580c;
-    --brand-balancelab: #2563eb;
-    --brand-qulab: #16a34a;
-    --brand-saip-feed: #92400e;
-    --brand-saip-supplement: #7c3aed;
+    /* 브랜드·판매처·매체 색은 src/lib/types.ts 한 곳에서 정한다(2026-11-04). 여기 있던 --brand-*·--channel-* 변수는
+       쓰는 곳이 없었고 types.ts 와 값이 달라 지웠다. */
 
-    /* Ad channel colors */
-    --channel-meta: #1d4ed8;
-    --channel-naver-search: #15803d;
-    --channel-naver-shopping: #0e7490;
-    --channel-google-pmax: #c2410c;
-    --channel-google-search: #b45309;
-    --channel-gfa: #6d28d9;
-    --channel-coupang-ads: #b91c1c;
-
-    /* Sales channel colors */
-    --channel-cafe24: #2563eb;
-    --channel-smartstore: #16a34a;
-    --channel-coupang: #dc2626;
-    --channel-ably: #be185d;
-    --channel-petfriends: #7c3aed;
-    --channel-gonggu: #8b5cf6;
+    /* 판단 그래프의 무채색 6단계(진함·옅음을 번갈아). 판매처·브랜드를 쌓은 막대에서 칸끼리 구분돼야 한다. */
+    --neutral-1: #475569;
+    --neutral-2: #94a3b8;
+    --neutral-3: #64748b;
+    --neutral-4: #a8b3c4;
+    --neutral-5: #334155;
+    --neutral-6: #7c8a9e;
   }
 
   /* ── 다크: ui-ux-pro-max 의 "Financial Dashboard" 팔레트를 기반으로 한다.
@@ -150,6 +136,14 @@
     --sig-idle: #6b7280;
     --sig-idle-surface: rgb(107 114 128 / 0.10);
     --sig-idle-border: rgb(107 114 128 / 0.28);
+
+    /* 어두운 카드 위 무채색: 이웃 칸이 밝기로 확실히 갈리게 밝음·어두움을 번갈아 둔다. */
+    --neutral-1: #e2e8f0;
+    --neutral-2: #64748b;
+    --neutral-3: #cbd5e1;
+    --neutral-4: #475569;
+    --neutral-5: #94a3b8;
+    --neutral-6: #334155;
   }
 }
 
