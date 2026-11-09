@@ -15,14 +15,23 @@ import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 // 개요와 브랜드 페이지가 같은 구현을 쓴다 (한쪽만 고쳐져 갈라지는 것을 막는다).
 
 interface Group { key: string; label: string; revenue: number; adSpend: number }
-interface Resp {
+export interface StoreDetailResp {
   groups: Group[];
   /** 날짜 × 판매처 { revenue, adSpend } */
   series?: ({ date: string } & Record<string, { revenue: number; adSpend: number } | string>)[];
 }
 
+/** channel-groups 를 직접 불러 그린다(개요 화면). */
 export function StoreDetailChart({ brand, from, to }: { brand: string; from: string; to: string }) {
-  const { data } = useFetch<Resp>(channelGroupsUrl(brand, from, to));
+  const { data } = useFetch<StoreDetailResp>(channelGroupsUrl(brand, from, to));
+  return <StoreDetailChartView data={data} from={from} to={to} />;
+}
+
+/**
+ * 이미 받은 channel-groups 응답으로 그린다.
+ * 브랜드 화면은 같은 주소를 자기도 쓰므로 받은 것을 내려준다(2026-11-09: 같은 API 를 두 번 부르던 것 제거).
+ */
+export function StoreDetailChartView({ data, from, to }: { data: StoreDetailResp | null | undefined; from: string; to: string }) {
   const [store, setStore] = useState<string | null>(null);
   const [gran, setGran] = useState<Gran>("day");
 

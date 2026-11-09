@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { google } from "googleapis";
 import { triggerSheetSync } from "@/lib/github-dispatch";
 import { cachedGET, revalidateAfter } from "@/lib/api-cache";
+import { fetchAll } from "@/lib/db";
 import { PNL_PRODUCTS, MANUAL_COST_KIND_MAX, isMissingTable } from "@/lib/bl-pnl";
 
 const PNL_PRODUCT_KEYS = new Set<string>(PNL_PRODUCTS.map((p) => p.key));
@@ -104,6 +105,20 @@ async function syncSmartstoreRowToSheet(date: string) {
 }
 
 // ─── GET ─────────────────────────────────────────────
+
+/**
+ * 판매 원장에 한 번이라도 나온 (상품, 브랜드). 원가 미등록 상품 목록의 재료.
+ * ★ 2026-11-09: 예전엔 product_sales 를 한 번에 읽어 1,000행에서 잘렸다(7,000행 넘음). 1,000행 뒤에만 있는
+ *   상품은 원가가 없어도 '미등록'에 안 떴다. DB 함수 product_sales_products(docs/sql/2026-11-09-perf-rpc.sql)로
+ *   서로 다른 쌍만 받고, 함수가 아직 없으면(PGRST202) 두 열만 끝까지 나눠 읽는다.
+ */
+async function soldProducts(): Promise<{ product: string; brand: string }[]> {
+  const rpc = await supabase.rpc("product_sales_products");
+  if (!rpc.error) return (rpc.data || []) as { product: string; brand: string }[];
+  if (rpc.error.code !== "PGRST202") throw rpc.error;
+  return fetchAll<{ product: string; brand: string }>(supabase.from("product_sales").select("product, brand").order("product"));
+}
+
 async function getImpl(req: NextRequest) {
   try {
     const type = req.nextUrl.searchParams.get("type");
@@ -146,19 +161,31 @@ async function getImpl(req: NextRequest) {
       return NextResponse.json({ miscCosts: data || [] });
     }
 
+    // ?part=config (2026-11-09): 브랜드·채널 설정만. 화면 대부분(useConfig)은 이 둘만 쓰는데
+    // 기본 응답은 원가·배송비·판매 상품 목록까지 44KB 를 7개 질의로 만든다.
+    if (req.nextUrl.searchParams.get("part") === "config") {
+      const [brandRes, channelRes] = await Promise.all([
+        supabase.from("brand_config").select("*").order("order"),
+        supabase.from("channel_config").select("*").order("order"),
+      ]);
+      if (brandRes.error) throw brandRes.error;
+      if (channelRes.error) throw channelRes.error;
+      return NextResponse.json({ brands: brandRes.data || [], channels: channelRes.data || [] });
+    }
+
     // default: return everything
-    const [costsRes, listRes, miscRes, shipRes, salesRes, brandRes, channelRes] = await Promise.all([
+    const [costsRes, listRes, miscRes, shipRes, salesProducts, brandRes, channelRes] = await Promise.all([
       supabase.from("product_costs").select("*").order("brand"),
       supabase.from("product_list").select("*"),
       supabase.from("misc_costs").select("*").order("date", { ascending: false }).limit(50),
       supabase.from("shipping_costs").select("*").order("month", { ascending: false }),
-      supabase.from("product_sales").select("product, brand").order("product"),
+      soldProducts(),
       supabase.from("brand_config").select("*").order("order"),
       supabase.from("channel_config").select("*").order("order"),
     ]);
 
     const costs = costsRes.data || [];
-    const allProducts = Array.from(new Map((salesRes.data || []).map((p: { product: string; brand: string }) => [p.product + p.brand, p])).values());
+    const allProducts = Array.from(new Map(salesProducts.map((p) => [p.product + p.brand, p])).values());
     const costSet = new Set(costs.map((c: { product: string; brand: string }) => c.product + c.brand));
     const missingProducts = allProducts.filter((p: { product: string; brand: string }) => !costSet.has(p.product + p.brand));
 
@@ -513,6 +540,6 @@ async function deleteImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"], ["type"]);
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"], ["part", "type"]);
 export const POST = revalidateAfter(postImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets", "bl_pnl_manual_cost"]);
 export const DELETE = revalidateAfter(deleteImpl, ["daily_ad_spend", "daily_funnel", "daily_sales", "misc_costs", "product_costs", "product_list", "product_sales", "shipping_costs", "brand_config", "channel_config", "gonggu_targets"]);

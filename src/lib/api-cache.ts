@@ -10,16 +10,25 @@
 // 응답 헤더 X-Data-As-Of = 이 숫자를 DB 에서 읽은 시각(ISO). 화면이 "데이터 기준 시각"으로 보여 준다.
 //
 // ★ Next 14.2 의 unstable_cache 는 만료된 항목을 **나이 제한 없이** 먼저 내주고 뒤에서 새로 읽는다
-//   (stale-while-revalidate). 한동안 아무도 안 본 화면은 몇 시간 전 값이 뜰 수 있다. 그래서 꺼낸 값의
-//   asOf 가 CACHE_SECONDS 를 넘었으면 버리고 DB 에서 바로 읽는다. 뒤에서 도는 재조회가 캐시를 채운다.
+//   (stale-while-revalidate). 뒤에서 새로 읽은 값은 캐시에 들어가 다음 조회부터 쓰인다.
+//   2026-11-09 속도 수정: 예전엔 5분 넘은 값이면 버리고 DB 에서 그 자리에서 다시 읽었다. 그런데 뒤의 재조회도
+//   따로 돌아 DB 를 두 번 읽었고, 그 자리에서 읽은 값은 캐시에 안 들어가 연달아 온 조회가 전부 다시 읽었다
+//   (측정: 개요 API 6개가 전부 expired 3초대). 이제는 나이 제한(MAX_STALE_SECONDS) 안이고 같은 날(KST)이면
+//   옛 값을 바로 주고(X-Cache: stale) 뒤의 재조회 한 번에 맡긴다. 화면의 "데이터 기준 시각"은 X-Data-As-Of
+//   (실제로 DB 에서 읽은 시각)라 옛 값이면 옛 시각이 그대로 보인다.
+//   나이 제한을 넘었거나 날짜가 바뀐 값(어제 기준 "어제 날짜" 판정이 섞인 응답)은 예전처럼 그 자리에서 다시 읽는다.
+//   데이터가 바뀌는 쓰기·수집은 태그를 지우므로(아래 2·3) 그 뒤 조회는 옛 값이 아니라 새로 읽은 값이다.
 //
 // 200 이 아닌 응답은 캐시하지 않는다(일시 오류가 5분 동안 박히지 않게).
 import { timingSafeEqual } from "node:crypto";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { NextRequest } from "next/server";
 import { CACHE_BYPASS_HEADER } from "@/lib/fresh-fetch";
+import { KST_OFFSET_MS } from "@/lib/date";
 
 export const CACHE_SECONDS = 300;
+/** 만료된 값을 그대로 내줄 수 있는 최대 나이. 업무 시간엔 warm 워크플로가 10분마다 데워 이보다 훨씬 젊다. */
+export const MAX_STALE_SECONDS = 3 * 60 * 60;
 export const ALL_TAG = "all";
 
 /** 배포마다 키가 달라진다. 옛 배포가 만든 응답 모양이 새 코드에 섞이지 않게. */
@@ -70,7 +79,7 @@ async function render(handler: Handler, req: NextRequest): Promise<CachedBody> {
   return { body, contentType, asOf: new Date().toISOString() };
 }
 
-function respond(hit: CachedBody, tags: readonly string[], source: "hit" | "miss" | "bypass" | "expired") {
+function respond(hit: CachedBody, tags: readonly string[], source: "hit" | "miss" | "bypass" | "stale" | "expired") {
   return new Response(hit.body, {
     status: 200,
     headers: {
@@ -85,6 +94,16 @@ function respond(hit: CachedBody, tags: readonly string[], source: "hit" | "miss
 }
 
 const ageSeconds = (iso: string) => (Date.now() - new Date(iso).getTime()) / 1000;
+
+/** KST 날짜(YYYY-MM-DD). 날짜가 바뀌면 "어제"가 달라지는 응답이 있어 옛 값을 넘기지 않는다. */
+const kstDay = (ms: number) => new Date(ms + KST_OFFSET_MS).toISOString().slice(0, 10);
+
+/** 만료됐지만 그대로 내줘도 되는 값인가: 나이 제한 안 + 같은 KST 날짜. */
+function canServeStale(asOf: string): boolean {
+  const readAt = new Date(asOf).getTime();
+  if (!Number.isFinite(readAt)) return false;
+  return ageSeconds(asOf) <= MAX_STALE_SECONDS && kstDay(readAt) === kstDay(Date.now());
+}
 
 /**
  * GET 핸들러를 5분 캐시로 감싼다. 핸들러 본문은 그대로 두고 export 만 바꾼다.
@@ -107,8 +126,9 @@ export function cachedGET(handler: Handler, tags: DataTag[], params: readonly st
       const t0 = Date.now();
       const hit = await run();
       if (new Date(hit.asOf).getTime() >= t0) source = "miss"; // 방금 새로 만든 값
-      // 만료 항목을 나이 제한 없이 내주는 동작을 막는다(파일 머리 주석).
+      // 만료 항목: unstable_cache 가 이미 뒤에서 한 번 새로 읽고 있다. 제한 안이면 지금 값을 바로 준다(파일 머리 주석).
       if (ageSeconds(hit.asOf) > CACHE_SECONDS) {
+        if (canServeStale(hit.asOf)) return respond(hit, tags, "stale");
         return respond(await render(handler, req), tags, "expired");
       }
       return respond(hit, tags, source);

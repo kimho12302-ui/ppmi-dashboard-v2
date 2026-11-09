@@ -30,12 +30,15 @@ jobs:
         env:
           BASE: https://ppmi-dashboard-kappa.vercel.app
         run: |
-          # 화면 기본 기간 "이번 달"과 같은 주소(1일~어제, KST). src/lib/utils.ts getDateRangeFromPreset 과 같다.
+          # 화면 기본 기간 "최근 30일"과 같은 주소(30일 전~어제, KST). src/lib/utils.ts getDateRangeFromPreset 의
+          # "30d" 프리셋과 같다(2026-11-09, 기본 기간이 "이번 달"에서 "최근 30일"로 바뀜).
+          # 서버 캐시 키는 파라미터 순서와 무관하지만 화면 주소(src/lib/api-urls.ts)와 글자까지 같게 둔다.
+          # /api/settings?part=config = 화면 대부분이 부르는 브랜드·채널 설정(src/hooks/use-config.ts).
           TO=$(TZ=Asia/Seoul date -d "yesterday" +%F)
-          FROM=$(TZ=Asia/Seoul date +%Y-%m-01)
+          FROM=$(TZ=Asia/Seoul date -d "30 days ago" +%F)
           if [[ "$FROM" > "$TO" ]]; then FROM="$TO"; fi
           for p in \
-            "/api/settings" \
+            "/api/settings?part=config" \
             "/api/data-status" \
             "/api/dashboard?from=$FROM&to=$TO&brand=all" \
             "/api/pacing?brand=all" \

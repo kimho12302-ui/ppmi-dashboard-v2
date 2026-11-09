@@ -21,7 +21,8 @@ interface ConfigResponse {
  * API 실패 시 하드코딩 fallback 사용.
  */
 export function useConfig() {
-  const { data, loading, error } = useFetch<ConfigResponse>("/api/settings");
+  // part=config: 브랜드·채널 설정만(질의 2개). 기본 응답은 원가·판매 상품까지 7개 질의 44KB 라 화면마다 받기엔 무겁다(2026-11-09).
+  const { data, loading, error } = useFetch<ConfigResponse>("/api/settings?part=config");
 
   const brands = useMemo(() => {
     if (data?.brands?.length) {
