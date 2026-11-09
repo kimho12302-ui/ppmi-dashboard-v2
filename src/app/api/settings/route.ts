@@ -382,27 +382,51 @@ async function postImpl(req: NextRequest) {
       // ── 건별 비용 ──
       case "misc_cost": {
         const { date, brand, category, description, amount, note } = data;
-        if (!forceOverride) {
-          const existing = await supabase
+        const cat = category || "other";
+        const desc = description || "";
+        // 같은 날짜·브랜드·구분·사유면 같은 비용으로 본다. 표에 고유 키가 없어 upsert 가 안 된다.
+        // ★ 2026-11-09: 「덮어쓰시겠습니까?」 확인 뒤에도 insert 해서 같은 비용이 두 줄(두 번 계산)이
+        //   되던 버그를 고쳤다. 확인하면 기존 줄을 id 로 update 한다.
+        //   maybeSingle 은 같은 줄이 둘 이상이면 에러(data null)를 내서 중복 확인을 조용히 통과시켰다.
+        //   order+limit 으로 바꿔 이미 두 줄인 경우에도 409 가 뜨게 한다.
+        const existing = await supabase
+          .from("misc_costs")
+          .select("id, amount")
+          .eq("date", date)
+          .eq("brand", brand)
+          .eq("category", cat)
+          .eq("description", desc)
+          .order("id", { ascending: true })
+          .limit(2);
+        if (existing.error) throw existing.error;
+        const matches = existing.data || [];
+        if (matches.length && !forceOverride) {
+          const prev = Number(matches[0].amount) || 0;
+          return NextResponse.json(
+            { error: "중복", message: `동일한 비용이 이미 있습니다 (기존 금액 ${prev.toLocaleString("ko-KR")}원)` },
+            { status: 409 }
+          );
+        }
+        if (matches.length > 1) {
+          // 이미 두 줄 이상이면 어느 줄을 고칠지 정할 수 없다. 하나만 고치면 나머지가 계속 더해진다.
+          return NextResponse.json(
+            { error: "같은 비용이 이미 두 줄 이상 있어 덮어쓸 수 없습니다. 시스템 담당에게 정리를 요청하세요" },
+            { status: 409 }
+          );
+        }
+        if (matches.length === 1) {
+          const { error } = await supabase
             .from("misc_costs")
-            .select("id")
-            .eq("date", date)
-            .eq("brand", brand)
-            .eq("category", category || "other")
-            .eq("description", description || "")
-            .maybeSingle();
-          if (existing.data) {
-            return NextResponse.json(
-              { error: "중복", message: "동일한 비용이 이미 있습니다" },
-              { status: 409 }
-            );
-          }
+            .update({ amount: Number(amount) || 0, note: note || "" })
+            .eq("id", matches[0].id);
+          if (error) throw error;
+          return NextResponse.json({ ok: true, updated: true });
         }
         const { error } = await supabase.from("misc_costs").insert({
           date,
           brand,
-          category: category || "other",
-          description: description || "",
+          category: cat,
+          description: desc,
           amount: Number(amount) || 0,
           note: note || "",
         });

@@ -94,8 +94,11 @@ export function MiscCostCard({ onSaved }: { onSaved?: () => void }) {
             body: JSON.stringify({ type: "misc_cost", forceOverride: true, data: { date, brand: BRAND_MAP[brand] || brand, category, description, amount: Number(amount) || 0, note } }),
           });
           const j2 = await res2.json();
-          setStatus(res2.ok ? "✅ 저장 완료" : `❌ ${j2.error}`);
-          if (res2.ok) { setDescription(""); setAmount(""); setNote(""); }
+          // 덮어쓰기는 기존 줄의 금액·비고를 바꾼다(서버가 id 로 update). 새 줄이 생기지 않는다.
+          setStatus(res2.ok ? (j2.updated ? "✅ 저장 완료 (기존 비용을 새 값으로 바꿈)" : "✅ 저장 완료") : `❌ ${j2.error || j2.message}`);
+          if (res2.ok) { setDescription(""); setAmount(""); setNote(""); onSaved?.(); }
+        } else {
+          setStatus("취소됨: 저장하지 않았습니다");
         }
       } else {
         setStatus(res.ok ? "✅ 저장 완료" : `❌ ${json.error || json.message}`);
