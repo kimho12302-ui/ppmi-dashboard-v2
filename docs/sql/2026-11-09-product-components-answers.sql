@@ -5,18 +5,20 @@
 --  전제: docs/sql/2026-11-09-product-components.sql 을 이미 실행한 DB.
 --  하는 일
 --    1) 아래 판매 상품 6개의 구성표 줄만 지우고 다시 넣는다
---       너티  냠 단호박_낱개 → 냠 단호박_낱개 1 (냠 단호박 2 로 풀던 것 취소)
+--       너티  냠 단호박_낱개 → 냠 단호박 2 그대로, 확인 필요 표시만 끔 (김호 최종: 냠 2팩, 이름만 낱개)
 --       너티  바삭! 닭가슴살 * 3개 → 바삭 3 그대로, 확인 필요 표시만 끔
 --       너티  크리스마스 선물세트·크리스마스 패키지·설날 선물세트 → 냠·바삭·껌·에너젯바·굿모닝퓨레 각 1
 --       밸런스랩 큐모발검사 미네랄 → 큐모발 미네랄 추가열람 1
---    2) 원가표(product_costs) 제조원가: 냠 단호박_낱개 1,000(이미 1,000, 그대로), 종이결과지 1,000 → 4,000
+--    2) 원가표(product_costs) 제조원가: 냠 단호박_낱개 1,000 → 냠 단호박 제조원가 × 2(실행 때 원가표에서 읽음,
+--       2026-11-09 조회 5,300 × 2 = 10,600), 종이결과지 1,000 → 4,000
 --  만든 곳: node scripts/product-components/build.mjs (전체 SQL 과 같은 시드에서 나온다)
 --  몇 번 실행해도 안전하다.
 --
 --  확인(파일 끝 두 select)
 --    첫째: 판매 상품 6줄, rows 합 18, needs_review 모두 0
 --          선물세트 3개는 rows 5·share_sum 1.000001(여섯째 자리 반올림 탓, 화면은 합 1 로 다시 나눔), 나머지는 rows 1·share_sum 1
---    둘째: 냠 단호박_낱개 manufacturing_cost 1000, 종이결과지 manufacturing_cost 4000
+--    둘째: 냠 단호박_낱개 manufacturing_cost = 냠 단호박 manufacturing_cost × 2(2026-11-09 기준 10600),
+--          종이결과지 manufacturing_cost 4000. 비교용으로 냠 단호박 줄도 같이 나온다
 -- ============================================================
 
 begin;
@@ -28,7 +30,7 @@ create temp table _pc_answers (
 
 insert into _pc_answers (brand, sale_product, component, qty, price_share, source, needs_review, note) values
   ('balancelab', '큐모발검사 미네랄', '큐모발 미네랄 추가열람', 1, 1, 'manual', false, '김호 11-09 답: 중금속만 산 사람이 미네랄 결과를 뒤늦게 보려고 추가 결제만 하는 상품(새 키트·발송 없음). 손익은 큐모발 뉴트리션 매출로 보되 판매수량·재료비·배송비 0, 제품별 광고 성과는 뉴트리션 라인으로 연결'),
-  ('nutty', '냠 단호박_낱개', '냠 단호박_낱개', 1, 1, 'manual', false, '김호 11-09 답: 냠을 뜯어 1개(낱개)만 파는 상품, 원가 1,000원(냠 2개 묶음 아님). 냠 단호박으로 풀지 않고 별도 품목 1개. 김호는 실제 판매도 안 한다고 했으나 원장에는 2026-08~11 스마트스토어·쿠팡 판매(개당 16,850~30,000원)가 있음, 충돌 보고'),
+  ('nutty', '냠 단호박_낱개', '냠 단호박', 2, 1, 'manual', false, '김호 11-09 최종: 냠 2팩(이름은 낱개). 원장 93개·개당 16,850~30,000원, 매출보고시트 원가표 9,000 = 냠 4,500×2, 쿠팡 단가 16,850 = 냠 8,900의 1.9배'),
   ('nutty', '바삭! 닭가슴살 * 3개', '바삭 닭가슴살', 3, 1, 'manual', false, '김호 11-09 답: 상품명이 맞음(바삭 3개). 원가표 품목코드 P00000CK_2 가 「냠 단호박 3개입」으로 된 어긋남은 김호 확인 예정'),
   ('nutty', '설날 선물세트', '굿모닝퓨레', 1, 0.166667, 'manual', false, '김호 11-09 답: 냠·바삭·껌·에너젯바·에너지퓨레 각 1개. 「에너지퓨레」는 원장·상품 목록에 없는 이름이고 너티 퓨레는 굿모닝퓨레 하나뿐이라 굿모닝퓨레로 봄(추정) · 매출 나누기: 정가 비율(냠 단호박 19,000원, 바삭 닭가슴살 17,000원, 스트레스제로껌 19,000원, 에너젯바 25,000원, 굿모닝퓨레 16,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000 / 자사몰 단품 최빈가 19,000 / 자사몰 단품 25,000(반값 12,500) / 자사몰 단품 최빈가 16,000'),
   ('nutty', '설날 선물세트', '냠 단호박', 1, 0.197917, 'manual', false, '김호 11-09 답: 냠·바삭·껌·에너젯바·에너지퓨레 각 1개. 「에너지퓨레」는 원장·상품 목록에 없는 이름이고 너티 퓨레는 굿모닝퓨레 하나뿐이라 굿모닝퓨레로 봄(추정) · 매출 나누기: 정가 비율(냠 단호박 19,000원, 바삭 닭가슴살 17,000원, 스트레스제로껌 19,000원, 에너젯바 25,000원, 굿모닝퓨레 16,000원). 자사몰 단품 최빈가 19,000 / 자사몰 단품 최빈가 17,000 / 자사몰 단품 최빈가 19,000 / 자사몰 단품 25,000(반값 12,500) / 자사몰 단품 최빈가 16,000'),
@@ -53,10 +55,10 @@ delete from product_components p
 insert into product_components (brand, sale_product, component, qty, price_share, source, needs_review, note)
 select brand, sale_product, component, qty, price_share, source, needs_review, note from _pc_answers;
 
--- 김호 11-09 답: 원가 1,000원 (2026-11-09 조회 때 이미 1,000)
-update product_costs set manufacturing_cost = 1000 where product = '냠 단호박_낱개' and brand = 'nutty';
+-- 김호 11-09 최종: 냠 2팩이라 제조원가 = 냠 단호박 제조원가 × 2 (2026-11-09 조회 때 냠 단호박 5,300 → 10,600, 낱개는 1,000 이었음)
+update product_costs set manufacturing_cost = coalesce((select manufacturing_cost * 2 from product_costs where product = '냠 단호박' and brand = 'nutty'), manufacturing_cost) where product = '냠 단호박_낱개' and brand = 'nutty';
 insert into product_costs (product, brand, cost_price, manufacturing_cost, shipping_cost, category)
-select '냠 단호박_낱개', 'nutty', 0, 1000, 3000, '간식'
+select '냠 단호박_낱개', 'nutty', 0, coalesce((select manufacturing_cost * 2 from product_costs where product = '냠 단호박' and brand = 'nutty'), 0), 3000, '간식'
  where not exists (select 1 from product_costs where product = '냠 단호박_낱개' and brand = 'nutty');
 
 -- 김호 11-09 답: 종이결과지 재료비 4,000원, 마진 0 (2026-11-09 조회 때 1,000)
@@ -78,5 +80,5 @@ select brand, sale_product, count(*) as rows, round(sum(price_share), 6) as shar
 -- 확인 2: 원가표
 select product, brand, cost_price, manufacturing_cost, shipping_cost
   from product_costs
- where (product, brand) in (('냠 단호박_낱개', 'nutty'), ('종이결과지', 'balancelab'))
+ where (product, brand) in (('냠 단호박_낱개', 'nutty'), ('냠 단호박', 'nutty'), ('종이결과지', 'balancelab'))
  order by brand, product;

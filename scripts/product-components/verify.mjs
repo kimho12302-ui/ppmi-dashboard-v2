@@ -51,7 +51,10 @@ const compRows = FROM_DB
 const index = buildComponentIndex(compRows);
 const sales = await all("product_sales", "date,brand,product,channel,lineup,category,revenue,quantity,buyers", "&date=gte.2025-01-01");
 const minM = MONTHS.slice().sort()[0], maxM = MONTHS.slice().sort().at(-1);
-const ads = await all("ad_product_performance", "date,brand,product_id,product_name,spend", `&brand=eq.balancelab&date=gte.${minM}-01&date=lte.${maxM}-31`);
+// 달 끝 날짜는 달력으로 구한다(「-31」 고정이면 11월처럼 30일까지인 달에서 DB 가 400 을 낸다)
+const [maxY, maxMo] = maxM.split("-").map(Number);
+const maxEnd = `${maxM}-${String(new Date(Date.UTC(maxY, maxMo, 0)).getUTCDate()).padStart(2, "0")}`;
+const ads = await all("ad_product_performance", "date,brand,product_id,product_name,spend", `&brand=eq.balancelab&date=gte.${minM}-01&date=lte.${maxEnd}`);
 console.log(`구성표 ${compRows.length}줄(${FROM_DB ? "DB" : "seed.json"}) · 판매 원장 ${sales.length}행 · 대조 달 ${MONTHS.join(", ")}\n`);
 
 const expanded = expandSales(sales, index);

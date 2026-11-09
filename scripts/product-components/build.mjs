@@ -39,7 +39,9 @@ const ANSWERED_1109 = [
 // 원가표(product_costs, 설정 「제품 원가」 탭) 제조원가. 김호 11-09 답
 const COST_FIXES_1109 = [
   // [판매 상품명, brand, 제조원가, 새로 넣을 때 쓸 판매가·배송비·분류, 근거]
-  ["냠 단호박_낱개", "nutty", 1_000, [0, 3_000, "간식"], "김호 11-09 답: 원가 1,000원 (2026-11-09 조회 때 이미 1,000)"],
+  // 제조원가 자리에 { from: [상품, brand], times } 를 주면 실행 시점 원가표의 그 상품 제조원가 × times 를 쓴다
+  ["냠 단호박_낱개", "nutty", { from: ["냠 단호박", "nutty"], times: 2 }, [0, 3_000, "간식"],
+    "김호 11-09 최종: 냠 2팩이라 제조원가 = 냠 단호박 제조원가 × 2 (2026-11-09 조회 때 냠 단호박 5,300 → 10,600, 낱개는 1,000 이었음)"],
   ["종이결과지", "balancelab", 4_000, [4_000, 3_000, "밸런스랩"], "김호 11-09 답: 종이결과지 재료비 4,000원, 마진 0 (2026-11-09 조회 때 1,000)"],
 ];
 const SINCE = "2025-01-01";
@@ -89,11 +91,10 @@ const MANUAL = {
       "쿠팡 이름. 20g×8 = 냠 단호박 한 팩, 단가 8,900 = 쿠팡 냠 단호박 최빈가. 「8개」는 팩 안 조각 수"],
     ["단호박 고구마 양갱 부드러운 노견 간식 부드러운 수제 영양간식 고구마+단호박, 640g, 4개", one(N.yam, 4),
       "품목코드 P00000CK_3 = 냠 단호박 4개입(원가 18,000 = 4,500×4), 640g = 160g×4"],
-    // 김호 11-09 답: 냠을 뜯어 1개(낱개)만 파는 상품, 원가 1,000원. 냠 단호박 기본 품목으로 풀지 않고 자기 자신 1개.
-    //   (예전 판단 「냠 2개 묶음」은 틀림.) 품목 이름은 원가표(product_costs)·상품 목록과 같은 「냠 단호박_낱개」.
-    ["냠 단호박_낱개", one("냠 단호박_낱개"),
-      "김호 11-09 답: 냠을 뜯어 1개(낱개)만 파는 상품, 원가 1,000원(냠 2개 묶음 아님). 냠 단호박으로 풀지 않고 별도 품목 1개. " +
-      "김호는 실제 판매도 안 한다고 했으나 원장에는 2026-08~11 스마트스토어·쿠팡 판매(개당 16,850~30,000원)가 있음, 충돌 보고"],
+    // 김호 11-09 최종: 냠 2팩(이름만 낱개). 첫 seed 판단과 같다: 매출보고시트 원가표 9,000 = 냠 4,500×2,
+    //   쿠팡 단가 16,850 = 냠 8,900의 1.9배. (중간 답 「별도 품목·원가 1,000」, 「냠 1팩」은 취소)
+    ["냠 단호박_낱개", one(N.yam, 2),
+      "김호 11-09 최종: 냠 2팩(이름은 낱개). 원장 93개·개당 16,850~30,000원, 매출보고시트 원가표 9,000 = 냠 4,500×2, 쿠팡 단가 16,850 = 냠 8,900의 1.9배"],
     ["너티 강아지 닭가슴살간식 수제간식 바삭칩 개과자 쿠키 80g 1개 닭가슴살", one(N.crisp),
       "쿠팡 이름. 80g 1개 = 바삭 닭가슴살 한 팩(단가 6,550 = 쿠팡 바삭 최빈가)"],
     ["너티 강아지 닭가슴살 수제간식 바삭칩 개과자 쿠키 닭가슴살, 80g, 1개", one(N.crisp), "상품 목록 이름(광고 연결용)"],
@@ -326,12 +327,17 @@ function answersSql(rows) {
   if (missing.length) throw new Error(`증분 SQL 대상이 시드에 없음: ${missing.join(", ")}`);
   const values = picked.map((r) => `  (${[r.brand, r.sale_product, r.component, r.qty, r.price_share, r.source, r.needs_review, r.note].map(lit).join(", ")})`);
   const targets = ANSWERED_1109.map(([b, p]) => `(${lit(b)}, ${lit(p)})`).join(", ");
+  // 제조원가: 숫자면 그 값, { from, times } 이면 실행 시점 원가표의 그 상품 제조원가 × times
+  //   (원본 줄이 없으면 지금 값 유지·새 줄은 0)
+  const mcExpr = (mc, fallback) => (typeof mc === "number" ? String(mc)
+    : `coalesce((select manufacturing_cost * ${mc.times ?? 1} from product_costs where product = ${lit(mc.from[0])} and brand = ${lit(mc.from[1])}), ${fallback})`);
   const costSql = COST_FIXES_1109.map(([p, b, mc, [cp, sh, cat], why]) => `-- ${why}
-update product_costs set manufacturing_cost = ${mc} where product = ${lit(p)} and brand = ${lit(b)};
+update product_costs set manufacturing_cost = ${mcExpr(mc, "manufacturing_cost")} where product = ${lit(p)} and brand = ${lit(b)};
 insert into product_costs (product, brand, cost_price, manufacturing_cost, shipping_cost, category)
-select ${lit(p)}, ${lit(b)}, ${cp}, ${mc}, ${sh}, ${lit(cat)}
+select ${lit(p)}, ${lit(b)}, ${cp}, ${mcExpr(mc, "0")}, ${sh}, ${lit(cat)}
  where not exists (select 1 from product_costs where product = ${lit(p)} and brand = ${lit(b)});`).join("\n\n");
-  const costTargets = COST_FIXES_1109.map(([p, b]) => `(${lit(p)}, ${lit(b)})`).join(", ");
+  const costTargets = COST_FIXES_1109.flatMap(([p, b, mc]) => [[p, b], ...(typeof mc === "number" ? [] : [mc.from])])
+    .map(([p, b]) => `(${lit(p)}, ${lit(b)})`).join(", ");
   return `-- ============================================================
 -- 2026-11-09  판매 상품 구성표 김호 답 반영 (증분)
 -- ============================================================
@@ -339,18 +345,20 @@ select ${lit(p)}, ${lit(b)}, ${cp}, ${mc}, ${sh}, ${lit(cat)}
 --  전제: docs/sql/2026-11-09-product-components.sql 을 이미 실행한 DB.
 --  하는 일
 --    1) 아래 판매 상품 ${ANSWERED_1109.length}개의 구성표 줄만 지우고 다시 넣는다
---       너티  냠 단호박_낱개 → 냠 단호박_낱개 1 (냠 단호박 2 로 풀던 것 취소)
+--       너티  냠 단호박_낱개 → 냠 단호박 2 그대로, 확인 필요 표시만 끔 (김호 최종: 냠 2팩, 이름만 낱개)
 --       너티  바삭! 닭가슴살 * 3개 → 바삭 3 그대로, 확인 필요 표시만 끔
 --       너티  크리스마스 선물세트·크리스마스 패키지·설날 선물세트 → 냠·바삭·껌·에너젯바·굿모닝퓨레 각 1
 --       밸런스랩 큐모발검사 미네랄 → 큐모발 미네랄 추가열람 1
---    2) 원가표(product_costs) 제조원가: 냠 단호박_낱개 1,000(이미 1,000, 그대로), 종이결과지 1,000 → 4,000
+--    2) 원가표(product_costs) 제조원가: 냠 단호박_낱개 1,000 → 냠 단호박 제조원가 × 2(실행 때 원가표에서 읽음,
+--       2026-11-09 조회 5,300 × 2 = 10,600), 종이결과지 1,000 → 4,000
 --  만든 곳: node scripts/product-components/build.mjs (전체 SQL 과 같은 시드에서 나온다)
 --  몇 번 실행해도 안전하다.
 --
 --  확인(파일 끝 두 select)
 --    첫째: 판매 상품 ${ANSWERED_1109.length}줄, rows 합 ${picked.length}, needs_review 모두 0
 --          선물세트 3개는 rows 5·share_sum 1.000001(여섯째 자리 반올림 탓, 화면은 합 1 로 다시 나눔), 나머지는 rows 1·share_sum 1
---    둘째: 냠 단호박_낱개 manufacturing_cost 1000, 종이결과지 manufacturing_cost 4000
+--    둘째: 냠 단호박_낱개 manufacturing_cost = 냠 단호박 manufacturing_cost × 2(2026-11-09 기준 10600),
+--          종이결과지 manufacturing_cost 4000. 비교용으로 냠 단호박 줄도 같이 나온다
 -- ============================================================
 
 begin;
