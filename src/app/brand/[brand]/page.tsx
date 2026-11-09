@@ -167,7 +167,7 @@ function BrandInner({ brand }: { brand: string }) {
   }
 
   return (
-    <PageShell title={label} description={`${label} 종합 성과 — 판매처·라인업·제품·광고비`} hideFilters>
+    <PageShell title={label} description={`${label} 종합 성과: 판매처·라인업·제품·광고비`} hideFilters>
       {/* 기간 선택만 — 브랜드는 경로 고정, 전역 필터(전체/펫/밸런스랩 탭) 숨김 (혼동 방지) */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <span className="text-sm text-muted-foreground">{from} ~ {to}</span>
@@ -282,8 +282,8 @@ function BrandInner({ brand }: { brand: string }) {
                     <td className="py-2">{g.label}</td>
                     <td className="py-2 text-right font-medium">{formatCurrency(g.revenue)}</td>
                     <td className="py-2 text-right">{formatCurrency(g.adSpend)}</td>
-                    <td className="py-2 text-right">{g.adSpend > 0 ? `${g.roas.toFixed(2)}x` : "—"}</td>
-                    <td className="py-2 text-right">{g.revenue > 0 ? formatPercent(g.adRatio) : "—"}</td>
+                    <td className="py-2 text-right">{g.adSpend > 0 ? `${g.roas.toFixed(2)}x` : "-"}</td>
+                    <td className="py-2 text-right">{g.revenue > 0 ? formatPercent(g.adRatio) : "-"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -305,7 +305,7 @@ function BrandInner({ brand }: { brand: string }) {
               <div className="space-y-2">
                 {adChannels.map(c => (
                   <BarRow key={c.channel} label={AD_CH_KOR[c.channel] || c.channel} value={c.spend} max={maxAd}
-                    sub={c.roas > 0 ? `${c.roas.toFixed(1)}x` : "—"} color={AD_CHANNEL_COLORS[c.channel] || "#6b7280"} />
+                    sub={c.roas > 0 ? `${c.roas.toFixed(1)}x` : "-"} color={AD_CHANNEL_COLORS[c.channel] || "#6b7280"} />
                 ))}
               </div>
             ) : <p className="text-sm text-muted-foreground py-6 text-center">광고 집행 없음</p>}
