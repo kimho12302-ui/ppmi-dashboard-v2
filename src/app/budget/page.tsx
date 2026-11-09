@@ -87,14 +87,14 @@ function BudgetInner() {
   return (
     <PageShell title="예산 현황" description={`${now.getFullYear()}년 ${now.getMonth() + 1}월 광고 예산 집행 (${t?.daysElapsed ?? 0}/${t?.daysInMonth ?? 0}일, 매체비 기준)`} hideFilters>
       {!hasTarget && (
-        <Card><CardContent className="p-4 text-sm text-muted-foreground">
+        <Card data-tour="budget-no-target"><CardContent className="p-4 text-sm text-muted-foreground">
           이번 달 광고예산 목표가 없습니다. <a href="/settings?tab=targets" className="text-primary hover:underline">설정 &gt; 목표설정</a>에서 등록하면 목표 대비 소진율이 표시됩니다.
         </CardContent></Card>
       )}
 
       {/* 예산 초과 경고 */}
       {hasTarget && remaining < 0 && (
-        <Card className="border-l-4 border-l-red-500 bg-red-500/5">
+        <Card data-tour="budget-over" className="border-l-4 border-l-red-500 bg-red-500/5">
           <CardContent className="p-3 text-sm font-medium text-red-600">
             ⚠ 광고예산 초과: {formatCurrency(Math.abs(remaining))} (목표 {formatCurrency(targetAd)} 대비 {pct(consumption)} 소진)
           </CardContent>
@@ -102,7 +102,7 @@ function BudgetInner() {
       )}
 
       {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div data-tour="budget-kpi" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="목표 광고예산" value={hasTarget ? formatCurrency(targetAd) : "—"} subtitle="이번 달 매체비 목표" />
         <KpiCard title="집행" value={formatCurrency(actualAd)} subtitle={hasTarget ? `소진율 ${pct(consumption)} · 날짜 ${pct(dateProgress)}` : `일 평균 ${formatCurrency(Math.round(actualAd / Math.max(t?.daysElapsed || 1, 1)))}`} />
         <KpiCard title="월말 예상" value={formatCurrency(projected)} subtitle={hasTarget ? (projOver ? `목표 ${formatCurrency(targetAd)} 초과 예상` : `목표 대비 ${pct(targetAd > 0 ? projected / targetAd : 0)}`) : undefined} />
@@ -111,7 +111,7 @@ function BudgetInner() {
 
       {/* 소진 페이스 바 */}
       {hasTarget && (
-        <Card>
+        <Card data-tour="budget-pace">
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between text-sm">
               <h3 className="font-semibold">예산 소진 페이스</h3>
@@ -129,7 +129,7 @@ function BudgetInner() {
       )}
 
       {/* 브랜드별 목표 대비 집행 */}
-      <Card>
+      <Card data-tour="budget-brands">
         <CardContent className="p-4">
           <h3 className="font-semibold mb-4">브랜드별 광고예산 (목표 대비)</h3>
           <div className="space-y-3">
@@ -163,7 +163,7 @@ function BudgetInner() {
       </Card>
 
       {/* 채널별 분배 */}
-      <Card>
+      <Card data-tour="budget-channel-chart">
         <CardContent className="p-4">
           <h3 className="font-semibold mb-4">매체별 집행 분배</h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -179,7 +179,7 @@ function BudgetInner() {
       </Card>
 
       {/* 채널 비중 테이블 */}
-      <Card>
+      <Card data-tour="budget-channel-table">
         <CardContent className="p-4 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

@@ -160,7 +160,7 @@ function MediaBudgetInner() {
   return (
     <PageShell title="매체예산 분배" description={`매체별 광고비 일별 내역 (${rows.length}일)`}>
       {/* 요약 KPI */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div data-tour="media-summary" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-card border rounded-lg p-3">
           <div className="text-xs text-muted-foreground">총 광고비</div>
           <div className="text-lg font-bold">{formatCurrency(grandTotal.spend)}</div>
@@ -185,7 +185,7 @@ function MediaBudgetInner() {
 
       {/* 컨트롤 바 */}
       <div className="flex flex-wrap items-center gap-2 justify-between">
-        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+        <div data-tour="media-view" className="flex items-center gap-1 bg-muted rounded-lg p-1">
           {(["spend", "impressions", "clicks"] as ViewMode[]).map((m) => (
             <button
               key={m}
@@ -201,6 +201,7 @@ function MediaBudgetInner() {
           ))}
         </div>
         <button
+          data-tour="media-csv"
           onClick={handleCsvDownload}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
         >
@@ -212,7 +213,7 @@ function MediaBudgetInner() {
       </div>
 
       {/* 엑셀 스타일 테이블 */}
-      <Card>
+      <Card data-tour="media-table">
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm border-collapse" style={{ minWidth: `${(channels.length + 2) * 110}px` }}>
             <thead>
@@ -317,7 +318,7 @@ function MediaBudgetInner() {
 
       {/* 매체별 비중 */}
       {rows.length > 0 && viewMode === "spend" && (
-        <Card>
+        <Card data-tour="media-share">
           <CardContent className="p-4">
             <h3 className="font-semibold text-sm mb-3">매체별 비중</h3>
             <div className="space-y-2">
