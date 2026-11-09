@@ -8,6 +8,7 @@ import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-da
 import { AD_ALERTS_URL } from "@/lib/api-urls";
 import { AdAlerts } from "@/components/ad-alerts";
 import { NaverCampaignMultiples } from "@/components/judge/naver-campaign-multiples";
+import { AdsUtmSection } from "@/components/ads-utm-section";
 import { CHANNEL_LABELS, CHANNEL_COLORS, type DailyAdSpend } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { daysBetween } from "@/lib/bucket";
@@ -29,12 +30,6 @@ import {
   Legend,
   CartesianGrid,
 } from "recharts";
-
-const GA4_LABEL: Record<string, string> = {
-  "ga4_Performance Max": "GA4 P-Max",
-  "ga4_Demand Gen": "GA4 Demand Gen",
-  "ga4_Search": "GA4 Search",
-};
 
 type ViewTab = "overview" | "channels" | "ga4" | "creatives" | "naver";
 
@@ -117,7 +112,7 @@ function AdsPageInner() {
     return Object.entries(map)
       .map(([ch, v]) => ({
         channel: ch,
-        label: GA4_LABEL[ch] || channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch,
+        label: channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch,
         color: channelMap[ch]?.color || CHANNEL_COLORS[ch] || "#6b7280",
         ...v,
         roas: v.spend > 0 ? v.convValue / v.spend : 0,
@@ -385,8 +380,9 @@ function AdsPageInner() {
           {byChannel.filter(c => !c.channel.startsWith("ga4_") && c.spend > 0).length > 1 && (
             <Card data-tour="ads-quadrant">
               <CardContent className="p-4">
-                <h3 className="font-semibold mb-1">매체 효율 사분면 — ROAS vs 광고비</h3>
-                <p className="text-xs text-muted-foreground mb-4">우상단(고ROAS·저광고비) = 효율 우수. 버블 크기 = 광고비</p>
+                <h3 className="font-semibold mb-1">매체 효율 사분면: ROAS vs 광고비</h3>
+                {/* 가로축은 오른쪽일수록 광고비가 크다(/sales 채널 효율 사분면과 같은 관례). 예전 글귀 「우상단(고ROAS·저광고비)」는 축과 반대였다(2026-11-09). */}
+                <p className="text-xs text-muted-foreground mb-4">위쪽일수록 ROAS 높음, 오른쪽일수록 광고비 큼. 좌상단 = 적게 쓰고 효율 좋음(늘려 볼 후보), 우상단 = 많이 쓰고 효율도 좋음, 빨간 점선(ROAS 1.0x) 아래 = 쓴 돈만큼도 신고 매출이 없음. 버블 크기 = 광고비</p>
                 <ResponsiveContainer width="100%" height={320}>
                   <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -486,50 +482,7 @@ function AdsPageInner() {
         </Card>
       )}
 
-      {tab === "ga4" && (
-        <>
-          <div data-tour="ads-ga4" className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {byChannel
-              .filter((c) => c.channel.startsWith("ga4_"))
-              .map((c) => (
-                <Card
-                  key={c.channel}
-                  className="p-4"
-                  style={{ borderLeft: "4px solid #f59e0b" }}
-                >
-                  <CardContent className="p-0 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-sm">{c.label}</span>
-                      <span className="text-sm font-bold">{formatCurrency(c.spend)}</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                      <div>
-                        <p>ROAS</p>
-                        <p className="font-medium text-foreground">{c.roas.toFixed(2)}x</p>
-                      </div>
-                      <div>
-                        <p>클릭</p>
-                        <p className="font-medium text-foreground">{formatNumber(c.clicks)}</p>
-                      </div>
-                      <div>
-                        <p>노출</p>
-                        <p className="font-medium text-foreground">{formatNumber(c.impressions)}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">
-                💡 GA4 UTM 데이터는 Google Ads의 자동태깅(gclid)을 통해 수집됩니다.
-                Google Ads 광고비와 중복되므로 총 광고비 집계에서 제외됩니다.
-              </p>
-            </CardContent>
-          </Card>
-        </>
-      )}
+      {tab === "ga4" && <AdsUtmSection from={from} to={to} />}
 
       {tab === "creatives" && (
         <CreativesSection brand={brand} from={from} to={to} />
