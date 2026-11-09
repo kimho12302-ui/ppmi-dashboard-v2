@@ -111,14 +111,15 @@ export function SourceFunnelSteps({ brand, from, to }: { brand: string; from: st
     <Card>
       <CardContent className="p-4">
         {header}
-        <div className="divide-y divide-border">
+        {/* 원천마다 한 칸. 넓은 화면은 2열로 놓아 아래 관리도가 첫 화면에 들어오게 한다(2026-11-04). */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-3">
           {funnels.map((f) => (
-            <div key={f.key} className="py-3 first:pt-0 last:pb-0">
+            <div key={f.key} className="min-w-0 border-t border-border pt-3 lg:[&:nth-child(-n+2)]:border-t-0 lg:[&:nth-child(-n+2)]:pt-0 first:border-t-0 first:pt-0">
               <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
                 <span className="text-sm font-medium">{f.label}</span>
                 <span className="text-[11px] text-muted-foreground">
                   {f.days > 0 && f.firstDate && f.lastDate
-                    ? `${md(f.firstDate)}~${md(f.lastDate)} 중 유입·판매가 둘 다 들어온 ${f.days}일 합계`
+                    ? `${md(f.firstDate)}~${md(f.lastDate)} 중 ${f.days}일 합계`
                     : "유입과 판매가 둘 다 들어온 날이 없어 합계를 내지 않습니다"}
                 </span>
               </div>
@@ -135,14 +136,12 @@ export function SourceFunnelSteps({ brand, from, to }: { brand: string; from: st
                   <Step name="구매" value={f.orders} sub={`유입 대비 ${f.rate != null ? `${f.rate.toFixed(2)}%` : "-"}`} />
                 </div>
               )}
-              <p className="text-[11px] text-muted-foreground mt-1.5">
-                {f.cartAdds == null ? "장바구니는 이 원천의 유입과 같은 행에서 수집되지 않아 단계에서 뺐습니다. " : ""}
-                {f.note || ""}
-              </p>
+              {f.note && <p className="text-[11px] text-muted-foreground mt-1.5">{f.note}</p>}
             </div>
           ))}
         </div>
         <p className="mt-3 text-[11px] text-muted-foreground">
+          장바구니 칸이 없는 원천은 장바구니가 그 원천의 유입과 같은 행에서 수집되지 않아 뺐습니다. 합계는 유입·판매가 둘 다 들어온 날만 더합니다.
           구매 = 판매 원장 주문 수(같은 판매처). 판매 동기화가 {salesLastDate ? `${md(salesLastDate)}까지` : "아직"} 들어와 그 뒤 날짜와 오늘, 유입이 수집되지 않은 날, 수집 오류 의심일(관리도 기준)은 빼고 더합니다.
           유입 대비 구매 비율은 아래 관리도의 평균선과 같은 값입니다.
         </p>

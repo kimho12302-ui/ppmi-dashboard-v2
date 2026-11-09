@@ -44,12 +44,16 @@ export function NaverCampaignMultiples({ brand, to }: { brand: string; to: strin
   const anyRoasUsable = shown.some((c) => !ROAS_UNTRUSTED_ACCOUNTS.has(c.account));
   const metric: MultipleMetric = metricPick ?? (anyRoasUsable ? "roas" : "cost");
 
+  // ROAS 를 믿을 수 없는 계정의 타일은 같은 자리에 주간 비용 선을 그린다(2026-11-04). 판정(verdict)은 하지 않는다.
+  // 비용과 ROAS 판정을 한 격자에서 섞으면 "강조 N개" 가 서로 다른 규칙의 합이 된다.
   const tiles = useMemo(() => shown.map((c) => {
     const roasBlocked = metric === "roas" && ROAS_UNTRUSTED_ACCOUNTS.has(c.account);
     const verdict = roasBlocked ? null : judgeMultiple(c.cells, metric);
-    const points = c.cells.map((x) => ({ week: x.week, v: roasBlocked ? null : weekValue(x, metric), cost: x.cost }));
-    return { c, roasBlocked, verdict, points };
+    const shownMetric: MultipleMetric = roasBlocked ? "cost" : metric;
+    const points = c.cells.map((x) => ({ week: x.week, v: weekValue(x, shownMetric), cost: x.cost }));
+    return { c, roasBlocked, verdict, points, shownMetric };
   }), [shown, metric]);
+  const blockedCount = tiles.filter((t) => t.roasBlocked).length;
   const flaggedCount = tiles.filter((t) => t.verdict?.flagged).length;
 
   const weeks = data?.weeks || [];
@@ -57,7 +61,8 @@ export function NaverCampaignMultiples({ brand, to }: { brand: string; to: strin
     <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
       <div>
         <h3 className="font-semibold">캠페인별 최근 {MULTIPLE_WEEKS}주 추이</h3>
-        <p className="text-xs text-muted-foreground mt-0.5">판단: 캠페인이 많을 때 요즘 눈에 띄게 {metric === "roas" ? "효율이 나빠진" : "집행이 줄어든"} 캠페인만 골라내기</p>
+        <p className="text-xs text-muted-foreground mt-0.5">가로 = 주(월요일 시작), 세로 = {metric === "roas" ? "주간 ROAS(네이버 신고 전환매출 ÷ 비용)" : "주간 비용(원)"}, 캠페인마다 축이 따로. 점선 = {MULTIPLE_WEEKS}주 평균</p>
+        <p className="text-xs text-muted-foreground">판단: 캠페인이 많을 때 요즘 눈에 띄게 {metric === "roas" ? "효율이 나빠진" : "집행이 줄어든"} 캠페인만 골라내기</p>
       </div>
       <div className="flex gap-1 bg-muted rounded-md p-0.5">
         {(["roas", "cost"] as const).map((m) => (
@@ -83,25 +88,27 @@ export function NaverCampaignMultiples({ brand, to }: { brand: string; to: strin
             ? <><b style={{ color: ACCENT }}>{flaggedCount}개</b> 캠페인이 강조 규칙에 걸렸습니다 (캠페인 {tiles.length}개 중).</>
             : <>강조 규칙에 걸린 캠페인이 없습니다 (캠페인 {tiles.length}개).</>}
         </p>
+        {/* 타일마다 반복하던 안내를 격자 위 한 줄로 모았다(2026-11-04). */}
+        {blockedCount > 0 && (
+          <p className="text-xs text-muted-foreground mb-3">
+            밸런스랩 계정 캠페인 {blockedCount}개는 장바구니 전환이 매출로 잡혀 ROAS 를 믿을 수 없어 판단하지 않고 <b>주간 비용</b>으로 그립니다(타일에 「비용」 표시).
+          </p>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-          {tiles.map(({ c, roasBlocked, verdict, points }) => {
+          {tiles.map(({ c, roasBlocked, verdict, points, shownMetric }) => {
             const flagged = !!verdict?.flagged;
             return (
               <div key={c.campaignId}
                 className={cn("rounded-lg border p-2 min-w-0", flagged ? "border-[var(--sig-danger-border)] bg-[var(--sig-danger-surface)]" : "border-border")}>
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-xs font-medium truncate" title={c.campaignName}>{c.campaignName}</span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">{c.type}</span>
+                  <span className="text-[10px] text-muted-foreground shrink-0">{roasBlocked ? "비용 · " : ""}{c.type}</span>
                 </div>
                 <div className="text-[10px] text-muted-foreground">
                   {MULTIPLE_WEEKS}주 비용 {formatCurrency(c.totalCost)}
                   {verdict && <> · 최근 {MULTIPLE_RECENT_WEEKS}주 {fmt(verdict.recent, metric)} / {MULTIPLE_WEEKS}주 {fmt(verdict.base, metric)}</>}
                 </div>
-                {roasBlocked ? (
-                  <p className="h-[56px] flex items-center text-[10px] text-muted-foreground">
-                    ROAS 판단 불가: 이 계정은 장바구니 전환이 매출로 잡혀 부풀려져 있습니다. 주간 비용으로 보세요.
-                  </p>
-                ) : (
+                {(
                   <DeferredResponsiveContainer width="100%" height={56}>
                     <LineChart data={points} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
                       <XAxis dataKey="week" hide />
@@ -116,7 +123,7 @@ export function NaverCampaignMultiples({ brand, to }: { brand: string; to: strin
                           const p = payload[0].payload as { week: string; v: number | null; cost: number };
                           return (
                             <div className="rounded border bg-card px-1.5 py-1 text-[10px] shadow-sm">
-                              {md(p.week)} 주 · {metric === "roas" ? (p.v == null ? "비용 0" : fmt(p.v, metric)) : fmt(p.v, metric)}
+                              {md(p.week)} 주 · {shownMetric === "roas" ? (p.v == null ? "비용 0" : fmt(p.v, shownMetric)) : fmt(p.v, shownMetric)}
                             </div>
                           );
                         }}
