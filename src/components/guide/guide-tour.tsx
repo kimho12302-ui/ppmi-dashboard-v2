@@ -17,6 +17,7 @@ import { RichText } from "./rich-text";
 const MARGIN = 8; // 말풍선과 화면 가장자리 사이
 const GAP = 12; // 말풍선과 강조 요소 사이
 const PAD = 6; // 강조 링이 요소 바깥으로 나오는 폭
+const DIM = "absolute bg-black/[0.55]";
 const FOCUSABLE = 'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
 const READY: TourStep = {
@@ -46,6 +47,16 @@ function findTarget(name: string): HTMLElement | null {
 function visibleSteps(steps: TourStep[]): TourStep[] {
   const shown = steps.filter((s) => s.target === "" || findTarget(s.target) !== null);
   return shown.length > 0 ? shown : [READY];
+}
+
+/** 링이 화면 밖으로 잘리지 않게 2px 안쪽으로 당긴다 */
+function insetToViewport(b: Box): Box {
+  const { vw, vh } = viewport();
+  const top = Math.max(b.top, 2);
+  const left = Math.max(b.left, 2);
+  const bottom = Math.min(b.top + b.height, vh - 2);
+  const right = Math.min(b.left + b.width, vw - 2);
+  return { top, left, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 }
 
 function viewport() {
@@ -88,6 +99,8 @@ export function GuideTour({ title, steps, onClose }: { title: string; steps: Tou
   const bodyId = useId();
 
   const step = list[Math.min(index, list.length - 1)];
+  // 링은 화면 가장자리에 붙은 요소(사이드바 로고 등)에서도 잘리지 않게 화면 안쪽으로 당긴다.
+  const ring = spot ? insetToViewport(spot) : null;
   const last = index >= list.length - 1;
 
   // 지금 단계의 요소 위치와 말풍선 자리를 잰다.
@@ -206,28 +219,41 @@ export function GuideTour({ title, steps, onClose }: { title: string; steps: Tou
   }, [next, prev, onClose]);
 
   // 처음 열 때, 그리고 초점이 말풍선 밖이거나 막힌 버튼에 있으면 「다음」으로 초점을 옮긴다.
+  // 자리를 재기 전에는 말풍선이 숨어 있어(visibility: hidden) 초점을 받지 못하므로 자리가 잡힌 뒤에 한다.
+  const placed = pos !== null;
   useEffect(() => {
+    if (!placed) return;
     const active = document.activeElement as HTMLButtonElement | null;
     if (!active || !bubbleRef.current?.contains(active) || active.disabled) nextRef.current?.focus();
-  }, [index]);
+  }, [index, placed]);
 
   const btn =
     "px-3 py-1.5 rounded-md text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40 disabled:cursor-not-allowed";
 
   return createPortal(
     <div className="fixed inset-0 z-[80]">
-      {/* 페이지 클릭을 막는 투명 막. 강조 요소가 없을 때는 이 막이 화면 전체를 어둡게 한다. */}
-      <div aria-hidden className={spot ? "absolute inset-0" : "absolute inset-0 bg-black/50"} />
-      {spot && (
+      {/* 페이지 클릭을 막는 투명 막. 그 위에 강조 요소 자리만 비우고 네 조각으로 어둡게 덮는다. */}
+      <div aria-hidden className="absolute inset-0" />
+      {ring ? (
+        <>
+          <div aria-hidden className={DIM} style={{ top: 0, left: 0, right: 0, height: ring.top }} />
+          <div aria-hidden className={DIM} style={{ top: ring.top + ring.height, left: 0, right: 0, bottom: 0 }} />
+          <div aria-hidden className={DIM} style={{ top: ring.top, left: 0, width: ring.left, height: ring.height }} />
+          <div aria-hidden className={DIM} style={{ top: ring.top, left: ring.left + ring.width, right: 0, height: ring.height }} />
+        </>
+      ) : (
+        <div aria-hidden className={DIM} style={{ inset: 0 }} />
+      )}
+      {ring && (
         <div
           aria-hidden
           className="fixed pointer-events-none rounded-[10px]"
           style={{
-            top: spot.top,
-            left: spot.left,
-            width: spot.width,
-            height: spot.height,
-            boxShadow: "0 0 0 2px #ffffff, 0 0 0 5px rgb(59 130 246 / 0.45), 0 0 0 9999px rgb(0 0 0 / 0.5)",
+            top: ring.top,
+            left: ring.left,
+            width: ring.width,
+            height: ring.height,
+            boxShadow: "0 0 0 2px #ffffff, 0 0 0 6px rgb(59 130 246 / 0.5)",
           }}
         />
       )}
@@ -237,7 +263,7 @@ export function GuideTour({ title, steps, onClose }: { title: string; steps: Tou
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={bodyId}
-        className="fixed w-[min(360px,calc(100vw-16px))] rounded-xl border shadow-2xl p-4"
+        className="fixed w-[min(360px,calc(100vw-16px))] rounded-xl border shadow-2xl ring-1 ring-black/5 dark:ring-white/10 p-4"
         style={{
           top: pos?.top ?? 0,
           left: pos?.left ?? 0,
