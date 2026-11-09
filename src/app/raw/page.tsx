@@ -31,11 +31,15 @@ function RawInner() {
 
   // API route for raw data
   const apiUrl = `/api/raw?table=${table}&offset=${page * limit}&limit=${limit}`;
-  const { data, loading, error } = useFetch<{ rows: Record<string, unknown>[]; total: number }>(apiUrl);
+  const { data, loading, error } = useFetch<{ rows: Record<string, unknown>[]; total: number; hasMore?: boolean; totalIsEstimate?: boolean }>(apiUrl);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const rows = useMemo(() => data?.rows || [], [data]);
   const total = data?.total || 0;
+  // 큰 표는 전체 행 수를 정확히 세지 않고 추정값을 받는다(2026-11-09 속도 수정). 다음 쪽 여부는 hasMore 가 정확하다.
+  const totalIsEstimate = !!data?.totalIsEstimate;
+  const hasMore = !!data?.hasMore;
+  const pageCount = Math.max(1, Math.ceil(total / limit));
   const columns = useMemo(() => {
     if (rows.length === 0) return [];
     return Object.keys(rows[0]);
@@ -101,7 +105,7 @@ function RawInner() {
           ) : (
             <>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-muted-foreground">총 {total.toLocaleString("ko-KR")}행 · {columns.length}열</span>
+                <span className="text-sm text-muted-foreground">총 {totalIsEstimate ? "약 " : ""}{total.toLocaleString("ko-KR")}행 · {columns.length}열</span>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setPage(Math.max(0, page - 1))}
@@ -110,10 +114,10 @@ function RawInner() {
                   >
                     이전
                   </button>
-                  <span className="text-xs text-muted-foreground">{page + 1} / {Math.max(1, Math.ceil(total / limit))}</span>
+                  <span className="text-xs text-muted-foreground">{page + 1} / {totalIsEstimate ? `약 ${pageCount}` : pageCount}</span>
                   <button
                     onClick={() => setPage(page + 1)}
-                    disabled={(page + 1) * limit >= total}
+                    disabled={!hasMore}
                     className="px-2 py-1 text-xs rounded bg-muted disabled:opacity-30"
                   >
                     다음
