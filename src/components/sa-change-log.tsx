@@ -9,6 +9,11 @@
 //   → 날짜 → 묶음(사유 첫 문장) → 키워드 행 3단으로 접는다. 기본은 최신 날짜의 묶음 줄까지만 보인다.
 //   숫자 칸은 줄바꿈 금지, 표는 table-fixed 로 칸 폭을 고정한다.
 //   전·후 4칸은 "전 → 후" 한 칸씩으로 합쳤다. 자르는 건 없다. 접힌 날짜·긴 사유는 눌러서 다 볼 수 있다.
+//
+// ★ 2026-11-09 검토 결과 칸(review_verdict·reviewed_at·review_note·review_doc). 전에는 review_on 이 지난 행을
+//   전부 "검토일 지난 조정"으로 셌다(101건, 대부분 이미 판정 끝). 이제 **reviewed_at 이 없는 것만** 센다.
+//   판정 결과는 키워드 행 "판정" 칸에 보이고, 근거는 그 칸에 마우스를 올리거나 묶음을 펼치면 보인다.
+//   칸이 없는 DB 면 값이 안 오므로 예전처럼 review_on 만으로 센다(isDue 참고).
 
 import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +25,8 @@ interface Change {
   id: number; applied_at: string; keyword: string; device: string | null; action: string;
   bid_before: number | null; bid_after: number | null; reason: string | null; review_on: string | null;
   adgroup: string | null; source_doc: string | null;
+  // 2026-11-09 검토 결과. 칸이 없던 시절 응답에는 아예 없다.
+  review_verdict?: string | null; reviewed_at?: string | null; review_note?: string | null; review_doc?: string | null;
 }
 interface Perf { impressions: number; clicks: number; cost: number; conversions: number; days: number }
 interface Resp {
@@ -38,11 +45,26 @@ const ACTION_TONE: Record<string, string> = {
 };
 const MIN_JUDGE_DAYS = 7;
 
+// 검토일이 지났는데 아직 판정을 안 적은 행. 판정을 적으면(reviewed_at) 빠진다.
+const isDue = (c: Change, today: string) => !!c.review_on && c.review_on <= today && !c.reviewed_at;
+// 판정 값별 색. 모르는 값도 그대로 보인다(기본색).
+const VERDICT_TONE: Record<string, string> = {
+  유지: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  연장: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  원복: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  하향: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  잠금: "bg-red-500/10 text-red-700 dark:text-red-300",
+  삭제: "bg-red-500/10 text-red-700 dark:text-red-300",
+};
+
 const per = (v: number, d: number) => (d > 0 ? v / d : 0);
 const won = (v: number) => formatCurrency(Math.round(v));
 // 조정일은 한국 시각 기준 날짜
 const kstDay = (iso: string) => new Date(new Date(iso).getTime() + 9 * 3600_000).toISOString().slice(0, 10);
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+const verdictTitle = (c: Change) =>
+  [c.reviewed_at ? `판정 ${kstDay(c.reviewed_at)}` : "", c.review_note || "", c.review_doc ? `근거 문서: ${c.review_doc}` : ""]
+    .filter(Boolean).join("\n");
 
 function adjust(c: Change) {
   if (c.action === "bid") return `${formatNumber(c.bid_before || 0)} → ${formatNumber(c.bid_after || 0)}`;
@@ -81,7 +103,7 @@ export function SaChangeLog({ brand }: { brand: string }) {
 
   const rows = useMemo(() => {
     const list = data?.changes || [];
-    return onlyDue ? list.filter((c) => c.review_on && c.review_on <= today) : list;
+    return onlyDue ? list.filter((c) => isDue(c, today)) : list;
   }, [data, onlyDue, today]);
 
   // 날짜 → 사유 묶음 → 행
@@ -104,14 +126,17 @@ export function SaChangeLog({ brand }: { brand: string }) {
         reasons: Array.from(new Set(items.map((i) => i.reason || "(사유 없음)"))),
         items: [...items].sort((a, b) => ACTION_ORDER.indexOf(a.action) - ACTION_ORDER.indexOf(b.action) || a.keyword.localeCompare(b.keyword)),
         review: items.map((i) => i.review_on).filter(Boolean).sort()[0] as string | undefined,
+        due: items.filter((i) => isDue(i, today)).length,
+        reviewed: items.filter((i) => i.reviewed_at).length,
       })).sort((a, b) => b.items.length - a.items.length);
-      const due = list.filter((c) => c.review_on && c.review_on <= today).length;
+      const due = list.filter((c) => isDue(c, today)).length;
       return { day, list, batches, due };
     });
   }, [rows, today]);
 
-  const due = (data?.changes || []).filter((c) => c.review_on && c.review_on <= today).length;
-  const upcoming = (data?.changes || []).filter((c) => c.review_on && c.review_on > today)
+  const due = (data?.changes || []).filter((c) => isDue(c, today)).length;
+  const reviewedCount = (data?.changes || []).filter((c) => c.reviewed_at).length;
+  const upcoming = (data?.changes || []).filter((c) => c.review_on && c.review_on > today && !c.reviewed_at)
     .map((c) => c.review_on as string).sort()[0];
   const latestDay = days[0]?.day;
   const isOpen = (d: string) => open[d] ?? d === latestDay;
@@ -130,11 +155,12 @@ export function SaChangeLog({ brand }: { brand: string }) {
             <p className="text-xs text-muted-foreground mt-0.5">
               {formatNumber(data.changes.length)}건 · 조정한 날 {new Set(data.changes.map((c) => kstDay(c.applied_at))).size}일
               {data.latestData ? ` · 키워드 성과 ${md(data.latestData)}까지` : ""}
+              {reviewedCount > 0 ? ` · 판정 기록 ${formatNumber(reviewedCount)}건` : ""}
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs">
             {due > 0
-              ? <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400">검토일 지난 조정 {due}건</span>
+              ? <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-400" title="검토일이 지났는데 판정 결과가 아직 안 적힌 조정">검토일 지난 조정 {due}건</span>
               : upcoming && <span className="text-muted-foreground">다음 검토일 {md(upcoming)}</span>}
             <button onClick={() => setOnlyDue((v) => !v)}
               className={cn("px-2 py-1 rounded", onlyDue ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
@@ -160,7 +186,7 @@ export function SaChangeLog({ brand }: { brand: string }) {
                   {batches.map((b) => {
                     const bk = `${day}|${b.head}`;
                     const bOpen = !!openReason[bk];
-                    const bDue = !!b.review && b.review <= today;
+                    const bDue = b.due > 0;
                     return (
                       <div key={bk} className="border-t border-border/40">
                         <button onClick={() => setOpenReason((o) => ({ ...o, [bk]: !bOpen }))}
@@ -171,7 +197,7 @@ export function SaChangeLog({ brand }: { brand: string }) {
                           <span className="w-10 text-right text-muted-foreground whitespace-nowrap flex-shrink-0">{b.items.length}건</span>
                           <span className={cn("w-20 text-right whitespace-nowrap flex-shrink-0",
                             bDue ? "text-amber-700 dark:text-amber-400 font-medium" : "text-muted-foreground")}>
-                            {b.review ? `검토 ${md(b.review)}${bDue ? " 지남" : ""}` : ""}
+                            {b.review ? (bDue ? `검토 ${md(b.review)} 지남` : b.reviewed === b.items.length ? "판정 끝" : `검토 ${md(b.review)}`) : ""}
                           </span>
                         </button>
                         {bOpen && (
@@ -179,8 +205,24 @@ export function SaChangeLog({ brand }: { brand: string }) {
                             <div className="max-h-40 overflow-y-auto rounded bg-muted/30 px-3 py-2 space-y-1.5 text-xs text-muted-foreground">
                               {b.reasons.map((r) => <p key={r} className="leading-relaxed">{r}</p>)}
                             </div>
+                            {b.reviewed > 0 && (
+                              <div className="max-h-40 overflow-y-auto rounded border border-border/60 px-3 py-2 space-y-1.5 text-xs">
+                                {Array.from(new Map(b.items.filter((i) => i.reviewed_at).map((i) => [
+                                  `${i.review_verdict}|${i.review_note}`, i,
+                                ] as const)).values()).map((i) => (
+                                  <p key={`${i.review_verdict}|${i.review_note}`} className="leading-relaxed">
+                                    <span className={cn("px-1.5 py-0.5 rounded mr-1.5", VERDICT_TONE[i.review_verdict || ""] || "bg-muted text-foreground")}>
+                                      {i.review_verdict || "판정"}
+                                    </span>
+                                    <span className="text-muted-foreground">{i.reviewed_at ? `${md(kstDay(i.reviewed_at))} ` : ""}</span>
+                                    {i.review_note}
+                                    {i.review_doc && <span className="block text-[11px] text-muted-foreground mt-0.5">근거 문서: {i.review_doc}</span>}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
                             <div className="overflow-x-auto">
-                              <table className="w-full min-w-[720px] table-fixed text-xs">
+                              <table className="w-full min-w-[816px] table-fixed text-xs">
                                 <colgroup>
                                   <col />
                                   <col className="w-12" />
@@ -188,6 +230,7 @@ export function SaChangeLog({ brand }: { brand: string }) {
                                   <col className="w-28" />
                                   <col className="w-36" />
                                   <col className="w-20" />
+                                  <col className="w-24" />
                                   <col className="w-24" />
                                 </colgroup>
                                 <thead>
@@ -198,7 +241,8 @@ export function SaChangeLog({ brand }: { brand: string }) {
                                     <th className="py-1 px-2 text-right font-normal whitespace-nowrap">클릭/일 전→후</th>
                                     <th className="py-1 px-2 text-right font-normal whitespace-nowrap">비용/일 전→후</th>
                                     <th className="py-1 px-2 text-right font-normal whitespace-nowrap">전환 전→후</th>
-                                    <th className="py-1 px-2 text-right font-normal">판단</th>
+                                    <th className="py-1 px-2 text-right font-normal">성과 기간</th>
+                                    <th className="py-1 px-2 text-right font-normal">판정</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -226,6 +270,13 @@ export function SaChangeLog({ brand }: { brand: string }) {
                                         <td className={cn("py-1 px-2 text-right whitespace-nowrap", early ? "text-amber-600" : "text-muted-foreground")}>
                                           {p ? (early ? `보류 (${p.after.days}일)` : `${p.after.days}일`) : "-"}
                                         </td>
+                                        <td className="py-1 px-2 text-right whitespace-nowrap" title={verdictTitle(c)}>
+                                          {c.review_verdict
+                                            ? <span className={cn("px-1.5 py-0.5 rounded", VERDICT_TONE[c.review_verdict] || "bg-muted text-foreground")}>{c.review_verdict}</span>
+                                            : c.reviewed_at ? <span className="text-muted-foreground">기록됨</span>
+                                            : isDue(c, today) ? <span className="text-amber-700 dark:text-amber-400">미판정</span>
+                                            : <span className="text-muted-foreground">-</span>}
+                                        </td>
                                       </tr>
                                     );
                                   })}
@@ -246,6 +297,7 @@ export function SaChangeLog({ brand }: { brand: string }) {
         <p className="text-[11px] text-muted-foreground">
           전은 조정 전 {data.beforeDays ?? 7}일, 후는 조정 뒤 쌓인 날까지의 일평균입니다. 성과는 키워드 단위(PC·MO 합산)라 같은 키워드의 기기별 행은 같은 값입니다.
           조정 후 {MIN_JUDGE_DAYS}일이 안 차면 보류로 표시합니다. 묶음 줄을 누르면 사유 전문과 키워드별 성과가 펼쳐집니다.
+          &quot;검토일 지난 조정&quot;은 검토일이 지났는데 판정 결과(유지·원복·연장·잠금 등)가 아직 안 적힌 것만 셉니다. 판정 칸에 마우스를 올리면 근거가 보입니다.
         </p>
       </CardContent>
     </Card>

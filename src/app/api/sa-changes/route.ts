@@ -21,6 +21,8 @@ interface Change {
   keyword_id: string | null; keyword: string; device: string | null; action: string;
   bid_before: number | null; bid_after: number | null; lock_before: boolean | null; lock_after: boolean | null;
   reason: string | null; review_on: string | null; source_doc: string | null; actor: string | null;
+  // 2026-11-09 검토 결과 칸. select("*") 라 칸이 있으면 그대로 화면까지 간다(칸이 없는 DB 에선 빠짐).
+  review_verdict?: string | null; reviewed_at?: string | null; review_note?: string | null; review_doc?: string | null;
 }
 interface Perf { impressions: number; clicks: number; cost: number; conversions: number; days: number }
 
