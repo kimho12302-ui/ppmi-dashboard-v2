@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { freshFetch } from "@/lib/fresh-fetch";
 import { API, StatusBadge } from "@/components/settings/shared";
+import { CHANNEL_COLORS } from "@/lib/types";
 
 /* ── 채널 설정 탭 ── */
 interface ChannelRow { id: number; key: string; label: string; color: string; type: string; auto: boolean; order: number; active: boolean }
@@ -53,7 +54,7 @@ export function ChannelConfigTab() {
             <tbody>
               {channels.map((c) => (
                 <tr key={c.id} className="border-b hover:bg-muted/50">
-                  <td className="py-2 px-2"><div className="w-4 h-4 rounded" style={{ backgroundColor: c.color }} /></td>
+                  <td className="py-2 px-2"><div className="w-4 h-4 rounded" style={{ backgroundColor: CHANNEL_COLORS[c.key] || c.color }} title={CHANNEL_COLORS[c.key] ? "고정 색(화면에 쓰이는 색)" : "설정 색"} /></td>
                   <td className="py-2 px-2 font-mono text-xs">{c.key}</td>
                   <td className="py-2 px-2">{c.label}</td>
                   <td className="py-2 px-2"><span className={`px-1.5 py-0.5 rounded text-xs ${c.type === "ad" ? "bg-blue-500/10 text-blue-500" : "bg-green-500/10 text-green-500"}`}>{c.type === "ad" ? "광고" : "매출"}</span></td>
@@ -84,6 +85,8 @@ export function ChannelConfigTab() {
                 <option value="ad">광고</option><option value="sales">매출</option>
               </select></div>
           </div>
+          {/* 색 정본은 src/lib/types.ts 다(2026-11-09). useConfig 는 거기 있는 키엔 상수 색을 써서, 기본 채널 색은 여기서 바꿔도 화면에 반영되지 않는다. */}
+          <p className="text-xs text-muted-foreground mt-2">색상: 기본 채널(판매처·광고 매체) 색은 모든 화면에서 같게 고정되어 여기서 바꿔도 반영되지 않습니다. 새로 추가한 채널에만 적용됩니다.</p>
           <div className="flex items-center gap-3 mt-3">
             <label className="flex items-center gap-1.5 text-sm">
               <input type="checkbox" checked={form.auto} onChange={(e) => setForm({ ...form, auto: e.target.checked })} /> 자동 수집
@@ -99,4 +102,4 @@ export function ChannelConfigTab() {
     </Card>
   );
 }
-
+

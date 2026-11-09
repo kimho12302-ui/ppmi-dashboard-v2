@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { freshFetch } from "@/lib/fresh-fetch";
 import { API, StatusBadge } from "@/components/settings/shared";
+import { BRAND_COLORS } from "@/lib/types";
 
 /* ── 브랜드 설정 탭 ── */
 interface BrandRow { id: number; key: string; label: string; color: string; order: number; active: boolean; parent_key: string | null; category: string | null }
@@ -53,7 +54,7 @@ export function BrandConfigTab() {
             <tbody>
               {brands.map((b) => (
                 <tr key={b.id} className="border-b hover:bg-muted/50">
-                  <td className="py-2 px-2"><div className="w-4 h-4 rounded" style={{ backgroundColor: b.color }} /></td>
+                  <td className="py-2 px-2"><div className="w-4 h-4 rounded" style={{ backgroundColor: BRAND_COLORS[b.key] || b.color }} title={BRAND_COLORS[b.key] ? "고정 색(화면에 쓰이는 색)" : "설정 색"} /></td>
                   <td className="py-2 px-2 font-mono text-xs">{b.key}</td>
                   <td className="py-2 px-2">{b.label}</td>
                   <td className="py-2 px-2 text-muted-foreground">{b.category || "—"}</td>
@@ -81,6 +82,8 @@ export function BrandConfigTab() {
             <div><label className="text-xs text-muted-foreground">카테고리</label>
               <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full border rounded px-2 py-1.5 text-sm bg-transparent mt-0.5" /></div>
           </div>
+          {/* 색 정본은 src/lib/types.ts 다(2026-11-09). useConfig 는 거기 있는 키엔 상수 색을 써서, 기본 브랜드 색은 여기서 바꿔도 화면에 반영되지 않는다. */}
+          <p className="text-xs text-muted-foreground mt-2">색상: 기본 브랜드(너티·아이언펫·사입·밸런스랩) 색은 모든 화면에서 같게 고정되어 여기서 바꿔도 반영되지 않습니다. 새로 추가한 브랜드에만 적용됩니다.</p>
           <div className="flex items-center gap-3 mt-3">
             <button onClick={save} className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90">
               {editId ? "수정" : "추가"}
@@ -93,4 +96,4 @@ export function BrandConfigTab() {
     </Card>
   );
 }
-
+
