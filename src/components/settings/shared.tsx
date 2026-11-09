@@ -91,7 +91,7 @@ export function ManualRowTable({
       if (syncFalse > 0) {
         setSummary({
           tone: "warn",
-          text: `${saved}건 저장 완료 (대시보드 즉시 반영). ⚠️ 통계시트 즉시반영은 실패 — 다음 자동싱크(매일 09시·21시)에 반영됩니다.`,
+          text: `${saved}건 저장 완료 (대시보드 즉시 반영). ⚠️ 통계시트 즉시반영은 실패, 다음 자동싱크(매일 09시·21시)에 반영됩니다.`,
         });
       } else if (syncTrue > 0) {
         setSummary({ tone: "ok", text: `${saved}건 저장 완료 · 통계시트 자동반영 시작됨 (~1분 내)` });
@@ -99,7 +99,7 @@ export function ManualRowTable({
         setSummary({ tone: "ok", text: `${saved}건 저장 완료` });
       }
     } else if (failed > 0) {
-      setSummary({ tone: "error", text: `저장 실패 ${failed}건 — 각 행의 ❌에 마우스를 올리면 사유가 보입니다.` });
+      setSummary({ tone: "error", text: `저장 실패 ${failed}건: 각 행의 ❌에 마우스를 올리면 사유가 보입니다.` });
     }
     if (saved > 0) onSaved?.();
   };

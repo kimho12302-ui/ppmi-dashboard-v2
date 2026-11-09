@@ -205,7 +205,7 @@ export function EventInputCard() {
   return (
     <Card>
       <CardContent className="p-4 space-y-3">
-        <h3 className="font-medium">📌 마케팅 이벤트 <span className="text-xs text-muted-foreground font-normal">캠페인·프로모션·신제품 출시 등 — 차트에 표시됨</span></h3>
+        <h3 className="font-medium">📌 마케팅 이벤트 <span className="text-xs text-muted-foreground font-normal">캠페인·프로모션·신제품 출시 등, 차트에 표시됨</span></h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">날짜</label>

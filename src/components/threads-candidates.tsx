@@ -195,6 +195,7 @@ function CandidateCard({ item, queuePos, busy, copied, onChoose, onDrop, onUndo,
   const dim = item.status === "rejected";
   const posts = item.body.split(POST_SEP);
   const [copiedPost, setCopiedPost] = useState<number | null>(null);
+  const [showBody, setShowBody] = useState(false);
   async function onCopyPost(i: number, text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -225,7 +226,15 @@ function CandidateCard({ item, queuePos, busy, copied, onChoose, onDrop, onUndo,
         {item.research.krCoverage && <span className="rounded px-1.5 py-0.5 border">{item.research.krCoverage}</span>}
       </div>
 
-      <div className="space-y-2 max-h-96 overflow-y-auto">
+      {/* 초안 전문은 기본으로 접는다(2026-11-04). 다 펼쳐 두면 콘텐츠 화면이 3,888px 까지 길어졌다.
+          「전체 복사」는 item.body 를 바로 쓰므로 접힌 채로도 된다. */}
+      <button type="button" onClick={() => setShowBody((v) => !v)} className="text-left rounded bg-muted/40 p-2 hover:bg-muted/60">
+        <span className="text-muted-foreground">
+          {showBody ? "▾ 초안 접기" : `▸ 초안 펼치기 (포스트 ${posts.length}개 · ${item.body.length.toLocaleString()}자)`}
+        </span>
+        {!showBody && <span className="mt-1 line-clamp-2">{posts[0]}</span>}
+      </button>
+      {showBody && <div className="space-y-2 max-h-96 overflow-y-auto">
         {posts.map((p, i) => (
           <div key={i} className="rounded bg-muted/40 p-2">
             <div className="flex items-center justify-between mb-1 text-muted-foreground">
@@ -235,7 +244,7 @@ function CandidateCard({ item, queuePos, busy, copied, onChoose, onDrop, onUndo,
             <div className="whitespace-pre-wrap leading-relaxed">{p}</div>
           </div>
         ))}
-      </div>
+      </div>}
 
       <div className="space-y-0.5">
         <p className="text-muted-foreground">출처</p>
