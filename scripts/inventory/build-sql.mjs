@@ -1,18 +1,29 @@
 // 재고 화면 DB 표 SQL 을 만든다 (2026-11-10).
 //
-//   node scripts/inventory/build-sql.mjs [매칭표 초안 json]  → docs/sql/2026-11-10-inventory.sql
+//   node scripts/inventory/build-sql.mjs [매칭표 초안 json] --sheet <시트 json> [--snapshot <위킵 스냅샷 json>] [--dev-costs-out <json>]
+//     → docs/sql/2026-11-10-inventory.sql
+//   시트 json = 「2026 재고·출고 통합관리」 탭별 값({탭: [[행]]}, scripts/inventory/read-sheet.mjs 로 받음).
+//     원가 시드(inventory_costs)를 만든다(2026-11-10 김호: 시트 원가가 정본). 스냅샷으로 시트 상품명 ↔ 위킵 SKU 를 맞춘다.
+//   --dev-costs-out 을 주면 같은 원가 줄을 개발용 목업(INVENTORY_DEV_MANUAL_FILE 의 costs)에도 쓴다.
 //
 // 표 정의는 이 파일 TABLES 에, 위킵 SKU 매칭표 시드는 볼트 초안
 // (settings/collectors/raw/wekeep-sku-map.draft.json, 확실 77 · 추정 29 · 없음 15)에서 만든다.
 // 시드는 on conflict (sku_no) do nothing 이라 SQL 을 다시 실행해도 사람이 설정 화면에서 확정한 줄을 덮지 않는다.
 // 새 SKU 가 생기면 초안을 다시 만들고 이 스크립트를 돌려 새 줄만 들어가게 한다.
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { extractSheetCosts, matchSheetCosts } from "../../src/lib/inventory.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(HERE, "../../docs/sql/2026-11-10-inventory.sql");
-const DRAFT = process.argv[2] || "H:/내 드라이브/obsidian/Obsidian/settings/collectors/raw/wekeep-sku-map.draft.json";
+const RAW = "H:/내 드라이브/obsidian/Obsidian/settings/collectors/raw";
+const arg = (name) => { const i = process.argv.indexOf(name); return i >= 0 ? process.argv[i + 1] : undefined; };
+const DRAFT = (process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : null) || `${RAW}/wekeep-sku-map.draft.json`;
+const SHEET = arg("--sheet");
+const SNAPSHOT = arg("--snapshot") || `${RAW}/wekeep-snapshot.json`;
+const DEV_COSTS_OUT = arg("--dev-costs-out");
+const stripBom = (t) => t.replace(/^\uFEFF/, "");
 
 const q = (v) => (v === null || v === undefined ? "null" : typeof v === "boolean" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
 
@@ -62,7 +73,7 @@ function seedRows(draft) {
 }
 
 const HEADER = (counts) => `-- ============================================================
--- 2026-11-10  재고 화면 (/inventory) 표 9개
+-- 2026-11-10  재고 화면 (/inventory) 표 8개
 -- ============================================================
 --
 --  왜: 「2026 재고·출고 통합관리」 시트가 하는 판단(품절·발주 필요·과재고·예상 소진일·재고 가치)을
@@ -197,9 +208,26 @@ insert into inventory_rules (scope_kind, scope_key, warn_days, soon_days, over_d
   ('brand', 'saip', 15, 30, 60)
 on conflict (scope_kind, scope_key) do nothing;
 
--- 대시보드는 anon 키로 읽고 쓴다(다른 손 입력 표·원천 표와 같은 조건)
-grant select, insert, update, delete on raw_wekeep_snapshot, raw_wekeep_daily, wekeep_sku_map,
-  inventory_manual_stock, inventory_orders, inventory_notes, inventory_rules to anon, authenticated;
+-- ── 8. 원가 (재고 가치 = 원가 × 재고) ────────────────────
+-- 2026-11-10 김호: 원가는 시트 「2026 재고·출고 통합관리」 원가 칸이 정본(사입 탭 R열, 너티 탭 P열, 닥터레이 탭 C열 공급가).
+-- 대시보드 product_costs(제조원가)는 쓰지 않는다. 이 표에 없는 SKU 는 재고 화면에서 「원가 없음」.
+-- cost_key = 위킵 SKU 번호. 위킵에 없는 시트 상품(닥터레이 등)은 'sheet:<탭>:<상품명>' 으로 넣어 두기만 한다(sku_no 빈칸).
+-- source = 읽은 칸(sheet:<탭>!<열><행>) 또는 '설정 입력'. 시트 은퇴 뒤에는 설정 > 재고 > 원가에서 고친다.
+create table if not exists inventory_costs (
+  cost_key      text primary key,
+  sku_no        text unique,
+  product_name  text not null,
+  cost          numeric not null check (cost > 0),
+  source        text,
+  note          text,
+  updated_at    timestamptz not null default now()
+);
+
+-- 대시보드는 anon 키로 읽고 쓴다(다른 손 입력 표·원천 표와 같은 조건).
+-- 위킵 원천 표와 매칭표는 지우지 않는다(upsert 만): delete 권한을 주지 않는다.
+grant select, insert, update on raw_wekeep_snapshot, raw_wekeep_daily, wekeep_sku_map to anon, authenticated;
+grant select, insert, update, delete on inventory_manual_stock, inventory_orders, inventory_notes, inventory_rules, inventory_costs
+  to anon, authenticated;
 grant usage, select on sequence inventory_orders_id_seq to anon, authenticated;
 `;
 
@@ -214,9 +242,46 @@ on conflict (sku_no) do nothing;
 `;
 }
 
-const draft = JSON.parse(readFileSync(DRAFT, "utf8").replace(/^\uFEFF/, ""));
+/** 원가 시드: 시트 원가 칸 → 위킵 SKU (src/lib/inventory.ts extractSheetCosts · matchSheetCosts) */
+function costSql() {
+  if (!SHEET) return { sql: "\n-- (원가 시드 없음: --sheet 를 주지 않음)\n", summary: "원가 시드 없음" };
+  const tabs = JSON.parse(stripBom(readFileSync(SHEET, "utf8")));
+  const snapDoc = JSON.parse(stripBom(readFileSync(SNAPSHOT, "utf8")));
+  const items = Object.values(snapDoc.items);
+  const latest = items.reduce((m, v) => (v.date > m ? v.date : m), "");
+  const snapshot = items.filter((v) => v.date === latest).map((v) => ({ sku_no: v.skuNo, product_name: v.productName, barcode: v.productManageCode }));
+  const { matched, unmatched } = matchSheetCosts(extractSheetCosts(tabs), snapshot);
+  const extra = unmatched.filter((u) => !u.reason.startsWith("같은")).map((u) => ({
+    cost_key: `sheet:${u.tab}:${u.name}`, sku_no: null, product_name: u.name, cost: u.cost, source: `sheet:${u.tab}!${u.cell}`,
+    note: "위킵 SKU 와 짝 없음(재고 화면에 안 붙음)",
+  }));
+  const rows = [...matched, ...extra];
+  if (DEV_COSTS_OUT) {
+    const prev = existsSync(DEV_COSTS_OUT) ? JSON.parse(readFileSync(DEV_COSTS_OUT, "utf8")) : {};
+    writeFileSync(DEV_COSTS_OUT, JSON.stringify({ ...prev, costs: rows }, null, 1), "utf8");
+  }
+  const how = (k) => matched.filter((m) => m.how === k).length;
+  const summary = `원가 시드 ${rows.length}줄 = 위킵 SKU 에 맞춘 ${matched.length}(상품명 ${how("상품명")} · 바코드 ${how("바코드")} · SKU 번호 ${how("SKU 번호")}) + 위킵에 없는 시트 상품 ${extra.length}`;
+  console.log(summary);
+  for (const u of unmatched) console.log(`  못 맞춤: ${u.tab}!${u.cell} ${u.name} ${u.cost} (${u.reason})`);
+  const cols = ["cost_key", "sku_no", "product_name", "cost", "source", "note"];
+  const values = rows.map((r) => `  (${cols.map((c) => (c === "cost" ? String(r.cost) : q(r[c]))).join(", ")})`).join(",\n");
+  return {
+    summary,
+    sql: `
+-- ── 원가 시드 (시트에서 생성, ${latest} 위킵 스냅샷과 매칭. 다시 실행해도 이미 있는 줄은 건드리지 않음) ──
+-- ${summary}
+insert into inventory_costs (${cols.join(", ")}) values
+${values}
+on conflict (cost_key) do nothing;
+`,
+  };
+}
+
+const draft = JSON.parse(stripBom(readFileSync(DRAFT, "utf8")));
 const rows = seedRows(draft);
 const count = (k) => rows.filter((r) => r.confidence === k).length;
 const counts = `${rows.length}줄 = 확실 ${count("확실")} · 추정 ${count("추정")} · 없음 ${count("없음")} (그중 판정 제외 = 부자재·판촉물 ${rows.filter((r) => r.exclude).length})`;
-writeFileSync(OUT, HEADER(counts) + TABLES + seedSql(rows), "utf8");
+const costs = costSql();
+writeFileSync(OUT, HEADER(`${counts}\n--  ${costs.summary}`) + TABLES + seedSql(rows) + costs.sql, "utf8");
 console.log(`썼음: ${OUT}\n${counts}`);

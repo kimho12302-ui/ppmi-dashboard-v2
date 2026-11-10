@@ -7,7 +7,7 @@
 import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/settings/shared";
-import { BRAND_LABEL, type InvBrand } from "@/lib/inventory";
+import { BRAND_LABEL, parseWekeepName, type InvBrand } from "@/lib/inventory";
 import { postInventory, type InventorySettingsData } from "./inventory-tab";
 
 export interface MapRow {
@@ -29,6 +29,7 @@ const FILTERS = [
   { key: "all", label: "전체" },
   { key: "confirmed", label: "확인함" },
   { key: "excluded", label: "판정 제외" },
+  { key: "unmapped", label: "매칭표에 없는 위킵 SKU" },
 ] as const;
 type Filter = (typeof FILTERS)[number]["key"];
 const inp = "w-full px-2 py-1 rounded border bg-background text-xs";
@@ -38,12 +39,21 @@ export function InventoryMapReview({ data, onSaved }: { data: InventorySettingsD
   const [edit, setEdit] = useState<MapRow | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const available = useMemo(() => new Map(data.skus.map((s) => [s.sku_no, s.available])), [data]);
-  const rows = useMemo(() => data.map.filter((r) =>
+  // 위킵에 새로 생긴 SKU 는 매칭표에 줄이 없다. 「짝짓기」로 기본 품목을 넣으면 그때 줄이 생긴다
+  const unmapped = useMemo<MapRow[]>(() => {
+    const known = new Set(data.map.map((m) => m.sku_no));
+    return data.skus.filter((s) => !known.has(s.sku_no)).map((s) => {
+      const p = parseWekeepName(s.name);
+      return { sku_no: s.sku_no, product_name: s.name, barcode: null, product_code: null, component: null, brand: p.brand,
+        supplier: p.supplier, confidence: "없음", confirmed: false, exclude: false, note: "매칭표에 없던 위킵 SKU" };
+    });
+  }, [data]);
+  const rows = useMemo(() => filter === "unmapped" ? unmapped : data.map.filter((r) =>
     filter === "all" ? true
       : filter === "confirmed" ? r.confirmed
         : filter === "excluded" ? r.exclude
           : !r.confirmed && !r.exclude && r.confidence !== "확실",
-  ).sort((a, b) => (a.confidence === b.confidence ? String(a.product_name).localeCompare(String(b.product_name), "ko") : a.confidence === "없음" ? -1 : 1)), [data, filter]);
+  ).sort((a, b) => (a.confidence === b.confidence ? String(a.product_name).localeCompare(String(b.product_name), "ko") : a.confidence === "없음" ? -1 : 1)), [data, filter, unmapped]);
   const counts = useMemo(() => ({
     확실: data.map.filter((r) => r.confidence === "확실").length,
     추정: data.map.filter((r) => r.confidence === "추정").length,
@@ -70,7 +80,7 @@ export function InventoryMapReview({ data, onSaved }: { data: InventorySettingsD
       <div className="flex flex-wrap items-center gap-1.5">
         {FILTERS.map((f) => (
           <button key={f.key} type="button" onClick={() => setFilter(f.key)} aria-pressed={filter === f.key}
-            className={`px-2.5 py-0.5 rounded-full border text-xs ${filter === f.key ? "bg-foreground text-background" : "bg-card text-muted-foreground"}`}>{f.label}</button>
+            className={`px-2.5 py-0.5 rounded-full border text-xs ${filter === f.key ? "bg-foreground text-background" : "bg-card text-muted-foreground"}`}>{f.label}{f.key === "unmapped" ? ` ${unmapped.length}` : ""}</button>
         ))}
         <span className="text-xs text-muted-foreground ml-1">{rows.length}줄</span>
         <StatusBadge status={status} />
@@ -112,7 +122,7 @@ export function InventoryMapReview({ data, onSaved }: { data: InventorySettingsD
                 <td className="py-1.5 px-2 text-muted-foreground max-w-[280px]">{r.note}</td>
                 <td className="py-1.5 px-2 whitespace-nowrap space-x-2">
                   {!r.confirmed && r.component && <button type="button" className="text-primary hover:underline" onClick={() => save(r, { confirmed: true })}>확인</button>}
-                  <button type="button" className="hover:underline" onClick={() => setEdit(r)}>고치기</button>
+                  <button type="button" className="hover:underline" onClick={() => setEdit(r)}>{filter === "unmapped" ? "짝짓기" : "고치기"}</button>
                   <button type="button" className="text-muted-foreground hover:underline" onClick={() => save(r, { exclude: !r.exclude })}>{r.exclude ? "제외 풀기" : "판정 제외"}</button>
                 </td>
               </tr>

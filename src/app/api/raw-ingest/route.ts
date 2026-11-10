@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { revalidateAfter } from "@/lib/api-cache";
 import { ingestWekeep, isWekeepSource } from "@/lib/wekeep-ingest";
 import { kstDate } from "@/lib/date";
+import { API_KEY_HEADER, isApiKeyValid } from "@/lib/team-auth";
 
 // 원천(raw) 수집 값을 받는 자리. 2026-09-17 신설.
 //
@@ -12,7 +13,9 @@ import { kstDate } from "@/lib/date";
 // 기존 집계 테이블(daily_funnel·daily_ad_spend)은 건드리지 않는다. 화면 숫자가 바뀌면 안 된다.
 // 이 라우트는 raw_* 테이블만 쓴다.
 //
-// 인증: /api/settings 와 같다(요청 단 인증 없음, 배포 자체가 보호 경계). 거기를 바꾸면 여기도 같이 바꾼다.
+// 인증(2026-11-09 대시보드 잠금 이후): 미들웨어(src/middleware.ts)가 팀 로그인 쿠키 또는 x-ppmi-key 를 요구한다.
+//   볼트 수집기는 lib/push.mjs → lib/dashboard-key.mjs 로 x-ppmi-key 를 붙여 보낸다.
+//   위킵 재고(wekeep-*, 2026-11-10)는 이 라우트에서 한 번 더 x-ppmi-key 를 본다(사람 쿠키로는 못 씀, /api/wekeep-ingest 와 같음).
 
 type Source =
   | "cafe24-cart"
@@ -59,6 +62,9 @@ async function postImpl(req: NextRequest) {
 
   // 2026-11-10 위킵 재고(wekeep-snapshot · wekeep-daily)는 검증·심박이 따로 있어 전용 함수로 넘긴다(/api/wekeep-ingest 와 같음)
   if (isWekeepSource(body.source)) {
+    if (!isApiKeyValid(req.headers.get(API_KEY_HEADER))) {
+      return NextResponse.json({ error: "수집기 접근 키(x-ppmi-key)가 필요합니다" }, { status: 401 });
+    }
     const res = await ingestWekeep(body.source, body.rows, kstDate());
     return NextResponse.json(res.body, { status: res.status });
   }

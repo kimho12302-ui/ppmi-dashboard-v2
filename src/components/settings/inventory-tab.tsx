@@ -20,6 +20,7 @@ interface StockRow { sku_no: string; location: string; as_of: string; qty: numbe
 interface OrderRow { id: number; sku_no: string; qty: number; ordered_at: string; expected_at: string | null; status: string; note: string | null }
 interface NoteRow { sku_no: string; kind: string; note: string | null; exclude: boolean }
 interface RuleRow { scope_kind: string; scope_key: string; warn_days: number; soon_days: number; over_days: number }
+interface CostRow { cost_key: string; sku_no: string | null; product_name: string; cost: number; source: string | null; note: string | null }
 export interface InventorySettingsData {
   mode: "db" | "dev-files";
   missing: string[];
@@ -29,6 +30,7 @@ export interface InventorySettingsData {
   orders: OrderRow[];
   notes: NoteRow[];
   rules: RuleRow[];
+  costs: CostRow[];
   defaults: Record<string, { warn: number; soon: number; over: number }>;
   components: string[];
 }
@@ -38,6 +40,7 @@ const SUBTABS = [
   { key: "order", label: "발주" },
   { key: "note", label: "판매 중지 메모" },
   { key: "rule", label: "판정 기준 일수" },
+  { key: "cost", label: "원가" },
   { key: "map", label: "매칭표 확인" },
 ] as const;
 type Sub = (typeof SUBTABS)[number]["key"];
@@ -86,6 +89,7 @@ export function InventoryTab() {
       {data && sub === "order" && <OrderPanel data={data} nameOf={nameOf} onSaved={load} />}
       {data && sub === "note" && <NotePanel data={data} nameOf={nameOf} onSaved={load} />}
       {data && sub === "rule" && <RulePanel data={data} onSaved={load} />}
+      {data && sub === "cost" && <CostPanel data={data} onSaved={load} />}
       {data && sub === "map" && <InventoryMapReview data={data} onSaved={load} />}
     </div>
   );
@@ -103,8 +107,53 @@ function SkuSelect({ skus, value, onChange, filter }: { skus: Sku[]; value: stri
 
 async function del(params: Record<string, string>, onSaved: () => void) {
   if (!confirm("지울까요?")) return;
-  await fetch(`${API}?${new URLSearchParams(params)}`, { method: "DELETE" });
+  const res = await fetch(`${API}?${new URLSearchParams(params)}`, { method: "DELETE" });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    alert(`지우지 못했습니다: ${json.error || res.status}`);
+  }
   onSaved();
+}
+
+/** 원가 (재고 가치 = 원가 × 재고). 시트 「2026 재고·출고 통합관리」 원가가 정본이었고, 시트 은퇴 뒤에는 여기서 고친다 */
+function CostPanel({ data, onSaved }: { data: InventorySettingsData; onSaved: () => void }) {
+  const [f, setF] = useState({ sku_no: "", cost: "", note: "" });
+  const [status, setStatus] = useState<string | null>(null);
+  const [onlyMissing, setOnlyMissing] = useState(false);
+  const costBySku = useMemo(() => new Map(data.costs.filter((c) => c.sku_no).map((c) => [c.sku_no as string, c])), [data]);
+  const nameOf = (sku: string) => data.skus.find((s) => s.sku_no === sku)?.name || sku;
+  const save = async () => {
+    setStatus(await postInventory("cost", { sku_no: f.sku_no, cost: Number(f.cost), note: f.note, product_name: nameOf(f.sku_no) }));
+    setF({ sku_no: "", cost: "", note: "" });
+    onSaved();
+  };
+  const missingSkus = data.skus.filter((s) => !costBySku.has(s.sku_no));
+  const rows = onlyMissing
+    ? missingSkus.map((s) => [s.name, "-", "원가 없음", "", String(s.available),
+      <button key="e" type="button" className="text-xs text-primary hover:underline" onClick={() => setF({ sku_no: s.sku_no, cost: "", note: "" })}>넣기</button>])
+    : data.costs.map((c) => [c.product_name, c.cost.toLocaleString("ko-KR") + "원", c.source || "", c.note || "", c.sku_no ? "위킵 SKU" : "위킵에 없음",
+      <span key="a" className="space-x-2 whitespace-nowrap">
+        {c.sku_no && <button type="button" className="text-xs text-primary hover:underline" onClick={() => setF({ sku_no: c.sku_no as string, cost: String(c.cost), note: c.note || "" })}>고치기</button>}
+        <button type="button" className="text-xs text-red-500 hover:underline" onClick={() => del({ type: "cost", cost_key: c.cost_key }, onSaved)}>삭제</button>
+      </span>]);
+  return (
+    <Card><CardContent className="p-4 space-y-4">
+      <div>
+        <h3 className="font-semibold">원가</h3>
+        <p className="text-xs text-muted-foreground mt-1">재고 화면의 <b>재고 가치 = 원가 × 재고</b> 에 쓰는 값입니다. 처음 값은 시트 「2026 재고·출고 통합관리」 각 탭 원가 칸(사입 R열 · 너티 P열 · 닥터레이 C열 공급가)에서 가져왔고, 출처 칸에 읽은 칸이 적혀 있습니다. 여기 없는 상품은 재고 화면에서 「원가 없음」이고 합계에서 빠집니다. 설정 &gt; 제품 원가 탭의 값은 쓰지 않습니다.</p>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="col-span-2"><label className="text-xs text-muted-foreground">위킵 SKU</label><SkuSelect skus={data.skus} value={f.sku_no} onChange={(v) => setF({ ...f, sku_no: v, cost: costBySku.get(v) ? String(costBySku.get(v)?.cost) : f.cost })} /></div>
+        <div><label className="text-xs text-muted-foreground">원가(원, 낱개 1개)</label><input type="number" min={1} value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value })} className={inp} /></div>
+        <div className="col-span-2"><label className="text-xs text-muted-foreground">메모</label><input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} className={inp} placeholder="예: 11월 매입가 인상" /></div>
+      </div>
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={save} disabled={!f.sku_no || !(Number(f.cost) > 0)} className={btn}>저장</button><StatusBadge status={status} />
+        <label className="ml-auto text-xs flex items-center gap-1.5"><input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} /> 원가 없는 위킵 SKU 만 보기 ({missingSkus.length})</label>
+      </div>
+      <SimpleTable head={onlyMissing ? ["위킵 상품", "원가", "", "", "위킵 재고", ""] : ["상품", "원가", "출처", "메모", "구분", ""]} rows={rows} />
+    </CardContent></Card>
+  );
 }
 
 function StockPanel({ data, nameOf, onSaved }: { data: InventorySettingsData; nameOf: Map<string, string>; onSaved: () => void }) {

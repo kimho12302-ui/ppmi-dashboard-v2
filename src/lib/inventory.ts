@@ -49,11 +49,12 @@ export const DEFAULT_THRESHOLDS: Record<"nutty" | "saip" | "default", Thresholds
 export type InvBrand = "nutty" | "saip" | "ironpet" | "other";
 export const BRAND_LABEL: Record<InvBrand, string> = { nutty: "너티", saip: "사입", ironpet: "아이언펫", other: "기타" };
 
-export type InvStatus = "soldout" | "order" | "soon" | "incoming" | "ok" | "over" | "nomove" | "excluded";
+export type InvStatus = "soldout" | "order" | "soon" | "late" | "incoming" | "ok" | "over" | "nomove" | "excluded";
 export const STATUS_LABEL: Record<InvStatus, string> = {
   soldout: "품절",
   order: "발주 필요",
   soon: "곧 발주",
+  late: "입고 지연",
   incoming: "입고 대기",
   ok: "정상",
   over: "과재고",
@@ -63,11 +64,12 @@ export const STATUS_LABEL: Record<InvStatus, string> = {
 /** 묶음: ① 지금 손댈 것 ② 정상 ③ 과재고 ④ 출고 0 ⑤ 판정 제외 */
 export type InvGroup = "act" | "ok" | "over" | "nomove" | "excluded";
 export const GROUP_OF: Record<InvStatus, InvGroup> = {
-  soldout: "act", order: "act", soon: "act", incoming: "act",
+  soldout: "act", order: "act", soon: "act", late: "act", incoming: "act",
   ok: "ok", over: "over", nomove: "nomove", excluded: "excluded",
 };
 /** 「지금 손댈 것」 안의 순서: 품절 → 발주 필요 → 곧 발주 → 입고 대기, 같은 상태는 남은 날 짧은 순 */
-const ACT_ORDER: Record<InvStatus, number> = { soldout: 0, order: 1, soon: 2, incoming: 3, ok: 4, over: 5, nomove: 6, excluded: 7 };
+/** 「지금 손댈 것」 안의 순서: 입고 지연 → 품절 → 발주 필요 → 곧 발주 → 입고 대기 */
+const ACT_ORDER: Record<InvStatus, number> = { late: 0, soldout: 1, order: 2, soon: 3, incoming: 4, ok: 5, over: 6, nomove: 7, excluded: 8 };
 
 // ── 입력 행 (DB 열 이름 그대로) ──
 export interface SnapshotRow {
@@ -129,7 +131,6 @@ export interface OrderRow {
 }
 export interface NoteRow { sku_no: string; kind?: string | null; note?: string | null; exclude?: boolean | null }
 export interface RuleRow { scope_kind: "brand" | "supplier" | string; scope_key: string; warn_days: number; soon_days: number; over_days: number }
-export interface CostRow { product: string; brand: string; manufacturing_cost: number | null }
 
 // ── 날짜 ──
 export function addDays(ymd: string, n: number): string {
@@ -140,6 +141,13 @@ export function addDays(ymd: string, n: number): string {
 export function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 }
+/** 실제로 있는 날짜인지(2026-02-31 은 거절) */
+export function isRealDate(ymd: unknown): ymd is string {
+  if (typeof ymd !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+  const d = new Date(`${ymd}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === ymd;
+}
+
 export function dateRange(from: string, to: string): string[] {
   const out: string[] = [];
   for (let d = from; d <= to; d = addDays(d, 1)) out.push(d);
@@ -313,6 +321,10 @@ export interface InventoryRow {
   runway_with_incoming: number | null;
   stockout_date: string | null;
   status: InvStatus;
+  /** 발주 입력을 반영하기 전 상태(입고 대기·입고 지연이면 그 밑의 품절·발주 필요·곧 발주) */
+  base_status: InvStatus;
+  /** 너티인데 쿠팡 재고 미입력 */
+  coupang_missing: boolean;
   group: InvGroup;
   /** 판정 이유 한 줄 */
   reason: string;
@@ -335,17 +347,22 @@ export interface ComputeInput {
   orders?: readonly OrderRow[];
   notes?: readonly NoteRow[];
   rules?: readonly RuleRow[];
-  costs?: readonly CostRow[];
+  /** SKU 원가(inventory_costs, 시트 원가가 정본). 없으면 그 SKU 는 「원가 없음」 */
+  skuCosts?: readonly SkuCostRow[];
   /** 너티 쿠팡 판매(기본 품목 낱개 수량, 기간 합). component 이름 그대로 */
   coupangSales?: readonly { component: string; qty: number }[];
   coupangWindow?: { from: string; to: string; days: number } | null;
+  /** 판매 구성표에 없어 쿠팡 판매 속도에서 빠진 너티 쿠팡 판매 상품(이름 · 수량 합) */
+  coupangUnmapped?: { products: string[]; qty: number } | null;
   window?: number;
-  /** 대시보드 상품 코드 → 상품 이름(src/lib/product-master.json). 원가를 이 이름으로도 찾는다 */
-  codeNames?: Readonly<Record<string, string>>;
+  /** 오늘(KST). 입고 예정일이 지났는지, 미래 기준일 손 입력을 거를 때 쓴다. 없으면 스냅샷 날짜 */
+  today?: string;
 }
 
 export interface InventoryCards {
   counts: Record<InvStatus, number>;
+  /** 카드 숫자: 입고 지연은 밑의 상태로 품절·발주 필요 카드에 더한다(곧 발주였던 지연은 발주 필요로) */
+  card: { soldout: number; order: number; soon: number; over: number; late: number; incoming: number };
   value_total: number;
   value_by_brand: Record<InvBrand, number>;
   /** 원가가 없어 재고 가치에서 빠진 SKU 수(재고가 있는 것만) */
@@ -360,6 +377,7 @@ export interface InventoryResult {
   window: SpeedResult["days"];
   window_from: string | null;
   coupang_window: { from: string; to: string; days: number } | null;
+  coupang_unmapped: { products: string[]; qty: number } | null;
   rows: InventoryRow[];
   cards: InventoryCards;
 }
@@ -374,24 +392,6 @@ function latestBy<T>(rows: readonly T[], key: (r: T) => string, date: (r: T) => 
   return m;
 }
 
-/** 원가 찾기: 기본 품목 이름 → 대시보드 상품 코드의 이름 → 위킵 상품명(머리표 뗀 것) 순. 0 원은 원가 없음으로 본다(묶음 원가를 낱개에 붙이지 않음) */
-function makeCostLookup(costs: readonly CostRow[]) {
-  const m = new Map<string, number>();
-  for (const c of costs) {
-    const v = Number(c.manufacturing_cost);
-    if (!(v > 0)) continue;
-    m.set(`${c.brand}|${nameKey(c.product)}`, v);
-  }
-  return (brand: InvBrand, names: (string | null | undefined)[]): { cost: number; basis: string } | null => {
-    for (const n of names) {
-      if (!n) continue;
-      const v = m.get(`${brand}|${nameKey(n)}`);
-      if (v) return { cost: v, basis: n };
-    }
-    return null;
-  };
-}
-
 /** 기간 끝: 수집된 날짜별 마지막 날, 단 스냅샷 날(오늘, 출고 진행 중)은 뺀다 */
 export function dailyThrough(daily: readonly DailyRow[], snapshotDate: string | null): string | null {
   let max: string | null = null;
@@ -404,11 +404,24 @@ export function dailyThrough(daily: readonly DailyRow[], snapshotDate: string | 
 
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
+/**
+ * 쿠팡 판매 기간: 끝 = min(너티 쿠팡 판매 마지막 날, 오늘 − 지연 일수), 길이 = days.
+ * 판매 원장이 아예 없으면 null(쿠팡 쪽 계산 안 함).
+ */
+export function coupangWindowFor(lastSaleDate: string | null, today: string, lagDays = COUPANG_SALES_LAG_DAYS, days = COUPANG_WINDOW_DAYS):
+  { from: string; to: string; days: number } | null {
+  if (!lastSaleDate) return null;
+  const lagEnd = addDays(today, -lagDays);
+  const to = lastSaleDate < lagEnd ? lastSaleDate : lagEnd;
+  return { from: addDays(to, -(days - 1)), to, days };
+}
+
 export function computeInventory(input: ComputeInput): InventoryResult {
   const window = input.window ?? DEFAULT_SPEED_WINDOW;
   const rules = input.rules ?? [];
   const asOf = input.snapshot.reduce<string | null>((m, r) => (!m || r.date > m ? r.date : m), null);
   const snap = input.snapshot.filter((r) => r.date === asOf);
+  const today = input.today ?? asOf ?? "9999-12-31";
   const daily = mergeDailyRows(input.daily);
   const through = dailyThrough(daily, asOf);
   const dailyBySku = new Map<string, DailyRow[]>();
@@ -418,7 +431,8 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     dailyBySku.set(r.sku_no, list);
   }
   const mapBySku = new Map(input.map.map((m) => [m.sku_no, m]));
-  const stockBy = latestBy(input.stocks ?? [], (s) => `${s.sku_no}|${s.location}`, (s) => s.as_of);
+  // 미래 기준일 손 입력은 쓰지 않는다(오타 한 줄이 최신값을 영원히 덮지 않게)
+  const stockBy = latestBy((input.stocks ?? []).filter((s) => s.as_of <= today), (s) => `${s.sku_no}|${s.location}`, (s) => s.as_of);
   const noteBySku = new Map((input.notes ?? []).map((n) => [n.sku_no, n]));
   const openOrders = new Map<string, OrderRow[]>();
   for (const o of input.orders ?? []) {
@@ -427,7 +441,8 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     list.push(o);
     openOrders.set(o.sku_no, list);
   }
-  const costOf = makeCostLookup(input.costs ?? []);
+  // 원가는 SKU 로만 찾는다. 0 원 이하는 원가 없음
+  const costBySku = new Map((input.skuCosts ?? []).filter((c) => c.sku_no && Number(c.cost) > 0).map((c) => [c.sku_no as string, c]));
 
   // 쿠팡 판매(기본 품목) → SKU. 같은 품목을 가진 SKU 가 여럿이면(마케팅용·파손 재고) 머리표 없는 것 하나에만 붙인다
   const coupangByComponent = new Map<string, number>();
@@ -486,29 +501,42 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     const runwayWithIncoming = incoming && perDayAll > 0 ? (total + incoming.qty) / perDayAll : null;
 
     const excludedBy = m?.exclude ? "매칭표에서 제외(부자재·판촉물 등)" : note?.exclude ? `메모: ${note.note || note.kind || "판매 중지"}` : null;
+    // 너티인데 쿠팡 재고를 안 넣었으면 0 으로 보지 않는다. 판정은 위킵 쪽만이고, 그 사실을 이유에 적는다
+    const coupangMissing = brand === "nutty" && coupang === null;
+    const missingNote = coupangMissing ? " · 쿠팡 재고 미입력(위킵 쪽만 판정)" : "";
     let status: InvStatus;
     let reason: string;
     if (excludedBy) { status = "excluded"; reason = excludedBy; }
-    else if (total <= 0) { status = "soldout"; reason = "위킵·쿠팡·이동·내부 재고 합 0"; }
-    else if (runway === null) { status = "nomove"; reason = `최근 ${window}일 출고 0. 남은 날을 계산할 수 없음`; }
+    else if (total <= 0) {
+      status = "soldout";
+      reason = coupangMissing ? "위킵 품절(쿠팡 미입력): 위킵·이동·내부 재고 0, 쿠팡 재고는 입력되지 않아 모름" : "위킵·쿠팡·이동·내부 재고 합 0";
+    }
+    else if (runway === null) { status = "nomove"; reason = `최근 ${window}일 출고 0. 남은 날을 계산할 수 없음${missingNote}`; }
     else {
       status = statusFromRunway(runway, t);
       const side = runwayC !== null && runwayW !== null ? (runwayC <= runwayW ? "쿠팡 쪽" : "위킵 쪽") : runwayC !== null ? "쿠팡 쪽" : "위킵 쪽";
-      reason = `${side} 남은 ${r1(runway)}일 (발주 필요 ≤ ${t.warn} · 곧 발주 ≤ ${t.soon} · 과재고 > ${t.over}, ${t.basis})`;
+      reason = `${side} 남은 ${r1(runway)}일 (발주 필요 ≤ ${t.warn} · 곧 발주 ≤ ${t.soon} · 과재고 > ${t.over}, ${t.basis})${missingNote}`;
     }
+    const baseStatus = status;
     if (incoming && (status === "soldout" || status === "order" || status === "soon")) {
-      reason = `${STATUS_LABEL[status]} 상태였으나 발주 입력 있음: ${incoming.qty}개${incoming.expected_at ? ` · ${incoming.expected_at} 입고 예정` : ""}`;
-      status = "incoming";
+      // 입고 예정일이 지난 발주는 덮지 않는다(기한 없이 품절·발주 필요를 가리면 안 됨) → 입고 지연
+      const late = incoming.expected_at !== null && incoming.expected_at < today;
+      reason = late
+        ? `${STATUS_LABEL[status]}인데 입고 예정일(${incoming.expected_at})이 지났습니다: 발주 ${incoming.qty}개 입고 확인 필요`
+        : `${STATUS_LABEL[status]} 상태였으나 발주 입력 있음: ${incoming.qty}개${incoming.expected_at ? ` · ${incoming.expected_at} 입고 예정` : ""}`;
+      status = late ? "late" : "incoming";
     }
 
     // 시트 방식: 너티는 총 재고(위킵+쿠팡+이동+내부) ÷ 월평균 환산, 사입은 위킵 재고 ÷ 위킵 일평균
     const sheetStock = brand === "nutty" ? total : available;
     const sheetRunway = sheetPerDay !== null ? runwayDays(sheetStock, sheetPerDay) : null;
     let sheetStatus: InvStatus = excludedBy ? "excluded" : sheetStock <= 0 ? "soldout" : sheetRunway === null ? "nomove" : statusFromRunway(sheetRunway, t);
-    if (incoming && (sheetStatus === "soldout" || sheetStatus === "order" || sheetStatus === "soon")) sheetStatus = "incoming";
+    if (incoming && (sheetStatus === "soldout" || sheetStatus === "order" || sheetStatus === "soon")) {
+      sheetStatus = incoming.expected_at !== null && incoming.expected_at < today ? "late" : "incoming";
+    }
 
-    const codeName = m?.product_code ? input.codeNames?.[m.product_code] : undefined;
-    const cost = costOf(brand, [m?.component, codeName, parsed.bare, s.product_name]);
+    const costRow = costBySku.get(s.sku_no);
+    const cost = costRow ? { cost: Number(costRow.cost), basis: costRow.source ?? "설정 입력" } : null;
     const value = cost ? Math.round(cost.cost * Math.max(0, total)) : null;
 
     return {
@@ -544,6 +572,8 @@ export function computeInventory(input: ComputeInput): InventoryResult {
       runway_with_incoming: runwayWithIncoming,
       stockout_date: runway !== null && asOf ? addDays(asOf, Math.floor(runway)) : null,
       status,
+      base_status: baseStatus,
+      coupang_missing: coupangMissing,
       group: GROUP_OF[status],
       reason,
       thresholds: t,
@@ -565,6 +595,7 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     window,
     window_from: through ? addDays(through, -(window - 1)) : null,
     coupang_window: input.coupangWindow ?? null,
+    coupang_unmapped: input.coupangUnmapped ?? null,
     rows,
     cards: buildCards(rows),
   };
@@ -601,7 +632,16 @@ export function buildCards(rows: readonly InventoryRow[]): InventoryCards {
     if (r.value !== null) { total += r.value; byBrand[r.brand] += r.value; }
     else if (r.total_stock > 0) { missing += 1; missByBrand[r.brand] += 1; }
   }
-  return { counts, value_total: total, value_by_brand: byBrand, missing_cost: missing, missing_cost_by_brand: missByBrand };
+  const lateOf = (base: InvStatus[]) => rows.filter((r) => r.status === "late" && base.includes(r.base_status)).length;
+  const card = {
+    soldout: counts.soldout + lateOf(["soldout"]),
+    order: counts.order + lateOf(["order", "soon"]),
+    soon: counts.soon,
+    over: counts.over,
+    late: counts.late,
+    incoming: counts.incoming,
+  };
+  return { counts, card, value_total: total, value_by_brand: byBrand, missing_cost: missing, missing_cost_by_brand: missByBrand };
 }
 
 /** 예상 소진 점선: 오늘 가용에서 하루 출고만큼 줄어 0 이 되는 날까지(축 끝을 넘으면 축 끝에서 멈춤) */
@@ -611,4 +651,68 @@ export function forecastLine(start: string, stock: number, perDay: number, maxDa
   const out: { date: string; value: number }[] = [];
   for (let i = 0; i <= days; i += 1) out.push({ date: addDays(start, i), value: Math.max(0, Math.round((stock - perDay * i) * 10) / 10) });
   return out;
+}
+
+// ── 원가: 시트 「2026 재고·출고 통합관리」 가 정본 (2026-11-10 김호 결정) ──
+// 탭마다 머리글 「원가」 열(사입 탭 R, 너티 탭 P), 닥터레이 탭은 B 제품명 · C 공급가. 배송비 줄은 원가가 아니다.
+// 시트 상품명 ↔ 위킵 SKU: 상품명(띄어쓰기·탭 무시) → 바코드(B열) → B열이 위킵 SKU 번호 순으로 맞춘다.
+// 맞춘 원가는 DB 표 inventory_costs 에 넣고(docs/sql/2026-11-10-inventory.sql 시드), 시트 은퇴 뒤에는 설정 > 재고 > 원가에서 고친다.
+// 이 표에 없으면 「원가 없음」. 대시보드 product_costs 로 대신 채우지 않는다.
+
+export interface SheetCostRow { tab: string; cell: string; name: string; barcode: string | null; cost: number }
+export interface SkuCostRow { cost_key: string; sku_no: string | null; product_name: string; cost: number; source: string | null; note?: string | null }
+
+const colLetter = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : String.fromCharCode(64 + Math.floor(i / 26)) + String.fromCharCode(65 + (i % 26)));
+const parseWon = (v: unknown): number | null => {
+  const n = Number(String(v ?? "").replace(/[,\s원]/g, ""));
+  return Number.isFinite(n) && String(v ?? "").trim() !== "" ? n : null;
+};
+
+/** 시트 탭 값({탭: 행[]}) → 원가 줄. lawdate(위킵 원본) 탭은 건너뛴다 */
+export function extractSheetCosts(tabs: Readonly<Record<string, readonly (readonly string[])[]>>): SheetCostRow[] {
+  const out: SheetCostRow[] = [];
+  for (const [tab, rows] of Object.entries(tabs)) {
+    if (tab.startsWith("lawdate")) continue;
+    const headIdx = rows.slice(0, 6).findIndex((r) => (r || []).some((c) => c === "원가" || c === "공급가"));
+    if (headIdx < 0) continue;
+    const head = rows[headIdx];
+    const costCol = head.findIndex((c) => c === "원가" || c === "공급가");
+    const nameCol = head.indexOf("제품명") >= 0 ? head.indexOf("제품명") : tab === "너티" ? 0 : 2;
+    const barcodeCol = tab === "너티" || head.indexOf("제품명") >= 0 ? -1 : 1;
+    rows.slice(headIdx + 1).forEach((r, i) => {
+      const name = String(r?.[nameCol] ?? "").trim();
+      const cost = parseWon(r?.[costCol]);
+      if (!name || cost === null || /배송비/.test(name)) return;
+      const bc = barcodeCol >= 0 ? String(r?.[barcodeCol] ?? "").trim() : "";
+      out.push({ tab, cell: `${colLetter(costCol)}${headIdx + 2 + i}`, name, barcode: bc || null, cost });
+    });
+  }
+  return out;
+}
+
+/** 시트 원가 줄 → 위킵 SKU. 못 맞춘 줄과 같은 SKU 에 두 번 맞은 줄은 unmatched 로 */
+export function matchSheetCosts(rows: readonly SheetCostRow[], snapshot: readonly { sku_no: string; product_name: string; barcode?: string | null }[]): {
+  matched: (SkuCostRow & { how: string })[];
+  unmatched: (SheetCostRow & { reason: string })[];
+} {
+  const byName = new Map(snapshot.map((s) => [nameKey(s.product_name), s]));
+  const byBarcode = new Map<string, typeof snapshot[number]>();
+  for (const s of snapshot) if (s.barcode && s.barcode !== "-" && !byBarcode.has(s.barcode)) byBarcode.set(s.barcode, s);
+  const bySku = new Map(snapshot.map((s) => [s.sku_no, s]));
+  const used = new Set<string>();
+  const matched: (SkuCostRow & { how: string })[] = [];
+  const unmatched: (SheetCostRow & { reason: string })[] = [];
+  for (const r of rows) {
+    let hit = byName.get(nameKey(r.name));
+    let how = "상품명";
+    if (!hit && r.barcode) { hit = byBarcode.get(r.barcode); how = "바코드"; }
+    if (!hit && r.barcode) { hit = bySku.get(r.barcode); how = "SKU 번호"; }
+    const source = `sheet:${r.tab}!${r.cell}`;
+    if (!hit) { unmatched.push({ ...r, reason: "위킵 상품명·바코드와 짝 없음" }); continue; }
+    if (used.has(hit.sku_no)) { unmatched.push({ ...r, reason: `같은 위킵 SKU(${hit.product_name})에 이미 다른 줄이 맞음` }); continue; }
+    used.add(hit.sku_no);
+    matched.push({ cost_key: hit.sku_no, sku_no: hit.sku_no, product_name: hit.product_name, cost: r.cost, source, how,
+      note: nameKey(r.name) === nameKey(hit.product_name) ? null : `시트 이름 「${r.name}」` });
+  }
+  return { matched, unmatched };
 }

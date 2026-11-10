@@ -4,7 +4,7 @@
 //   표 한 장 + 행마다 같은 축(0~120일)의 남은 날 막대 + 행을 누르면 그 상품 하나의 상세 그래프.
 //   묶음: ① 지금 손댈 것(펼침) ② 정상(접힘) ③ 과재고(재고 가치 순) ④ 출고 0(재고 가치 순) ⑤ 판정 제외(접힘)
 // 계산은 전부 src/lib/inventory.ts. 이 파일은 고르고 그리기만 한다. 문구를 바꾸면 src/lib/guides/screens/inventory.ts 도 고친다.
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { freshFetch } from "@/lib/fresh-fetch";
 import { kstDate } from "@/lib/date";
@@ -39,22 +39,28 @@ export function InventoryScreen() {
   // 품절 중 최근 기간 출고도 0 인 것(오래 품절)은 ① 안에서 접어 둔다. 판정은 그대로 품절
   const [showDormant, setShowDormant] = useState(false);
 
+  // 7·14·28 을 빨리 바꾸면 늦게 온 앞 요청이 뒤 결과를 덮지 않게 앞 요청을 취소한다
+  const inflight = useRef<AbortController | null>(null);
   const load = useCallback(async (fresh: boolean) => {
+    inflight.current?.abort();
+    const ctrl = new AbortController();
+    inflight.current = ctrl;
     setLoading(true);
     setFailed(null);
     try {
       const url = `/api/inventory?window=${windowDays}`;
-      const res = await (fresh ? freshFetch(url) : fetch(url));
+      const res = await (fresh ? freshFetch(url, { signal: ctrl.signal }) : fetch(url, { signal: ctrl.signal }));
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || json.error || String(res.status));
-      setData(json as InventoryResponse);
+      if (!ctrl.signal.aborted) setData(json as InventoryResponse);
     } catch (e) {
+      if (ctrl.signal.aborted) return;
       setFailed(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (inflight.current === ctrl) setLoading(false);
     }
   }, [windowDays]);
-  useEffect(() => { load(false); }, [load]);
+  useEffect(() => { load(false); return () => inflight.current?.abort(); }, [load]);
 
   const ready = data && !data.setupNeeded ? data : null;
   const rows = useMemo(() => (ready ? ready.rows.filter((r) => inTab(r, tab) && (!supplier || r.supplier === supplier)) : []), [ready, tab, supplier]);
@@ -86,10 +92,12 @@ export function InventoryScreen() {
           <Freshness data={ready} loading={loading} onRefresh={() => load(true)} />
 
           <section data-tour="inventory-cards" className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
-            <CountCard status="soldout" n={cards.counts.soldout} sub="위킵·쿠팡·이동·내부 합 0" />
-            <CountCard status="order" n={cards.counts.order} sub="남은 날 ≤ 주의 일수" />
-            <CountCard status="soon" n={cards.counts.soon} sub={`≤ 30일 · 입고 대기 ${cards.counts.incoming}`} />
-            <CountCard status="over" n={cards.counts.over} sub="남은 날 > 60일" />
+            <CountCard status="soldout" n={cards.card.soldout}
+              sub={`재고 합 0${cards.counts.late ? " · 입고 지연 포함" : ""}`} />
+            <CountCard status="order" n={cards.card.order}
+              sub={`남은 날 ≤ 주의 일수${cards.card.late ? ` · 입고 지연 ${cards.card.late} 포함` : ""}`} />
+            <CountCard status="soon" n={cards.card.soon} sub={`≤ 30일 · 입고 대기 ${cards.card.incoming}`} />
+            <CountCard status="over" n={cards.card.over} sub="남은 날 > 60일" />
             <ValueCard cards={cards} />
           </section>
 
@@ -128,7 +136,8 @@ export function InventoryScreen() {
 
           <p data-tour="inventory-rule" className="text-[11px] sm:text-xs text-muted-foreground leading-relaxed">
             하루 출고 = 최근 {ready.window}일({md(ready.window_from)} ~ {md(ready.daily_through)}) 위킵 출고 합 ÷ {ready.window} · 남은 날 = (위킵 가용 + 이동 + 내부) ÷ 하루 출고.
-            너티는 쿠팡 재고 ÷ 쿠팡 하루 판매{ready.coupang_window ? `(${md(ready.coupang_window.from)} ~ ${md(ready.coupang_window.to)} 판매, 묶음은 낱개로 풀어 셈)` : ""}도 따로 계산해 짧은 쪽으로 판정.
+            너티는 쿠팡 재고 ÷ 쿠팡 하루 판매{ready.coupang_window ? `(${md(ready.coupang_window.from)} ~ ${md(ready.coupang_window.to)} 판매, 묶음은 낱개로 풀어 셈)` : ""}도 따로 계산해 짧은 쪽으로 판정
+            {ready.coupang_unmapped ? <span title={ready.coupang_unmapped.products.join(" / ")}> (판매 구성표에 없는 쿠팡 판매 상품 {ready.coupang_unmapped.products.length}개 · {fmtInt(ready.coupang_unmapped.qty)}개는 낱개로 못 풀어 빠짐)</span> : null}.
             발주 필요 ≤ 주의 일수(사입 15 · 너티 20) · 곧 발주 ≤ 30 · 과재고 &gt; 60일. 발주를 넣으면 입고 대기.
             <Link href="/settings?tab=inventory" data-tour="inventory-settings-link" className="ml-1 underline underline-offset-2 text-foreground">쿠팡 재고·발주·기준 일수 입력 →</Link>
           </p>
@@ -193,9 +202,16 @@ function SetupNotice({ missing }: { missing: string[] }) {
 function Freshness({ data, loading, onRefresh }: { data: Exclude<InventoryResponse, { setupNeeded: true }>; loading: boolean; onRefresh: () => void }) {
   const today = data.today || kstDate();
   const stale = !data.as_of || data.as_of < addDays(today, -1);
+  // 날짜별 입고·출고는 보통 어제까지. 2일 넘게 밀리면 하루 출고가 옛 기간으로 계산된다
+  const dailyStale = !data.daily_through || data.daily_through < addDays(today, -2);
   const readAt = data.read_at ? new Date(Date.parse(data.read_at) + 9 * 3600_000).toISOString().replace("T", " ").slice(0, 16) : "-";
   return (
     <div data-tour="inventory-freshness" className="space-y-2">
+      {!stale && dailyStale && (
+        <div className="rounded-lg border px-3 py-2 text-sm" style={{ background: "var(--sig-warn-surface)", borderColor: "var(--sig-warn-border)", color: "var(--sig-warn)" }}>
+          날짜별 입고·출고가 {data.daily_through ?? "없음"}까지만 들어와 있습니다. 하루 출고가 그 날까지의 기간으로 계산되어 최근 변화가 빠졌을 수 있습니다.
+        </div>
+      )}
       {stale && (
         <div className="rounded-lg border px-3 py-2 text-sm" style={{ background: "var(--sig-danger-surface)", borderColor: "var(--sig-danger-border)", color: "var(--sig-danger)" }}>
           위킵 재고 수집이 멈췄습니다. 마지막 재고 {data.as_of ?? "없음"} 기준이라 아래 판정이 오늘과 다를 수 있습니다. 위킵 로그인이 풀렸는지 확인하세요.
@@ -258,12 +274,13 @@ function HeaderRow() {
   );
 }
 
-function Badge({ status }: { status: InvStatus }) {
+function Badge({ status, coupangMissing }: { status: InvStatus; coupangMissing?: boolean }) {
   const t = STATUS_TONE[status];
   return (
     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium whitespace-nowrap border"
       style={{ color: t.color, background: t.surface, borderColor: t.border === "transparent" ? "var(--border)" : t.border }}>
-      {STATUS_LABEL[status]}
+      {status === "soldout" && coupangMissing ? "위킵 품절" : STATUS_LABEL[status]}
+      {status === "soldout" && coupangMissing && <span className="ml-1 font-normal opacity-80">(쿠팡 미입력)</span>}
     </span>
   );
 }
@@ -302,12 +319,12 @@ function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: s
         </span>
         <span data-tour={first ? "inventory-bar" : undefined}><RunwayBar row={row} asOf={asOf} /></span>
         <span className="text-right">{md(row.stockout_date)}</span>
-        <span><Badge status={row.status} /></span>
+        <span><Badge status={row.status} coupangMissing={row.coupang_missing} /></span>
         <span className="text-right">{row.total_stock <= 0 ? <span className="text-muted-foreground">-</span> : row.value === null ? <span className="text-muted-foreground">원가 없음</span> : fmtWon(row.value)}</span>
       </div>
       {/* 휴대폰: 세 줄 */}
       <div className="md:hidden space-y-1.5">
-        <div className="flex items-start gap-2">{name}<span className="ml-auto shrink-0"><Badge status={row.status} /></span></div>
+        <div className="flex items-start gap-2">{name}<span className="ml-auto shrink-0"><Badge status={row.status} coupangMissing={row.coupang_missing} /></span></div>
         <RunwayBar row={row} asOf={asOf} />
         <p className="num text-[11px] text-muted-foreground">
           위킵 {fmtInt(row.available)}{both ? `(${fmtDays(row.runway_wekeep)})` : ""}{row.brand === "nutty" ? ` · 쿠팡 ${missingText(row.coupang)}${both ? `(${fmtDays(row.runway_coupang)})` : ""}` : ""} · 하루 {fmtSpeed(row.speed.perDay)}(시트 {fmtSpeed(row.sheet_per_day)})

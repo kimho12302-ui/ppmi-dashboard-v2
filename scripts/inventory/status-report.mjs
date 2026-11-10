@@ -5,11 +5,12 @@
 //     시트 json = 「2026 재고·출고 통합관리」 탭별 값({탭이름: [[행]]}). 있으면 시트 판정·원가와 대조
 //
 // 계산은 화면과 같은 src/lib/inventory.ts 를 그대로 쓴다(숫자가 화면과 어긋나지 않게).
-// 원가는 대시보드 DB product_costs 를 읽는다(.env.local 의 공개 읽기 키). 손 입력 재고·발주·메모는 없는 것으로 본다(표 생성 전).
+// 원가는 시트 원가 칸이 정본(2026-11-10 김호): 시트 json 이 있으면 화면과 같은 규칙(extractSheetCosts·matchSheetCosts)으로 SKU 에 붙인다.
+// 손 입력 재고·발주·메모는 없는 것으로 본다(표 생성 전).
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { computeInventory, mergeDailyRows, parseWekeepName, nameKey, STATUS_LABEL } from "../../src/lib/inventory.ts";
+import { computeInventory, mergeDailyRows, parseWekeepName, nameKey, STATUS_LABEL, extractSheetCosts, matchSheetCosts, BRAND_LABEL } from "../../src/lib/inventory.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../..");
@@ -21,12 +22,6 @@ const readJson = (p) => JSON.parse(readFileSync(p, "utf8").replace(/^\uFEFF/, ""
 const env = Object.fromEntries(readFileSync(join(ROOT, ".env.local"), "utf8").split(/\r?\n/).filter((l) => l.includes("="))
   .map((l) => { const i = l.indexOf("="); return [l.slice(0, i), l.slice(i + 1).replace(/^"|"$/g, "")]; }));
 
-async function costs() {
-  const url = `${env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/product_costs?select=product,brand,manufacturing_cost`;
-  const res = await fetch(url, { headers: { apikey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY, Authorization: `Bearer ${env.NEXT_PUBLIC_SUPABASE_ANON_KEY}` } });
-  if (!res.ok) throw new Error(`product_costs ${res.status}`);
-  return res.json();
-}
 
 const snapshot = Object.values(readJson(join(RAW, "wekeep-snapshot.json")).items).map((v) => ({
   date: v.date, sku_no: v.skuNo, product_name: v.productName, barcode: v.productManageCode, available_qty: v.availableQty,
@@ -45,16 +40,23 @@ const map = readJson(join(RAW, "wekeep-sku-map.draft.json")).rows.map((r) => {
   return { sku_no: r.skuNo, component: r.component?.name?.trim() ?? null, brand: r.component?.brand || parseWekeepName(r.productName).brand,
     supplier: parseWekeepName(r.productName).supplier, confidence: r.confidence, product_code: code?.code ?? null, exclude: r.category !== "상품" };
 });
-const pm = readJson(join(ROOT, "src/lib/product-master.json")).items;
-const codeNames = Object.fromEntries(pm.filter((p) => p.code).map((p) => [p.code, p.product]));
+const sheetTabs = SHEET && existsSync(SHEET) ? readJson(SHEET) : null;
+const costMatch = sheetTabs ? matchSheetCosts(extractSheetCosts(sheetTabs), snapshot.filter((s) => s.date === snapshot.reduce((m, v) => (v.date > m ? v.date : m), ""))) : null;
 
-const res = computeInventory({ snapshot, daily: [...byKey.values()], map, costs: await costs(), codeNames, window: 28 });
+const res = computeInventory({ snapshot, daily: [...byKey.values()], map, skuCosts: costMatch?.matched ?? [], window: 28 });
 const label = (s) => STATUS_LABEL[s];
 const f1 = (n) => (n === null || n === undefined ? "-" : Math.round(n * 10) / 10);
 
 console.log(`# 재고 판정 ${res.as_of} (날짜별 ${res.window_from} ~ ${res.daily_through}, 28일)`);
 console.log(Object.entries(res.cards.counts).map(([k, n]) => `${label(k)} ${n}`).join(" · "));
 console.log(`재고 가치 ${res.cards.value_total.toLocaleString("ko-KR")}원 (원가 없는 재고 상품 ${res.cards.missing_cost}개 빠짐)`);
+console.log(`  브랜드별: ${Object.entries(res.cards.value_by_brand).map(([b, v]) => `${BRAND_LABEL[b]} ${v.toLocaleString("ko-KR")}원`).join(" · ")}`);
+if (costMatch) {
+  console.log(`원가 매칭: 시트 원가 줄 ${costMatch.matched.length + costMatch.unmatched.length}개 중 위킵 SKU 에 맞춤 ${costMatch.matched.length}`);
+  for (const u of costMatch.unmatched) console.log(`  못 맞춤: ${u.tab}!${u.cell} ${u.name} ${u.cost}원 (${u.reason})`);
+}
+console.log(`원가 없는 재고 상품(재고 > 0, 판정 제외 아님):`);
+for (const r of res.rows.filter((x) => x.status !== "excluded" && x.total_stock > 0 && x.value === null)) console.log(`  - ${r.name} (위킵 ${r.available})`);
 console.log(`품절 중 오래 품절(최근 28일 출고도 0, 화면에서 접어 둠) ${res.rows.filter((r) => r.status === "soldout" && r.speed.total === 0).length}개`);
 
 console.log(`\n## 28일 방식 vs 시트 방식(너티 월평균÷30.4 · 사입 위킵 일평균, 같은 기준 일수, 손 입력 재고 없음)`);
@@ -91,12 +93,4 @@ if (SHEET && existsSync(SHEET)) {
     if (sheetSt && sheetSt !== a.r.status) { n += 1; console.log(`- ${a.name} | 시트 ${a.st}${a.over === "과재고" ? "+과재고" : ""} vs 대시보드 ${label(a.r.status)}(${f1(a.r.runway)}일) | 시트 방식 계산 ${label(a.r.sheet_status)}`); }
   }
   console.log(`(${n}개 다름)`);
-  console.log(`\n## 원가: 시트 vs 대시보드 product_costs(manufacturing_cost)`);
-  let m = 0;
-  for (const a of actual) {
-    if (!a.r || !a.cost) continue;
-    if (a.r.unit_cost === null) { m += 1; console.log(`- ${a.name} | 시트 ${a.cost} · 대시보드 원가 없음`); continue; }
-    if (a.r.unit_cost !== a.cost) { m += 1; console.log(`- ${a.name} | 시트 ${a.cost} · 대시보드 ${a.r.unit_cost} (${a.r.cost_basis})`); }
-  }
-  console.log(`(${m}개 다름·없음)`);
 }

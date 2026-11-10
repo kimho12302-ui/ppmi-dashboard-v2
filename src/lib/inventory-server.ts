@@ -1,7 +1,8 @@
 // 재고 화면 원천 읽기 (서버 전용). 계산은 src/lib/inventory.ts.
 //
 // 읽는 표: raw_wekeep_snapshot · raw_wekeep_daily · wekeep_sku_map · inventory_manual_stock · inventory_orders ·
-//   inventory_notes · inventory_rules (docs/sql/2026-11-10-inventory.sql) + product_costs · product_sales · product_components.
+//   inventory_notes · inventory_rules · inventory_costs (docs/sql/2026-11-10-inventory.sql) + product_sales · product_components.
+//   원가는 inventory_costs(시트 「2026 재고·출고 통합관리」 원가가 정본, 2026-11-10 김호). product_costs 는 쓰지 않는다.
 // 표가 없으면(SQL 실행 전) 화면은 「SQL 실행 필요」를 띄운다. 500 으로 죽이지 않는다.
 //
 // ★ 개발용 대체 경로: NODE_ENV 가 production 이 아니고 INVENTORY_DEV_RAW_DIR 에 볼트 원천 폴더
@@ -17,23 +18,17 @@ import { isMissingTable } from "@/lib/bl-pnl";
 import { kstDate } from "@/lib/date";
 import { loadComponentIndex } from "@/lib/product-components-server";
 import { expandSales } from "@/lib/product-components";
-import productMaster from "@/lib/product-master.json";
 import {
-  addDays, mergeDailyRows, COUPANG_WINDOW_DAYS, COUPANG_SALES_LAG_DAYS, parseWekeepName,
-  type ComputeInput, type CostRow, type DailyRow, type ManualStockRow, type NoteRow, type OrderRow, type RuleRow,
+  addDays, mergeDailyRows, coupangWindowFor, parseWekeepName,
+  type ComputeInput, type SkuCostRow, type DailyRow, type ManualStockRow, type NoteRow, type OrderRow, type RuleRow,
   type SkuMapRow, type SnapshotRow,
 } from "@/lib/inventory";
 
 export const INVENTORY_TABLES = [
   "raw_wekeep_snapshot", "raw_wekeep_daily", "wekeep_sku_map",
-  "inventory_manual_stock", "inventory_orders", "inventory_notes", "inventory_rules",
+  "inventory_manual_stock", "inventory_orders", "inventory_notes", "inventory_rules", "inventory_costs",
 ] as const;
 export type InventoryTable = (typeof INVENTORY_TABLES)[number];
-
-/** 대시보드 상품 코드 → 이름. 원가(product_costs) 를 이 이름으로도 찾는다 */
-const CODE_NAMES: Record<string, string> = Object.fromEntries(
-  (productMaster as { items: { code: string; product: string }[] }).items.filter((p) => p.code).map((p) => [p.code, p.product]),
-);
 
 /** 하루 출고 기간 최대(28일) + 여유. 이만큼만 날짜별을 읽는다 */
 const SPEED_LOOKBACK_DAYS = 40;
@@ -51,7 +46,7 @@ export function devRawDir(): string | null {
  * 개발용 손 입력 목업. INVENTORY_DEV_MANUAL_FILE 에 { stocks, orders, notes, rules } json 을 주면 그 표가 없을 때만 대신 쓴다.
  * 입고 대기·쿠팡 재고 화면을 SQL 실행 전에 확인하려는 것. 운영(NODE_ENV=production)에서는 devRawDir 와 같이 꺼진다.
  */
-function devManual(): { stocks?: ManualStockRow[]; orders?: OrderRow[]; notes?: NoteRow[]; rules?: RuleRow[] } {
+function devManual(): { stocks?: ManualStockRow[]; orders?: OrderRow[]; notes?: NoteRow[]; rules?: RuleRow[]; costs?: SkuCostRow[] } {
   if (!devRawDir()) return {};
   const p = process.env.INVENTORY_DEV_MANUAL_FILE;
   return p && existsSync(p) ? readJson(p) : {};
@@ -131,6 +126,16 @@ async function readTable<T>(table: InventoryTable, build: () => PromiseLike<{ da
   return (data as T[]) || [];
 }
 
+/** fetchAll(1,000행씩 전부) + 표 없음은 빈 배열 */
+async function readAll<T>(table: InventoryTable, query: unknown, tieBreak: string | null, missing: Set<string>): Promise<T[]> {
+  try {
+    return await fetchAll<T>(query, tieBreak);
+  } catch (e) {
+    if (isMissingTable(e as { code?: string })) { missing.add(table); return []; }
+    throw new Error(`${table}: ${(e as { message?: string })?.message ?? String(e)}`);
+  }
+}
+
 async function latestSnapshotDb(missing: Set<string>): Promise<SnapshotRow[]> {
   const head = await readTable<{ date: string }>("raw_wekeep_snapshot",
     () => supabase.from("raw_wekeep_snapshot").select("date").order("date", { ascending: false }).limit(1), missing);
@@ -154,16 +159,14 @@ async function dailyDb(from: string, missing: Set<string>, sku?: string, to?: st
 }
 
 /** 너티 쿠팡 판매(기본 품목 낱개). 끝 = min(너티×쿠팡 판매 원장 마지막 날, 오늘 − 지연 5일). 판매 동기화가 늦게 차는 최근 날은 뺀다 */
-async function coupangSales(): Promise<{ sales: { component: string; qty: number }[]; window: ComputeInput["coupangWindow"] }> {
+async function coupangSales(): Promise<{ sales: { component: string; qty: number }[]; window: ComputeInput["coupangWindow"]; unmapped: ComputeInput["coupangUnmapped"] }> {
   const today = kstDate();
   const { data, error } = await supabase.from("product_sales").select("date").eq("brand", "nutty").eq("channel", "coupang")
     .lt("date", today).order("date", { ascending: false }).limit(1);
   if (error) throw new Error(`product_sales 쿠팡 마지막 날: ${error.message}`);
-  const last = (data?.[0]?.date as string | undefined) ?? null;
-  if (!last) return { sales: [], window: null };
-  const lagEnd = addDays(today, -COUPANG_SALES_LAG_DAYS);
-  const to = last < lagEnd ? last : lagEnd;
-  const from = addDays(to, -(COUPANG_WINDOW_DAYS - 1));
+  const window = coupangWindowFor((data?.[0]?.date as string | undefined) ?? null, today);
+  if (!window) return { sales: [], window: null, unmapped: null };
+  const { from, to } = window;
   const [rows, index] = await Promise.all([
     fetchAll<{ date: string; brand: string; product: string; quantity: number; revenue: number }>(
       supabase.from("product_sales").select("id,date,brand,product,quantity,revenue").eq("brand", "nutty").eq("channel", "coupang")
@@ -172,7 +175,14 @@ async function coupangSales(): Promise<{ sales: { component: string; qty: number
   ]);
   const agg = new Map<string, number>();
   for (const r of expandSales(rows, index)) agg.set(r.product, (agg.get(r.product) ?? 0) + (Number(r.quantity) || 0));
-  return { sales: [...agg].map(([component, qty]) => ({ component, qty })), window: { from, to, days: COUPANG_WINDOW_DAYS } };
+  // 판매 구성표에 없는 판매 상품은 낱개로 못 풀어 쿠팡 속도에서 빠질 수 있다. 화면에 건수를 보인다
+  const missing = new Map<string, number>();
+  if (index.size) for (const r of rows) if (!index.get(r.brand, r.product)) missing.set(r.product, (missing.get(r.product) ?? 0) + (Number(r.quantity) || 0));
+  return {
+    sales: [...agg].map(([component, qty]) => ({ component, qty })),
+    window,
+    unmapped: missing.size ? { products: [...missing.keys()], qty: [...missing.values()].reduce((a, b) => a + b, 0) } : null,
+  };
 }
 
 export interface LoadedInputs {
@@ -192,15 +202,13 @@ export async function loadInventoryInputs(window: number): Promise<LoadedInputs>
     dev ? Promise.resolve(devSnapshot(dev)) : latestSnapshotDb(missing),
     dev ? Promise.resolve(devDaily(dev, from)) : dailyDb(from, missing),
     readTable<SkuMapRow>("wekeep_sku_map", () => supabase.from("wekeep_sku_map").select("*"), missing),
-    readTable<ManualStockRow>("inventory_manual_stock", () => supabase.from("inventory_manual_stock").select("sku_no,location,qty,as_of,note"), missing),
-    readTable<OrderRow>("inventory_orders", () => supabase.from("inventory_orders").select("*").eq("status", "ordered"), missing),
+    // 손 입력은 1,000행을 넘을 수 있어 전부 읽는다(PostgREST 1,000행 상한). 미래 기준일은 빼고, 기준키 전체로 순서를 고정
+    readAll<ManualStockRow>("inventory_manual_stock", supabase.from("inventory_manual_stock").select("sku_no,location,qty,as_of,note")
+      .lte("as_of", kstDate()).order("as_of", { ascending: false }).order("sku_no").order("location"), null, missing),
+    readAll<OrderRow>("inventory_orders", supabase.from("inventory_orders").select("*").eq("status", "ordered"), "id", missing),
     readTable<NoteRow>("inventory_notes", () => supabase.from("inventory_notes").select("*"), missing),
     readTable<RuleRow>("inventory_rules", () => supabase.from("inventory_rules").select("*"), missing),
-    (async () => {
-      const { data, error } = await supabase.from("product_costs").select("product,brand,manufacturing_cost");
-      if (error) throw new Error(`product_costs: ${error.message}`);
-      return (data || []) as CostRow[];
-    })(),
+    readAll<SkuCostRow>("inventory_costs", supabase.from("inventory_costs").select("cost_key,sku_no,product_name,cost,source,note"), "cost_key", missing),
     coupangSales(),
   ]);
   // 개발용: 매칭표 표가 아직 없으면 볼트 초안을, 손 입력 표가 없으면 목업 파일을 쓴다
@@ -218,7 +226,8 @@ export async function loadInventoryInputs(window: number): Promise<LoadedInputs>
       orders: pick("inventory_orders", orders, mock.orders?.filter((o) => o.status === "ordered")),
       notes: pick("inventory_notes", notes, mock.notes),
       rules: pick("inventory_rules", rules, mock.rules),
-      costs, coupangSales: coupang.sales, coupangWindow: coupang.window, window, codeNames: CODE_NAMES },
+      skuCosts: pick("inventory_costs", costs, mock.costs),
+      coupangSales: coupang.sales, coupangWindow: coupang.window, coupangUnmapped: coupang.unmapped, window, today: kstDate() },
   };
 }
 

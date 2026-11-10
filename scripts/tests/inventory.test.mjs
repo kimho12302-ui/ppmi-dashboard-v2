@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   parseWekeepName, thresholdsFor, mergeDailyRows, shipoutSpeed, fillDailySeries, runwayDays, statusFromRunway,
-  computeInventory, forecastLine, dailyThrough, DEFAULT_THRESHOLDS,
+  computeInventory, forecastLine, dailyThrough, DEFAULT_THRESHOLDS, coupangWindowFor, isRealDate, extractSheetCosts, matchSheetCosts,
 } from "../../src/lib/inventory.ts";
 
 const day = (ymd, sku, o = {}) => ({
@@ -126,7 +126,8 @@ test("재고 가치: 원가 0 원·없음은 빈칸, 합계에서 빠진 건수 
     snapshot: [snap("A", "[사입][파미나]a 1kg", 10), snap("B", "[사입][파미나]b", 5)],
     daily: [],
     map: [{ sku_no: "A", component: "a 1kg", brand: "saip" }, { sku_no: "B", component: "b", brand: "saip" }],
-    costs: [{ product: "a 1kg", brand: "saip", manufacturing_cost: 1000 }, { product: "b", brand: "saip", manufacturing_cost: 0 }],
+    // 원가는 SKU 원가 표(시트가 정본)에서만. 0 원은 원가 없음
+    skuCosts: [{ cost_key: "A", sku_no: "A", product_name: "a", cost: 1000, source: "sheet:파미나(독)!R4" }, { cost_key: "B", sku_no: "B", product_name: "b", cost: 0, source: null }],
   });
   const by = Object.fromEntries(res.rows.map((r) => [r.sku_no, r.value]));
   assert.equal(by.A, 10000);
@@ -141,4 +142,120 @@ test("예상 소진 점선은 0 에서 멈춘다", () => {
   assert.equal(f.at(-1).value, 0);
   assert.equal(f.length, 4);
   assert.deepEqual(forecastLine("2026-11-10", 10, 0, 120), []);
+});
+
+// ── 2026-11-10 검수 반영 ──
+const d28 = (sku, perDay, end = 9) => {
+  const out = [];
+  for (let i = 0; i < 28; i += 1) out.push(day(new Date(Date.UTC(2026, 9, 13 + i)).toISOString().slice(0, 10), sku, { shipout_qty: perDay }));
+  return out;
+};
+
+test("입고 예정일이 지난 발주는 입고 대기가 아니라 입고 지연, 카드는 밑의 상태로 셈", () => {
+  const res = computeInventory({
+    snapshot: [snap("A", "[사입][파미나]a", 0), snap("B", "[사입][파미나]b", 10), snap("C", "[사입][파미나]c", 10)],
+    daily: [...d28("A", 5), ...d28("B", 1), ...d28("C", 1)],
+    map: [],
+    orders: [
+      { sku_no: "A", qty: 10, ordered_at: "2026-06-01", expected_at: "2026-06-15", status: "ordered" },
+      { sku_no: "B", qty: 10, ordered_at: "2026-11-01", expected_at: "2026-11-09", status: "ordered" },
+      { sku_no: "C", qty: 10, ordered_at: "2026-11-08", expected_at: "2026-11-20", status: "ordered" },
+    ],
+    today: "2026-11-10",
+  });
+  const st = Object.fromEntries(res.rows.map((r) => [r.sku_no, [r.status, r.base_status]]));
+  assert.deepEqual(st.A, ["late", "soldout"]);
+  assert.deepEqual(st.B, ["late", "order"]);
+  assert.deepEqual(st.C, ["incoming", "order"]);
+  assert.equal(res.rows[0].group, "act");
+  assert.equal(res.cards.card.soldout, 1);
+  assert.equal(res.cards.card.order, 1);
+  assert.equal(res.cards.card.late, 2);
+  assert.equal(res.cards.card.incoming, 1);
+  // 손댈 것 안에서 입고 지연이 맨 위
+  assert.equal(res.rows[0].status, "late");
+});
+
+test("너티 쿠팡 미입력은 0 이 아님: 위킵 품절(쿠팡 미입력)으로 이유가 갈림", () => {
+  const res = computeInventory({
+    snapshot: [snap("N", "너티사운드_바삭", 0)],
+    daily: d28("N", 2),
+    map: [{ sku_no: "N", component: "바삭", brand: "nutty" }],
+    coupangSales: [{ component: "바삭", qty: 300 }],
+    coupangWindow: { from: "2026-10-09", to: "2026-11-05", days: 28 },
+  });
+  const r = res.rows[0];
+  assert.equal(r.status, "soldout");
+  assert.equal(r.coupang_missing, true);
+  assert.match(r.reason, /쿠팡 미입력/);
+});
+
+test("미래 기준일 손 입력 재고는 쓰지 않는다", () => {
+  const res = computeInventory({
+    snapshot: [snap("N", "너티사운드_바삭", 50)],
+    daily: d28("N", 2),
+    map: [{ sku_no: "N", component: "바삭", brand: "nutty" }],
+    stocks: [{ sku_no: "N", location: "coupang", qty: 999, as_of: "2027-01-01" }, { sku_no: "N", location: "coupang", qty: 5, as_of: "2026-11-09" }],
+    coupangSales: [{ component: "바삭", qty: 28 }],
+    coupangWindow: { from: "2026-10-09", to: "2026-11-05", days: 28 },
+    today: "2026-11-10",
+  });
+  assert.equal(res.rows[0].coupang, 5);
+  assert.equal(res.rows[0].runway_coupang, 5);
+});
+
+test("하루 출고 7·14일 기간", () => {
+  const rows = d28("A", 1);
+  rows.push(day("2026-11-09", "A", { shipout_qty: 13 }));
+  const snapA = [snap("A", "[사입][파미나]a", 70)];
+  const w7 = computeInventory({ snapshot: snapA, daily: rows, map: [], window: 7 }).rows[0];
+  assert.equal(w7.speed.from, "2026-11-03");
+  assert.equal(w7.speed.total, 20);
+  const w14 = computeInventory({ snapshot: snapA, daily: rows, map: [], window: 14 }).rows[0];
+  assert.equal(w14.speed.total, 27);
+  assert.equal(w14.speed.days, 14);
+});
+
+test("너티 발주 필요 경계 20일(사입은 15일)", () => {
+  const base = { daily: d28("N", 1), map: [{ sku_no: "N", brand: "nutty" }] };
+  assert.equal(computeInventory({ ...base, snapshot: [snap("N", "너티사운드_냠", 20)] }).rows[0].status, "order");
+  assert.equal(computeInventory({ ...base, snapshot: [snap("N", "너티사운드_냠", 21)] }).rows[0].status, "soon");
+  const s = { daily: d28("S", 1), map: [] };
+  assert.equal(computeInventory({ ...s, snapshot: [snap("S", "[사입][파미나]s", 16)] }).rows[0].status, "soon");
+});
+
+test("쿠팡 판매 기간: 끝 = min(마지막 판매일, 오늘 − 5일)", () => {
+  assert.deepEqual(coupangWindowFor("2026-11-09", "2026-11-10"), { from: "2026-10-09", to: "2026-11-05", days: 28 });
+  assert.deepEqual(coupangWindowFor("2026-11-01", "2026-11-10"), { from: "2026-10-05", to: "2026-11-01", days: 28 });
+  assert.equal(coupangWindowFor(null, "2026-11-10"), null);
+});
+
+test("실제 날짜만", () => {
+  assert.equal(isRealDate("2026-02-28"), true);
+  assert.equal(isRealDate("2026-02-31"), false);
+  assert.equal(isRealDate("2026-2-1"), false);
+});
+
+test("시트 원가: 탭별 원가 열, 배송비 줄 빼기, 상품명·바코드로 위킵 SKU 매칭", () => {
+  const head = ["", "UPC 바코드", "파미나 (강아지)", "", "조치", "", "", "", "", "", "", "", "", "", "", "", "", "원가"];
+  const tabs = {
+    "파미나(독)": [[], ["조사 일자"], head,
+      ["", "8010", "[사입][파미나]펌킨 100g", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "2,500"],
+      ["", "9999", "이름이 다른 상품", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3000"]],
+    너티: [[], [], ["", "너티", "", "", "", "", "", "", "", "", "", "", "", "", "", "원가"], ["너티사운드_바삭", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "3500"]],
+    닥터레이: [[], ["", "제품명", "공급가"], ["", "CANOPTIC(카놉틱)", "35,000"], ["", "실온 배송비", "3,000"]],
+    "lawdate(weekeep)": [["무시"]],
+  };
+  const rows = extractSheetCosts(tabs);
+  assert.deepEqual(rows.map((r) => [r.tab, r.cell, r.cost]), [
+    ["파미나(독)", "R4", 2500], ["파미나(독)", "R5", 3000], ["너티", "P4", 3500], ["닥터레이", "C3", 35000],
+  ]);
+  const snapRows = [
+    { sku_no: "1", product_name: "[사입][파미나]펌킨  100g", barcode: "x" },
+    { sku_no: "2", product_name: "다른 위킵 이름", barcode: "9999" },
+    { sku_no: "3", product_name: "너티사운드_바삭", barcode: null },
+  ];
+  const { matched, unmatched } = matchSheetCosts(rows, snapRows);
+  assert.deepEqual(matched.map((m) => [m.sku_no, m.how, m.source]), [["1", "상품명", "sheet:파미나(독)!R4"], ["2", "바코드", "sheet:파미나(독)!R5"], ["3", "상품명", "sheet:너티!P4"]]);
+  assert.deepEqual(unmatched.map((u) => u.name), ["CANOPTIC(카놉틱)"]);
 });
