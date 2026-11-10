@@ -11,7 +11,7 @@ import { freshFetch } from "@/lib/fresh-fetch";
 import { kstDate } from "@/lib/date";
 import {
   BRAND_LABEL, SPEED_WINDOWS, STATUS_LABEL, buildCards, addDays, buildBrandTabs, inBrandTab, ownSaipTabs,
-  ABC_A_SHARE, ABC_B_SHARE, SCALE_LABEL, SCALE_POOL_LABEL,
+  ABC_A_SHARE, ABC_B_SHARE, SCALE_LABEL, SCALE_POOL_LABEL, HOLD_QUIET_DAYS,
   type InvBrand, type InvGroup, type InventoryRow, type InvStatus, type SpeedWindow,
 } from "@/lib/inventory";
 import { RunwayAxis, RunwayBar } from "./runway-bar";
@@ -29,7 +29,7 @@ export function InventoryScreen() {
   const [tab, setTab] = useState<string>("all");
   const [open, setOpen] = useState<Record<InvGroup, boolean>>(() => Object.fromEntries(GROUPS.map((g) => [g.key, g.open])) as Record<InvGroup, boolean>);
   const [selected, setSelected] = useState<string | null>(null);
-  // 품절·발주 필요인데 판매 규모 C·판매 없음(보류)은 ① 안에서 접어 둔다. 판정은 그대로
+  // 보류(사입 품절·발주 필요 중 C·판매 없음·미상이고 최근 30일 출고 0)는 ① 안에서 접어 둔다. 판정은 그대로
   const [showHold, setShowHold] = useState(false);
 
   // 7·14·28 을 빨리 바꾸면 늦게 온 앞 요청이 뒤 결과를 덮지 않게 앞 요청을 취소한다
@@ -129,7 +129,7 @@ export function InventoryScreen() {
           <div className="space-y-3">
             {GROUPS.map((g) => {
               const list = rows.filter((r) => r.group === g.key);
-              // 보류(판매 규모 C·판매 없음인 품절·발주 필요)는 ① 안 맨 아래에 접어 둔다
+              // 보류(inventory.ts isHeld)는 ① 안 맨 아래에 접어 둔다
               const hold = g.key === "act" ? rows.filter((r) => r.group === "hold") : [];
               return (
                 <section key={g.key} data-tour={`inventory-group-${g.key}`} className="rounded-xl border bg-card overflow-hidden">
@@ -151,13 +151,13 @@ export function InventoryScreen() {
                           {selected === r.sku_no && <InventoryDetail row={r} asOf={ready.as_of} windowDays={ready.window} />}
                         </Fragment>
                       ))}
-                      {list.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">A·B 등급 손댈 것 없음</p>}
+                      {list.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">보류 말고 손댈 것 없음</p>}
                       {hold.length > 0 && (
                         <div data-tour="inventory-hold" className="border-t bg-muted/20">
                           <button type="button" onClick={() => setShowHold((v) => !v)} aria-expanded={showHold}
                             className="w-full px-4 py-2 text-left text-xs hover:bg-muted/40">
                             <span className="font-medium text-foreground">안 팔려서 보류 중일 수 있음 {hold.length}개</span>
-                            <span className="text-muted-foreground"> · {showHold ? "접기" : "펼치기"} · 품절·발주 필요인데 최근 90일 판매 규모가 C 또는 판매 없음. 일부러 발주를 끊었을 수 있어 위에서 뺐습니다(판정은 그대로)</span>
+                            <span className="text-muted-foreground"> · {showHold ? "접기" : "펼치기"} · 사입 품절·발주 필요 중 90일 판매 규모가 C·판매 없음·미상이고 최근 {HOLD_QUIET_DAYS}일 위킵 출고도 0. 일부러 발주를 끊었을 수 있어 위에서 뺐습니다(판정은 그대로)</span>
                           </button>
                           {showHold && hold.map((r) => (
                             <Fragment key={r.sku_no}>
@@ -230,12 +230,12 @@ function CountCard({ status, n, sub, held }: { status: InvStatus; n: number; sub
   return (
     <div className="rounded-xl border bg-card p-3" style={n > 0 ? { borderColor: t.border, background: t.surface } : undefined}>
       <p className="text-xs font-medium" style={{ color: n > 0 ? t.color : "var(--muted-foreground)" }}>
-        {STATUS_LABEL[status]}{held !== undefined && <span className="ml-1 font-normal text-muted-foreground">A·B 등급</span>}
+        {STATUS_LABEL[status]}
       </p>
       <p className="num text-2xl font-bold leading-tight mt-0.5">
         {n}<span className="text-sm font-normal text-muted-foreground ml-0.5">개</span>
       </p>
-      {held ? <p className="text-[11px] text-muted-foreground" title="판매 규모 C·판매 없음은 보류 묶음으로 보내 이 개수에서 뺐습니다">C·판매 없음 {held}개 제외</p> : null}
+      {held ? <p className="text-[11px] text-muted-foreground" title="사입 C·판매 없음·미상이고 최근 30일 출고 0 인 것은 ① 아래 보류로 보내 이 개수에서 뺐습니다">보류 {held}개 제외</p> : null}
       <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
     </div>
   );
@@ -253,7 +253,7 @@ function ScaleRule({ data }: { data: Exclude<InventoryResponse, { setupNeeded: t
       판매 규모 = {md(s.window.from)} ~ {md(s.window.to)}({s.window.days}일, 판매 동기화 지연 5일 앞) 판매 매출을 기본 품목으로 풀어 SKU 에 붙인 값(공구 채널 제외
       {s.gonggu_excluded.rows ? ` ${fmtInt(s.gonggu_excluded.rows)}행` : " 0행"}). 매출이 안 붙는 SKU 는 같은 기간 위킵 출고 × 원가(「출고 기준」).
       {" "}{SCALE_POOL_LABEL.saip}·{SCALE_POOL_LABEL.nutty} 각각 큰 순 누적 {pct(ABC_A_SHARE)}까지 A · {pct(ABC_B_SHARE)}까지 B · 나머지 C.
-      {" "}C·판매 없음인 품절·발주 필요는 ① 아래 보류로 접음.
+      {" "}사입 품절·발주 필요 중 C·판매 없음·미상이고 최근 {HOLD_QUIET_DAYS}일 위킵 출고도 0 인 것은 ① 아래 보류로 접음(너티는 보류 없음, C 라도 최근 출고가 있으면 ① 아래쪽).
       {s.unattached.components > 0 && (
         <span title={s.unattached.top.map((t) => `${t.name} ${fmtManWon(t.revenue)}`).join(" / ")}>
           {" "}위킵 SKU 가 없는 판매 {s.unattached.components}개 품목 {fmtManWon(s.unattached.revenue)}(닥터레이 영양제 등)은 등급 계산 밖.

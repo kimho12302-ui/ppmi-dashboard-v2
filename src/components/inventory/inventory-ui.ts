@@ -51,7 +51,7 @@ export function scaleTitle(row: InventoryRow): string {
     : s.basis === "shipout"
       ? `판매 매출이 안 붙어 출고 기준: 90일 위킵 출고 ${s.shipout.toLocaleString("ko-KR")}개 × 원가 ${won(row.unit_cost)} = ${won(s.value)}(원가 기준이라 매출보다 낮게 잡힘)`
       : s.basis === "unknown"
-        ? `판매 매출 0 · 90일 위킵 출고 ${s.shipout.toLocaleString("ko-KR")}개인데 원가가 없어 금액을 못 셈 → 등급 없음(① 에 남김)`
+        ? `판매 매출 0 · 90일 위킵 출고 ${s.shipout.toLocaleString("ko-KR")}개인데 원가가 없어 금액을 못 셈 → 미상(보류 규칙은 C 와 같음)`
         : "90일 판매 매출 0 · 위킵 출고 0 → 판매 없음";
   const rank = s.grade && s.grade !== "none" && s.before !== null
     ? ` · ${s.rank}위, 앞 누적 ${pct1(s.before)} · 자기 비중 ${pct1(s.share)} → ${SCALE_LABEL[s.grade]}(앞 누적 < ${ABC_A_SHARE * 100}% A, < ${ABC_B_SHARE * 100}% B, 나머지 C)`

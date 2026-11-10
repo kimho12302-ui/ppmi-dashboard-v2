@@ -63,7 +63,8 @@ export const STATUS_LABEL: Record<InvStatus, string> = {
 };
 /**
  * 묶음: ① 지금 손댈 것 · ①′ 보류(안 팔려서 발주를 끊었을 수 있음, ① 안에 접힘) ② 정상 ③ 과재고 ④ 출고 0 ⑤ 판정 제외.
- * 보류 = 품절·발주 필요인데 판매 규모 C 또는 판매 없음(2026-11-10 김호 "안 팔려서 더 이상 발주 안한 걸 수도").
+ * 보류 = 사입 품절·발주 필요 중 판매 규모 C·판매 없음·미상이고 최근 30일 위킵 출고도 0 인 것
+ *   (2026-11-10 김호 "안 팔려서 더 이상 발주 안한 걸 수도"). 최근에 나간 상품은 C 라도 ① 에 남는다. 너티는 보류 없음.
  */
 export type InvGroup = "act" | "hold" | "ok" | "over" | "nomove" | "excluded";
 export const GROUP_ORDER: readonly InvGroup[] = ["act", "hold", "ok", "over", "nomove", "excluded"];
@@ -75,10 +76,22 @@ export const GROUP_OF: Record<InvStatus, InvGroup> = {
 const GRADE_ORDER: Record<ScaleGrade | "null", number> = { A: 0, B: 1, C: 2, null: 3, none: 4 };
 /** 같은 등급·같은 남은 날일 때 상태 순서 */
 const ACT_ORDER: Record<InvStatus, number> = { late: 0, soldout: 1, order: 2, soon: 3, incoming: 4, ok: 5, over: 6, nomove: 7, excluded: 8 };
-/** 보류로 보내는 상태와 등급 */
+/** 보류로 보내는 상태와 등급(null = 미상: 출고는 있는데 원가가 없어 금액을 못 셈) */
 export const HOLD_STATUSES: readonly InvStatus[] = ["soldout", "order"];
-export const HOLD_GRADES: readonly ScaleGrade[] = ["C", "none"];
-export const isHeld = (status: InvStatus, grade: ScaleGrade | null) => HOLD_STATUSES.includes(status) && grade !== null && HOLD_GRADES.includes(grade);
+export const HOLD_GRADES: readonly (ScaleGrade | null)[] = ["C", "none", null];
+/** 보류는 최근 이 일수(날짜별 마지막 날까지) 위킵 출고가 0 인 것만. 그 안에 출고가 있으면 C 라도 ① 에 남는다 */
+export const HOLD_QUIET_DAYS = 30;
+/** 보류를 쓰는 판매 규모 풀. 너티는 판정 상품이 6개뿐이고 전부 주력이라 쓰지 않는다(2026-11-10) */
+export const HOLD_POOLS: readonly ScalePool[] = ["saip"];
+/** 최근 HOLD_QUIET_DAYS 일(through 포함) 안에 위킵 출고가 있었나 */
+export function shippedRecently(lastShipout: string | null, through: string | null, days = HOLD_QUIET_DAYS): boolean {
+  if (!lastShipout || !through) return false;
+  return lastShipout >= addDays(through, -(days - 1));
+}
+export function isHeld(r: Pick<InventoryRow, "status" | "scale" | "last_shipout">, through: string | null): boolean {
+  return HOLD_STATUSES.includes(r.status) && r.scale.pool !== null && HOLD_POOLS.includes(r.scale.pool)
+    && HOLD_GRADES.includes(r.scale.grade) && !shippedRecently(r.last_shipout, through);
+}
 
 // ── 입력 행 (DB 열 이름 그대로) ──
 export interface SnapshotRow {
@@ -743,7 +756,7 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     };
   });
 
-  const scaled = attachSalesScale(rows0, input.salesScale ?? null, dailyBySku, mapBySku);
+  const scaled = attachSalesScale(rows0, input.salesScale ?? null, dailyBySku, mapBySku, through);
   const rows = [...scaled.rows].sort(compareRows);
   return {
     as_of: asOf,
@@ -862,9 +875,10 @@ function scaleValueOf(r: InventoryRow, revenue: number, shipout: number): Pick<S
  *   판매 매출이 안 붙는 SKU 는 위킵 출고 × 원가로 대신(basis shipout). 출고는 있는데 원가가 없으면 금액을 못 세 등급 없음(unknown).
  *   둘 다 0 이면 판매 없음. 풀 = 사입 전체 · 너티 각각. 판정 제외·아이언펫·기타는 등급 없음.
  *   scale 이 null(판매 원장을 못 읽음)이면 아무 행도 등급·보류가 붙지 않는다.
+ *   보류 = isHeld: 사입 풀 · 품절/발주 필요 · C/판매 없음/미상 · 최근 30일(through 까지) 위킵 출고 0.
  */
 export function attachSalesScale(rows: readonly InventoryRow[], scale: SalesScaleInput | null, dailyBySku: ReadonlyMap<string, readonly DailyRow[]>,
-  mapBySku: ReadonlyMap<string, SkuMapRow>): { rows: InventoryRow[]; info: InventoryResult["scale"] } {
+  mapBySku: ReadonlyMap<string, SkuMapRow>, through: string | null = null): { rows: InventoryRow[]; info: InventoryResult["scale"] } {
   if (!scale) return { rows: [...rows], info: null };
   const { from, to } = scale.window;
   const shipOf = (sku: string) => (dailyBySku.get(sku) ?? []).reduce((a, r) => (r.ymd >= from && r.ymd <= to ? a + r.shipout_qty : a), 0);
@@ -895,7 +909,7 @@ export function attachSalesScale(rows: readonly InventoryRow[], scale: SalesScal
       if (scale1.basis === "shipout") P.shipout_basis += 1;
       if (scale1.basis === "unknown") P.unknown += 1;
     }
-    const held = isHeld(r.status, scale1.grade);
+    const held = isHeld({ status: r.status, scale: scale1, last_shipout: r.last_shipout }, through);
     return { ...r, scale: scale1, held, group: held ? ("hold" as const) : r.group };
   });
   return {

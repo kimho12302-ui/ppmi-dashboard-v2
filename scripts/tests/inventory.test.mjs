@@ -359,7 +359,7 @@ test("판매 규모: 매출 등급, 출고 기준 대체, 판매 없음, C·판�
   assert.equal(by.E.last_shipout, "2026-09-01");
 });
 
-test("판매 규모: A 품절이 C 발주 필요보다 위, 입고 지연은 맨 위, 입고 대기는 맨 아래", () => {
+test("판매 규모: A 품절이 C 발주 필요보다 위, 입고 지연은 맨 위, 입고 대기는 맨 아래, 최근 출고 있는 C 는 ① 아래쪽", () => {
   const daily = [...d28("A", 1), ...d28("B", 1), ...d28("C", 1), ...d28("D", 1)];
   const res = computeInventory({
     snapshot: [snap("A", "[사입][파미나]a", 0), snap("B", "[사입][파미나]b", 10), snap("C", "[사입][파미나]c", 3), snap("D", "[사입][파미나]d", 5)],
@@ -372,12 +372,12 @@ test("판매 규모: A 품절이 C 발주 필요보다 위, 입고 지연은 맨
     salesScale: { window: W90, byComponent: [{ component: "A", revenue: 900, qty: 9 }, { component: "B", revenue: 10, qty: 1 }, { component: "C", revenue: 50, qty: 1 }, { component: "D", revenue: 40, qty: 1 }] },
     today: "2026-11-10",
   });
-  // B 는 C 등급 발주 필요 → 보류. 순서: 입고 지연 C → A 품절 → 입고 대기 D → (보류) B
+  // B 는 C 등급 발주 필요지만 최근 30일 출고가 있어 보류가 아니라 ① (등급 순이라 A 아래). 입고 대기는 맨 아래
   assert.deepEqual(res.rows.map((r) => [r.sku_no, r.status, r.scale.grade, r.group]), [
-    ["C", "late", "B", "act"], ["A", "soldout", "A", "act"], ["D", "incoming", "C", "act"], ["B", "order", "C", "hold"],
+    ["C", "late", "B", "act"], ["A", "soldout", "A", "act"], ["B", "order", "C", "act"], ["D", "incoming", "C", "act"],
   ]);
-  assert.equal(res.cards.card.order, 1);
-  assert.equal(res.cards.card.held_order, 1);
+  assert.equal(res.cards.card.order, 2);
+  assert.equal(res.cards.card.held_order, 0);
 });
 
 test("판매 규모: 판매 원장을 못 읽으면 등급·보류 없음(판매 없음으로 보지 않음)", () => {
@@ -407,4 +407,49 @@ test("판매 규모: 같은 기본 품목 SKU 는 머리표 없는 것끼리 출
   assert.equal(by.X.shared_with, 2);
   assert.equal(res.scale.pools.saip.total, 40000);
   assert.equal(res.scale.pools.nutty.total, 100000);
+});
+
+test("보류: C·판매 없음·미상이라도 최근 30일 위킵 출고가 있으면 ①, 30일 0 이면 보류(경계 30일)", () => {
+  // 날짜별 마지막 날 11-09 → 최근 30일 = 10-11 ~ 11-09
+  const res = computeInventory({
+    snapshot: [
+      snap("BIG", "[사입][파미나]big", 500), snap("IN", "[사입][파미나]in", 0), snap("OUT", "[사입][파미나]out", 0),
+      snap("UNK", "[사입][파미나]unk", 0), snap("UNK2", "[사입][파미나]unk2", 0),
+    ],
+    daily: [
+      day("2026-11-09", "BIG", { shipout_qty: 1 }),
+      day("2026-10-11", "IN", { shipout_qty: 1 }), day("2026-10-10", "OUT", { shipout_qty: 1 }),
+      day("2026-10-20", "UNK", { shipout_qty: 3 }), day("2026-09-20", "UNK2", { shipout_qty: 3 }),
+    ],
+    map: ["BIG", "IN", "OUT", "UNK", "UNK2"].map((k) => ({ sku_no: k, component: k, brand: "saip" })),
+    salesScale: { window: W90, byComponent: [{ component: "BIG", revenue: 1000000, qty: 100 }, { component: "IN", revenue: 100, qty: 1 }, { component: "OUT", revenue: 100, qty: 1 }] },
+    today: "2026-11-10",
+  });
+  const by = Object.fromEntries(res.rows.map((r) => [r.sku_no, r]));
+  assert.equal(by.IN.scale.grade, "C");
+  assert.equal(by.IN.group, "act");
+  assert.equal(by.OUT.scale.grade, "C");
+  assert.equal(by.OUT.group, "hold");
+  // 미상(출고는 있는데 원가 없음)도 같은 규칙
+  assert.equal(by.UNK.scale.grade, null);
+  assert.equal(by.UNK.group, "act");
+  assert.equal(by.UNK2.group, "hold");
+  assert.equal(res.cards.card.soldout, 2);
+  assert.equal(res.cards.card.held_soldout, 2);
+});
+
+test("보류: 너티는 C·판매 없음 품절이라도 항상 ①", () => {
+  const res = computeInventory({
+    snapshot: [snap("N1", "너티사운드_바삭", 100), snap("N2", "너티 하루루틴 굿모닝퓨레", 0), snap("N3", "너티 하루루틴 에너젯바", 0)],
+    daily: [day("2026-11-09", "N1", { shipout_qty: 1 }), day("2026-08-20", "N2", { shipout_qty: 1 })],
+    map: [{ sku_no: "N1", component: "바삭", brand: "nutty" }, { sku_no: "N2", component: "굿모닝퓨레", brand: "nutty" }, { sku_no: "N3", component: "에너젯바", brand: "nutty" }],
+    salesScale: { window: W90, byComponent: [{ component: "바삭", revenue: 1000000, qty: 100 }, { component: "굿모닝퓨레", revenue: 100, qty: 1 }] },
+    today: "2026-11-10",
+  });
+  const by = Object.fromEntries(res.rows.map((r) => [r.sku_no, r]));
+  assert.equal(by.N2.scale.grade, "C");
+  assert.equal(by.N2.group, "act");
+  assert.equal(by.N3.scale.grade, "none");
+  assert.equal(by.N3.group, "act");
+  assert.equal(res.cards.card.held_soldout, 0);
 });
