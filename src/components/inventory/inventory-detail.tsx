@@ -100,7 +100,7 @@ export function InventoryDetail({ row, asOf, windowDays }: { row: InventoryRow; 
           <div className="px-1 pb-2">
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chart} syncId={`inv-${row.sku_no}`} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <ComposedChart data={chart} syncId={`inv-${row.sku_no}`} margin={{ top: 18, right: 12, left: 0, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="2 4" />
                   <XAxis dataKey="date" hide />
                   <YAxis width={44} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} allowDecimals={false} />

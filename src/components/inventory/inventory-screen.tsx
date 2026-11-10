@@ -14,16 +14,18 @@ import {
 } from "@/lib/inventory";
 import { RunwayAxis, RunwayBar } from "./runway-bar";
 import { InventoryDetail } from "./inventory-detail";
-import { GROUPS, STATUS_TONE, fmt1, fmtInt, fmtManWon, fmtWon, md, type InventoryResponse } from "./inventory-ui";
+import { GROUPS, STATUS_TONE, fmtInt, fmtManWon, fmtSpeed, fmtWon, md, type InventoryResponse } from "./inventory-ui";
 
 type BrandTab = "all" | "nutty" | "saip" | "other";
 const BRAND_TABS: { key: BrandTab; label: string }[] = [
   { key: "all", label: "전체" }, { key: "nutty", label: "너티" }, { key: "saip", label: "사입" }, { key: "other", label: "아이언펫·기타" },
 ];
+/** 오래 품절: 재고 0 이고 기간 안 출고도 0. 단종·장기 결품일 가능성이 커 ① 안에서 접어 둔다 */
+const isDormant = (r: InventoryRow) => r.status === "soldout" && r.speed.total === 0 && (r.coupang_per_day ?? 0) === 0;
 const inTab = (r: InventoryRow, tab: BrandTab) => tab === "all" || (tab === "other" ? r.brand === "ironpet" || r.brand === "other" : r.brand === tab);
 
 /** 데스크톱 표 칸 너비 (머리줄과 행이 같은 값을 쓴다) */
-const COLS = "md:grid-cols-[minmax(0,2.3fr)_64px_64px_64px_92px_86px_minmax(170px,1.7fr)_56px_78px_92px]";
+const COLS = "md:grid-cols-[minmax(0,1.5fr)_56px_56px_64px_84px_72px_minmax(220px,2.3fr)_46px_74px_88px]";
 
 export function InventoryScreen() {
   const [windowDays, setWindowDays] = useState<SpeedWindow>(28);
@@ -34,6 +36,8 @@ export function InventoryScreen() {
   const [supplier, setSupplier] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<InvGroup, boolean>>(() => Object.fromEntries(GROUPS.map((g) => [g.key, g.open])) as Record<InvGroup, boolean>);
   const [selected, setSelected] = useState<string | null>(null);
+  // 품절 중 최근 기간 출고도 0 인 것(오래 품절)은 ① 안에서 접어 둔다. 판정은 그대로 품절
+  const [showDormant, setShowDormant] = useState(false);
 
   const load = useCallback(async (fresh: boolean) => {
     setLoading(true);
@@ -131,13 +135,15 @@ export function InventoryScreen() {
 
           <div className="space-y-3">
             {GROUPS.map((g) => {
-              const list = rows.filter((r) => r.group === g.key);
+              const all = rows.filter((r) => r.group === g.key);
+              const dormant = g.key === "act" ? all.filter(isDormant) : [];
+              const list = g.key === "act" && !showDormant ? all.filter((r) => !isDormant(r)) : all;
               return (
                 <section key={g.key} data-tour={`inventory-group-${g.key}`} className="rounded-xl border bg-card overflow-hidden">
                   <button type="button" onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))} aria-expanded={open[g.key]}
                     className="w-full flex items-center gap-2 px-3 sm:px-4 py-2.5 text-left hover:bg-muted/40">
                     <span className="text-sm font-semibold">{g.no} {g.title}</span>
-                    <span className="num text-sm text-muted-foreground">{list.length}</span>
+                    <span className="num text-sm text-muted-foreground">{all.length}</span>
                     <span className="hidden sm:inline text-xs text-muted-foreground truncate">{g.hint}</span>
                     <span className="ml-auto text-xs text-muted-foreground">{open[g.key] ? "접기" : "펼치기"}</span>
                   </button>
@@ -151,6 +157,12 @@ export function InventoryScreen() {
                           {selected === r.sku_no && <InventoryDetail row={r} asOf={ready.as_of} windowDays={ready.window} />}
                         </Fragment>
                       ))}
+                      {dormant.length > 0 && (
+                        <button type="button" data-tour="inventory-dormant" onClick={() => setShowDormant((v) => !v)}
+                          className="w-full border-t px-4 py-2 text-left text-xs text-muted-foreground hover:bg-muted/40">
+                          {showDormant ? "오래 품절 접기" : `오래 품절 ${dormant.length}개 더 보기`} · 재고 0 이고 최근 {ready.window}일 위킵 출고도 0 (판정은 품절 그대로, 개수에도 들어감)
+                        </button>
+                      )}
                     </div>
                   )}
                   {open[g.key] && list.length === 0 && <p className="border-t px-4 py-3 text-xs text-muted-foreground">해당 상품 없음</p>}
@@ -282,21 +294,21 @@ function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: s
           {row.incoming ? `${fmtInt(row.incoming.qty)} · ${md(row.incoming.expected_at)}` : ""}
         </span>
         <span className="text-right" title={`최근 ${row.speed.days}일 위킵 출고 ${fmtInt(row.speed.total)}개 ÷ ${row.speed.days}일. 시트 방식: ${row.sheet_basis}`}>
-          {fmt1(row.speed.perDay)}
-          <span className="block text-[10px] text-muted-foreground">시트 {fmt1(row.sheet_per_day)}</span>
+          {fmtSpeed(row.speed.perDay)}
+          <span className="block text-[10px] text-muted-foreground">시트 {fmtSpeed(row.sheet_per_day)}</span>
         </span>
         <span data-tour={first ? "inventory-bar" : undefined}><RunwayBar row={row} asOf={asOf} /></span>
         <span className="text-right">{md(row.stockout_date)}</span>
         <span><Badge status={row.status} /></span>
-        <span className="text-right">{row.value === null ? <span className="text-muted-foreground">원가 없음</span> : fmtWon(row.value)}</span>
+        <span className="text-right">{row.total_stock <= 0 ? <span className="text-muted-foreground">-</span> : row.value === null ? <span className="text-muted-foreground">원가 없음</span> : fmtWon(row.value)}</span>
       </div>
       {/* 휴대폰: 세 줄 */}
       <div className="md:hidden space-y-1.5">
         <div className="flex items-start gap-2">{name}<span className="ml-auto shrink-0"><Badge status={row.status} /></span></div>
         <RunwayBar row={row} asOf={asOf} />
         <p className="num text-[11px] text-muted-foreground">
-          위킵 {fmtInt(row.available)}{row.brand === "nutty" ? ` · 쿠팡 ${missingText(row.coupang)}` : ""} · 하루 {fmt1(row.speed.perDay)}(시트 {fmt1(row.sheet_per_day)})
-          · 소진 {md(row.stockout_date)} · {row.value === null ? "원가 없음" : fmtManWon(row.value)}
+          위킵 {fmtInt(row.available)}{row.brand === "nutty" ? ` · 쿠팡 ${missingText(row.coupang)}` : ""} · 하루 {fmtSpeed(row.speed.perDay)}(시트 {fmtSpeed(row.sheet_per_day)})
+          · 소진 {md(row.stockout_date)} · {row.total_stock <= 0 ? "재고 0" : row.value === null ? "원가 없음" : fmtManWon(row.value)}
           {row.incoming ? ` · 입고 ${fmtInt(row.incoming.qty)}(${md(row.incoming.expected_at)})` : ""}
         </p>
       </div>

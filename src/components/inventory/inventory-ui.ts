@@ -29,6 +29,9 @@ export const GROUPS: { key: InvGroup; no: string; title: string; hint: string; o
 export const fmtInt = (n: number | null | undefined) => (n === null || n === undefined ? "-" : Math.round(n).toLocaleString("ko-KR"));
 export const fmt1 = (n: number | null | undefined) =>
   n === null || n === undefined || !Number.isFinite(n) ? "-" : (Math.round(n * 10) / 10).toLocaleString("ko-KR", { maximumFractionDigits: 1 });
+/** 하루 출고: 1 미만은 소수 둘째 자리까지(0.04 를 0 으로 보이지 않게) */
+export const fmtSpeed = (n: number | null | undefined) =>
+  n === null || n === undefined || !Number.isFinite(n) ? "-" : n > 0 && n < 1 ? n.toFixed(2) : fmt1(n);
 export const fmtWon = (n: number | null | undefined) => (n === null || n === undefined ? "원가 없음" : `${Math.round(n).toLocaleString("ko-KR")}원`);
 /** 카드용: 1만 원 단위 */
 export const fmtManWon = (n: number) => (n >= 10000 ? `${Math.round(n / 10000).toLocaleString("ko-KR")}만 원` : `${Math.round(n).toLocaleString("ko-KR")}원`);
