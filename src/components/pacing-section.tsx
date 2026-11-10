@@ -145,14 +145,13 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
   //   광고비 금액은 실제 돈(오늘 장중 포함)으로 보여 주고, % 와 막대·세로선만 원장 마지막 날까지 기준이다.
   const adCompareAch = achievement.adThrough ?? achievement.ad;
   const salesNote = data.salesThrough ? ` (판매 ${md(data.salesThrough)}까지)` : "";
-  // 불릿 그래프의 「이 속도면 월말」(2026-11-10). 새 집계가 아니라 서버가 준 일평균 × 남은 날 수를 지금 실적에 더한 값이다.
-  //   매출 = 누적 매출 + 판매 일평균 × 판매 잔여일, 광고비 = 광고비 원장 마지막 날까지 쓴 돈 + 광고 일평균 × 광고 잔여일.
+  // 불릿 그래프의 「이 속도면 월말」(2026-11-10, 검수 L1 로 식 통일). 새 집계가 아니라 서버 일평균 × 그 달 날 수다.
+  //   매출 일평균 = 판매 원장 마지막 날까지 매출 ÷ 판매가 들어온 날 수, 광고비 일평균 = 광고비 원장 마지막 날까지 ÷ 들어온 날 수.
+  //   「누적 + 일평균 × 잔여일」로 하면 누적에 원장 마지막 날 뒤(오늘 장중 등)가 섞일 때 그 날을 두 번 센다.
   //   초반(판단 보류)이거나 일평균이 0 이면 그리지 않는다(며칠치로 월말을 말하지 않는다).
   const adThroughActual = actual.adThroughSum ?? actual.ad;
-  const projRevenue = !early && remaining.dailyAvgRevenue > 0 && data.salesDaysRemaining > 0
-    ? actual.revenue + remaining.dailyAvgRevenue * data.salesDaysRemaining : null;
-  const projAd = !early && remaining.dailyAvgAd > 0 && data.adDaysRemaining > 0
-    ? adThroughActual + remaining.dailyAvgAd * data.adDaysRemaining : null;
+  const projRevenue = !early && remaining.dailyAvgRevenue > 0 ? remaining.dailyAvgRevenue * data.daysInMonth : null;
+  const projAd = !early && remaining.dailyAvgAd > 0 ? remaining.dailyAvgAd * data.daysInMonth : null;
   const rows = [
     { key: "매출", target: target.revenue, actual: actual.revenue, ach: achievement.revenue, marker: salesProgress, fmt: formatCurrency, color: "#2563eb",
       bullet: { actual: actual.revenue, projected: projRevenue } },
@@ -222,13 +221,16 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
                     {"achNote" in r && r.achNote && <span className="ml-1 text-[10px]">({r.achNote} 기준)</span>}
                   </span>
                 </div>
-                {"bullet" in r && r.bullet ? (
+                {"bullet" in r && r.bullet && r.target <= 0 ? (
+                  // 목표가 0 이하면 불릿(목표 대비)도 「예산을 넘길 속도」도 말할 수 없다(검수 M5)
+                  <p className="text-[11px] text-muted-foreground">{r.key} 목표 없음 · 설정에서 이번 달 {r.key} 목표를 넣으면 막대가 나타납니다.</p>
+                ) : "bullet" in r && r.bullet ? (
                   <>
                     <BulletChart actual={r.bullet.actual} target={r.target} projected={r.bullet.projected} marker={r.marker} color={r.color} label={r.key} />
                     <p className="text-[11px] text-muted-foreground">
                       {r.bullet.projected != null
                         ? <>이 속도면 월말 <b className="text-foreground chart-num">{formatCurrency(Math.round(r.bullet.projected))}</b> (목표의 {pct(r.target > 0 ? r.bullet.projected / r.target : 0)}){r.invert && r.bullet.projected > r.target ? " · 예산을 넘길 속도" : ""}</>
-                        : early ? "월말 예상: 초반이라 그리지 않음" : "월말 예상: 일평균이 0이거나 남은 날이 없어 그리지 않음"}
+                        : early ? "월말 예상: 초반이라 그리지 않음" : "월말 예상: 일평균이 0이라 그리지 않음"}
                     </p>
                   </>
                 ) : (
