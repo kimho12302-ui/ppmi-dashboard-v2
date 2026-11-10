@@ -121,17 +121,18 @@ test("너티 쿠팡: 미입력이면 위킵만, 입력하면 짧은 쪽", () => 
   assert.equal(b.status, "order");
 });
 
-test("재고 가치: 원가 0 원·없음은 빈칸, 합계에서 빠진 건수 셈", () => {
+test("재고 가치: 원가 0 원(무상 샘플)은 0 원, 원가 없음은 빈칸, 합계에서 빠진 건수 셈", () => {
   const res = computeInventory({
-    snapshot: [snap("A", "[사입][파미나]a 1kg", 10), snap("B", "[사입][파미나]b", 5)],
+    snapshot: [snap("A", "[사입][파미나]a 1kg", 10), snap("B", "[사입][파미나]b", 5), snap("C", "[사입][파미나]c", 3)],
     daily: [],
-    map: [{ sku_no: "A", component: "a 1kg", brand: "saip" }, { sku_no: "B", component: "b", brand: "saip" }],
-    // 원가는 SKU 원가 표(시트가 정본)에서만. 0 원은 원가 없음
+    map: [{ sku_no: "A", component: "a 1kg", brand: "saip" }, { sku_no: "B", component: "b", brand: "saip" }, { sku_no: "C", component: "c", brand: "saip" }],
+    // 원가는 SKU 원가 표(시트가 정본)에서만. 0 원은 무상 샘플(2026-11-10 김호), 표에 없으면 원가 없음
     skuCosts: [{ cost_key: "A", sku_no: "A", product_name: "a", cost: 1000, source: "sheet:파미나(독)!R4" }, { cost_key: "B", sku_no: "B", product_name: "b", cost: 0, source: null }],
   });
   const by = Object.fromEntries(res.rows.map((r) => [r.sku_no, r.value]));
   assert.equal(by.A, 10000);
-  assert.equal(by.B, null);
+  assert.equal(by.B, 0);
+  assert.equal(by.C, null);
   assert.equal(res.cards.value_total, 10000);
   assert.equal(res.cards.missing_cost, 1);
 });
