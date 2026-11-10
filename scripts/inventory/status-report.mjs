@@ -55,6 +55,7 @@ const f1 = (n) => (n === null || n === undefined ? "-" : Math.round(n * 10) / 10
 console.log(`# 재고 판정 ${res.as_of} (날짜별 ${res.window_from} ~ ${res.daily_through}, 28일)`);
 console.log(Object.entries(res.cards.counts).map(([k, n]) => `${label(k)} ${n}`).join(" · "));
 console.log(`재고 가치 ${res.cards.value_total.toLocaleString("ko-KR")}원 (원가 없는 재고 상품 ${res.cards.missing_cost}개 빠짐)`);
+console.log(`품절 중 오래 품절(최근 28일 출고도 0, 화면에서 접어 둠) ${res.rows.filter((r) => r.status === "soldout" && r.speed.total === 0).length}개`);
 
 console.log(`\n## 28일 방식 vs 시트 방식(너티 월평균÷30.4 · 사입 위킵 일평균, 같은 기준 일수, 손 입력 재고 없음)`);
 const diff = res.rows.filter((r) => r.status !== r.sheet_status);
