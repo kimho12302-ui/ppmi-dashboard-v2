@@ -12,6 +12,7 @@ import { CostTab } from "@/components/settings/cost-tab";
 import { TargetsTab } from "@/components/settings/targets-tab";
 import { UploadTab } from "@/components/settings/upload-tab";
 import { EventsTab } from "@/components/settings/events-tab";
+import { InventoryTab } from "@/components/settings/inventory-tab";
 
 export type SettingsMode = "all" | "daily";
 
@@ -61,6 +62,7 @@ function SettingsInner({ mode }: { mode: SettingsMode }) {
       {!daily && tab === "costs" && <CostTab />}
       {!daily && tab === "targets" && <TargetsTab />}
       {!daily && tab === "events" && <EventsTab />}
+      {!daily && tab === "inventory" && <InventoryTab />}
     </PageShell>
   );
 }

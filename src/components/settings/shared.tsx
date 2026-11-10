@@ -18,6 +18,7 @@ export const TABS = [
   { key: "costs", label: "💰 제품 원가" },
   { key: "targets", label: "🎯 목표 설정" },
   { key: "events", label: "📅 이벤트 관리" },
+  { key: "inventory", label: "📦 재고" },
 ] as const;
 
 export type Tab = (typeof TABS)[number]["key"];
