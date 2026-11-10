@@ -11,6 +11,7 @@ import {
   ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
 import { xAxisProps, yAxisProps, gridProps, tooltipCardProps, TIP_CARD } from "@/components/charts/chart-style";
+import { ParetoChart, buildPareto, PARETO_LINE } from "@/components/charts/pareto-chart";
 import { AD_CHANNEL_COLORS, type KeywordPerformance } from "@/lib/types";
 import { CoupangKeywordSection } from "@/components/coupang-keywords";
 import { NaverSearchTermSection } from "@/components/naver-search-terms";
@@ -60,6 +61,8 @@ function KeywordsInner() {
   const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr" | "roas" | "waste">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [tab, setTab] = useState<KeywordTab>("keywords");
+  /** 키워드 사분면 카드의 보기: 사분면 | 비용 집중(파레토, 2026-11-10) */
+  const [quadView, setQuadView] = useState<"quadrant" | "pareto">("quadrant");
   // SA 조정 이력 칸은 키워드 응답이 올 때까지 마운트되지 않는다. 기다리지 않게 같이 부른다.
   // 2026-11-10 부터 조정 이력은 네이버 검색어 탭(밸런스랩)에만 있다. 칸이 부르는 주소와 글자까지 같아야 미리 부른 응답을 쓴다.
   usePrefetch([tab === "naver" && brand === "balancelab" ? saChangesUrl("balancelab") : null]);
@@ -159,6 +162,20 @@ function KeywordsInner() {
     const overlap = byCost.filter((k) => convSet.has(k.keyword)).map((k) => k.keyword);
     return { byCost, byConv, overlap };
   }, [aggregated]);
+
+  /* 파레토(2026-11-10): 광고비가 몇 개 키워드에 몰려 있나. 매체·키워드 쌍마다 기간 광고비를 더한다(위 「총 비용」과 같은 범위).
+     매출(전환값) 기준은 쓰지 않는다: 메타 구매 귀속이 막혀 있고 네이버 SA 전환값은 매체 신고값이라 키워드끼리 나눠 갖는 실제 매출이 아니다. */
+  const pareto = useMemo(() => {
+    const filtered = platformFilter === "all" ? keywords : keywords.filter((k) => k.platform === platformFilter);
+    const m = new Map<string, { key: string; label: string; value: number; sub: string }>();
+    for (const k of filtered) {
+      const key = `${k.platform}|${k.keyword}`;
+      const cur = m.get(key) || { key, label: k.keyword, value: 0, sub: PLATFORM_LABELS[k.platform] || k.platform };
+      cur.value += k.cost || 0;
+      m.set(key, cur);
+    }
+    return buildPareto(Array.from(m.values()));
+  }, [keywords, platformFilter]);
 
   /* 9.5 버블 차트 데이터 (CTR vs 노출, 버블크기=비용) */
   const bubbleData = useMemo(() => {
@@ -433,7 +450,32 @@ function KeywordsInner() {
         return (
           <Card data-tour="keywords-quadrant">
             <CardContent className="p-4">
-              <h3 className="font-semibold text-sm mb-1">키워드 사분면: CTR vs 노출 (버블 크기 = 비용)</h3>
+              <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
+                <h3 className="font-semibold text-sm">{quadView === "quadrant" ? "키워드 사분면: CTR vs 노출 (버블 크기 = 비용)" : "광고비 집중도 (파레토)"}</h3>
+                <div data-tour="keywords-quadrant-view" className="flex gap-0.5 rounded-md bg-muted p-0.5">
+                  {([["quadrant", "사분면"], ["pareto", "광고비 집중"]] as const).map(([k, lbl]) => (
+                    <button key={k} onClick={() => setQuadView(k)}
+                      className={cn("px-2 py-1 text-xs rounded", quadView === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+              {quadView === "pareto" ? (
+                <>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    가로 = 광고비 순위(1위부터), 막대 = 그 키워드 광고비, 빨간 선 = 1위부터 더한 누적 비중(오른쪽 축). 점선 = {PARETO_LINE}%.
+                    매체·키워드 쌍 {pareto.rows.length.toLocaleString("ko-KR")}개 중 위 30개만 막대로 그립니다.
+                  </p>
+                  <p data-tour="keywords-pareto-verdict" className="text-sm mb-2">
+                    {pareto.rows.length === 0 ? <span className="text-muted-foreground">이 기간 광고비가 쓰인 키워드가 없습니다.</span>
+                      : <>광고비의 <b>{PARETO_LINE}%</b>가 상위 <b>{pareto.reachCount}개</b> 키워드(전체 {pareto.rows.length}개의 {((pareto.reachCount / pareto.rows.length) * 100).toFixed(0)}%)에 몰려 있습니다.</>}
+                  </p>
+                  {pareto.rows.length > 0 && <ParetoChart rows={pareto.rows} format={(v) => formatCurrency(Math.round(v))} valueName="광고비" />}
+                  <p className="text-xs text-muted-foreground mt-2">
+                    광고비 기준입니다. 매출 기준은 그리지 않습니다: 메타는 구매 귀속이 막혀 있고, 네이버 SA 전환값은 매체가 신고한 값이라 키워드끼리 실제 매출을 나눠 가진 값이 아닙니다(전환값은 위 표 ROAS 열에서 참고만).
+                    위 필터에서 매체를 고르면 그 매체만 셉니다.
+                  </p>
+                </>
+              ) : (<>
               <p className="text-xs text-muted-foreground mb-3">
                 오른쪽 = CTR 평균 이상, 위 = 노출 평균 이상. 전환은 이 그림에 없어 위치만으로 좋고 나쁨을 판정하지 않습니다(전환은 위 표 ROAS 열).
               </p>
@@ -481,6 +523,7 @@ function KeywordsInner() {
               <p className="text-xs text-muted-foreground mt-2">
                 참조선: CTR 은 노출 가중 평균(클릭 합 ÷ 노출 합), 노출은 키워드당 평균. 지금 고른 정렬 순서로 위 30개 키워드만 그립니다(기본 비용순이면 비용 상위 30개).
               </p>
+              </>)}
             </CardContent>
           </Card>
         );
