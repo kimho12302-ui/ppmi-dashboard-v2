@@ -62,6 +62,11 @@ export function DumbbellChart({
                 <span className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full border-2 border-card shadow-sm"
                   style={{ left: `${x(r.cur)}%`, backgroundColor: r.color }} />
               )}
+              {/* 두 점이 거의 겹치면(축 폭의 2% 미만) 「변화 없음」으로 읽히지 않게 방향만 작게 붙인다 */}
+              {both && r.prev !== r.cur && hi - lo < 2 && (
+                <span className="absolute top-1/2 -translate-y-1/2 text-[9px] leading-none"
+                  style={{ left: `calc(${x(r.cur!)}% + 9px)`, color: good ? "var(--sig-ok)" : "var(--sig-danger)" }}>{up ? "▲" : "▼"}</span>
+              )}
               {!both && (
                 <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[10.5px] text-muted-foreground">{r.missingNote || "비교 불가"}</span>
               )}
