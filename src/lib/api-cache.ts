@@ -54,6 +54,9 @@ export const DATA_TAGS = [
   "naver_sa_keyword", "sa_keyword_hold", "sa_keyword_candidate", "sa_shopping_rank",
   "bl_gonggu_schedule", "bl_pnl_manual_cost", "product_components",
   "ext_gsc", "ext_meta",
+  // 재고 화면 (2026-11-10, docs/sql/2026-11-10-inventory.sql)
+  "raw_wekeep_snapshot", "raw_wekeep_daily", "wekeep_sku_map",
+  "inventory_manual_stock", "inventory_orders", "inventory_notes", "inventory_rules",
 ] as const;
 export type DataTag = (typeof DATA_TAGS)[number];
 

@@ -124,6 +124,8 @@ const HB_LABEL: Record<string, string> = {
   cafe24_sales: "카페24 매출 (옛 시트 수집기)",
   sales_rebuild: "판매실적 재빌드 (수동 도구)",
   daily_report: "대시보드 일일 보고 (텔레그램)",
+  // 2026-11-10 재고 화면. 로컬 수집기 wekeep-inventory.mjs --push 가 보내면 받는 API(src/lib/wekeep-ingest.ts)가 남긴다
+  "wekeep-inventory": "위킵 재고 (재고 화면)",
 };
 
 /**

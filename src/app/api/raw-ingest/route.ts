@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { revalidateAfter } from "@/lib/api-cache";
+import { ingestWekeep, isWekeepSource } from "@/lib/wekeep-ingest";
+import { kstDate } from "@/lib/date";
 
 // 원천(raw) 수집 값을 받는 자리. 2026-09-17 신설.
 //
@@ -55,6 +57,12 @@ async function postImpl(req: NextRequest) {
     return NextResponse.json({ error: "JSON 파싱 실패" }, { status: 400 });
   }
 
+  // 2026-11-10 위킵 재고(wekeep-snapshot · wekeep-daily)는 검증·심박이 따로 있어 전용 함수로 넘긴다(/api/wekeep-ingest 와 같음)
+  if (isWekeepSource(body.source)) {
+    const res = await ingestWekeep(body.source, body.rows, kstDate());
+    return NextResponse.json(res.body, { status: res.status });
+  }
+
   const source = body.source as Source | undefined;
   if (!source || !(source in TARGET)) {
     return NextResponse.json(
@@ -91,4 +99,4 @@ async function postImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const POST = revalidateAfter(postImpl, ["raw_coupang_keyword", "raw_gfa_campaign"]);
+export const POST = revalidateAfter(postImpl, ["raw_coupang_keyword", "raw_gfa_campaign", "raw_wekeep_snapshot", "raw_wekeep_daily", "sync_heartbeat"]);
