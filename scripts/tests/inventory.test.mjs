@@ -119,7 +119,8 @@ test("너티 쿠팡: 미입력이면 위킵만, 입력하면 짧은 쪽", () => 
   assert.equal(b.coupang_per_day, 2);
   assert.equal(b.runway_coupang, 10);
   assert.equal(b.runway, 10);
-  assert.equal(b.status, "order");
+  // 쿠팡 10일이지만 위킵은 40일치 → 발주가 아니라 쿠팡 입고 요청(2026-11-10). 손 입력 쿠팡 재고도 같다
+  assert.equal(b.status, "restock");
 });
 
 test("재고 가치: 원가 0 원(무상 샘플)은 0 원, 원가 없음은 빈칸, 합계에서 빠진 건수 셈", () => {
@@ -493,9 +494,53 @@ test("쿠팡 RG: 판매 속도 = RG 30일 순판매 낱개 ÷ 30 (판매 원장 
   assert.equal(r.runway_coupang, 20); // 60 ÷ 3
   assert.equal(r.runway_coupang_with_inbound, 30); // (60 + 30) ÷ 3
   assert.equal(r.runway, 20);
-  assert.equal(r.status, "order");
-  assert.match(r.reason, /쿠팡 쪽\(WING 2026-11-10\)/);
+  // 쿠팡 쪽 20일(≤ 20 발주 필요)이지만 위킵 쪽은 40일(> 곧 발주 30) → 발주가 아니라 쿠팡 입고 요청
+  assert.equal(r.status, "restock");
+  assert.equal(r.group, "act");
+  assert.match(r.reason, /위킵에서 쿠팡으로 입고 요청/);
   assert.equal(r.coupang_rg.sales_7d, 28);
+});
+
+test("쿠팡 입고 요청: 위킵도 짧으면 그대로 발주 필요, 카드는 발주 필요에 안 셈", () => {
+  const rows = [rgRow(1, { orderable: 30, sales_30d: 45 })];
+  // 위킵 10개 ÷ 하루 1 = 10일 → 위킵 쪽이 더 짧아 발주 필요
+  const short = computeInventory({ ...rgBase(), snapshot: [snap("N", "너티사운드_냠", 10)], coupangRg: { rows, map: rgMap } });
+  assert.equal(short.rows[0].status, "order");
+  assert.match(short.rows[0].reason, /위킵 쪽 남은 10일/);
+  // 위킵 25개 = 25일(곧 발주 ≤ 30) → 위킵도 넉넉하지 않아 쿠팡 20일 기준 발주 필요 유지
+  const mid = computeInventory({ ...rgBase(), snapshot: [snap("N", "너티사운드_냠", 25)], coupangRg: { rows, map: rgMap } });
+  assert.equal(mid.rows[0].status, "order");
+  // 위킵 넉넉 → 쿠팡 입고 요청, 카드는 restock 으로 세고 order 에서 빠짐
+  const ok = computeInventory({ ...rgBase(), coupangRg: { rows, map: rgMap } });
+  assert.equal(ok.rows[0].status, "restock");
+  assert.equal(ok.cards.card.restock, 1);
+  assert.equal(ok.cards.card.order, 0);
+  // 위킵 출고 0 이라 위킵 남은 날이 없어도 재고가 있으면 입고 요청
+  const quiet = computeInventory({ ...rgBase(), daily: [], coupangRg: { rows, map: rgMap } });
+  assert.equal(quiet.rows[0].status, "restock");
+  assert.match(quiet.rows[0].reason, /최근 출고 0/);
+});
+
+test("쿠팡 RG 입고 중: 입고 요청만 한 건(INIT_COMPLETED, 위킵 미출고)은 빼고 따로 둔다", () => {
+  const inbounds = [
+    { status: "INIT_COMPLETED", inProgress: 30 },
+    { status: "UNLOADING", inProgress: 20 },
+    { status: "STOWING", inProgress: 0 },
+  ];
+  const rows = [rgRow(1, { orderable: 10, inbound: 50, inbounds, sales_30d: 15 })];
+  const r = computeInventory({ ...rgBase(), coupangRg: { rows, map: rgMap } }).rows[0];
+  assert.equal(r.coupang_inbound, 40); // UNLOADING 20 묶음 × 2
+  assert.equal(r.coupang_rg.inbound_requested, 60); // INIT_COMPLETED 30 묶음 × 2
+  assert.equal(r.coupang_rg.options[0].inbound, 20);
+  assert.equal(r.coupang_rg.options[0].inbound_requested, 30);
+  assert.equal(r.runway_coupang_with_inbound, 60); // (20 + 40) ÷ 1
+  // 건별이 없으면 합계를 그대로 입고 중으로
+  const legacy = computeInventory({ ...rgBase(), coupangRg: { rows: [rgRow(1, { orderable: 10, inbound: 50 })], map: rgMap } }).rows[0];
+  assert.equal(legacy.coupang_inbound, 100);
+  assert.equal(legacy.coupang_rg.inbound_requested, 0);
+  // 짝 없는 옵션의 입고 요청분은 경고 목록에 남는다
+  const s = summarizeCoupangRg([rgRow(9, { inbound: 5, inbounds: [{ status: "INIT_COMPLETED", inProgress: 5 }] })], rgMap, "2026-11-10");
+  assert.equal(s.summary.unmapped_with_stock.length, 1);
 });
 
 test("쿠팡 RG: 기준일이 하루 넘게 오래되면 손 입력과 판매 원장으로 대체하고 사정을 적음", () => {

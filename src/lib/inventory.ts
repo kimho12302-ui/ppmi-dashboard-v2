@@ -57,11 +57,12 @@ export const DEFAULT_THRESHOLDS: Record<"nutty" | "saip" | "default", Thresholds
 export type InvBrand = "nutty" | "saip" | "ironpet" | "other";
 export const BRAND_LABEL: Record<InvBrand, string> = { nutty: "너티", saip: "사입", ironpet: "아이언펫", other: "기타" };
 
-export type InvStatus = "soldout" | "order" | "soon" | "late" | "incoming" | "ok" | "over" | "nomove" | "excluded";
+export type InvStatus = "soldout" | "order" | "soon" | "restock" | "late" | "incoming" | "ok" | "over" | "nomove" | "excluded";
 export const STATUS_LABEL: Record<InvStatus, string> = {
   soldout: "품절",
   order: "발주 필요",
   soon: "곧 발주",
+  restock: "쿠팡 입고 요청",
   late: "입고 지연",
   incoming: "입고 대기",
   ok: "정상",
@@ -77,13 +78,13 @@ export const STATUS_LABEL: Record<InvStatus, string> = {
 export type InvGroup = "act" | "hold" | "ok" | "over" | "nomove" | "excluded";
 export const GROUP_ORDER: readonly InvGroup[] = ["act", "hold", "ok", "over", "nomove", "excluded"];
 export const GROUP_OF: Record<InvStatus, InvGroup> = {
-  soldout: "act", order: "act", soon: "act", late: "act", incoming: "act",
+  soldout: "act", order: "act", soon: "act", restock: "act", late: "act", incoming: "act",
   ok: "ok", over: "over", nomove: "nomove", excluded: "excluded",
 };
 /** 판매 규모 등급 순서(정렬용). 등급 없음(null)은 C 와 판매 없음 사이 */
 const GRADE_ORDER: Record<ScaleGrade | "null", number> = { A: 0, B: 1, C: 2, null: 3, none: 4 };
 /** 같은 등급·같은 남은 날일 때 상태 순서 */
-const ACT_ORDER: Record<InvStatus, number> = { late: 0, soldout: 1, order: 2, soon: 3, incoming: 4, ok: 5, over: 6, nomove: 7, excluded: 8 };
+const ACT_ORDER: Record<InvStatus, number> = { late: 0, soldout: 1, order: 2, soon: 3, restock: 4, incoming: 5, ok: 6, over: 7, nomove: 8, excluded: 9 };
 /** 보류로 보내는 상태와 등급(null = 미상: 출고는 있는데 원가가 없어 금액을 못 셈) */
 export const HOLD_STATUSES: readonly InvStatus[] = ["soldout", "order"];
 export const HOLD_GRADES: readonly (ScaleGrade | null)[] = ["C", "none", null];
@@ -173,10 +174,32 @@ export interface RgInventoryRow {
   hidden_by_vendor?: boolean | null;
   orderable: number;
   inbound: number;
+  /** 입고 건별(status · inProgress 등). 있으면 입고 중을 이것으로 다시 센다(RG_NOT_SHIPPED_STATUSES 제외) */
+  inbounds?: readonly RgInboundRow[] | null;
   days_of_cover?: number | null;
   health_group?: string | null;
   sales_7d?: number | null;
   sales_30d?: number | null;
+}
+/** 쿠팡 입고 건 한 줄(WING inProgressInbounds). 수량은 옵션 묶음 단위 */
+export interface RgInboundRow { shipmentId?: number | string | null; status?: string | null; expected?: string | null; inProgress?: number | null }
+/**
+ * 쿠팡에 입고 요청만 하고 위킵에서 아직 안 나간 건의 상태. 이 수량은 아직 위킵 가용 재고에 있어(2026-11-10 바삭 210 = 위킵 대조 일치)
+ * 쿠팡 입고 중으로 세면 같은 물건을 두 번 센다. 그래서 입고 중에서 빼고 「입고 요청만」으로 따로 보인다(2026-11-10 김호 결정)
+ */
+export const RG_NOT_SHIPPED_STATUSES: readonly string[] = ["INIT_COMPLETED"];
+/** 옵션 한 줄의 입고 중을 [위킵에서 나간 것, 요청만 한 것] 으로 나눈다. 건별이 없으면 합계를 그대로 「나간 것」으로 */
+export function splitRgInbound(r: Pick<RgInventoryRow, "inbound" | "inbounds">): { shipped: number; requested: number } {
+  const list = Array.isArray(r.inbounds) ? r.inbounds : null;
+  if (!list || !list.length) return { shipped: Number(r.inbound) || 0, requested: 0 };
+  let shipped = 0;
+  let requested = 0;
+  for (const x of list) {
+    const q = Number(x.inProgress) || 0;
+    if (RG_NOT_SHIPPED_STATUSES.includes(String(x.status ?? ""))) requested += q;
+    else shipped += q;
+  }
+  return { shipped, requested };
 }
 /** 옵션 → 위킵 SKU. qty = 옵션 한 묶음에 든 그 SKU 낱개 수. 한 옵션이 두 SKU 로 나뉠 수 있다(1+1 세트) */
 export interface RgMapRow { vendor_item_id: number | string; sku_no: string; qty: number; component?: string | null; needs_review?: boolean | null; note?: string | null }
@@ -188,14 +211,20 @@ export interface RgOption {
   sale_suspended: boolean;
   needs_review: boolean;
   orderable: number;
+  /** 입고 중(위킵에서 나간 것만) */
   inbound: number;
+  /** 쿠팡에 입고 요청만 하고 위킵에서 아직 안 나간 수량(위킵 가용에 이미 들어 있음) */
+  inbound_requested: number;
   sales_7d: number | null;
   sales_30d: number | null;
 }
 /** 위킵 SKU 하나에 모인 RG 값(낱개 환산) */
 export interface RgSku {
   orderable: number;
+  /** 입고 중(위킵에서 나간 것만, 낱개) */
   inbound: number;
+  /** 입고 요청만 한 것(위킵 미출고, 낱개). 남은 날·재고 합에 안 넣는다 */
+  inbound_requested: number;
   sales_7d: number;
   sales_30d: number;
   /** 판매중지 아닌 옵션이 하나라도 있나. 없으면 쿠팡 쪽 판정에서 뺀다(지난 30일 판매만 남은 옵션이 가짜 「발주 필요」를 만들지 않게) */
@@ -239,24 +268,25 @@ export function summarizeCoupangRg(rows: readonly RgInventoryRow[], map: readonl
   for (const r of day) {
     const id = String(r.vendor_item_id);
     const orderable = Number(r.orderable) || 0;
-    const inbound = Number(r.inbound) || 0;
+    const { shipped: inbound, requested } = splitRgInbound(r);
     const ps = (pairs.get(id) ?? []).filter((p) => Number(p.qty) > 0);
-    if (!ps.length) { unmapped.push({ vendor_item_id: id, name: rgName(r), orderable, inbound, sale_suspended: !!r.sale_suspended }); continue; }
+    if (!ps.length) { unmapped.push({ vendor_item_id: id, name: rgName(r), orderable, inbound: inbound + requested, sale_suspended: !!r.sale_suspended }); continue; }
     if (ps.some((p) => p.needs_review)) needsReview += 1;
     const s7 = r.sales_7d ?? null;
     const s30 = r.sales_30d ?? null;
     for (const p of ps) {
       const q = Number(p.qty);
-      const prev = bySku.get(p.sku_no) ?? { orderable: 0, inbound: 0, sales_7d: 0, sales_30d: 0, active: false, needs_review: false, options: [] };
+      const prev = bySku.get(p.sku_no) ?? { orderable: 0, inbound: 0, inbound_requested: 0, sales_7d: 0, sales_30d: 0, active: false, needs_review: false, options: [] };
       bySku.set(p.sku_no, {
         orderable: prev.orderable + orderable * q,
         inbound: prev.inbound + inbound * q,
+        inbound_requested: prev.inbound_requested + requested * q,
         sales_7d: prev.sales_7d + (Number(s7) || 0) * q,
         sales_30d: prev.sales_30d + (Number(s30) || 0) * q,
         active: prev.active || !r.sale_suspended,
         needs_review: prev.needs_review || !!p.needs_review,
         options: [...prev.options, { vendor_item_id: id, name: rgName(r), qty: q, sale_suspended: !!r.sale_suspended, needs_review: !!p.needs_review,
-          orderable, inbound, sales_7d: s7, sales_30d: s30 }],
+          orderable, inbound, inbound_requested: requested, sales_7d: s7, sales_30d: s30 }],
       });
     }
   }
@@ -656,7 +686,7 @@ export interface InventoryCards {
    * 카드 숫자: 입고 지연은 밑의 상태로 품절·발주 필요 카드에 더한다(곧 발주였던 지연은 발주 필요로).
    * 품절·발주 필요는 보류(판매 규모 C·판매 없음)를 빼고 세고, 뺀 개수는 held_* 로 따로 둔다
    */
-  card: { soldout: number; order: number; soon: number; over: number; late: number; incoming: number; held_soldout: number; held_order: number };
+  card: { soldout: number; order: number; soon: number; restock: number; over: number; late: number; incoming: number; held_soldout: number; held_order: number };
   value_total: number;
   value_by_brand: Record<InvBrand, number>;
   /** 원가가 없어 재고 가치에서 빠진 SKU 수(재고가 있는 것만) */
@@ -844,6 +874,14 @@ export function computeInventory(input: ComputeInput): InventoryResult {
       const cSide = `쿠팡 쪽(${coupangSource === "wing" ? `WING ${coupangAsOf}` : `손 입력 ${coupangAsOf}`})`;
       const side = runwayC !== null && runwayW !== null ? (runwayC <= runwayW ? cSide : "위킵 쪽") : runwayC !== null ? cSide : "위킵 쪽";
       reason = `${side} 남은 ${r1(runway)}일 (발주 필요 ≤ ${t.warn} · 곧 발주 ≤ ${t.soon} · 과재고 > ${t.over}, ${t.basis})${missingNote}`;
+      if (isCoupangRestock(status, runwayW, runwayC, wekeepSide, t)) {
+        // 쿠팡 쪽만 짧고 위킵에는 넉넉하다: 할 일은 발주가 아니라 위킵 → 쿠팡 입고 요청(2026-11-10 김호 결정)
+        const inb = coupangInbound ? ` · 쿠팡 입고 중 ${coupangInbound}개 포함하면 ${r1(runwayCIn ?? 0)}일` : "";
+        const req = rgSku?.inbound_requested ? ` · 입고 요청만 하고 위킵 미출고 ${rgSku.inbound_requested}개` : "";
+        reason = `쿠팡 쪽 남은 ${r1(runwayC ?? 0)}일인데 위킵 쪽은 ${runwayW === null ? `재고 ${wekeepSide}개(최근 출고 0)` : `${r1(runwayW)}일치`} 있음: `
+          + `발주가 아니라 위킵에서 쿠팡으로 입고 요청${inb}${req} (곧 발주 ≤ ${t.soon}, ${t.basis})`;
+        status = "restock";
+      }
     }
     const baseStatus = status;
     if (incoming && (status === "soldout" || status === "order" || status === "soon")) {
@@ -939,6 +977,17 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     rows,
     cards: buildCards(rows),
   };
+}
+
+/**
+ * 쿠팡 입고 요청: 남은 날이 짧게 나온 원인이 쿠팡 쪽이고(쿠팡 남은 날 ≤ 위킵 남은 날) 위킵 쪽은 곧 발주 기준보다 길 때.
+ * 위킵 쪽이 최근 출고 0 이라 남은 날이 없어도 재고가 있으면 보낼 수 있으니 같은 취급. 위킵도 짧으면 그대로 발주 필요·곧 발주
+ */
+export function isCoupangRestock(status: InvStatus, runwayW: number | null, runwayC: number | null, wekeepSide: number, t: Pick<Thresholds, "soon">): boolean {
+  if (status !== "order" && status !== "soon") return false;
+  if (runwayC === null || wekeepSide <= 0) return false;
+  if (runwayW !== null && runwayC > runwayW) return false;
+  return runwayW === null || runwayW > t.soon;
 }
 
 /** 정렬에 쓰는 남은 날. 품절은 0(최근 기간 출고가 0 이라 남은 날이 없어도 맨 뒤로 가지 않게) */
@@ -1106,6 +1155,7 @@ export function buildCards(rows: readonly InventoryRow[]): InventoryCards {
     soldout: counts.soldout - heldOf("soldout") + lateOf(["soldout"]),
     order: counts.order - heldOf("order") + lateOf(["order", "soon"]),
     soon: counts.soon,
+    restock: counts.restock,
     over: counts.over,
     late: counts.late,
     incoming: counts.incoming,

@@ -6,6 +6,8 @@ export const STATUS_TONE: Record<InvStatus, Tone> = {
   soldout: { color: "var(--sig-danger)", surface: "var(--sig-danger-surface)", border: "var(--sig-danger-border)" },
   order: { color: "#ea580c", surface: "rgb(234 88 12 / 0.12)", border: "rgb(234 88 12 / 0.40)" },
   soon: { color: "#ca8a04", surface: "rgb(202 138 4 / 0.14)", border: "rgb(202 138 4 / 0.45)" },
+  // 쿠팡 입고 요청 = 발주가 아니라 위킵 → 쿠팡 보내기. 발주 계열(주황·노랑)과 섞이지 않게 청록
+  restock: { color: "#0891b2", surface: "rgb(8 145 178 / 0.12)", border: "rgb(8 145 178 / 0.45)" },
   // 입고 지연 = 입고 예정일이 지난 발주. 품절과 같은 빨강 계열(진한 장미색)
   late: { color: "#be123c", surface: "rgb(190 18 60 / 0.14)", border: "rgb(190 18 60 / 0.55)" },
   incoming: { color: "#2563eb", surface: "rgb(37 99 235 / 0.10)", border: "rgb(37 99 235 / 0.40)" },
@@ -16,7 +18,7 @@ export const STATUS_TONE: Record<InvStatus, Tone> = {
 };
 /** 남은 날 막대 채움 색. 정상은 무채색 */
 export const BAR_COLOR: Record<InvStatus, string> = {
-  soldout: "var(--sig-danger)", order: "#ea580c", soon: "#ca8a04", late: "#be123c", incoming: "#2563eb",
+  soldout: "var(--sig-danger)", order: "#ea580c", soon: "#ca8a04", restock: "#0891b2", late: "#be123c", incoming: "#2563eb",
   ok: "rgb(100 116 139 / 0.55)", over: "rgb(100 116 139 / 0.30)", nomove: "transparent", excluded: "rgb(100 116 139 / 0.25)",
 };
 

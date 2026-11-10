@@ -223,7 +223,7 @@ function CoupangOptions({ row }: { row: InventoryRow }) {
       <div className="px-3 pt-3 pb-2">
         <p className="text-sm font-semibold">쿠팡 로켓그로스 옵션별 ({md(row.coupang_as_of)} WING 재고현황)</p>
         <p className="text-[11px] text-muted-foreground">
-          수량은 옵션 묶음, 괄호 안은 이 상품 낱개. 합계: 판매 가능 {fmtInt(rg.orderable)} · 입고 중 {fmtInt(rg.inbound)} ·
+          수량은 옵션 묶음, 괄호 안은 이 상품 낱개. 합계: 판매 가능 {fmtInt(rg.orderable)} · 입고 중 {fmtInt(rg.inbound)}(위킵에서 나간 것만){rg.inbound_requested ? <> · 입고 요청만 {fmtInt(rg.inbound_requested)}(위킵 미출고라 위킵 가용에 들어 있어 쿠팡 쪽에 안 셈)</> : null} ·
           최근 30일 판매 {fmtInt(rg.sales_30d)}(하루 {fmt1(rg.sales_30d / COUPANG_RG_SALES_DAYS)}) · 최근 7일 {fmtInt(rg.sales_7d)}(하루 {fmt1(rg.sales_7d / 7)}).
           판정은 30일 속도. 30일 안에 새로 연 옵션이나 품절 구간이 있으면 7일 속도가 더 빠를 수 있습니다.
           {!rg.active && " 판매 중인 옵션이 없어 쿠팡 쪽은 판정에서 뺐습니다."}
@@ -244,7 +244,10 @@ function CoupangOptions({ row }: { row: InventoryRow }) {
                 </td>
                 <td className="px-2 py-1 text-right">×{o.qty}</td>
                 <td className="px-2 py-1 text-right">{u(o.orderable, o.qty)}</td>
-                <td className="px-2 py-1 text-right">{o.inbound ? u(o.inbound, o.qty) : 0}</td>
+                <td className="px-2 py-1 text-right">
+                  {o.inbound ? u(o.inbound, o.qty) : 0}
+                  {o.inbound_requested ? <span className="block text-[10px] text-muted-foreground">요청만 {u(o.inbound_requested, o.qty)}</span> : null}
+                </td>
                 <td className="px-2 py-1 text-right">{u(o.sales_7d, o.qty)}</td>
                 <td className="px-2 py-1 text-right">{u(o.sales_30d, o.qty)}</td>
               </tr>

@@ -91,12 +91,13 @@ export function InventoryScreen() {
           <Freshness data={ready} loading={loading} onRefresh={() => load(true)} />
           <CoupangRgNotice data={ready} />
 
-          <section data-tour="inventory-cards" className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
+          <section data-tour="inventory-cards" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
             <CountCard status="soldout" n={cards.card.soldout}
               sub={`재고 합 0${cards.counts.late ? " · 입고 지연 포함" : ""}`} held={ready.scale ? cards.card.held_soldout : undefined} />
             <CountCard status="order" n={cards.card.order}
               sub={`남은 날 ≤ 주의 일수${cards.card.late ? ` · 입고 지연 ${cards.card.late} 포함` : ""}`} held={ready.scale ? cards.card.held_order : undefined} />
             <CountCard status="soon" n={cards.card.soon} sub={`≤ 30일 · 입고 대기 ${cards.card.incoming}`} />
+            <CountCard status="restock" n={cards.card.restock} sub="쿠팡만 부족, 위킵엔 있음 · 발주 아님" />
             <CountCard status="over" n={cards.card.over} sub="남은 날 > 60일" />
             <ValueCard cards={cards} />
           </section>
@@ -342,7 +343,8 @@ function Badge({ status, coupangMissing }: { status: InvStatus; coupangMissing?:
 function coupangTitle(row: InventoryRow): string {
   const src = row.coupang_source === "wing" ? `WING 로켓그로스 재고현황 ${row.coupang_as_of} 판매 가능(옵션 묶음을 낱개로 환산)`
     : row.coupang_source === "manual" ? `설정 손 입력 ${row.coupang_as_of}` : row.coupang_missing ? "쿠팡 재고 미입력" : "쿠팡 로켓그로스에 이 SKU 옵션 없음";
-  const inbound = row.coupang_inbound ? ` · 입고 중 ${fmtInt(row.coupang_inbound)}` : "";
+  const inbound = (row.coupang_inbound ? ` · 입고 중 ${fmtInt(row.coupang_inbound)}` : "")
+    + (row.coupang_rg?.inbound_requested ? ` · 입고 요청만(위킵 미출고) ${fmtInt(row.coupang_rg.inbound_requested)}` : "");
   const speed = row.coupang_per_day === null ? "" : ` · 하루 판매 ${fmtSpeed(row.coupang_per_day)}(${row.coupang_speed_basis === "wing30" ? "RG 30일 ÷ 30" : "판매 원장 쿠팡"})`;
   return `${src}${inbound}${speed}${row.coupang_note ? ` · ${row.coupang_note}` : ""}`;
 }

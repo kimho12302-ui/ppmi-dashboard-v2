@@ -228,7 +228,7 @@ async function coupangRgDb(): Promise<{ rows: RgInventoryRow[]; map: RgMapRow[] 
   if (!date) return null;
   const [rows, map] = await Promise.all([
     supabase.from("raw_coupang_rg_inventory")
-      .select("date,vendor_item_id,product_name,option_name,sale_suspended,hidden_by_vendor,orderable,inbound,days_of_cover,health_group,sales_7d,sales_30d")
+      .select("date,vendor_item_id,product_name,option_name,sale_suspended,hidden_by_vendor,orderable,inbound,inbounds,days_of_cover,health_group,sales_7d,sales_30d")
       .eq("date", date),
     supabase.from("coupang_rg_sku_map").select("vendor_item_id,sku_no,qty,component,needs_review,note"),
   ]);
