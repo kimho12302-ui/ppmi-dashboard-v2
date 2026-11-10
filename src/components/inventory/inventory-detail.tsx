@@ -7,8 +7,8 @@
 // 공용 그래프 스타일(components/charts)은 다른 작업이 바꾸는 중이라 쓰지 않고 이 파일에서 그린다.
 import { useEffect, useMemo, useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { forecastLine, RUNWAY_AXIS_DAYS, type DayPoint, type InventoryRow } from "@/lib/inventory";
-import { fmt1, fmtInt, fmtWon, md, scaleTitle } from "./inventory-ui";
+import { COUPANG_RG_SALES_DAYS, forecastLine, RUNWAY_AXIS_DAYS, type DayPoint, type InventoryRow } from "@/lib/inventory";
+import { coupangSourceLabel, coupangText, fmt1, fmtInt, fmtWon, md, scaleTitle } from "./inventory-ui";
 
 const DAYS = [
   { key: "30", label: "30일" }, { key: "90", label: "90일" }, { key: "180", label: "180일" }, { key: "all", label: "1월부터" },
@@ -75,14 +75,18 @@ export function InventoryDetail({ row, asOf, windowDays }: { row: InventoryRow; 
           {row.runway_coupang !== null && (
             <span className="block">위킵 쪽 {row.runway_wekeep === null ? "계산 불가" : `${fmt1(row.runway_wekeep)}일`} · 쿠팡 쪽 {fmt1(row.runway_coupang)}일 (짧은 쪽으로 판정)</span>
           )}
+          {row.coupang_note && <span className="block" style={{ color: "var(--sig-warn)" }}>{row.coupang_note}</span>}
           <span className="block text-muted-foreground">
-            {row.coupang_per_day !== null && <>쿠팡 하루 판매 {fmt1(row.coupang_per_day)}개 · </>}
+            {row.coupang_per_day !== null && <>쿠팡 하루 판매 {fmt1(row.coupang_per_day)}개({row.coupang_speed_basis === "wing30" ? `로켓그로스 ${COUPANG_RG_SALES_DAYS}일 ÷ ${COUPANG_RG_SALES_DAYS}` : "판매 원장 쿠팡, 판매자배송 섞일 수 있음"}) · </>}
+            {row.runway_coupang_with_inbound !== null && row.coupang_inbound ? <>쿠팡 입고 중 포함 {fmt1(row.runway_coupang_with_inbound)}일 · </> : null}
             재고 가치 {fmtWon(row.value)}{row.unit_cost ? ` (원가 ${fmtInt(row.unit_cost)}원 · ${row.cost_basis ?? "출처 없음"})` : " (원가 표에 없음: 설정 > 재고 > 원가)"}
             {row.runway_with_incoming !== null && <> · 입고 포함 {fmt1(row.runway_with_incoming)}일</>}
           </span>
           <span className="block text-muted-foreground">판매 규모 {scaleTitle(row)}{row.held ? " · 보류 묶음(① 아래 접힘)" : ""}</span>
         </Fact>
       </div>
+
+      {row.coupang_rg && <CoupangOptions row={row} />}
 
       <div className="rounded-lg border bg-card">
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-3">
@@ -169,7 +173,8 @@ function OtherStock({ row }: { row: InventoryRow }) {
   const v = (n: number | null) => (n === null ? "미입력" : fmtInt(n));
   return (
     <>
-      {row.brand === "nutty" && <> · 쿠팡 <b className="num">{v(row.coupang)}</b>{row.coupang_as_of ? <span className="text-muted-foreground"> ({md(row.coupang_as_of)})</span> : null}</>}
+      {(row.brand === "nutty" || row.coupang !== null) && <> · 쿠팡 <b className="num">{coupangText(row)}</b>{coupangSourceLabel(row) ? <span className="text-muted-foreground"> ({coupangSourceLabel(row)})</span> : null}</>}
+      {row.coupang_inbound ? <span className="text-muted-foreground"> · 쿠팡 입고 중 {fmtInt(row.coupang_inbound)}</span> : null}
       {" "}· 이동 {v(row.transit)} · 내부 {v(row.internal)}
       {row.incoming && <span className="block" style={{ color: "#2563eb" }}>입고 예정 {fmtInt(row.incoming.qty)}개{row.incoming.expected_at ? ` · ${row.incoming.expected_at}` : ""}</span>}
     </>
@@ -204,6 +209,49 @@ function FlowTip({ active, payload }: TipProps) {
     <div className="rounded-md border bg-card px-2 py-1.5 text-xs shadow-sm num">
       <p className="font-medium">{p.date}</p>
       <p>들어옴 {fmtInt(p.inflow)} · 출고 {fmtInt(Math.abs(p.outflow ?? 0))}</p>
+    </div>
+  );
+}
+
+/** WING 로켓그로스 옵션별 내역. 수량은 옵션 묶음, 괄호 안은 낱개 환산 */
+function CoupangOptions({ row }: { row: InventoryRow }) {
+  const rg = row.coupang_rg;
+  if (!rg) return null;
+  const u = (n: number | null, q: number) => (n === null ? "-" : q === 1 ? fmtInt(n) : `${fmtInt(n)} (${fmtInt(n * q)})`);
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden" data-tour="inventory-coupang-options">
+      <div className="px-3 pt-3 pb-2">
+        <p className="text-sm font-semibold">쿠팡 로켓그로스 옵션별 ({md(row.coupang_as_of)} WING 재고현황)</p>
+        <p className="text-[11px] text-muted-foreground">
+          수량은 옵션 묶음, 괄호 안은 이 상품 낱개. 합계: 판매 가능 {fmtInt(rg.orderable)} · 입고 중 {fmtInt(rg.inbound)} ·
+          최근 30일 판매 {fmtInt(rg.sales_30d)}(하루 {fmt1(rg.sales_30d / COUPANG_RG_SALES_DAYS)}) · 최근 7일 {fmtInt(rg.sales_7d)}(하루 {fmt1(rg.sales_7d / 7)}).
+          판정은 30일 속도. 30일 안에 새로 연 옵션이나 품절 구간이 있으면 7일 속도가 더 빠를 수 있습니다.
+          {!rg.active && " 판매 중인 옵션이 없어 쿠팡 쪽은 판정에서 뺐습니다."}
+        </p>
+      </div>
+      <div className="max-h-64 overflow-auto">
+        <table className="w-full text-xs num">
+          <thead className="sticky top-0 bg-muted text-muted-foreground">
+            <tr>{["옵션", "묶음", "판매 가능", "입고 중", "7일 판매", "30일 판매"].map((h) => <th key={h} className="px-2 py-1.5 text-right first:text-left font-medium">{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {[...rg.options].sort((a, b) => b.orderable * b.qty - a.orderable * a.qty || (b.sales_30d ?? 0) - (a.sales_30d ?? 0)).map((o) => (
+              <tr key={o.vendor_item_id} className={`border-t ${o.sale_suspended ? "text-muted-foreground" : ""}`}>
+                <td className="px-2 py-1 text-left">
+                  {o.name}
+                  {o.sale_suspended && <span className="ml-1 text-[10px]">(판매중지)</span>}
+                  {o.needs_review && <span className="ml-1 text-[10px]" style={{ color: "var(--sig-warn)" }} title="이름으로 추정한 짝. 볼트 짝짓기 초안에서 확인">(짝 확인 필요)</span>}
+                </td>
+                <td className="px-2 py-1 text-right">×{o.qty}</td>
+                <td className="px-2 py-1 text-right">{u(o.orderable, o.qty)}</td>
+                <td className="px-2 py-1 text-right">{o.inbound ? u(o.inbound, o.qty) : 0}</td>
+                <td className="px-2 py-1 text-right">{u(o.sales_7d, o.qty)}</td>
+                <td className="px-2 py-1 text-right">{u(o.sales_30d, o.qty)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

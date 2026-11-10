@@ -57,6 +57,8 @@ export const DATA_TAGS = [
   // 재고 화면 (2026-11-10, docs/sql/2026-11-10-inventory.sql)
   "raw_wekeep_snapshot", "raw_wekeep_daily", "wekeep_sku_map",
   "inventory_manual_stock", "inventory_orders", "inventory_notes", "inventory_rules", "inventory_costs",
+  // 쿠팡 로켓그로스 재고 (2026-11-10, docs/sql/2026-11-10-coupang-rg.sql)
+  "raw_coupang_rg_inventory", "coupang_rg_sku_map",
 ] as const;
 export type DataTag = (typeof DATA_TAGS)[number];
 

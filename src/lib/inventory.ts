@@ -30,6 +30,14 @@ export const COUPANG_WINDOW_DAYS = 28;
  * 11-10 실측으로는 너티 쿠팡 행이 11-09 까지 평소만큼 차 있었다. 계속 그러면 줄여도 된다.
  */
 export const COUPANG_SALES_LAG_DAYS = 5;
+/**
+ * 쿠팡 로켓그로스(RG) 판매 속도 기간(일). WING 재고현황이 주는 「최근 30일 판매」(RG 창고에서 나간 것만, 순판매)를 ÷ 30.
+ * 판매 원장(product_sales) 쿠팡 전체는 판매자배송(위킵에서 나감)이 섞여 위킵 출고와 두 번 셀 수 있어 RG 값이 있으면 이쪽을 쓴다(2026-11-10).
+ * 30일 안에 새로 등록된 옵션·품절 구간이 있으면 실제보다 느리게 나온다. 상세에 7일 속도를 같이 보인다.
+ */
+export const COUPANG_RG_SALES_DAYS = 30;
+/** RG 원천 기준일이 오늘에서 이 일수보다 오래되면 쓰지 않고 손 입력·판매 원장으로 대체한다 */
+export const COUPANG_RG_MAX_AGE_DAYS = 1;
 
 export interface Thresholds {
   /** 이 일수 이하 = 발주 필요 */
@@ -154,6 +162,114 @@ export interface OrderRow {
 export interface NoteRow { sku_no: string; kind?: string | null; note?: string | null; exclude?: boolean | null }
 export interface RuleRow { scope_kind: "brand" | "supplier" | string; scope_key: string; warn_days: number; soon_days: number; over_days: number }
 
+// ── 쿠팡 로켓그로스(RG) 재고 (docs/sql/2026-11-10-coupang-rg.sql) ──
+/** RG 재고 한 줄(날짜 × 옵션). 수량은 전부 옵션 묶음 단위. sales_* 는 순판매(판매 − 취소), 통계가 없으면 null */
+export interface RgInventoryRow {
+  date: string;
+  vendor_item_id: number | string;
+  product_name?: string | null;
+  option_name?: string | null;
+  sale_suspended: boolean;
+  hidden_by_vendor?: boolean | null;
+  orderable: number;
+  inbound: number;
+  days_of_cover?: number | null;
+  health_group?: string | null;
+  sales_7d?: number | null;
+  sales_30d?: number | null;
+}
+/** 옵션 → 위킵 SKU. qty = 옵션 한 묶음에 든 그 SKU 낱개 수. 한 옵션이 두 SKU 로 나뉠 수 있다(1+1 세트) */
+export interface RgMapRow { vendor_item_id: number | string; sku_no: string; qty: number; component?: string | null; needs_review?: boolean | null; note?: string | null }
+/** 상세에 보이는 옵션 한 줄(수량은 옵션 묶음 단위, units = 낱개 환산) */
+export interface RgOption {
+  vendor_item_id: string;
+  name: string;
+  qty: number;
+  sale_suspended: boolean;
+  needs_review: boolean;
+  orderable: number;
+  inbound: number;
+  sales_7d: number | null;
+  sales_30d: number | null;
+}
+/** 위킵 SKU 하나에 모인 RG 값(낱개 환산) */
+export interface RgSku {
+  orderable: number;
+  inbound: number;
+  sales_7d: number;
+  sales_30d: number;
+  /** 판매중지 아닌 옵션이 하나라도 있나. 없으면 쿠팡 쪽 판정에서 뺀다(지난 30일 판매만 남은 옵션이 가짜 「발주 필요」를 만들지 않게) */
+  active: boolean;
+  needs_review: boolean;
+  options: RgOption[];
+}
+export interface RgUnmapped { vendor_item_id: string; name: string; orderable: number; inbound: number; sale_suspended: boolean }
+/** 화면 위 한 줄과 경고에 쓰는 RG 요약 */
+export interface CoupangRgSummary {
+  /** RG 원천 기준일(가장 최근 날짜) */
+  date: string;
+  /** 기준일이 오늘 − COUPANG_RG_MAX_AGE_DAYS 이후인가. 아니면 손 입력으로 대체 */
+  fresh: boolean;
+  age_days: number;
+  options: number;
+  skus: number;
+  /** 짝짓기 표에 없는 옵션 전부 */
+  unmapped: RgUnmapped[];
+  /** 그중 재고(판매 가능 또는 입고 중)가 있는 것. 1 이상이면 화면 경고 */
+  unmapped_with_stock: RgUnmapped[];
+  /** 「확인 필요」 짝으로 계산한 옵션 수 */
+  needs_review: number;
+}
+
+const rgName = (r: Pick<RgInventoryRow, "product_name" | "option_name">) => `${r.product_name ?? ""} / ${r.option_name ?? ""}`;
+
+/**
+ * RG 원천 최신 날짜의 옵션을 짝짓기 표로 위킵 SKU 에 낱개 환산해 모은다(판매 가능 · 입고 중 · 7일 · 30일 순판매 × 묶음 수).
+ * 원천이 없으면 null. 오래된 원천도 요약은 돌려준다(fresh=false, 계산에는 안 씀).
+ */
+export function summarizeCoupangRg(rows: readonly RgInventoryRow[], map: readonly RgMapRow[], today: string): { summary: CoupangRgSummary; bySku: Map<string, RgSku> } | null {
+  const date = rows.reduce<string | null>((m, r) => (!m || r.date > m ? r.date : m), null);
+  if (!date) return null;
+  const day = rows.filter((r) => r.date === date);
+  const pairs = new Map<string, RgMapRow[]>();
+  for (const m of map) pairs.set(String(m.vendor_item_id), [...(pairs.get(String(m.vendor_item_id)) ?? []), m]);
+  const bySku = new Map<string, RgSku>();
+  const unmapped: RgUnmapped[] = [];
+  let needsReview = 0;
+  for (const r of day) {
+    const id = String(r.vendor_item_id);
+    const orderable = Number(r.orderable) || 0;
+    const inbound = Number(r.inbound) || 0;
+    const ps = (pairs.get(id) ?? []).filter((p) => Number(p.qty) > 0);
+    if (!ps.length) { unmapped.push({ vendor_item_id: id, name: rgName(r), orderable, inbound, sale_suspended: !!r.sale_suspended }); continue; }
+    if (ps.some((p) => p.needs_review)) needsReview += 1;
+    const s7 = r.sales_7d ?? null;
+    const s30 = r.sales_30d ?? null;
+    for (const p of ps) {
+      const q = Number(p.qty);
+      const prev = bySku.get(p.sku_no) ?? { orderable: 0, inbound: 0, sales_7d: 0, sales_30d: 0, active: false, needs_review: false, options: [] };
+      bySku.set(p.sku_no, {
+        orderable: prev.orderable + orderable * q,
+        inbound: prev.inbound + inbound * q,
+        sales_7d: prev.sales_7d + (Number(s7) || 0) * q,
+        sales_30d: prev.sales_30d + (Number(s30) || 0) * q,
+        active: prev.active || !r.sale_suspended,
+        needs_review: prev.needs_review || !!p.needs_review,
+        options: [...prev.options, { vendor_item_id: id, name: rgName(r), qty: q, sale_suspended: !!r.sale_suspended, needs_review: !!p.needs_review,
+          orderable, inbound, sales_7d: s7, sales_30d: s30 }],
+      });
+    }
+  }
+  const age = daysBetween(date, today);
+  return {
+    summary: {
+      date, fresh: age <= COUPANG_RG_MAX_AGE_DAYS, age_days: age, options: day.length, skus: bySku.size,
+      unmapped, unmapped_with_stock: unmapped.filter((u) => u.orderable > 0 || u.inbound > 0), needs_review: needsReview,
+    },
+    bySku,
+  };
+}
+
 // ── 날짜 ──
 export function addDays(ymd: string, n: number): string {
   const d = new Date(`${ymd}T00:00:00Z`);
@@ -206,6 +322,11 @@ export function parseWekeepName(name: string): { brand: InvBrand; supplier: stri
   else if (/^너티/.test(rest)) brand = "nutty";
   else if (/^아이언펫/.test(rest)) brand = "ironpet";
   return { brand, supplier: isSaip ? supplierTag : brand === "nutty" ? "너티" : null, tags, bare: rest };
+}
+
+/** 「[파손]」「[마케팅용]」 머리표가 붙은 위킵 상품명(판매 재고가 아닌 따로 둔 재고) */
+export function isTaggedName(name: string): boolean {
+  return parseWekeepName(name).tags.some((t) => t === "파손" || t === "마케팅용");
 }
 
 export function toInvBrand(b: string | null | undefined): InvBrand | null {
@@ -428,9 +549,21 @@ export interface InventoryRow {
   safe: number;
   reserve: number;
   faulty: number;
-  /** 손 입력 재고. null = 미입력(0 과 다름) */
+  /** 쿠팡 재고(낱개). WING RG 원천이 새로우면 그 값, 아니면 손 입력. null = 둘 다 없음(0 과 다름) */
   coupang: number | null;
   coupang_as_of: string | null;
+  /** 쿠팡 재고 출처: wing = WING 로켓그로스 재고현황 자동값, manual = 설정 손 입력, null = 없음 */
+  coupang_source: "wing" | "manual" | null;
+  /** 쿠팡 입고 중(낱개, WING 값일 때만). 남은 날에는 안 넣는다 */
+  coupang_inbound: number | null;
+  /** 쿠팡 판매 속도 근거: wing30 = RG 30일 순판매 ÷ 30, sales = 판매 원장 쿠팡(옛 방식), null = 없음 */
+  coupang_speed_basis: "wing30" | "sales" | null;
+  /** 쿠팡 쪽 한 줄 사정(판매 중인 옵션 없음, WING 값이 오래돼 손 입력을 씀 …). 없으면 null */
+  coupang_note: string | null;
+  /** WING 값을 쓸 때 옵션별 내역(상세) */
+  coupang_rg: RgSku | null;
+  /** (쿠팡 재고 + 입고 중) ÷ 쿠팡 하루 판매. 보조값(판정에 안 씀) */
+  runway_coupang_with_inbound: number | null;
   transit: number | null;
   internal: number | null;
   other_as_of: string | null;
@@ -488,6 +621,11 @@ export interface ComputeInput {
   rules?: readonly RuleRow[];
   /** SKU 원가(inventory_costs, 시트 원가가 정본). 없으면 그 SKU 는 「원가 없음」 */
   skuCosts?: readonly SkuCostRow[];
+  /**
+   * 쿠팡 로켓그로스 원천(최신 날짜 행만 넘겨도, 여러 날을 넘겨도 됨)과 옵션 → SKU 짝짓기. 없거나 기준일이 오래되면
+   * 손 입력 쿠팡 재고와 판매 원장 쿠팡 판매 속도로 대체한다
+   */
+  coupangRg?: { rows: readonly RgInventoryRow[]; map: readonly RgMapRow[] } | null;
   /** 너티 쿠팡 판매(기본 품목 낱개 수량, 기간 합). component 이름 그대로 */
   coupangSales?: readonly { component: string; qty: number }[];
   coupangWindow?: { from: string; to: string; days: number } | null;
@@ -534,6 +672,8 @@ export interface InventoryResult {
   window_from: string | null;
   coupang_window: { from: string; to: string; days: number } | null;
   coupang_unmapped: { products: string[]; qty: number } | null;
+  /** 쿠팡 로켓그로스 원천 요약. null = 원천 없음(표가 없거나 아직 안 보냄) */
+  coupang_rg: CoupangRgSummary | null;
   /** 판매 규모 등급 기준(화면 한 줄 설명). null = 판매 원장을 못 읽어 등급 없음 */
   scale: {
     window: { from: string; to: string; days: number };
@@ -622,6 +762,9 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     if (!cur || (cur.tagged && !tagged)) owners.set(k, { sku: r.sku_no, tagged });
   }
   const coupangOwner = new Map([...owners].map(([k, v]) => [k, v.sku]));
+  // 쿠팡 로켓그로스: 옵션 → SKU 짝짓기로 낱개 환산. 기준일이 새로울 때만 손 입력·판매 원장 대신 쓴다
+  const rg = input.coupangRg ? summarizeCoupangRg(input.coupangRg.rows, input.coupangRg.map, today) : null;
+  const rgFresh = !!rg?.summary.fresh;
 
   const rows0: InventoryRow[] = snap.map((s) => {
     const m = mapBySku.get(s.sku_no);
@@ -635,7 +778,10 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     const cp = stockBy.get(`${s.sku_no}|coupang`);
     const tr = stockBy.get(`${s.sku_no}|transit`);
     const it = stockBy.get(`${s.sku_no}|internal`);
-    const coupang = cp ? Number(cp.qty) : null;
+    const rgSku = rgFresh ? rg?.bySku.get(s.sku_no) ?? null : null;
+    const coupang = rgSku ? rgSku.orderable : cp ? Number(cp.qty) : null;
+    const coupangSource: InventoryRow["coupang_source"] = rgSku ? "wing" : cp ? "manual" : null;
+    const coupangAsOf = rgSku ? rg?.summary.date ?? null : cp?.as_of ?? null;
     const transit = tr ? Number(tr.qty) : null;
     const internal = it ? Number(it.qty) : null;
     const available = Number(s.available_qty) || 0;
@@ -648,13 +794,27 @@ export function computeInventory(input: ComputeInput): InventoryResult {
       : (s.daily_avg_shipout_qty != null ? Number(s.daily_avg_shipout_qty) : null);
     const sheetBasis = brand === "nutty" ? `위킵 월평균 ${s.month_avg_shipout_qty ?? "-"} ÷ ${SHEET_MONTH_DAYS}` : `위킵 일평균 ${s.daily_avg_shipout_qty ?? "-"}`;
 
+    // 쿠팡 하루 판매: WING 값이 있으면 RG 30일 순판매 ÷ 30(판매중지 옵션뿐이면 쿠팡 쪽 판정에서 뺌),
+    // 없으면 옛 방식(판매 원장 쿠팡을 기본 품목으로 푼 합 ÷ 기간, 판매자배송이 섞일 수 있음)
     let coupangPerDay: number | null = null;
-    if (brand === "nutty" && coupang !== null && input.coupangWindow && m?.component && coupangOwner.get(nameKey(m.component)) === s.sku_no) {
-      coupangPerDay = (coupangByComponent.get(nameKey(m.component)) ?? 0) / input.coupangWindow.days;
+    let speedBasis: InventoryRow["coupang_speed_basis"] = null;
+    let coupangNote: string | null = null;
+    if (rgSku) {
+      if (rgSku.active) { coupangPerDay = rgSku.sales_30d / COUPANG_RG_SALES_DAYS; speedBasis = "wing30"; }
+      else coupangNote = "쿠팡 로켓그로스 옵션이 모두 판매중지라 쿠팡 쪽은 판정에서 뺌";
+    } else {
+      if (brand === "nutty" && coupang !== null && input.coupangWindow && m?.component && coupangOwner.get(nameKey(m.component)) === s.sku_no) {
+        coupangPerDay = (coupangByComponent.get(nameKey(m.component)) ?? 0) / input.coupangWindow.days;
+        speedBasis = "sales";
+      }
+      if (brand === "nutty" && rg && !rgFresh) coupangNote = `WING 로켓그로스 값이 ${rg.summary.date} 기준이라 오래돼 손 입력을 씀`;
+      else if (brand === "nutty" && rgFresh && !m?.exclude && !isTaggedName(s.product_name)) coupangNote = "쿠팡 로켓그로스에 이 SKU 옵션 없음(위킵 쪽만 판정)";
     }
+    const coupangInbound = rgSku ? rgSku.inbound : null;
 
     const runwayW = runwayDays(wekeepSide, speed.perDay);
     const runwayC = coupang !== null && coupangPerDay !== null ? runwayDays(coupang, coupangPerDay) : null;
+    const runwayCIn = coupang !== null && coupangPerDay !== null ? runwayDays(coupang + (coupangInbound ?? 0), coupangPerDay) : null;
     const candidates = [runwayW, runwayC].filter((x): x is number => x !== null);
     const runway = candidates.length ? Math.min(...candidates) : null;
 
@@ -668,8 +828,9 @@ export function computeInventory(input: ComputeInput): InventoryResult {
 
     const excludedBy = m?.exclude ? "매칭표에서 제외(부자재·판촉물 등)" : note?.exclude ? `메모: ${note.note || note.kind || "판매 중지"}` : null;
     // 너티인데 쿠팡 재고를 안 넣었으면 0 으로 보지 않는다. 판정은 위킵 쪽만이고, 그 사실을 이유에 적는다
-    const coupangMissing = brand === "nutty" && coupang === null;
-    const missingNote = coupangMissing ? " · 쿠팡 재고 미입력(위킵 쪽만 판정)" : "";
+    // WING 값이 새로운데 이 SKU 의 RG 옵션이 없으면(맛보기·마케팅용 등) 미입력이 아니라 쿠팡에 없는 것으로 본다
+    const coupangMissing = brand === "nutty" && coupang === null && !rgFresh;
+    const missingNote = coupangMissing ? " · 쿠팡 재고 미입력(위킵 쪽만 판정)" : coupangNote && coupang !== null ? ` · ${coupangNote}` : "";
     let status: InvStatus;
     let reason: string;
     if (excludedBy) { status = "excluded"; reason = excludedBy; }
@@ -680,7 +841,8 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     else if (runway === null) { status = "nomove"; reason = `최근 ${window}일 출고 0. 남은 날을 계산할 수 없음${missingNote}`; }
     else {
       status = statusFromRunway(runway, t);
-      const side = runwayC !== null && runwayW !== null ? (runwayC <= runwayW ? "쿠팡 쪽" : "위킵 쪽") : runwayC !== null ? "쿠팡 쪽" : "위킵 쪽";
+      const cSide = `쿠팡 쪽(${coupangSource === "wing" ? `WING ${coupangAsOf}` : `손 입력 ${coupangAsOf}`})`;
+      const side = runwayC !== null && runwayW !== null ? (runwayC <= runwayW ? cSide : "위킵 쪽") : runwayC !== null ? cSide : "위킵 쪽";
       reason = `${side} 남은 ${r1(runway)}일 (발주 필요 ≤ ${t.warn} · 곧 발주 ≤ ${t.soon} · 과재고 > ${t.over}, ${t.basis})${missingNote}`;
     }
     const baseStatus = status;
@@ -722,7 +884,13 @@ export function computeInventory(input: ComputeInput): InventoryResult {
       reserve: Number(s.reserve_qty) || 0,
       faulty: Number(s.faulty_qty) || 0,
       coupang,
-      coupang_as_of: cp?.as_of ?? null,
+      coupang_as_of: coupangAsOf,
+      coupang_source: coupangSource,
+      coupang_inbound: coupangInbound,
+      coupang_speed_basis: speedBasis,
+      coupang_note: coupangNote,
+      coupang_rg: rgSku,
+      runway_coupang_with_inbound: runwayCIn,
       transit,
       internal,
       other_as_of: [tr?.as_of, it?.as_of].filter(Boolean).sort().pop() ?? null,
@@ -766,6 +934,7 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     window_from: through ? addDays(through, -(window - 1)) : null,
     coupang_window: input.coupangWindow ?? null,
     coupang_unmapped: input.coupangUnmapped ?? null,
+    coupang_rg: rg?.summary ?? null,
     scale: scaled.info,
     rows,
     cards: buildCards(rows),

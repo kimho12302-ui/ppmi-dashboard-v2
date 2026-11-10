@@ -165,6 +165,7 @@ function StockPanel({ data, nameOf, onSaved }: { data: InventorySettingsData; na
       <div>
         <h3 className="font-semibold">위킵 밖 재고</h3>
         <p className="text-xs text-muted-foreground mt-1">쿠팡 로켓그로스 창고·이동 중·사무실(내부) 재고를 기준일과 함께 적습니다. 화면은 SKU·위치마다 <b>가장 최근 기준일</b> 값을 씁니다. 적지 않은 칸은 0 이 아니라 「미입력」으로 보입니다. 쿠팡 재고는 너티만 판정에 따로 쓰고(쿠팡 판매 속도로 나눔), 이동·내부는 위킵 재고에 더해 계산합니다.</p>
+        <p className="text-xs mt-1" style={{ color: "var(--sig-warn)" }}><b>쿠팡 재고는 WING 자동값이 있으면 그쪽을 씁니다.</b> 매일 WING 로켓그로스 재고현황을 읽어 오므로(어제·오늘 기준) 여기 적은 쿠팡 값은 그때 쓰이지 않습니다. WING 값이 없거나 하루 넘게 오래됐을 때만 여기 쿠팡 값을 씁니다. 재고 화면 쿠팡 칸 아래 「WING 11-10」·「손 입력 11-08」로 어느 쪽을 썼는지 보입니다.</p>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <div className="col-span-2"><label className="text-xs text-muted-foreground">SKU</label><SkuSelect skus={data.skus} value={f.sku_no} onChange={(v) => setF({ ...f, sku_no: v })} /></div>

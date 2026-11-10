@@ -2,7 +2,10 @@
 // 위킵 재고 받는 API 의 규칙(src/lib/wekeep-ingest-core.ts)을 가짜 DB 로 시험한다.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateWekeepRows, runWekeepIngest, MAX_ROWS, WEKEEP_HEARTBEAT } from "../../src/lib/wekeep-ingest-core.ts";
+import {
+  validateWekeepRows, runWekeepIngest, MAX_ROWS, WEKEEP_HEARTBEAT, validateCollectorRows, runCollectorIngest, COUPANG_RG_HEARTBEAT,
+  isCollectorSource, isWekeepSource,
+} from "../../src/lib/wekeep-ingest-core.ts";
 
 const TODAY = "2026-11-10";
 const snapRow = (o = {}) => ({ date: "2026-11-10", sku_no: "123", product_name: "너티사운드_바삭", available_qty: 5, read_at: "2026-11-10T05:08:13.567Z", ...o });
@@ -91,4 +94,65 @@ test("심박 쓰기가 실패하면 응답에 heartbeat_error", async () => {
   const res = await runWekeepIngest("wekeep-daily", [dailyRow()], TODAY, f.db, "T");
   assert.equal(res.status, 200);
   assert.equal(res.body.heartbeat_error, "hb down");
+});
+
+// ── 쿠팡 로켓그로스 재고 (2026-11-10, 같은 규칙으로 받음) ──
+const rgRow = (o = {}) => ({
+  date: "2026-11-10", vendor_item_id: 96117368113, product_name: "[2박스] 너티 하루루틴 스트레스제로껌", option_name: "2개 덴탈껌 225g",
+  sale_suspended: false, hidden_by_vendor: false, orderable: 49, inbound: 0, inbounds: [{ status: "STOWING", requested: 30 }],
+  days_of_cover: 16, health_group: null, sales_7d: 15, sales_30d: 87, cancelled_30d: 5, read_at: "2026-11-10T08:56:05.890Z", ...o,
+});
+const mapRow = (o = {}) => ({ vendor_item_id: 96117368113, sku_no: "28472426320363", qty: 2, component: "스트레스제로껌", needs_review: false, note: null, ...o });
+
+test("쿠팡 RG: 옵션 ID 는 int4 를 넘는 정수, 음수·소수·문자 옵션 ID·배열 아닌 inbounds 거절", () => {
+  assert.equal(validateCollectorRows("coupang-rg-inventory", [rgRow()], TODAY).errors.length, 0);
+  const cases = [
+    [rgRow({ orderable: -1 }), /orderable 가 0 이상 정수/],
+    [rgRow({ sales_30d: 1.5 }), /sales_30d 가 0 이상 정수/],
+    [rgRow({ vendor_item_id: "96117368113" }), /vendor_item_id 형식/],
+    [rgRow({ inbounds: "x" }), /inbounds 가 배열/],
+    [rgRow({ sale_suspended: "N" }), /sale_suspended 가 참\/거짓/],
+    [rgRow({ date: "2026-11-11" }), /미래/],
+    [rgRow({ sku_no: "1" }), /모르는 칸/],
+  ];
+  for (const [row, re] of cases) {
+    const { errors } = validateCollectorRows("coupang-rg-inventory", [row], TODAY);
+    assert.equal(errors.length, 1, JSON.stringify(row));
+    assert.match(errors[0], re);
+  }
+  // 판매 통계가 없는 옵션(쿠팡이 null 로 줌)은 null 로 받는다(0 으로 바꾸지 않음)
+  assert.equal(validateCollectorRows("coupang-rg-inventory", [rgRow({ sales_7d: null, sales_30d: null })], TODAY).errors.length, 0);
+});
+
+test("쿠팡 RG 짝짓기: 묶음 수 1 이상, 같은 옵션·SKU 두 번이면 뒤엣것", () => {
+  assert.match(validateCollectorRows("coupang-rg-sku-map", [mapRow({ qty: 0 })], TODAY).errors[0], /qty 가 1 이상/);
+  assert.match(validateCollectorRows("coupang-rg-sku-map", [mapRow({ sku_no: "a b" })], TODAY).errors[0], /sku_no 형식/);
+  const r = validateCollectorRows("coupang-rg-sku-map", [mapRow({ qty: 2 }), mapRow({ qty: 3 }), mapRow({ sku_no: "51556448638685" })], TODAY);
+  assert.equal(r.clean.length, 2);
+  assert.equal(r.clean.find((x) => x.sku_no === "28472426320363").qty, 3);
+});
+
+test("쿠팡 RG 심박: 재고는 coupang-rg-inventory 에 신선도 날짜까지, 짝짓기는 신선도를 안 올림", async () => {
+  const f = fakeDb();
+  const a = await runCollectorIngest("coupang-rg-inventory", [rgRow(), rgRow({ vendor_item_id: 96120876984 })], TODAY, f.db, "T");
+  assert.equal(a.status, 200);
+  assert.equal(f.calls.upserts[0].table, "raw_coupang_rg_inventory");
+  assert.equal(f.calls.beats[0].source, COUPANG_RG_HEARTBEAT);
+  assert.equal(f.calls.beats[0].latest_data_date, "2026-11-10");
+  const m = await runCollectorIngest("coupang-rg-sku-map", [mapRow()], TODAY, f.db, "T");
+  assert.equal(m.status, 200);
+  assert.equal(f.calls.upserts[1].table, "coupang_rg_sku_map");
+  assert.equal(f.calls.beats[1].source, COUPANG_RG_HEARTBEAT);
+  assert.equal("latest_data_date" in f.calls.beats[1], false);
+  const bad = await runCollectorIngest("coupang-rg-inventory", [rgRow({ inbound: -2 })], TODAY, f.db, "T");
+  assert.equal(bad.status, 400);
+  assert.equal(f.calls.upserts.length, 2);
+  assert.equal(f.calls.beats[2].ok, false);
+});
+
+test("받는 원천 목록: 위킵 전용 길은 쿠팡 RG 를 안 받는다", () => {
+  assert.equal(isCollectorSource("coupang-rg-inventory"), true);
+  assert.equal(isCollectorSource("coupang-rg-sku-map"), true);
+  assert.equal(isWekeepSource("coupang-rg-inventory"), false);
+  assert.equal(isCollectorSource("cafe24-cart"), false);
 });

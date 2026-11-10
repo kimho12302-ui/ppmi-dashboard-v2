@@ -73,3 +73,10 @@ export const md = (ymd: string | null | undefined) => (ymd ? ymd.slice(5) : "-")
 
 export type InventoryResponse = (InventoryResult & { mode: "db" | "dev-files"; missing: string[]; today: string; scale_error?: string | null; setupNeeded?: false })
   | { setupNeeded: true; mode: "db" | "dev-files"; missing: string[] };
+
+/** 쿠팡 재고 출처 한 마디: 「WING 11-10」(로켓그로스 자동값) · 「손 입력 11-08」. 값이 없으면 null */
+export const coupangSourceLabel = (row: Pick<InventoryRow, "coupang_source" | "coupang_as_of">) =>
+  row.coupang_source === "wing" ? `WING ${md(row.coupang_as_of)}` : row.coupang_source === "manual" ? `손 입력 ${md(row.coupang_as_of)}` : null;
+/** 쿠팡 칸 글자: 값 · 미입력(너티인데 아무 값도 없음) · -(쿠팡에 이 SKU 옵션이 없음) */
+export const coupangText = (row: Pick<InventoryRow, "coupang" | "coupang_missing">) =>
+  row.coupang !== null ? fmtInt(row.coupang) : row.coupang_missing ? "미입력" : "-";

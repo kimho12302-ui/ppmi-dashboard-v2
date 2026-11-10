@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { revalidateAfter } from "@/lib/api-cache";
-import { ingestWekeep, isWekeepSource } from "@/lib/wekeep-ingest";
+import { ingestWekeep, isCollectorSource, COLLECTOR_SOURCES } from "@/lib/wekeep-ingest";
 import { kstDate } from "@/lib/date";
 import { API_KEY_HEADER, isApiKeyValid } from "@/lib/team-auth";
 
@@ -15,7 +15,8 @@ import { API_KEY_HEADER, isApiKeyValid } from "@/lib/team-auth";
 //
 // 인증(2026-11-09 대시보드 잠금 이후): 미들웨어(src/middleware.ts)가 팀 로그인 쿠키 또는 x-ppmi-key 를 요구한다.
 //   볼트 수집기는 lib/push.mjs → lib/dashboard-key.mjs 로 x-ppmi-key 를 붙여 보낸다.
-//   위킵 재고(wekeep-*, 2026-11-10)는 이 라우트에서 한 번 더 x-ppmi-key 를 본다(사람 쿠키로는 못 씀, /api/wekeep-ingest 와 같음).
+//   위킵 재고(wekeep-*, 2026-11-10)·쿠팡 로켓그로스 재고(coupang-rg-inventory · coupang-rg-sku-map, 2026-11-10)는
+//   이 라우트에서 한 번 더 x-ppmi-key 를 본다(사람 쿠키로는 못 씀, /api/wekeep-ingest 와 같음).
 
 type Source =
   | "cafe24-cart"
@@ -61,7 +62,8 @@ async function postImpl(req: NextRequest) {
   }
 
   // 2026-11-10 위킵 재고(wekeep-snapshot · wekeep-daily)는 검증·심박이 따로 있어 전용 함수로 넘긴다(/api/wekeep-ingest 와 같음)
-  if (isWekeepSource(body.source)) {
+  // 쿠팡 RG 재고(coupang-rg-inventory · coupang-rg-sku-map, 같은 날 추가)도 같은 규칙·심박(coupang-rg-inventory)으로 받는다
+  if (isCollectorSource(body.source)) {
     if (!isApiKeyValid(req.headers.get(API_KEY_HEADER))) {
       return NextResponse.json({ error: "수집기 접근 키(x-ppmi-key)가 필요합니다" }, { status: 401 });
     }
@@ -72,7 +74,7 @@ async function postImpl(req: NextRequest) {
   const source = body.source as Source | undefined;
   if (!source || !(source in TARGET)) {
     return NextResponse.json(
-      { error: `모르는 source: ${String(body.source)}`, allowed: Object.keys(TARGET) },
+      { error: `모르는 source: ${String(body.source)}`, allowed: [...Object.keys(TARGET), ...COLLECTOR_SOURCES] },
       { status: 400 }
     );
   }
@@ -105,4 +107,5 @@ async function postImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const POST = revalidateAfter(postImpl, ["raw_coupang_keyword", "raw_gfa_campaign", "raw_wekeep_snapshot", "raw_wekeep_daily", "sync_heartbeat"]);
+export const POST = revalidateAfter(postImpl, ["raw_coupang_keyword", "raw_gfa_campaign", "raw_wekeep_snapshot", "raw_wekeep_daily",
+  "raw_coupang_rg_inventory", "coupang_rg_sku_map", "sync_heartbeat"]);

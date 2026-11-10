@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {
   parseWekeepName, thresholdsFor, mergeDailyRows, shipoutSpeed, fillDailySeries, runwayDays, statusFromRunway,
   computeInventory, forecastLine, dailyThrough, DEFAULT_THRESHOLDS, coupangWindowFor, isRealDate, extractSheetCosts, matchSheetCosts,
-  gradeByCumulative, buildBrandTabs, inBrandTab, ownSaipTabs, supplierFromName,
+  gradeByCumulative, buildBrandTabs, inBrandTab, ownSaipTabs, supplierFromName, summarizeCoupangRg,
 } from "../../src/lib/inventory.ts";
 
 const day = (ymd, sku, o = {}) => ({
@@ -452,4 +452,100 @@ test("보류: 너티는 C·판매 없음 품절이라도 항상 ①", () => {
   assert.equal(by.N3.scale.grade, "none");
   assert.equal(by.N3.group, "act");
   assert.equal(res.cards.card.held_soldout, 0);
+});
+
+// ── 쿠팡 로켓그로스(WING) 재고 (2026-11-10) ──
+const rgRow = (vid, o = {}) => ({ date: "2026-11-10", vendor_item_id: vid, product_name: "[2박스] 너티 냠", option_name: "16개 고구마 20g",
+  sale_suspended: false, orderable: 0, inbound: 0, sales_7d: 0, sales_30d: 0, ...o });
+const rgBase = () => {
+  const daily = [];
+  for (let i = 0; i < 28; i += 1) daily.push(day(new Date(Date.UTC(2026, 9, 13 + i)).toISOString().slice(0, 10), "N", { shipout_qty: 1 }));
+  return {
+    snapshot: [snap("N", "너티사운드_냠", 40)],
+    daily,
+    map: [{ sku_no: "N", component: "냠 단호박", brand: "nutty" }],
+    // 판매 원장 쿠팡 판매(판매자배송 섞임). WING 값이 있으면 쓰지 않아야 한다
+    coupangSales: [{ component: "냠 단호박", qty: 280 }],
+    coupangWindow: { from: "2026-10-09", to: "2026-11-05", days: 28 },
+    stocks: [{ sku_no: "N", location: "coupang", qty: 7, as_of: "2026-11-08" }],
+    today: "2026-11-10",
+  };
+};
+const rgMap = [{ vendor_item_id: 1, sku_no: "N", qty: 2 }, { vendor_item_id: 2, sku_no: "N", qty: 1 }, { vendor_item_id: 3, sku_no: "N", qty: 1, needs_review: true }];
+
+test("쿠팡 RG: 옵션 묶음을 낱개로 환산해 합치고 출처는 WING, 손 입력보다 우선", () => {
+  const rows = [rgRow(1, { orderable: 25, inbound: 10 }), rgRow(2, { orderable: 6 }), rgRow(3, { orderable: 0, sale_suspended: true })];
+  const r = computeInventory({ ...rgBase(), coupangRg: { rows, map: rgMap } }).rows[0];
+  assert.equal(r.coupang, 56); // 25 × 2 + 6 × 1
+  assert.equal(r.coupang_source, "wing");
+  assert.equal(r.coupang_as_of, "2026-11-10");
+  assert.equal(r.coupang_inbound, 20); // 입고 중 10 묶음 × 2, 남은 날에는 안 넣음
+  assert.equal(r.total_stock, 96);
+  assert.equal(r.coupang_rg.options.length, 3);
+  assert.equal(r.coupang_rg.needs_review, true);
+});
+
+test("쿠팡 RG: 판매 속도 = RG 30일 순판매 낱개 ÷ 30 (판매 원장 쿠팡은 안 씀), 입고 중 포함 남은 날은 보조값", () => {
+  const rows = [rgRow(1, { orderable: 30, inbound: 15, sales_30d: 45, sales_7d: 14 }), rgRow(2, { orderable: 0, sales_30d: 0 })];
+  const r = computeInventory({ ...rgBase(), coupangRg: { rows, map: rgMap } }).rows[0];
+  assert.equal(r.coupang_speed_basis, "wing30");
+  assert.equal(r.coupang_per_day, 3); // 45 × 2 ÷ 30
+  assert.equal(r.runway_coupang, 20); // 60 ÷ 3
+  assert.equal(r.runway_coupang_with_inbound, 30); // (60 + 30) ÷ 3
+  assert.equal(r.runway, 20);
+  assert.equal(r.status, "order");
+  assert.match(r.reason, /쿠팡 쪽\(WING 2026-11-10\)/);
+  assert.equal(r.coupang_rg.sales_7d, 28);
+});
+
+test("쿠팡 RG: 기준일이 하루 넘게 오래되면 손 입력과 판매 원장으로 대체하고 사정을 적음", () => {
+  const rows = [rgRow(1, { date: "2026-11-08", orderable: 99, sales_30d: 300 })];
+  const res = computeInventory({ ...rgBase(), coupangRg: { rows, map: rgMap } });
+  const r = res.rows[0];
+  assert.equal(res.coupang_rg.fresh, false);
+  assert.equal(r.coupang, 7);
+  assert.equal(r.coupang_source, "manual");
+  assert.equal(r.coupang_as_of, "2026-11-08");
+  assert.equal(r.coupang_speed_basis, "sales");
+  assert.equal(r.coupang_per_day, 10); // 280 ÷ 28
+  assert.match(r.coupang_note, /오래돼 손 입력/);
+  // 어제 기준은 새로운 것으로 본다
+  const y = computeInventory({ ...rgBase(), coupangRg: { rows: [rgRow(1, { date: "2026-11-09", orderable: 4 })], map: rgMap } }).rows[0];
+  assert.equal(y.coupang_source, "wing");
+  assert.equal(y.coupang, 8);
+});
+
+test("쿠팡 RG: 원천이 없으면 지금 방식 그대로(손 입력 · 판매 원장)", () => {
+  for (const coupangRg of [undefined, null, { rows: [], map: rgMap }]) {
+    const r = computeInventory({ ...rgBase(), coupangRg }).rows[0];
+    assert.equal(r.coupang_source, "manual");
+    assert.equal(r.coupang_per_day, 10);
+    assert.equal(r.coupang_note, null);
+  }
+});
+
+test("쿠팡 RG: 판매중지 옵션뿐이면 지난 30일 판매가 있어도 쿠팡 쪽 판정에서 뺌", () => {
+  const rows = [rgRow(1, { orderable: 0, sale_suspended: true, sales_30d: 49 })];
+  const r = computeInventory({ ...rgBase(), coupangRg: { rows, map: rgMap } }).rows[0];
+  assert.equal(r.coupang, 0);
+  assert.equal(r.coupang_per_day, null);
+  assert.equal(r.runway_coupang, null);
+  assert.equal(r.runway, 40); // 위킵 쪽만
+  assert.match(r.coupang_note, /판매중지/);
+});
+
+test("쿠팡 RG: 짝 없는 옵션 재고는 경고 목록으로, 짝 없는 너티 SKU 는 미입력이 아님", () => {
+  const rows = [rgRow(1, { orderable: 5 }), rgRow(9, { orderable: 3, product_name: "[4세트] 새 옵션" }), rgRow(8, { orderable: 0 })];
+  const input = { ...rgBase(), stocks: [], snapshot: [snap("N", "너티사운드_냠", 40), snap("M", "너티 맛보기 샘플 4종", 10)],
+    map: [{ sku_no: "N", component: "냠 단호박", brand: "nutty" }, { sku_no: "M", component: "4종 맛보기 세트", brand: "nutty" }], coupangRg: { rows, map: rgMap } };
+  const res = computeInventory(input);
+  assert.equal(res.coupang_rg.unmapped.length, 2);
+  assert.deepEqual(res.coupang_rg.unmapped_with_stock.map((u) => u.vendor_item_id), ["9"]);
+  const m = res.rows.find((r) => r.sku_no === "M");
+  assert.equal(m.coupang, null);
+  assert.equal(m.coupang_missing, false);
+  assert.match(m.coupang_note, /옵션 없음/);
+  // 옵션 ID 가 문자열로 와도(DB bigint) 짝이 맞는다
+  const s = summarizeCoupangRg([rgRow("1", { orderable: 2 })], rgMap, "2026-11-10");
+  assert.equal(s.bySku.get("N").orderable, 4);
 });

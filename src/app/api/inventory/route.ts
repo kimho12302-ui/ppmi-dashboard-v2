@@ -44,6 +44,6 @@ async function getImpl(req: NextRequest) {
 export const GET = cachedGET(
   getImpl,
   ["raw_wekeep_snapshot", "raw_wekeep_daily", "wekeep_sku_map", "inventory_manual_stock", "inventory_orders", "inventory_notes",
-    "inventory_rules", "inventory_costs", "product_sales", "product_components"],
+    "inventory_rules", "inventory_costs", "product_sales", "product_components", "raw_coupang_rg_inventory", "coupang_rg_sku_map"],
   ["window", "sku", "days"],
 );

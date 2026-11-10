@@ -16,10 +16,12 @@ import {
 } from "@/lib/inventory";
 import { RunwayAxis, RunwayBar } from "./runway-bar";
 import { InventoryDetail } from "./inventory-detail";
-import { GROUPS, SCALE_TONE, STATUS_TONE, fmtInt, fmtManWon, fmtSpeed, fmtWon, md, scaleTitle, type InventoryResponse } from "./inventory-ui";
+import {
+  GROUPS, SCALE_TONE, STATUS_TONE, coupangSourceLabel, coupangText, fmtInt, fmtManWon, fmtSpeed, fmtWon, md, scaleTitle, type InventoryResponse,
+} from "./inventory-ui";
 
 /** 데스크톱 표 칸 너비 (머리줄과 행이 같은 값을 쓴다) */
-const COLS = "md:grid-cols-[minmax(0,1.5fr)_56px_56px_60px_80px_68px_minmax(200px,2.1fr)_44px_74px_92px_84px]";
+const COLS = "md:grid-cols-[minmax(0,1.5fr)_56px_72px_60px_80px_68px_minmax(200px,2.1fr)_44px_74px_92px_84px]";
 
 export function InventoryScreen() {
   const [windowDays, setWindowDays] = useState<SpeedWindow>(28);
@@ -87,6 +89,7 @@ export function InventoryScreen() {
       {ready && (
         <>
           <Freshness data={ready} loading={loading} onRefresh={() => load(true)} />
+          <CoupangRgNotice data={ready} />
 
           <section data-tour="inventory-cards" className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
             <CountCard status="soldout" n={cards.card.soldout}
@@ -119,8 +122,8 @@ export function InventoryScreen() {
           </div>
           <p data-tour="inventory-rule" className="text-[11px] sm:text-xs text-muted-foreground leading-relaxed">
             하루 출고 = 최근 {ready.window}일({md(ready.window_from)} ~ {md(ready.daily_through)}) 위킵 출고 합 ÷ {ready.window} · 남은 날 = (위킵 가용 + 이동 + 내부) ÷ 하루 출고.
-            너티는 쿠팡 재고 ÷ 쿠팡 하루 판매{ready.coupang_window ? `(${md(ready.coupang_window.from)} ~ ${md(ready.coupang_window.to)} 판매, 묶음은 낱개로 풀어 셈)` : ""}도 따로 계산해 짧은 쪽으로 판정
-            {ready.coupang_unmapped ? <span title={ready.coupang_unmapped.products.join(" / ")}> (판매 구성표에 없는 쿠팡 판매 상품 {ready.coupang_unmapped.products.length}개 · {fmtInt(ready.coupang_unmapped.qty)}개는 낱개로 못 풀어 빠짐)</span> : null}.
+            너티는 쿠팡 재고 ÷ 쿠팡 하루 판매도 따로 계산해 짧은 쪽으로 판정
+            <CoupangRule data={ready} />.
             발주 필요 ≤ 주의 일수(사입 15 · 너티 20) · 곧 발주 ≤ 30 · 과재고 &gt; 60일. 발주를 넣으면 입고 대기.
             <ScaleRule data={ready} />
             <Link href="/settings?tab=inventory" data-tour="inventory-settings-link" className="ml-1 underline underline-offset-2 text-foreground">쿠팡 재고·발주·기준 일수 입력 →</Link>
@@ -216,6 +219,7 @@ function Freshness({ data, loading, onRefresh }: { data: Exclude<InventoryRespon
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span>위킵 재고 <b className="num text-foreground">{data.as_of ?? "-"}</b> (읽은 시각 {readAt} KST)</span>
         <span>날짜별 입고·출고 <b className="num text-foreground">{data.daily_through ?? "-"}</b>까지</span>
+        <span>쿠팡 로켓그로스 <b className="num text-foreground">{data.coupang_rg?.date ?? "없음"}</b>{data.coupang_rg && !data.coupang_rg.fresh ? " (오래됨)" : ""}</span>
         <span>상품 {data.rows.length}개(위킵 SKU)</span>
         <button type="button" onClick={onRefresh} disabled={loading} className="ml-auto px-2 py-0.5 rounded border bg-card hover:bg-muted disabled:opacity-50">
           {loading ? "읽는 중" : "새로 읽기"}
@@ -334,7 +338,14 @@ function Badge({ status, coupangMissing }: { status: InvStatus; coupangMissing?:
   );
 }
 
-const missingText = (n: number | null) => (n === null ? "미입력" : fmtInt(n));
+/** 쿠팡 칸 마우스 설명: 출처·입고 중·판매 속도 근거 */
+function coupangTitle(row: InventoryRow): string {
+  const src = row.coupang_source === "wing" ? `WING 로켓그로스 재고현황 ${row.coupang_as_of} 판매 가능(옵션 묶음을 낱개로 환산)`
+    : row.coupang_source === "manual" ? `설정 손 입력 ${row.coupang_as_of}` : row.coupang_missing ? "쿠팡 재고 미입력" : "쿠팡 로켓그로스에 이 SKU 옵션 없음";
+  const inbound = row.coupang_inbound ? ` · 입고 중 ${fmtInt(row.coupang_inbound)}` : "";
+  const speed = row.coupang_per_day === null ? "" : ` · 하루 판매 ${fmtSpeed(row.coupang_per_day)}(${row.coupang_speed_basis === "wing30" ? "RG 30일 ÷ 30" : "판매 원장 쿠팡"})`;
+  return `${src}${inbound}${speed}${row.coupang_note ? ` · ${row.coupang_note}` : ""}`;
+}
 const fmtDays = (n: number | null) => (n === null ? "계산 불가" : `${fmtSpeed(n)}일`);
 
 function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: string | null; first: boolean; active: boolean; onClick: () => void }) {
@@ -358,7 +369,11 @@ function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: s
       <div className={`hidden md:grid ${COLS} gap-2 items-center num text-xs`}>
         {name}
         <span className="text-right">{fmtInt(row.available)}{both && <span className="block text-[10px] text-muted-foreground">{fmtDays(row.runway_wekeep)}</span>}</span>
-        <span className="text-right text-muted-foreground">{row.brand === "nutty" ? missingText(row.coupang) : ""}{both && <span className="block text-[10px]">{fmtDays(row.runway_coupang)}</span>}</span>
+        <span className="text-right text-muted-foreground" title={coupangTitle(row)}>
+          {row.brand === "nutty" || row.coupang !== null ? coupangText(row) : ""}
+          {both && <span className="block text-[10px]">{fmtDays(row.runway_coupang)}</span>}
+          {coupangSourceLabel(row) && <span className="block text-[10px] whitespace-nowrap" style={row.coupang_source === "manual" ? { color: "var(--sig-warn)" } : undefined}>{coupangSourceLabel(row)}</span>}
+        </span>
         <span className="text-right text-muted-foreground">{other === null ? "" : fmtInt(other)}</span>
         <span className="text-right" style={row.incoming ? { color: "#2563eb" } : undefined}>
           {row.incoming ? `${fmtInt(row.incoming.qty)} · ${md(row.incoming.expected_at)}` : ""}
@@ -378,12 +393,55 @@ function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: s
         <div className="flex items-start gap-2">{name}<span className="ml-auto shrink-0 flex items-center gap-1"><ScaleBadge row={row} /><Badge status={row.status} coupangMissing={row.coupang_missing} /></span></div>
         <RunwayBar row={row} asOf={asOf} />
         <p className="num text-[11px] text-muted-foreground">
-          위킵 {fmtInt(row.available)}{both ? `(${fmtDays(row.runway_wekeep)})` : ""}{row.brand === "nutty" ? ` · 쿠팡 ${missingText(row.coupang)}${both ? `(${fmtDays(row.runway_coupang)})` : ""}` : ""} · 하루 {fmtSpeed(row.speed.perDay)}(시트 {fmtSpeed(row.sheet_per_day)})
+          위킵 {fmtInt(row.available)}{both ? `(${fmtDays(row.runway_wekeep)})` : ""}{row.brand === "nutty" || row.coupang !== null ? ` · 쿠팡 ${coupangText(row)}${both ? `(${fmtDays(row.runway_coupang)})` : ""}${coupangSourceLabel(row) ? ` ${coupangSourceLabel(row)}` : ""}` : ""} · 하루 {fmtSpeed(row.speed.perDay)}(시트 {fmtSpeed(row.sheet_per_day)})
           · 소진 {md(row.stockout_date)} · {row.total_stock <= 0 ? "재고 0" : row.value === null ? "원가 없음" : fmtManWon(row.value)}
           {row.incoming ? ` · 입고 ${fmtInt(row.incoming.qty)}(${md(row.incoming.expected_at)})` : ""}
           {row.scale.basis === "sales" ? ` · 90일 판매 ${fmtManWon(row.scale.value ?? 0)}` : row.scale.basis === "shipout" ? ` · 출고 기준 ${fmtManWon(row.scale.value ?? 0)}` : ""}
         </p>
       </div>
     </button>
+  );
+}
+
+/** 규칙 한 줄 안 쿠팡 근거. WING 값이 새로우면 그쪽, 아니면 손 입력 + 판매 원장(옛 방식) */
+function CoupangRule({ data }: { data: Exclude<InventoryResponse, { setupNeeded: true }> }) {
+  const rg = data.coupang_rg;
+  if (rg?.fresh) {
+    return (
+      <span>
+        (쿠팡 재고 = WING 로켓그로스 {md(rg.date)} 판매 가능 · 하루 판매 = 로켓그로스 최근 30일 판매(취소 뺌) ÷ 30, 옵션 묶음은 낱개로 풀어 셈.
+        입고 중은 남은 날에 안 넣고 상세에 「입고 중 포함」으로 따로)
+      </span>
+    );
+  }
+  return (
+    <span>
+      (쿠팡 재고 = 설정 손 입력{rg ? ` · WING 값이 ${md(rg.date)} 기준이라 오래돼 안 씀` : ""} · 하루 판매 = 판매 원장 쿠팡
+      {data.coupang_window ? ` ${md(data.coupang_window.from)} ~ ${md(data.coupang_window.to)}` : ""}, 묶음은 낱개로 풀어 셈. 판매자배송이 섞일 수 있음
+      {data.coupang_unmapped ? <span title={data.coupang_unmapped.products.join(" / ")}> · 판매 구성표에 없는 쿠팡 판매 상품 {data.coupang_unmapped.products.length}개 · {fmtInt(data.coupang_unmapped.qty)}개는 낱개로 못 풀어 빠짐</span> : null})
+    </span>
+  );
+}
+
+/** 쿠팡 로켓그로스 경고: 짝 없는 옵션에 재고가 있음 · 값이 오래됨 */
+function CoupangRgNotice({ data }: { data: Exclude<InventoryResponse, { setupNeeded: true }> }) {
+  const rg = data.coupang_rg;
+  if (!rg) return null;
+  const stray = rg.unmapped_with_stock;
+  return (
+    <>
+      {stray.length > 0 && (
+        <div data-tour="inventory-coupang-unmapped" className="rounded-lg border px-3 py-2 text-sm" style={{ background: "var(--sig-danger-surface)", borderColor: "var(--sig-danger-border)", color: "var(--sig-danger)" }}>
+          쿠팡 로켓그로스 옵션 {stray.length}개가 위킵 SKU 와 짝이 없어 쿠팡 재고에서 빠졌습니다(판매 가능 {fmtInt(stray.reduce((a, u) => a + u.orderable, 0))}묶음 · 입고 중 {fmtInt(stray.reduce((a, u) => a + u.inbound, 0))}묶음).
+          <span className="block text-xs mt-0.5 text-foreground">{stray.map((u) => `${u.name} (옵션 ${u.vendor_item_id})`).join(" · ")}</span>
+          <span className="block text-xs mt-0.5 text-muted-foreground">볼트 짝짓기 초안(settings/collectors/raw/coupang-rg/coupang-rg-sku-map.draft.json)에 줄을 더하고 수집기를 --push-only 로 다시 보내면 사라집니다.</span>
+        </div>
+      )}
+      {!rg.fresh && (
+        <div className="rounded-lg border px-3 py-2 text-sm" style={{ background: "var(--sig-warn-surface)", borderColor: "var(--sig-warn-border)", color: "var(--sig-warn)" }}>
+          쿠팡 로켓그로스 재고가 {rg.date} 기준({rg.age_days}일 전)이라 쓰지 않고 손 입력 쿠팡 재고로 판정했습니다. WING 로그인이 풀렸는지 확인하세요.
+        </div>
+      )}
+    </>
   );
 }

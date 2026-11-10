@@ -3,6 +3,8 @@
 // 읽는 표: raw_wekeep_snapshot · raw_wekeep_daily · wekeep_sku_map · inventory_manual_stock · inventory_orders ·
 //   inventory_notes · inventory_rules · inventory_costs (docs/sql/2026-11-10-inventory.sql) + product_sales · product_components.
 //   product_sales 는 두 번 쓴다: 너티 쿠팡 판매 속도(28일)와 판매 규모 등급(너티·사입 90일 매출, 2026-11-10).
+//   쿠팡 로켓그로스 재고: raw_coupang_rg_inventory 최신 날짜 + coupang_rg_sku_map (docs/sql/2026-11-10-coupang-rg.sql).
+//   이 두 표가 없으면(SQL 실행 전) 「SQL 실행 필요」가 아니라 조용히 손 입력 쿠팡 재고로 대체한다.
 //   원가는 inventory_costs(시트 「2026 재고·출고 통합관리」 원가가 정본, 2026-11-10 김호). product_costs 는 쓰지 않는다.
 // 표가 없으면(SQL 실행 전) 화면은 「SQL 실행 필요」를 띄운다. 500 으로 죽이지 않는다.
 //
@@ -23,7 +25,7 @@ import { isGongguAggregate, isGongguOutOfDailySales } from "@/lib/gonggu";
 import {
   addDays, mergeDailyRows, coupangWindowFor, parseWekeepName, SALES_SCALE_DAYS, COUPANG_SALES_LAG_DAYS,
   type ComputeInput, type SalesScaleInput, type SkuCostRow, type DailyRow, type ManualStockRow, type NoteRow, type OrderRow, type RuleRow,
-  type SkuMapRow, type SnapshotRow,
+  type SkuMapRow, type SnapshotRow, type RgInventoryRow, type RgMapRow,
 } from "@/lib/inventory";
 
 export const INVENTORY_TABLES = [
@@ -104,6 +106,29 @@ function readdir(dir: string): string[] {
 }
 interface DraftRow { skuNo: string; productName: string; productManageCode?: string; category?: string; confidence?: string;
   component?: { name?: string; brand?: string } | null; codes?: { code: string; role?: string; confidence?: string }[]; notes?: string[] }
+/** 개발용: 볼트 RG 누적 원천(raw/coupang-rg-inventory.json)과 짝짓기 초안. 없으면 null */
+interface RawRg { date: string; vendorItemId: number; productName?: string | null; optionName?: string | null; saleSuspended?: boolean;
+  hiddenByVendor?: boolean; orderable: number; inbound: number; daysOfCover?: number | null; healthGroup?: string | null;
+  sales7d?: number | null; sales30d?: number | null }
+interface RawRgMap { items: { vendorItemId: number; needs_review?: boolean; note?: string; components: { wekeep_sku_no: string; component?: string; qty: number }[] }[] }
+function devCoupangRg(dir: string): { rows: RgInventoryRow[]; map: RgMapRow[] } | null {
+  const p = join(dir, "coupang-rg-inventory.json");
+  const mp = join(dir, "coupang-rg", "coupang-rg-sku-map.draft.json");
+  if (!existsSync(p) || !existsSync(mp)) return null;
+  const items = Object.values(readJson<{ items: Record<string, RawRg> }>(p).items || {});
+  const last = items.reduce((m, v) => (v.date > m ? v.date : m), "");
+  return {
+    rows: items.filter((v) => v.date === last).map((v) => ({
+      date: v.date, vendor_item_id: v.vendorItemId, product_name: v.productName ?? null, option_name: v.optionName ?? null,
+      sale_suspended: !!v.saleSuspended, hidden_by_vendor: !!v.hiddenByVendor, orderable: v.orderable, inbound: v.inbound,
+      days_of_cover: v.daysOfCover ?? null, health_group: v.healthGroup ?? null, sales_7d: v.sales7d ?? null, sales_30d: v.sales30d ?? null,
+    })),
+    map: readJson<RawRgMap>(mp).items.flatMap((i) => i.components.map((c) => ({
+      vendor_item_id: i.vendorItemId, sku_no: c.wekeep_sku_no, qty: c.qty, component: c.component ?? null, needs_review: !!i.needs_review, note: i.note ?? null,
+    }))),
+  };
+}
+
 function devMap(dir: string): SkuMapRow[] {
   const p = join(dir, "wekeep-sku-map.draft.json");
   if (!existsSync(p)) return [];
@@ -189,6 +214,32 @@ async function coupangSales(index: ComponentIndex): Promise<{ sales: { component
   };
 }
 
+/**
+ * 쿠팡 로켓그로스 재고: 최신 날짜 행 + 짝짓기 전부. 표가 없으면(SQL 실행 전) null 이고 화면은 손 입력으로 대체한다.
+ * 그 밖의 읽기 오류는 올린다(못 읽은 것을 손 입력 값으로 몰래 바꾸지 않음)
+ */
+async function coupangRgDb(): Promise<{ rows: RgInventoryRow[]; map: RgMapRow[] } | null> {
+  const head = await supabase.from("raw_coupang_rg_inventory").select("date").order("date", { ascending: false }).limit(1);
+  if (head.error) {
+    if (isMissingTable(head.error)) return null;
+    throw new Error(`raw_coupang_rg_inventory: ${head.error.message}`);
+  }
+  const date = (head.data?.[0] as { date?: string } | undefined)?.date;
+  if (!date) return null;
+  const [rows, map] = await Promise.all([
+    supabase.from("raw_coupang_rg_inventory")
+      .select("date,vendor_item_id,product_name,option_name,sale_suspended,hidden_by_vendor,orderable,inbound,days_of_cover,health_group,sales_7d,sales_30d")
+      .eq("date", date),
+    supabase.from("coupang_rg_sku_map").select("vendor_item_id,sku_no,qty,component,needs_review,note"),
+  ]);
+  if (rows.error) throw new Error(`raw_coupang_rg_inventory: ${rows.error.message}`);
+  if (map.error) {
+    if (isMissingTable(map.error)) return null;
+    throw new Error(`coupang_rg_sku_map: ${map.error.message}`);
+  }
+  return { rows: (rows.data as RgInventoryRow[]) || [], map: (map.data as RgMapRow[]) || [] };
+}
+
 /** 판매 규모 등급을 매기는 판매 원장 브랜드(사입 전체 · 너티 각각 풀) */
 const SCALE_BRANDS = ["nutty", "saip"] as const;
 
@@ -251,7 +302,7 @@ export async function loadInventoryInputs(window: number): Promise<LoadedInputs>
   const speedFrom = addDays(kstDate(), -SPEED_LOOKBACK_DAYS);
   const from = scaleWindow && !(scaleWindow instanceof Error) && scaleWindow.from < speedFrom ? scaleWindow.from : speedFrom;
 
-  const [snapshot, daily, mapDb, stocks, orders, notes, rules, costs, coupang, scale] = await Promise.all([
+  const [snapshot, daily, mapDb, stocks, orders, notes, rules, costs, coupang, scale, coupangRg] = await Promise.all([
     dev ? Promise.resolve(devSnapshot(dev)) : latestSnapshotDb(missing),
     dev ? Promise.resolve(devDaily(dev, from)) : dailyDb(from, missing),
     readTable<SkuMapRow>("wekeep_sku_map", () => supabase.from("wekeep_sku_map").select("*"), missing),
@@ -266,6 +317,7 @@ export async function loadInventoryInputs(window: number): Promise<LoadedInputs>
     scaleWindow instanceof Error || !scaleWindow
       ? Promise.resolve(scaleWindow instanceof Error ? scaleWindow : new Error("판매 원장에 너티·사입 판매가 없음"))
       : salesScaleInput(scaleWindow, index).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))),
+    dev ? Promise.resolve(devCoupangRg(dev)) : coupangRgDb(),
   ]);
   // 개발용: 매칭표 표가 아직 없으면 볼트 초안을, 손 입력 표가 없으면 목업 파일을 쓴다
   const map = dev && missing.has("wekeep_sku_map") ? devMap(dev) : mapDb;
@@ -284,6 +336,7 @@ export async function loadInventoryInputs(window: number): Promise<LoadedInputs>
       notes: pick("inventory_notes", notes, mock.notes),
       rules: pick("inventory_rules", rules, mock.rules),
       skuCosts: pick("inventory_costs", costs, mock.costs),
+      coupangRg,
       coupangSales: coupang.sales, coupangWindow: coupang.window, coupangUnmapped: coupang.unmapped,
       salesScale: scale instanceof Error ? null : scale, window, today: kstDate() },
   };

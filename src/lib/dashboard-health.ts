@@ -126,6 +126,8 @@ const HB_LABEL: Record<string, string> = {
   daily_report: "대시보드 일일 보고 (텔레그램)",
   // 2026-11-10 재고 화면. 로컬 수집기 wekeep-inventory.mjs --push 가 보내면 받는 API(src/lib/wekeep-ingest.ts)가 남긴다
   "wekeep-inventory": "위킵 재고 (재고 화면)",
+  // 2026-11-10 같은 날. 로컬 수집기 coupang-rg-inventory.mjs --push(WING 로켓그로스 재고현황) → 같은 받는 API
+  "coupang-rg-inventory": "쿠팡 로켓그로스 재고 (재고 화면)",
 };
 
 /**
