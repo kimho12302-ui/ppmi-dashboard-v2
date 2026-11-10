@@ -14,7 +14,6 @@ import { kstDate } from "@/lib/date";
 //   DELETE ?type=…&(키)         → stock(sku_no·location·as_of) | order(id) | note(sku_no) | rule(scope_kind·scope_key) | cost(cost_key)
 // 표가 없으면(SQL 실행 전) 쓰기는 409 「SQL 실행 전」. 인증은 /api/settings 와 같다(미들웨어 팀 로그인).
 
-const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const LOCATIONS = ["coupang", "transit", "internal"];
 const ORDER_STATUS = ["ordered", "received", "cancelled"];
 const NOTE_KINDS = ["stopped", "discontinued", "memo"];
