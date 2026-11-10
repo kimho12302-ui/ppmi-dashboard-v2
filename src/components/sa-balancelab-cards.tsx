@@ -155,8 +155,8 @@ const GROUP_COLS: SortCol<GRow>[] = [
   { key: "impressions", label: "노출", value: (r) => r.impressions, render: (r) => formatNumber(r.impressions) },
   { key: "clicks", label: "클릭", value: (r) => r.clicks, render: (r) => formatNumber(r.clicks) },
   { key: "cost", label: "누적 비용", value: (r) => r.cost, render: (r) => won(r.cost) },
-  { key: "overLine", label: "잠금선 도달", value: (r) => r.overLine, render: (r) => `${formatNumber(r.overLine)}개`, danger: (r) => r.overLineOpen > 0 },
-  { key: "overLineOpen", label: "도달·켜짐", value: (r) => r.overLineOpen, render: (r) => `${formatNumber(r.overLineOpen)}개`, danger: (r) => r.overLineOpen > 0 },
+  { key: "overLine", label: "잠금선 도달", value: (r) => r.overLine, render: (r) => `${formatNumber(r.overLine)}개`, danger: (r) => (r.overLineOpen ?? 0) > 0 },
+  { key: "overLineOpen", label: "도달·켜짐", value: (r) => r.overLineOpen ?? 0, render: (r) => `${formatNumber(r.overLineOpen ?? 0)}개`, danger: (r) => (r.overLineOpen ?? 0) > 0 },
   { key: "locked", label: "잠김", value: (r) => r.locked, render: (r) => `${formatNumber(r.locked)}개` },
 ];
 
@@ -167,7 +167,7 @@ function MedinexSummary({ total }: { total: MedinexTotals }) {
         ["시험 키워드", `${formatNumber(total.keywords)}개`],
         ["누적 비용 합계", won(total.cost)],
         ["클릭 합계", formatNumber(total.clicks)],
-        ["잠금선 도달 (켜짐)", `${formatNumber(total.overLine)}개 (${formatNumber(total.overLineOpen)}개)`],
+        ["잠금선 도달 (켜짐)", `${formatNumber(total.overLine)}개 (${formatNumber(total.overLineOpen ?? 0)}개)`],
         ["잠김", `${formatNumber(total.locked)}개`],
       ].map(([k, v]) => (
         <div key={k} className="rounded border px-3 py-2">
@@ -186,7 +186,7 @@ function MedinexGroups({ groups, total }: { groups: GRow[]; total: MedinexTotals
       <SortTable rows={groups} cols={GROUP_COLS} initial="cost" maxHeight={300} />
       <p className="text-xs text-muted-foreground">
         전체 합계: 키워드 {formatNumber(total.keywords)}개 · 돈 쓴 키워드 {formatNumber(total.spent)}개 · 노출 {formatNumber(total.impressions)} ·
-        클릭 {formatNumber(total.clicks)} · 누적 비용 {won(total.cost)} · 잠금선 도달 {formatNumber(total.overLine)}개(켜짐 {formatNumber(total.overLineOpen)}개) · 잠김 {formatNumber(total.locked)}개
+        클릭 {formatNumber(total.clicks)} · 누적 비용 {won(total.cost)} · 잠금선 도달 {formatNumber(total.overLine)}개(켜짐 {formatNumber(total.overLineOpen ?? 0)}개) · 잠김 {formatNumber(total.locked)}개
       </p>
     </div>
   );
@@ -200,8 +200,8 @@ function MedinexBody({ ok }: { ok: MedinexOk }) {
   return (
     <>
       <MedinexSummary total={ok.total} />
-      {ok.total.overLineOpen > 0 && (
-        <Notice tone="warn">잠금선을 넘었는데 아직 켜져 있는 키워드가 {formatNumber(ok.total.overLineOpen)}개 있습니다. 구매가 났으면 유지, 아니면 루틴이 다음 회차에 잠급니다. 루틴 보고서에서 확인하세요(이 화면에는 키워드별 구매가 없습니다).</Notice>
+      {(ok.total.overLineOpen ?? 0) > 0 && (
+        <Notice tone="warn">잠금선을 넘었는데 아직 켜져 있는 키워드가 {formatNumber(ok.total.overLineOpen ?? 0)}개 있습니다. 구매가 났으면 유지, 아니면 루틴이 다음 회차에 잠급니다. 루틴 보고서에서 확인하세요(이 화면에는 키워드별 구매가 없습니다).</Notice>
       )}
       {ok.missing > 0 && (
         <Notice tone="warn">등록 키워드 목록(기준일 {ok.seenOn ?? "-"})에서 못 찾은 키워드가 {formatNumber(ok.missing)}개 있습니다. 지워졌거나 목록 수집 전에 넣은 것입니다. 비용은 0으로 셉니다.</Notice>
