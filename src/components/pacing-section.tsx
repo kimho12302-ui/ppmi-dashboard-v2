@@ -26,9 +26,12 @@ interface PacingData {
   minJudgeDays: number;
   hasTarget: boolean;
   target: { revenue: number; ad: number; roas: number; adRatio: number };
-  actual: { revenue: number; revenueOwn: number; gonggu: number; orders: number; ad: number; roas: number; adRatio: number };
-  achievement: { revenue: number; ad: number; roas: number };
-  remaining: { revenue: number; ad: number; reqDailyRevenue: number; reqDailyAd: number; dailyAvgRevenue: number; dailyAvgAd: number };
+  /** ad = 실제 집행(오늘 장중 포함). adThroughSum = 광고비 원장 마지막 날까지(예산 비교용).
+   *  adToSales = 판매 원장 마지막 날까지(roas·adRatio 의 분모). */
+  actual: { revenue: number; revenueOwn: number; gonggu: number; orders: number; ad: number; adThroughSum?: number; adToSales?: number; roas: number; adRatio: number };
+  /** ad = 실제 돈 기준 소진율, adThrough = 광고비 원장 마지막 날까지 소진율(집계 진행률과 비교) */
+  achievement: { revenue: number; ad: number; adThrough?: number; roas: number };
+  remaining: { revenue: number; ad: number; adThrough?: number; reqDailyRevenue: number; reqDailyAd: number; dailyAvgRevenue: number; dailyAvgAd: number };
   paceStatus: "ahead" | "on_track" | "behind" | "early" | "n/a";
   weekly: {
     week: string; days: number; startDay: number; endDay: number;
@@ -38,7 +41,8 @@ interface PacingData {
   perBrand: {
     brand: string; targetRevenue: number; actualRevenue: number; actualRevenueOwn: number; gonggu: number;
     revAchievement: number;
-    targetAd: number; actualAd: number; adConsumption: number;
+    salesThrough?: string | null;
+    targetAd: number; actualAd: number; adConsumption: number; adConsumptionThrough?: number;
     actualRoas: number; actualRoasOwn?: number; targetRoas: number; actualAdRatio: number; targetAdRatio: number;
   }[];
 }
@@ -133,11 +137,18 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
   // 선택 기간이 이 달 시작과 다르면 아래 KPI와 스코프가 다르다는 뜻.
   const scopeDiffers = !!from && from !== monthStart;
 
+  // ★ 행마다 분자·분모를 같은 날까지로 맞춘다(QA 2회차, 2026-11-10).
+  //   광고비 막대: 광고비 원장 마지막 날(adThrough)까지 집행 ÷ 목표, 세로선 = 같은 날까지의 집계 진행률.
+  //     오늘 장중 집행은 비교에 넣지 않는다(실제 돈은 아래 「잔여 광고예산」·초과 경고가 오늘 포함으로 보여 준다).
+  //   ROAS·광고비 비중: 매출이 들어온 날(salesThrough)까지의 광고비로 나눈 값(서버 계산).
+  const adCompare = actual.adThroughSum ?? actual.ad;
+  const adCompareAch = achievement.adThrough ?? achievement.ad;
+  const salesNote = data.salesThrough ? ` (판매 ${md(data.salesThrough)}까지)` : "";
   const rows = [
     { key: "매출", target: target.revenue, actual: actual.revenue, ach: achievement.revenue, marker: salesProgress, fmt: formatCurrency, color: "#2563eb" },
-    { key: "광고비", target: target.ad, actual: actual.ad, ach: achievement.ad, marker: adProgress, fmt: formatCurrency, color: "#dc2626", invert: true },
-    { key: "ROAS", target: target.roas, actual: actual.roas, ach: achievement.roas, marker: undefined, fmt: (v: number) => `${v.toFixed(2)}x`, color: "#10b981" },
-    { key: "광고비 비중", target: target.adRatio, actual: actual.adRatio, ach: target.adRatio > 0 ? actual.adRatio / target.adRatio : 0, marker: undefined, fmt: (v: number) => pct(v), color: "#8b5cf6", invert: true },
+    { key: `광고비${data.adThrough ? ` (${md(data.adThrough)}까지)` : ""}`, target: target.ad, actual: adCompare, ach: adCompareAch, marker: adProgress, fmt: formatCurrency, color: "#dc2626", invert: true },
+    { key: `ROAS${salesNote}`, target: target.roas, actual: actual.roas, ach: achievement.roas, marker: undefined, fmt: (v: number) => `${v.toFixed(2)}x`, color: "#10b981" },
+    { key: `광고비 비중${salesNote}`, target: target.adRatio, actual: actual.adRatio, ach: target.adRatio > 0 ? actual.adRatio / target.adRatio : 0, marker: undefined, fmt: (v: number) => pct(v), color: "#8b5cf6", invert: true },
   ];
 
   return (
@@ -267,7 +278,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
         {(b === "all" || b === "pet") && data.perBrand.length > 0 && (
           <div className="pt-2 border-t space-y-2">
             <p className="text-xs text-muted-foreground">
-              브랜드별 매출 달성률 (마커=판매 집계 진행률 {pct(salesProgress)}) · 목표는 <b>공구 포함</b> 기준{early ? " · 초반이라 색 판정 보류" : ""}
+              브랜드별 매출 달성률 (마커=판매 집계 진행률 {pct(salesProgress)}) · 목표는 <b>공구 포함</b> 기준 · ROAS 는 브랜드마다 판매가 들어온 날까지의 광고비로 나눔{early ? " · 초반이라 색 판정 보류" : ""}
             </p>
             {data.perBrand.filter(pb => pb.targetRevenue > 0).map((pb) => {
               const roasOk = pb.targetRoas > 0 && pb.actualRoas >= pb.targetRoas * 0.9;
@@ -281,7 +292,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
                     공구가 있는 브랜드는 자체매출 기준 ROAS를 괄호로 병기한다 — 공구는 광고와 무관해
                     포함 기준만 보면 광고 성과를 과대평가하게 된다(밸런스랩 7월: 9.6x vs 자체 1.8x). */}
                 <span className={`w-32 text-right text-[11px] ${pb.targetRoas > 0 && !early ? (roasOk ? "text-emerald-600" : "text-red-500") : "text-muted-foreground"}`}
-                  title={pb.gonggu > 0 ? "실제 ROAS(공구 포함) / 목표 ROAS · 괄호=자체매출 기준(광고 성과)" : "실제 ROAS / 목표 ROAS"}>
+                  title={`${pb.gonggu > 0 ? "실제 ROAS(공구 포함) / 목표 ROAS · 괄호=자체매출 기준(광고 성과)" : "실제 ROAS / 목표 ROAS"}${pb.salesThrough ? ` · 판매 ${md(pb.salesThrough)}까지의 광고비 기준` : ""}`}>
                   ROAS {pb.actualRoas.toFixed(1)}/{pb.targetRoas > 0 ? pb.targetRoas.toFixed(1) : "-"}x
                   {pb.gonggu > 0 && <span className="text-muted-foreground"> (자체 {(pb.actualRoasOwn ?? 0).toFixed(1)}x)</span>}
                 </span>

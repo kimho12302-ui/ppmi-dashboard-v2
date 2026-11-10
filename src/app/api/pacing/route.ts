@@ -7,6 +7,7 @@ import { fetchAll } from "@/lib/db";
 import { formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
 import { kstDate, kstMonth } from "@/lib/date";
+import { fetchSalesThrough, sumThrough } from "@/lib/sales-through";
 
 // 목표 대비 페이싱 (통계시트 "광고 예산안" 재현)
 // 현재 월에 대해 엔티티별: 날짜진행률 vs 매출/광고비/ROAS/광고비비중 목표·현황·달성률 + 잔여 + 필요 일런레이트
@@ -70,23 +71,25 @@ async function getImpl(req: NextRequest) {
     // ★ 원장이 어디까지 들어왔는지(2026-11-03). 판매 동기화는 며칠 늦다. 오늘·어제가 비어 있는 건
     //   "안 팔렸다"가 아니라 "아직 안 들어왔다"라서, 실적 일평균을 달력 경과일로 나누면 과소 계산된다
     //   (11-03 실측: 판매는 11-02까지인데 3일로 나눠 일평균 147만 → 실제 220만).
-    //   하루치가 한 번에 써지므로 브랜드 필터와 무관하게 전체 최대 날짜로 본다(/api/funnel-control 과 같은 방식).
+    //   판매 원장 마지막 날은 고른 브랜드 범위로 본다(src/lib/sales-through.ts, 2026-11-10). 브랜드마다 동기화가
+    //   달라(11-10 실측: 아이언펫 11-06, 나머지 11-08) 전사 최대일로 자르면 늦은 브랜드의 비율이 깎인다.
+    //   광고비 원장은 전 브랜드가 한 번에 들어오므로 전사 최대일(오늘 미만)로 본다.
     //   오늘은 넣지 않는다. 광고비는 오늘 행이 장중에 일부만 들어와 있어(11-03 실측: 메타·네이버 일부) 하루로 세면 일평균이 깎인다.
-    const salesLastQ = supabase.from("daily_sales").select("date").neq("channel", "total").lt("date", todayStr)
-      .order("date", { ascending: false }).limit(1);
     const adLastQ = supabase.from("daily_ad_spend").select("date").not("channel", "like", "ga4_%").lt("date", todayStr)
       .order("date", { ascending: false }).limit(1);
 
     // 1회 병렬 배치
-    const [targetsRes, sales, ads, psRows, salesLastRes, adLastRes] = await Promise.all([
+    // 묶음 보기(전체·펫)일 때는 브랜드별 행도 그 브랜드의 판매 원장 마지막 날로 자른다.
+    const memberBrands = brand === "all" ? BRANDS : brand === "pet" ? PET_BRANDS : [];
+    const [targetsRes, sales, ads, psRows, salesThrough, adLastRes, memberThrough] = await Promise.all([
       tQ, fetchAll(salesQ), fetchAll(adQ),
       needGonggu ? fetchAll(psQ) : Promise.resolve([] as unknown[]),
-      salesLastQ, adLastQ,
+      fetchSalesThrough(brand, todayStr), adLastQ,
+      Promise.all(memberBrands.map((b) => fetchSalesThrough(b, todayStr))),
     ]);
     const targetsData = targetsRes.data;
-    if (salesLastRes.error) throw salesLastRes.error;
+    if (targetsRes.error) throw targetsRes.error;
     if (adLastRes.error) throw adLastRes.error;
-    const salesThrough: string | null = salesLastRes.data?.[0]?.date ?? null;
     const adThrough: string | null = adLastRes.data?.[0]?.date ?? null;
     // 판매·광고비가 들어온 날 수(이 달 1일부터 원장 마지막 날까지). 일평균의 분모.
     const salesDays = coveredDays(salesThrough, monthStart, monthEnd, daysInMonth);
@@ -115,24 +118,35 @@ async function getImpl(req: NextRequest) {
     const totalFormA = grossRevenue - actualRevenueOwn;  // 빠진 공구 금액
     const actualRevenue = grossRevenue;                   // 목표 비교용 = 공구 포함
     const actualOrders = sales.reduce((s, r) => s + Number(r.orders || 0), 0);
+    // 「집행」은 실제로 나간 돈이라 오늘 장중 행까지 다 더한다(화면 금액·예산 초과 경고용).
     const actualAd = ads.reduce((s, r) => s + Number(r.spend || 0), 0);
+    const spendOf = (r: { spend: number | string | null }) => Number(r.spend || 0);
+    // ★ 비율의 분자·분모는 같은 날까지(QA 2회차 H1, 2026-11-10). 매출은 판매 원장 마지막 날(salesThrough)까지만
+    //   있는데 광고비를 이달 전체(오늘 장중 포함)로 나누면 ROAS 는 낮게, 광고비 비중은 높게 나온다.
+    //   Overview 의 adSpendToSalesDate 와 같은 원칙이다.
+    const adToSales = sumThrough(ads, salesThrough, spendOf);
     // ROAS는 실매출 ÷ 광고비 기준. 목표(targetRoas = 목표매출/목표광고비)와 같은 정의여야 비교가 성립한다.
     // 채널 conversion_value 합계는 플랫폼마다 같은 주문을 자기 기여로 신고해 실매출을 넘기 때문에
     // 통합 지표로 쓰면 과대 표시된다(2026-07 실측: 합계 5,705만 vs 실매출 4,464만).
-    const actualRoas = actualAd > 0 ? actualRevenue / actualAd : 0;
-    const actualAdRatio = actualRevenue > 0 ? actualAd / actualRevenue : 0;
+    const actualRoas = adToSales > 0 ? actualRevenue / adToSales : 0;
+    const actualAdRatio = actualRevenue > 0 ? adToSales / actualRevenue : 0;
+    // ★ 예산 비교용 집행(QA 2회차 M2): 광고비 원장이 다 들어온 마지막 날(adThrough, 어제까지)까지의 합계.
+    //   소진율·집계 진행률·가용 일광고비는 모두 이 값 하나로 잰다. 오늘 장중 집행은 비교에 넣지 않는다.
+    const adThroughSum = sumThrough(ads, adThrough, spendOf);
 
     // 잔여 + 필요 일런레이트
     const remainingRevenue = Math.max(0, targetRevenue - actualRevenue);
-    const remainingAd = targetAd - actualAd; // 음수면 예산 초과
+    const remainingAd = targetAd - actualAd; // 음수면 예산 초과(실제 돈 기준, 오늘 장중 포함)
+    // 가용 일광고비의 잔여는 원장 기준(어제까지)으로 센다. 남은 날(adDaysRemaining)에 오늘이 들어 있으니
+    // 오늘 이미 쓴 장중 금액을 잔여에서 또 빼면 오늘을 두 번 세는 셈이다.
+    const remainingAdThrough = targetAd - adThroughSum;
     // 남은 날 = 아직 실적이 안 들어온 날(오늘·동기화 대기일 포함). 실적 일평균 = 들어온 날 수로 나눈 값.
     const salesDaysRemaining = Math.max(0, daysInMonth - salesDays);
     const adDaysRemaining = Math.max(0, daysInMonth - adDays);
     const reqDailyRevenue = salesDaysRemaining > 0 ? remainingRevenue / salesDaysRemaining : 0;
-    const reqDailyAd = adDaysRemaining > 0 ? Math.max(0, remainingAd) / adDaysRemaining : 0;
+    const reqDailyAd = adDaysRemaining > 0 ? Math.max(0, remainingAdThrough) / adDaysRemaining : 0;
     // 일평균의 분자도 같은 날까지만 더한다(오늘 장중 행 제외).
-    const revenueThrough = salesThrough ? sales.filter((r) => r.date <= salesThrough).reduce((s, r) => s + Number(r.revenue || 0), 0) : 0;
-    const adThroughSum = adThrough ? ads.filter((r) => r.date <= adThrough).reduce((s, r) => s + Number(r.spend || 0), 0) : 0;
+    const revenueThrough = sumThrough(sales, salesThrough, (r) => Number(r.revenue || 0));
     const dailyAvgRevenue = salesDays > 0 ? revenueThrough / salesDays : 0;
     const dailyAvgAd = adDays > 0 ? adThroughSum / adDays : 0;
     // 기준선(마커)도 들어온 날 기준. 달력 진행률과 비교하면 동기화 지연만큼 늘 뒤처져 보인다.
@@ -142,7 +156,8 @@ async function getImpl(req: NextRequest) {
     const early = salesDays < PACING_MIN_DAYS && salesDays < daysInMonth;
 
     const revAchievement = targetRevenue > 0 ? actualRevenue / targetRevenue : 0;
-    const adConsumption = targetAd > 0 ? actualAd / targetAd : 0;
+    const adConsumption = targetAd > 0 ? actualAd / targetAd : 0;               // 실제 돈 기준(오늘 포함)
+    const adConsumptionThrough = targetAd > 0 ? adThroughSum / targetAd : 0;    // 비교용(광고비 원장 마지막 날까지)
     const roasAchievement = targetRoas > 0 ? actualRoas / targetRoas : 0;
 
     // 페이스 판정: 매출 달성률 vs 판매가 들어온 날 기준 진행률
@@ -158,7 +173,6 @@ async function getImpl(req: NextRequest) {
     // 묶음 보기(전체·펫)일 때 브랜드별 미니 페이싱도 제공.
     // 펫을 고르면 펫 3개 브랜드로 펴야 한다. 전엔 all 에서만 계산해 펫에선 칸이 비었다(2026-10-13).
     let perBrand: unknown[] = [];
-    const memberBrands = brand === "all" ? BRANDS : brand === "pet" ? PET_BRANDS : [];
     if (memberBrands.length > 0) {
       const tByBrand = new Map((targetsData || []).map((r) => [r.brand as string, r]));
       const revByBrand = new Map<string, number>();
@@ -167,7 +181,12 @@ async function getImpl(req: NextRequest) {
       for (const r of ads) {
         adByBrand.set(r.brand, (adByBrand.get(r.brand) || 0) + Number(r.spend || 0));
       }
-      perBrand = memberBrands.map((b) => {
+      perBrand = memberBrands.map((b, i) => {
+        // 이 브랜드의 판매 원장 마지막 날까지의 광고비(ROAS·광고비 비중용)와 광고비 원장 기준 집행(소진율 비교용).
+        const bThrough = memberThrough[i];
+        const bAds = ads.filter((r) => r.brand === b);
+        const aAdToSales = sumThrough(bAds, bThrough, spendOf);
+        const aAdThrough = sumThrough(bAds, adThrough, spendOf);
         const t = tByBrand.get(b);
         const tRev = Number(t?.revenue_target || 0);
         const tAd = Number(t?.ad_budget_target || 0);
@@ -182,15 +201,18 @@ async function getImpl(req: NextRequest) {
           brand: b,
           targetRevenue: tRev, actualRevenue: aRev, actualRevenueOwn: aRevOwn, gonggu,
           revAchievement: tRev > 0 ? aRev / tRev : 0,
-          targetAd: tAd, actualAd: aAd,
-          adConsumption: tAd > 0 ? aAd / tAd : 0,
-          actualRoas: aAd > 0 ? aRev / aAd : 0,   // 실매출 기준 (targetRoas와 동일 정의)
+          salesThrough: bThrough,
+          targetAd: tAd, actualAd: aAd, actualAdToSales: aAdToSales, actualAdThrough: aAdThrough,
+          adConsumption: tAd > 0 ? aAd / tAd : 0,                  // 실제 돈 기준(오늘 포함, 예산 초과 판정용)
+          adConsumptionThrough: tAd > 0 ? aAdThrough / tAd : 0,    // 비교용(광고비 원장 마지막 날까지)
+          // 실매출 기준(targetRoas 와 같은 정의). 광고비는 이 브랜드의 판매 원장 마지막 날까지만.
+          actualRoas: aAdToSales > 0 ? aRev / aAdToSales : 0,
           // ★ 광고 성과 판단용: 공구는 광고와 무관하므로 자체매출 기준 ROAS를 병기한다.
           //   밸런스랩 2026-07 실측 — 공구 포함 9.62x(목표 초과)이지만 자체 기준은 1.82x(목표 미달)로
           //   예산 증감 판단이 정반대로 갈린다(2026-08 리뷰).
-          actualRoasOwn: aAd > 0 ? aRevOwn / aAd : 0,
+          actualRoasOwn: aAdToSales > 0 ? aRevOwn / aAdToSales : 0,
           targetRoas: tAd > 0 ? tRev / tAd : 0,
-          actualAdRatio: aRev > 0 ? aAd / aRev : 0,
+          actualAdRatio: aRev > 0 ? aAdToSales / aRev : 0,
           targetAdRatio: tRev > 0 ? tAd / tRev : 0,
         };
       });
@@ -207,7 +229,10 @@ async function getImpl(req: NextRequest) {
       const wDays = end - s + 1;
       const inWeek = (dateStr: string) => { const d = Number(dateStr.slice(8, 10)); return d >= s && d <= end; };
       const wRev = sumRev(ownSales.filter((r) => inWeek(r.date)));
-      const wAd = ads.filter((r) => inWeek(r.date)).reduce((acc, r) => acc + Number(r.spend || 0), 0);
+      const wAds = ads.filter((r) => inWeek(r.date));
+      const wAd = wAds.reduce((acc, r) => acc + Number(r.spend || 0), 0);
+      // 광고비 비중은 매출이 들어온 날까지의 광고비로(위 H1 과 같은 원칙)
+      const wAdToSales = sumThrough(wAds, salesThrough, spendOf);
       const wTargetRev = targetRevenue * (wDays / daysInMonth);
       const wTargetAd = targetAd * (wDays / daysInMonth);
       const isPast = todayStr.slice(0, 7) > month || (todayStr.slice(0, 7) === month && Number(todayStr.slice(8, 10)) > end);
@@ -217,7 +242,7 @@ async function getImpl(req: NextRequest) {
         targetRevenue: Math.round(wTargetRev), actualRevenue: wRev,
         revAchievement: wTargetRev > 0 ? wRev / wTargetRev : 0,
         targetAd: Math.round(wTargetAd), actualAd: wAd,
-        adRatio: wRev > 0 ? wAd / wRev : 0,
+        adRatio: wRev > 0 ? wAdToSales / wRev : 0,
         state: isPast ? "past" : isCurrent ? "current" : "future",
       };
     });
@@ -231,9 +256,13 @@ async function getImpl(req: NextRequest) {
       weekly,
       hasTarget: (targetsData || []).length > 0 && targetRevenue > 0,
       target: { revenue: targetRevenue, ad: targetAd, roas: targetRoas, adRatio: targetAdRatio },
-      actual: { revenue: actualRevenue, revenueOwn: actualRevenueOwn, gonggu: totalFormA, orders: actualOrders, ad: actualAd, roas: actualRoas, adRatio: actualAdRatio },
-      achievement: { revenue: revAchievement, ad: adConsumption, roas: roasAchievement },
-      remaining: { revenue: remainingRevenue, ad: remainingAd, reqDailyRevenue, reqDailyAd, dailyAvgRevenue, dailyAvgAd },
+      // ad = 실제 집행(오늘 장중 포함), adThroughSum = 광고비 원장 마지막 날(adThrough)까지,
+      // adToSales = 판매 원장 마지막 날(salesThrough)까지(ROAS·광고비 비중의 분모).
+      actual: { revenue: actualRevenue, revenueOwn: actualRevenueOwn, gonggu: totalFormA, orders: actualOrders, ad: actualAd, adThroughSum, adToSales, roas: actualRoas, adRatio: actualAdRatio },
+      // ad = 실제 돈 기준 소진율(예산 초과 판정), adThrough = 비교용 소진율(집계 진행률과 같은 날까지)
+      achievement: { revenue: revAchievement, ad: adConsumption, adThrough: adConsumptionThrough, roas: roasAchievement },
+      // ad = 실제 돈 기준 잔여, adThrough = 광고비 원장 기준 잔여(가용 일광고비의 분자)
+      remaining: { revenue: remainingRevenue, ad: remainingAd, adThrough: remainingAdThrough, reqDailyRevenue, reqDailyAd, dailyAvgRevenue, dailyAvgAd },
       paceStatus,
       perBrand,
     });
