@@ -99,7 +99,9 @@ export function BlPnlView({ year, pick, onPickChange }: { year: string; pick: Pi
       .map((sr, i) => ({ month: sr.month, self: sr.row, gonggu: view.gRows[i].blockedText ? null : view.gRows[i].row, blocked: !!view.gRows[i].blockedText }))
       .filter((m) => m.self && (m.self.revenue > 0 || (m.gonggu?.revenue ?? 0) > 0));
     const done = months.filter((m) => m.month < thisMonth);
-    const pickKey = wfMonth ?? (done[done.length - 1] ?? months[months.length - 1])?.month ?? "year";
+    // 고른 달이 연도·제품을 바꾼 뒤 목록에 없으면 기본값(마지막으로 끝난 달)으로 돌아간다(검수 M2). select 값도 늘 목록 안의 값.
+    const fallback = (done[done.length - 1] ?? months[months.length - 1])?.month ?? "year";
+    const pickKey = wfMonth === "year" || (wfMonth != null && months.some((m) => m.month === wfMonth)) ? wfMonth : fallback;
     const sel = pickKey === "year"
       ? { gonggu: view.gTotal, self: view.sTotal, blocked: view.gRows.some((r) => !!r.blockedText) }
       : months.find((m) => m.month === pickKey) ?? null;
