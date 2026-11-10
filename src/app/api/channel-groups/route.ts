@@ -7,6 +7,7 @@ import { fetchAll } from "@/lib/db";
 import { formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
 import { baseStoreAdSpend, isBalancelabMetaGoogle } from "@/lib/ad-store";
+import { fetchSalesThrough } from "@/lib/sales-through";
 
 // 채널(판매처) 성과 — 판매처별 매출 vs 그 판매처를 끌어온 광고비.
 // ★ 브랜드 판매처 구조 반영(2026-06 수정):
@@ -59,6 +60,24 @@ function storeSubAds(key: string, ad: Record<string, number>, blMG: number) {
 }
 
 type DayAgg = { rev: Record<string, number>; ad: Record<string, number>; blMG: number };
+
+/** 날짜별 집계를 cut 날짜까지(포함) 다시 더한다. cut 이 null 이면 빈 합계. */
+function sumUntil(byDate: Record<string, DayAgg>, cut: string | null) {
+  const revByCh: Record<string, number> = {};
+  const adByCh: Record<string, number> = {};
+  let blMG = 0;
+  if (!cut) return { revByCh, adByCh, blMG };
+  for (const [date, d] of Object.entries(byDate)) {
+    if (date > cut) continue;
+    for (const [c, v] of Object.entries(d.rev)) revByCh[c] = (revByCh[c] || 0) + v;
+    for (const [c, v] of Object.entries(d.ad)) adByCh[c] = (adByCh[c] || 0) + v;
+    blMG += d.blMG;
+  }
+  return { revByCh, adByCh, blMG };
+}
+
+/** YYYY-MM-DD 에서 n 일 뺀 날짜 */
+const minusDays = (ymd: string, n: number) => new Date(new Date(`${ymd}T00:00:00Z`).getTime() - n * 86400000).toISOString().slice(0, 10);
 
 async function periodData(from: string, to: string, brand: string) {
   let salesQ = supabase.from("daily_sales").select("date,brand,channel,revenue")
@@ -120,7 +139,22 @@ async function getImpl(req: NextRequest) {
     const prevTo = new Date(fromD.getTime() - 86400000).toISOString().slice(0, 10);
     const prevFrom = new Date(fromD.getTime() - diff - 86400000).toISOString().slice(0, 10);
 
-    const [cur, prev] = await Promise.all([periodData(from, to, brand), periodData(prevFrom, prevTo, brand)]);
+    const [cur, prev, salesThrough] = await Promise.all([
+      periodData(from, to, brand), periodData(prevFrom, prevTo, brand),
+      // 판매 원장(고른 브랜드 범위) 마지막 날, 오늘 미만. 정의는 src/lib/sales-through.ts 하나(QA2 M3).
+      fetchSalesThrough(brand),
+    ]);
+
+    // ★ 판매 집계일까지 ROAS(QA2 H2, 2026-11-10). 매출은 판매 원장 마지막 날까지만 들어와 있는데
+    //   광고비를 기간 전체(그 뒤 날짜 포함)로 나누면 ROAS 가 낮게 나와 카드 색·점선·전기간 비교가 틀어졌다.
+    //   ROAS·광고비 비중·ROAS 전기간 대비·매출 전기간 대비는 판매가 들어온 날까지로 자른다.
+    //   직전 기간도 같은 길이로 자른다: 이번 기간의 각 날짜를 (기간 일수)만큼 앞으로 민 날까지.
+    //   기간 전체 광고비 금액(adSpend)과 그 전기간 대비(adDelta)는 실제 돈이라 그대로 둔다.
+    const periodDays = Math.round(diff / 86400000) + 1;
+    const curCut = !salesThrough || salesThrough < from ? null : salesThrough < to ? salesThrough : to;
+    const prevCut = curCut ? minusDays(curCut, periodDays) : null;
+    const curTo = sumUntil(cur.byDate, curCut);
+    const prevToCut = sumUntil(prev.byDate, prevCut);
 
     const groups = GROUPS.map((g) => {
       // "기타"는 고정 채널 목록이 없다 — 알려진 3개에 속하지 않는 모든 채널의 합.
@@ -129,23 +163,33 @@ async function getImpl(req: NextRequest) {
         : g.salesCh.reduce((s2, c) => s2 + (m[c] || 0), 0);
       const revenue = pick(cur.revByCh);
       const adSpend = storeAd(g.key, cur.adByCh, cur.blMG);
-      const prevRev = pick(prev.revByCh);
       const prevAd = storeAd(g.key, prev.adByCh, prev.blMG);
       const roas = adSpend > 0 ? revenue / adSpend : 0;
-      const prevRoas = prevAd > 0 ? prevRev / prevAd : 0;
+      // 판매 집계일까지(위 주석)
+      const revenueToSales = pick(curTo.revByCh);
+      const adSpendToSales = storeAd(g.key, curTo.adByCh, curTo.blMG);
+      const roasToSales = adSpendToSales > 0 ? revenueToSales / adSpendToSales : 0;
+      const prevRevCut = pick(prevToCut.revByCh);
+      const prevAdCut = storeAd(g.key, prevToCut.adByCh, prevToCut.blMG);
+      const prevRoasCut = prevAdCut > 0 ? prevRevCut / prevAdCut : 0;
       return {
         key: g.key,
         label: g.key === "naver" ? naverLabel(brand) : g.label,
         revenue,
         adSpend,
+        // roas = 기간 전체 광고비 기준(참고). 화면 판정·색·점선은 roasToSales 를 쓴다.
         roas,
-        adRatio: revenue > 0 ? (adSpend / revenue) * 100 : 0,
+        adSpendToSales,
+        roasToSales,
+        // 광고비 비중도 판매 집계일까지의 광고비로(매출과 같은 날까지).
+        adRatio: revenueToSales > 0 ? (adSpendToSales / revenueToSales) * 100 : 0,
         // 0원 매체는 목록에서 뺀다. 밸런스랩이 아닌 브랜드에 "밸런스랩 메타/구글 0원" 줄이
         // 남아 있어 공통 비용처럼 읽혔다.
         subAds: storeSubAds(g.key, cur.adByCh, cur.blMG).filter((a) => a.spend > 0),
-        revDelta: prevRev > 0 ? ((revenue / prevRev) - 1) * 100 : null,
+        // 매출·ROAS 전기간 대비는 같은 길이(판매 집계일까지)끼리, 광고비 전기간 대비는 기간 전체끼리.
+        revDelta: prevRevCut > 0 ? ((revenueToSales / prevRevCut) - 1) * 100 : null,
         adDelta: prevAd > 0 ? ((adSpend / prevAd) - 1) * 100 : null,
-        roasDelta: prevRoas > 0 ? ((roas / prevRoas) - 1) * 100 : null,
+        roasDelta: prevRoasCut > 0 && adSpendToSales > 0 ? ((roasToSales / prevRoasCut) - 1) * 100 : null,
       };
     });
 
@@ -168,6 +212,8 @@ async function getImpl(req: NextRequest) {
 
     return NextResponse.json({
       from, to, prevFrom, prevTo,
+      // 판매 원장 마지막 날(고른 브랜드 범위)과, 카드의 「판매 집계일까지」 비교가 쓴 이번·직전 기간 끝 날짜.
+      salesThrough, compareThrough: curCut, prevCompareThrough: prevCut,
       groups,
       total: { revenue: totalRev, adSpend: totalAd, roas: totalAd > 0 ? totalRev / totalAd : 0, adRatio: totalRev > 0 ? (totalAd / totalRev) * 100 : 0 },
       series,

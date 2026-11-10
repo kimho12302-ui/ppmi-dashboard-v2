@@ -31,7 +31,9 @@ interface DashboardResp {
   channels: { channel: string; spend: number; roas: number }[];
 }
 interface ChannelGroupsResp {
-  groups: { key: string; label: string; revenue: number; adSpend: number; roas: number; adRatio: number; revDelta: number | null }[];
+  // roasToSales·adRatio = 판매 원장 마지막 날까지의 광고비 기준(/api/channel-groups, QA2 H2). adSpend = 기간 전체.
+  groups: { key: string; label: string; revenue: number; adSpend: number; adSpendToSales?: number; roas: number; roasToSales?: number; adRatio: number; revDelta: number | null }[];
+  compareThrough?: string | null;
   /** 날짜 × 판매처별 매출·광고비. 판매처 개별 추이 차트가 쓴다. */
   series?: ({ date: string } & Record<string, { revenue: number; adSpend: number } | string>)[];
 }
@@ -88,6 +90,9 @@ function BrandInner({ brand }: { brand: string }) {
 
   const { data: dash, loading } = useFetch<DashboardResp>(`/api/dashboard?brand=${brand}&from=${from}&to=${to}`);
   const { data: cg } = useFetch<ChannelGroupsResp>(`/api/channel-groups?brand=${brand}&from=${from}&to=${to}`);
+  // 판매처 표의 ROAS·광고비중이 어디까지의 광고비 기준인지(기간 끝까지 다 들어왔으면 표시 안 함)
+  const storeCut = cg?.compareThrough ?? null;
+  const storeCutLabel = storeCut && storeCut < to ? ` (${Number(storeCut.slice(5, 7))}/${Number(storeCut.slice(8, 10))}까지)` : "";
   const { data: detail, error: detailError } = useFetch<BrandDetailResp>(`/api/brand-detail?brand=${brand}&from=${from}&to=${to}`);
 
   const kpi = dash?.kpi;
@@ -275,8 +280,8 @@ function BrandInner({ brand }: { brand: string }) {
                   <th className="text-left py-2 font-medium">판매처</th>
                   <th className="text-right py-2 font-medium">매출</th>
                   <th className="text-right py-2 font-medium">광고비</th>
-                  <th className="text-right py-2 font-medium">ROAS</th>
-                  <th className="text-right py-2 font-medium">광고비중</th>
+                  <th className="text-right py-2 font-medium" title="판매가 들어온 날까지의 매출 ÷ 같은 날까지의 광고비">ROAS{storeCutLabel}</th>
+                  <th className="text-right py-2 font-medium">광고비중{storeCutLabel}</th>
                 </tr>
               </thead>
               <tbody>
@@ -285,7 +290,7 @@ function BrandInner({ brand }: { brand: string }) {
                     <td className="py-2">{g.label}</td>
                     <td className="py-2 text-right font-medium">{formatCurrency(g.revenue)}</td>
                     <td className="py-2 text-right">{formatCurrency(g.adSpend)}</td>
-                    <td className="py-2 text-right">{g.adSpend > 0 ? `${g.roas.toFixed(2)}x` : "-"}</td>
+                    <td className="py-2 text-right">{(g.adSpendToSales ?? g.adSpend) > 0 ? `${(g.roasToSales ?? g.roas).toFixed(2)}x` : "-"}</td>
                     <td className="py-2 text-right">{g.revenue > 0 ? formatPercent(g.adRatio) : "-"}</td>
                   </tr>
                 ))}

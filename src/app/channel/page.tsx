@@ -12,7 +12,9 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts"
 
 interface SubAd { channel: string; label: string; spend: number; }
 interface Group {
-  key: string; label: string; revenue: number; adSpend: number; roas: number; adRatio: number;
+  /** adSpend = 기간 전체 광고비(실제 돈). adSpendToSales·roasToSales = 판매 원장 마지막 날까지(카드 판정·색·점선용).
+   *  adRatio·revDelta·roasDelta 도 판매 집계일까지 기준(서버 /api/channel-groups 주석). roas = 기간 전체 광고비 기준(참고). */
+  key: string; label: string; revenue: number; adSpend: number; roas: number; adSpendToSales: number; roasToSales: number; adRatio: number;
   subAds: SubAd[];
   revDelta: number | null; adDelta: number | null; roasDelta: number | null;
 }
@@ -20,6 +22,8 @@ interface GroupCell { revenue: number; adSpend: number; }
 interface SeriesRow { date: string; naver: GroupCell; jasamol: GroupCell; coupang: GroupCell; other?: GroupCell; }
 interface ChannelGroupsData {
   from: string; to: string;
+  /** 판매 원장 마지막 날(고른 브랜드 범위, 오늘 미만). compareThrough = 카드 비교가 쓴 이번 기간 끝 날짜. */
+  salesThrough?: string | null; compareThrough?: string | null;
   groups: Group[];
   total: { revenue: number; adSpend: number; roas: number; adRatio: number };
   series: SeriesRow[];
@@ -71,10 +75,12 @@ function ChannelInner() {
   const [gran, setGran] = useState<Gran>("week");
 
   const series = useMemo(() => data?.series || [], [data]);
-  // 판매 원장이 들어온 마지막 날(매출이 하나라도 있는 마지막 날). 그 뒤 날짜는 판매 0 이 아니라 동기화 대기다.
+  // 판매 원장이 들어온 마지막 날. 그 뒤 날짜는 판매 0 이 아니라 동기화 대기다.
+  // ★ 서버가 고른 브랜드 범위로 정한 값(src/lib/sales-through.ts, QA2 M3). 카드의 「판매 집계일까지 ROAS」와 같은 날이다.
+  //   서버 값이 없으면(옛 응답) 예전처럼 매출이 있는 마지막 날로 대신한다.
   const salesLast = useMemo(
-    () => lastDataDate(series.filter((r) => (r.naver?.revenue || 0) + (r.jasamol?.revenue || 0) + (r.coupang?.revenue || 0) + (r.other?.revenue || 0) > 0)),
-    [series]
+    () => data?.salesThrough ?? lastDataDate(series.filter((r) => (r.naver?.revenue || 0) + (r.jasamol?.revenue || 0) + (r.coupang?.revenue || 0) + (r.other?.revenue || 0) > 0)),
+    [data, series]
   );
   const buckets = useMemo(() => {
     const m: Record<string, { naver: { r: number; a: number }; jasamol: { r: number; a: number }; coupang: { r: number; a: number }; other: { r: number; a: number } }> = {};
@@ -142,6 +148,9 @@ function ChannelInner() {
   }
 
   const groups = data?.groups || [];
+  // 카드·점선이 쓰는 「판매 집계일」 라벨. 기간 끝까지 다 들어왔으면 「기간 전체」.
+  const cmp = data?.compareThrough ?? null;
+  const throughLabel = !cmp ? "판매 집계 없음" : cmp >= to ? "기간 전체" : `판매 집계일 ${Number(cmp.slice(5, 7))}/${Number(cmp.slice(8, 10))}까지`;
 
   return (
     <PageShell title="판매처 성과" description="판매처별 매출 vs 그 판매처를 끌어온 광고비 · 원 단위 · 전기간 대비">
@@ -151,24 +160,35 @@ function ChannelInner() {
         {groups.map((g, gi) => (
           // ★ 광고비 0 인 판매처(자사몰 등)는 ROAS 가 정의되지 않는다. 0.00x 빨강으로 찍으면
           //   "광고 성과 최악" 으로 읽히므로 표 셀(RoasText)과 같이 "-" 로 두고 색·경고선도 넣지 않는다(2026-11-03).
-          <Card key={g.key} className="border-t-4" style={{ borderTopColor: g.adSpend > 0 ? roasColor(g.roas) : "var(--border)" }}>
+          // ROAS·색은 판매 집계일까지(그날까지의 매출 ÷ 그날까지의 광고비). 기간 전체 광고비로 나누면 매출이 아직 안 들어온
+          // 날의 광고비만 분모에 더해져 ROAS 가 낮게 나온다(QA2 H2, 2026-11-10).
+          <Card key={g.key} className="border-t-4" style={{ borderTopColor: g.adSpendToSales > 0 ? roasColor(g.roasToSales) : "var(--border)" }}>
             <CardContent className="p-5 space-y-4">
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-2">
                 <h3 className="font-semibold text-sm">{g.label}</h3>
-                {g.adSpend > 0
-                  ? <span className="text-lg font-bold" style={{ color: roasColor(g.roas) }}>{g.roas.toFixed(2)}x</span>
-                  : <span className="text-lg font-bold text-muted-foreground" title="광고비가 없어 ROAS 를 계산하지 않습니다">-</span>}
+                {g.adSpendToSales > 0
+                  ? (
+                    <span className="text-right shrink-0">
+                      <span className="block text-lg font-bold leading-tight" style={{ color: roasColor(g.roasToSales) }}>{g.roasToSales.toFixed(2)}x</span>
+                      <span className="block text-[10px] text-muted-foreground">{throughLabel} ROAS</span>
+                    </span>
+                  )
+                  : <span className="text-lg font-bold text-muted-foreground" title="판매 집계일까지 광고비가 없어 ROAS 를 계산하지 않습니다">-</span>}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className="text-[11px] text-muted-foreground">매출</p>
                   <p className="text-base font-bold">{formatWon(g.revenue)}</p>
-                  <p className="text-[11px]">전기간 <Delta v={g.revDelta} /></p>
+                  <p className="text-[11px]" title="이번 기간과 직전 기간을 판매 집계일까지 같은 길이로 잘라 비교">전기간 <Delta v={g.revDelta} /></p>
                 </div>
                 <div>
-                  <p className="text-[11px] text-muted-foreground">광고비 (비중 {g.adRatio.toFixed(1)}%)</p>
+                  {/* 금액은 기간 전체(실제 돈). 비중은 판매 집계일까지 광고비 ÷ 매출 */}
+                  <p className="text-[11px] text-muted-foreground">광고비 기간 전체 (비중 {g.adRatio.toFixed(1)}%)</p>
                   <p className="text-base font-bold">{formatWon(g.adSpend)}</p>
                   <p className="text-[11px]">전기간 <Delta v={g.adDelta} invert /></p>
+                  {g.adSpendToSales !== g.adSpend && (
+                    <p className="text-[10px] text-muted-foreground">{throughLabel} {formatWon(g.adSpendToSales)}</p>
+                  )}
                 </div>
               </div>
               <div className="border-t pt-2 space-y-1" data-tour={gi === 0 ? "channel-ad-mix" : undefined}>
@@ -181,8 +201,8 @@ function ChannelInner() {
                 ))}
               </div>
               <div className="border-t pt-2 flex items-center justify-between text-xs" data-tour={gi === 0 ? "channel-roas-delta" : undefined}>
-                <span className="text-muted-foreground">ROAS 전기간 대비</span>
-                <span className="font-medium"><Delta v={g.adSpend > 0 ? g.roasDelta : null} /></span>
+                <span className="text-muted-foreground">ROAS 전기간 대비 ({throughLabel}, 같은 길이)</span>
+                <span className="font-medium"><Delta v={g.adSpendToSales > 0 ? g.roasDelta : null} /></span>
               </div>
             </CardContent>
           </Card>
@@ -194,13 +214,13 @@ function ChannelInner() {
         <CardContent className="p-4">
           <h3 className="font-semibold text-sm">판매처별 주간 ROAS</h3>
           <p className="text-xs text-muted-foreground mt-0.5 mb-3">
-            가로 = 주(월요일 시작), 세로 = 그 판매처 매출 ÷ 그 판매처를 끌어온 광고비(배). 점선 = 선택 기간 ROAS. 판매처마다 축이 따로입니다
+            가로 = 주(월요일 시작), 세로 = 그 판매처 매출 ÷ 그 판매처를 끌어온 광고비(배). 점선 = 선택 기간 ROAS({throughLabel}). 판매처마다 축이 따로입니다
           </p>
-          {groups.filter((g) => g.adSpend > 0).length === 0 ? (
+          {groups.filter((g) => g.adSpendToSales > 0).length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">선택한 기간에 광고비가 쓰인 판매처가 없습니다.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {groups.filter((g) => g.adSpend > 0).map((g) => {
+              {groups.filter((g) => g.adSpendToSales > 0).map((g) => {
                 const pts = weekly.weeks.map((wk, i) => ({ week: wk, v: weekly.byGroup[g.key]?.[i] ?? null }));
                 return (
                   <div key={g.key} className="rounded-lg border p-2 min-w-0">
@@ -209,13 +229,13 @@ function ChannelInner() {
                         <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SALES_GROUP_COLORS[g.key] || "#6b7280" }} />
                         {g.label}
                       </span>
-                      <span className="text-[11px] text-muted-foreground shrink-0">기간 {g.roas.toFixed(2)}x</span>
+                      <span className="text-[11px] text-muted-foreground shrink-0">기간 {g.roasToSales.toFixed(2)}x</span>
                     </div>
                     <DeferredResponsiveContainer width="100%" height={72}>
                       <LineChart data={pts} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}>
                         <XAxis dataKey="week" hide />
                         <YAxis hide domain={[0, "auto"]} />
-                        <ReferenceLine y={g.roas} stroke="var(--muted-foreground)" strokeDasharray="2 3" strokeOpacity={0.7} ifOverflow="extendDomain" />
+                        <ReferenceLine y={g.roasToSales} stroke="var(--muted-foreground)" strokeDasharray="2 3" strokeOpacity={0.7} ifOverflow="extendDomain" />
                         <Tooltip cursor={false}
                           content={({ active, payload }) => {
                             if (!active || !payload?.length) return null;
