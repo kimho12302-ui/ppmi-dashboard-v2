@@ -51,7 +51,8 @@ async function getImpl(req: NextRequest) {
     const scope = brand === "all" ? ALL_BRANDS : expandBrands(brand);
     const [summary, sources] = await Promise.all([
       tryRpc<unknown[]>("keyword_summary", { p_from: from, p_to: to, p_brands: brand !== "all" ? expandBrands(brand) : null }),
-      latestBySource(scope),
+      // 마지막 수집일 조회가 실패해도 키워드 표는 낸다(예전에도 이 조회는 실패를 무시했다). 띠만 안 뜬다.
+      latestBySource(scope).catch((e) => { console.error("keywords latestBySource:", e); return [] as SourceLatest[]; }),
     ]);
 
     // PostgREST 의 db-max-rows(1000)가 클라이언트 range 보다 우선하므로

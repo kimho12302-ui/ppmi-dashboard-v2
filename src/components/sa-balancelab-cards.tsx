@@ -162,8 +162,8 @@ export function MedinexTestCard() {
           </span>
         </h3>
         <p className="text-xs text-muted-foreground mt-1">
-          판정 규칙: 키워드마다 <b>{formatCurrency(ok?.lockLine ?? 10000)}</b>을 쓰고 구매가 0이면 잠급니다(김호 승인 11-09). 검토일에 남은 키워드를 한 번에 판정합니다.
-          비용·클릭은 네이버 등록 키워드 목록의 30일 합계(기준일 {ok?.seenOn ?? "-"})이고, 시험 키워드는 시작일에 새로 넣어 시험 누적과 같습니다.
+          판정 규칙: 키워드마다 <b>{formatCurrency(ok?.lockLine ?? 10000)}</b>(VAT 포함)을 쓰고 구매가 0이면 SA 루틴이 자동으로 잠급니다(김호 승인 11-09). 나머지는 검토일 판정 회의에서 사람이 정합니다.
+          비용·클릭은 네이버 등록 키워드 목록의 30일 합계(기준일 {ok?.seenOn ?? "-"})이고, 시험 키워드는 시작일에 새로 넣어 시험 누적과 같습니다. 이 비용의 VAT 포함 여부는 미확인이라 잠금선 근처는 루틴 보고서 숫자로 봅니다.
         </p>
       </div>
       <StateLine loading={loading && !data} error={error || data?.error} notReady={notReady}
@@ -186,7 +186,7 @@ export function MedinexTestCard() {
             ))}
           </div>
           {pending > 0 && (
-            <Notice tone="warn">잠금선을 넘었는데 아직 켜져 있는 키워드가 {formatNumber(pending)}개 있습니다. 구매가 났는지 루틴 보고서에서 확인할 대상입니다(이 화면에는 키워드별 구매가 없습니다).</Notice>
+            <Notice tone="warn">잠금선을 넘었는데 아직 켜져 있는 키워드가 {formatNumber(pending)}개 있습니다. 구매가 났으면 유지, 아니면 루틴이 다음 회차에 잠급니다. 루틴 보고서에서 확인하세요(이 화면에는 키워드별 구매가 없습니다).</Notice>
           )}
           {ok.missing > 0 && (
             <Notice tone="warn">등록 키워드 목록(기준일 {ok.seenOn ?? "-"})에서 못 찾은 키워드가 {formatNumber(ok.missing)}개 있습니다. 지워졌거나 목록 수집 전에 넣은 것입니다. 비용은 0으로 셉니다.</Notice>
