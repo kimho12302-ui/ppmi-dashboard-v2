@@ -9,6 +9,8 @@ import { cachedGET } from "@/lib/api-cache";
 import { loadComponentIndex } from "@/lib/product-components-server";
 import { expandSales } from "@/lib/product-components";
 import { isPurchaseConversionMeasured, META_PURCHASE_UNTRACKED_BRANDS } from "@/lib/conversion-tracking";
+import { fetchSalesThrough, compareCut } from "@/lib/sales-through";
+import { md } from "@/lib/sales-through-label";
 
 // Channel name mapping (English → Korean)
 const CHANNEL_LABELS: Record<string, string> = {
@@ -70,7 +72,7 @@ async function getImpl(request: NextRequest) {
     // 이전 기간 제품 행(형식-A 공구 차감·제품 분해용). 예전엔 위 5개가 끝난 뒤 따로 기다렸다 → 같이 보낸다(2026-11-04).
     let prevProdQ = supabase.from("product_sales").select("date,brand,product,channel,lineup,revenue").gte("date", prevFrom).lte("date", prevTo);
     if (brand !== "all") prevProdQ = prevProdQ.in("brand", expandBrands(brand));
-    const [rawSalesRows, adRows, funnelRows, prodRows, rawPrevSales, prevProdRows, components] = await Promise.all([
+    const [rawSalesRows, adRows, funnelRows, prodRows, rawPrevSales, prevProdRows, components, salesThrough] = await Promise.all([
       fetchAll(salesQ.order("date")),
       fetchAll(adQ.order("date")),
       fetchAll(funnelQ.order("date")),
@@ -78,6 +80,8 @@ async function getImpl(request: NextRequest) {
       fetchAll(prevSalesQ.order("date")),
       fetchAll(prevProdQ.order("date")),
       loadComponentIndex(),
+      // 판매 원장(고른 브랜드 범위) 마지막 날, 오늘 미만. 정의는 src/lib/sales-through.ts 하나.
+      fetchSalesThrough(brand),
     ]);
 
     // ★ 2026-11-04: 기계가 고정 문장으로 내던 권고("예산 50% 감축", "일 예산 20% 증액", "리타겟팅 신설" 등)를 뺐다.
@@ -107,11 +111,18 @@ async function getImpl(request: NextRequest) {
 
     const totalRevenue = salesRows.reduce((s, r) => s + Number(r.revenue), 0);
     const _totalOrders = salesRows.reduce((s, r) => s + Number(r.orders), 0); // eslint-disable-line @typescript-eslint/no-unused-vars
-    const totalAdSpend = adRows.reduce((s, r) => s + Number(r.spend), 0);
-    const roas = totalAdSpend > 0 ? totalRevenue / totalAdSpend : 0;
+    // ★ 전체 ROAS 는 판매 원장 마지막 날까지의 매출 ÷ 같은 날까지의 광고비(QA 3회차, 2026-11-10).
+    //   판매 동기화가 며칠 늦어 그 뒤 날짜는 광고비만 있다. 기간 전체 광고비로 나누면 ROAS 가 낮게 나와
+    //   "기준 미달" 카드가 동기화 지연 때문에 떴다. Overview ROAS 카드와 같은 규칙(compareCut)·같은 날짜다.
+    const { cut: roasThrough } = compareCut(from, to, salesThrough);
+    const upTo = (d: string) => !!roasThrough && d <= roasThrough;
+    const roasRevenue = salesRows.reduce((s, r) => (upTo(r.date) ? s + Number(r.revenue) : s), 0);
+    const totalAdSpend = adRows.reduce((s, r) => (upTo(r.date) ? s + Number(r.spend) : s), 0);
+    const roas = totalAdSpend > 0 ? roasRevenue / totalAdSpend : 0;
+    const roasRange = roasThrough && roasThrough < to ? ` (판매 집계일 ${md(roasThrough)}까지)` : "";
 
     // 원천: 매출 = 판매 원장(daily_sales, 공구 제외) / 광고비 = 광고비 원장(daily_ad_spend, GA4 제외)
-    const roasDetail = `매출 ${man(totalRevenue)} ÷ 광고비 ${man(totalAdSpend)}. 매출은 판매 원장(공구 제외), 광고비는 광고비 원장 기준`;
+    const roasDetail = `매출 ${man(roasRevenue)} ÷ 광고비 ${man(totalAdSpend)}${roasRange}. 매출은 판매 원장(공구 제외), 광고비는 광고비 원장 기준. 판매가 아직 안 들어온 날의 광고비는 빼고 나눕니다`;
     if (roas < 2.0 && totalAdSpend > 0) {
       insights.push({ type: "critical", text: `전체 ROAS ${roas.toFixed(2)}x (기준 3.0x)`, detail: roasDetail });
     } else if (roas >= 3.0) {
