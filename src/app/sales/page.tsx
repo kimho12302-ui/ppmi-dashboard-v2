@@ -67,6 +67,8 @@ function SalesPageInner() {
     blDaily?: { date: string; self: number; gonggu: number }[];
     gongguSalesTotal?: number;
     productComponents?: ComponentRow[];
+    /** 판매 원장 마지막 날(고른 브랜드 범위, 오늘 미만). 정의는 src/lib/sales-through.ts */
+    salesLastDate?: string | null;
   }>(`/api/dashboard?${params}&raw=sales,products,prevSales&lean=1`);
   // (채널 효율 사분면은 2026-11-03 뺐다: 신고 전환으로 만든 CAC·ROAS 라 매체 간 비교가 성립하지 않는다.
   //  매체 효율은 /ads 매체별 상세 표와 네이버 캠페인 12주 스몰 멀티플이 본다.)
@@ -242,7 +244,7 @@ function SalesPageInner() {
           2026-11-04 「판매처 / 브랜드」 쌓기 토글을 붙이고 「브랜드별 누적 매출 트렌드」(일별 브랜드 막대)를 뺐다.
           막대 높이(그 주·월 합계)는 예전과 같다. 기간 합계는 아래 판매처 카드가 보여 준다. */}
       <div data-tour="sales-channel-mix">
-        <ChannelMixChart sales={sales} channels={byChannel} from={from} to={to} />
+        <ChannelMixChart sales={sales} channels={byChannel} from={from} to={to} salesThrough={data?.salesLastDate} />
       </div>
 
       {CATEGORY_BRANDS.includes(brand) && byCategory.length > 0 && (

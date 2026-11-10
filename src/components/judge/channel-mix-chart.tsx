@@ -21,6 +21,7 @@ import { biggestShareShift, SHARE_LOOKBACK, SHARE_MIN_SHIFT_PP } from "@/lib/jud
 import { BRAND_LABELS } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { CalendarHeatmap } from "@/components/charts/calendar-heatmap";
+import { calendarPendingFrom } from "@/lib/chart-math";
 import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, BAR_RADIUS, NO_RADIUS, TIP_CARD } from "@/components/charts/chart-style";
 
 // ★ 색은 설정 「채널 관리」·「브랜드 관리」에 보이는 정본 색(useConfig, types.ts)을 쓴다(2026-11-10 김호 지시).
@@ -43,7 +44,12 @@ interface Bucket {
   byChannel: Record<string, number>;
 }
 
-export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow[]; channels: ChannelInfo[]; from: string; to: string }) {
+/**
+ * salesThrough = 판매 원장 마지막 날(서버 fetchSalesThrough, 고른 기간과 무관, /api/dashboard 의 salesLastDate).
+ * 막대의 진행 중·미수집 판정과 달력 빗금이 이 날짜를 기준으로 한다(2026-11-10 검수 M3).
+ * 넘기지 않으면(옛 응답) 고른 기간 안 마지막 판매 행으로 대신한다.
+ */
+export function ChannelMixChart({ sales, channels, from, to, salesThrough }: { sales: SalesRow[]; channels: ChannelInfo[]; from: string; to: string; salesThrough?: string | null }) {
   const [mode, setMode] = useState<Mode>("weekly");
   const [dimPick, setDimPick] = useState<Dim>("channel");
   /** 막대(주·월) | 달력(일별 히트맵, 2026-11-10). mode(주·월 키)와 따로 둔다 */
@@ -61,7 +67,8 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
 
   const buckets = useMemo<Bucket[]>(() => {
     if (!sales.length) return [];
-    const last = lastDataDate(sales);
+    // 원장 마지막 날. null(원장이 비어 있음)이면 "" 로 두어 모든 날을 미수집으로 본다.
+    const last = (salesThrough === undefined ? lastDataDate(sales) : salesThrough) ?? "";
     const axis = periodAxis(from, to, mode);
     const keys = Array.from(axis.keys()).sort();
     // 축 위에 실제로 있는 날 수(기간 필터·오늘 이후 제외) 와 판매가 들어온 날 수
@@ -94,7 +101,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
       return { period: k, complete: state === "complete", state, byChannel: map.get(k) || {} };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales, from, to, mode, dim]);
+  }, [sales, from, to, mode, dim, salesThrough]);
 
   const order = dim === "brand" ? brandKeys : channels.map((c) => c.channel);
   const shift = useMemo(() => biggestShareShift(buckets), [buckets]);
@@ -121,10 +128,13 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
       const d = String(r.date).slice(0, 10);
       tot.set(d, (tot.get(d) || 0) + (Number(r.revenue) || 0));
     }
-    const last = sales.length ? lastDataDate(sales) : null;
-    const pendingFrom = last ? days.find((d) => d > last) ?? null : days[0];
+    const last = salesThrough === undefined ? (sales.length ? lastDataDate(sales) : null) : salesThrough;
+    // 빗금 = 원장 마지막 날 뒤만. 끝난 기간의 판매 없는 날은 0원 칸이다(chart-math calendarPendingFrom, 테스트 있음).
+    const pendingFrom = calendarPendingFrom(days, last);
     return { days: days.map((d) => ({ date: d, value: tot.get(d) || 0 })), pendingFrom, last };
-  }, [sales, from, to]);
+  }, [sales, from, to, salesThrough]);
+  // 달력 데이터가 없으면(기간 날짜 없음) 달력 버튼을 끄고 막대 보기로 그린다(검수 L5)
+  const shownView = view === "calendar" && calendar ? "calendar" : "bars";
   const mdShort = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 
   return (
@@ -133,7 +143,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
         <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
           <div>
             <h3 className="font-semibold">매출 구성</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">{view === "calendar" ? "가로 = 주(월요일 시작), 세로 = 요일, 칸 = 그날 매출 합계(판매 원장 자체매출)" : <>가로 = {unit}, 세로 = 원(판매 원장 자체매출), 칸 = {what}</>}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{shownView === "calendar" ? "가로 = 주(월요일 시작), 세로 = 요일, 칸 = 그날 매출 합계(판매 원장 자체매출)" : <>가로 = {unit}, 세로 = 원(판매 원장 자체매출), 칸 = {what}</>}</p>
             <p className="text-xs text-muted-foreground">판단: 매출이 어느 {what}에서 늘고 줄었는지 (광고 귀속 아님)</p>
           </div>
           <div data-tour="sales-mix-toggle" className="flex flex-wrap gap-2">
@@ -150,12 +160,12 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
           <div className="flex gap-1 bg-muted rounded-md p-0.5">
             {(["weekly", "monthly"] as const).map((m) => (
               <button key={m} onClick={() => { setMode(m); setView("bars"); }}
-                className={cn("px-2 py-1 text-xs rounded", view === "bars" && mode === m ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
+                className={cn("px-2 py-1 text-xs rounded", shownView === "bars" && mode === m ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
                 {m === "weekly" ? "주별" : "월별"}
               </button>
             ))}
-            <button onClick={() => setView("calendar")}
-              className={cn("px-2 py-1 text-xs rounded", view === "calendar" ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
+            <button onClick={() => setView("calendar")} disabled={!calendar}
+              className={cn("px-2 py-1 text-xs rounded disabled:opacity-40", shownView === "calendar" ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
               달력
             </button>
           </div>
@@ -163,7 +173,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
         </div>
 
         <p data-tour="sales-mix-verdict" className="text-sm mb-2">
-          {view === "calendar" ? (
+          {shownView === "calendar" ? (
             <span className="text-muted-foreground">칸 하나 = 하루 매출 합계({what} 구분 없이). 진할수록 많이 판 날이고, 빗금 칸은 판매 동기화 대기{calendar?.last ? `(마지막 판매일 ${mdShort(calendar.last)} 뒤)` : ""}입니다.</span>
           ) : order.length < 2 ? (
             <span className="text-muted-foreground">이 기간 {what}가 {order[0] ? labelOf(order[0]) : "없음"} 하나라 구성 비교는 없습니다. 막대는 {unit}별 매출 합계입니다.</span>
@@ -174,7 +184,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
           )}
         </p>
 
-        {view === "calendar" && calendar ? (
+        {shownView === "calendar" && calendar ? (
           <CalendarHeatmap days={calendar.days} pendingFrom={calendar.pendingFrom} valueLabel="매출" format={(v) => formatCurrency(v)} />
         ) : (
           <DeferredResponsiveContainer width="100%" height={240}>
@@ -224,7 +234,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
         )}
 
         <div data-tour="sales-mix-rule" className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
-          {view === "calendar" ? (<>
+          {shownView === "calendar" ? (<>
           <p>
             기간 안 날짜는 매출이 0 인 날도 칸을 둡니다(가장 옅은 칸). 진하기는 동기화된 날 가운데 가장 큰 날을 5단계로 나눈 것입니다.
             판매는 1~3일(길면 5일) 늦게 들어와, 빗금 바로 앞 며칠의 옅은 칸도 아직 덜 들어온 날일 수 있습니다(최근 5일 미반영 가능).
