@@ -8,18 +8,11 @@ import {
 } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { formatCurrency } from "@/lib/utils";
+import { waterfallRows, waterfallLabel, type WaterfallStep } from "@/lib/chart-math";
 import { barProps, gridProps, tooltipProps, xAxisProps, yAxisProps, TIP_CARD, BAR_RADIUS } from "./chart-style";
 
-export interface WaterfallStep {
-  key: string;
-  label: string;
-  /** 금액(원). 비용은 양수로 넘긴다(빼는 방향은 kind 가 정한다) */
-  amount: number;
-  /** start = 시작 합계(매출), minus = 빼는 항목, result = 남은 값(이익). result 의 amount 는 부호 그대로 */
-  kind: "start" | "minus" | "result";
-  /** 툴팁 한 줄 설명(무엇을 세는지) */
-  note?: string;
-}
+// 범위 계산·라벨은 src/lib/chart-math.ts(테스트 있음). 빼는 항목이 음수(환입)면 더해진 칸으로 그린다.
+export type { WaterfallStep } from "@/lib/chart-math";
 
 const COLOR = {
   start: "var(--wf-start)",
@@ -28,27 +21,8 @@ const COLOR = {
   loss: "var(--wf-loss)",
 };
 
-const man = (v: number) => {
-  const m = v / 10000;
-  return `${Math.abs(m) >= 100 ? Math.round(m).toLocaleString("ko-KR") : m.toFixed(1)}만`;
-};
-
 export function WaterfallChart({ steps, height = 240, faded = false }: { steps: WaterfallStep[]; height?: number; faded?: boolean }) {
-  const start = steps.find((s) => s.kind === "start")?.amount || 0;
-  let run = 0;
-  const rows = steps.map((s) => {
-    let lo: number, hi: number, end: number;
-    if (s.kind === "start") { lo = 0; hi = s.amount; end = s.amount; }
-    else if (s.kind === "minus") { end = run - s.amount; lo = Math.min(run, end); hi = Math.max(run, end); }
-    else { lo = Math.min(0, s.amount); hi = Math.max(0, s.amount); end = s.amount; }
-    const row = {
-      ...s, range: [lo, hi] as [number, number], end,
-      share: start > 0 ? (s.amount / start) * 100 : null,
-      tone: s.kind === "start" ? "start" : s.kind === "minus" ? "minus" : s.amount >= 0 ? "plus" : "loss",
-    };
-    run = end;
-    return row;
-  });
+  const rows = waterfallRows(steps);
   // 막대 사이 점선(앞 막대 끝 높이에서 다음 막대까지)
   const connectors = rows.slice(0, -1).map((r, i) => ({ y: r.end, a: r.label, b: rows[i + 1].label }));
 
@@ -70,8 +44,8 @@ export function WaterfallChart({ steps, height = 240, faded = false }: { steps: 
               <div className={TIP_CARD}>
                 <div className="font-semibold text-[11.5px] text-muted-foreground mb-1">{r.label}</div>
                 <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">{r.kind === "minus" ? "빼는 금액" : "금액"}</span>
-                  <span className="font-bold chart-num">{r.kind === "minus" && r.amount > 0 ? "−" : ""}{formatCurrency(r.kind === "result" ? r.amount : Math.abs(r.amount))}</span>
+                  <span className="text-muted-foreground">{r.kind !== "minus" ? "금액" : r.added ? "더한 금액(환입)" : "빼는 금액"}</span>
+                  <span className="font-bold chart-num">{r.kind === "minus" && r.amount !== 0 ? (r.added ? "+" : "−") : ""}{formatCurrency(r.kind === "result" ? r.amount : Math.abs(r.amount))}</span>
                 </div>
                 {r.kind !== "start" && r.share != null && (
                   <div className="flex justify-between gap-4">
@@ -81,7 +55,7 @@ export function WaterfallChart({ steps, height = 240, faded = false }: { steps: 
                 )}
                 {r.kind === "minus" && (
                   <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">빼고 남은 값</span>
+                    <span className="text-muted-foreground">{r.added ? "더하고 남은 값" : "빼고 남은 값"}</span>
                     <span className="chart-num">{formatCurrency(r.end)}</span>
                   </div>
                 )}
@@ -94,10 +68,10 @@ export function WaterfallChart({ steps, height = 240, faded = false }: { steps: 
           <LabelList dataKey="end" position="top" content={(p: { x?: number | string; y?: number | string; width?: number | string; index?: number }) => {
             const r = rows[p.index ?? -1];
             if (!r || p.x == null || p.y == null) return null;
-            const text = r.amount === 0 ? "0" : r.kind === "minus" ? `−${man(r.amount)}` : man(r.amount);
+            const text = waterfallLabel(r);
             return (
               <text x={Number(p.x) + Number(p.width || 0) / 2} y={Number(p.y) - 6} textAnchor="middle" fontSize={10.5}
-                fontWeight={r.kind === "minus" ? 500 : 700} fill={r.kind === "minus" ? "var(--muted-foreground)" : "var(--foreground)"}>{text}</text>
+                fontWeight={r.kind === "minus" && !r.added ? 500 : 700} fill={r.kind === "minus" && !r.added ? "var(--muted-foreground)" : "var(--foreground)"}>{text}</text>
             );
           }} />
         </Bar>

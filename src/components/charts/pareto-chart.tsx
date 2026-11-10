@@ -4,25 +4,13 @@
 // 「상위 몇 개가 전체의 몇 %를 차지하나」를 한눈에 본다. 80% 기준선은 점선.
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
+import { PARETO_LINE, type buildPareto } from "@/lib/chart-math";
 import {
   barProps, gridProps, tooltipProps, xAxisProps, yAxisProps, activeDotProps, BAR_RADIUS, TIP_CARD,
 } from "./chart-style";
 
-export interface ParetoItem { key: string; label: string; value: number; sub?: string }
-
-export const PARETO_LINE = 80;
-
-export function buildPareto(items: ParetoItem[]) {
-  const sorted = [...items].filter((i) => i.value > 0).sort((a, b) => b.value - a.value);
-  const total = sorted.reduce((s, i) => s + i.value, 0);
-  let acc = 0;
-  const rows = sorted.map((i, idx) => {
-    acc += i.value;
-    return { ...i, rank: idx + 1, cum: total > 0 ? +((acc / total) * 100).toFixed(1) : 0, share: total > 0 ? (i.value / total) * 100 : 0 };
-  });
-  const reach = rows.find((r) => r.cum >= PARETO_LINE);
-  return { rows, total, reachCount: reach ? reach.rank : rows.length };
-}
+// 계산(정렬·누적·80% 판정)은 src/lib/chart-math.ts(테스트 있음). 화면은 여기서 다시 내보낸 것을 쓴다.
+export { buildPareto, PARETO_LINE, type ParetoItem } from "@/lib/chart-math";
 
 export function ParetoChart({
   rows, format, valueName, height = 260, show = 30,

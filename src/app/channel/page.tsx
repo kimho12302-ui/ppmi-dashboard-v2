@@ -13,6 +13,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts"
 import { ActiveDot, LINE_DOT, TIP_CARD_SM } from "@/components/charts/chart-style";
 import { DumbbellChart, type DumbbellRow } from "@/components/charts/dumbbell-chart";
 import { MULTIPLE_MIN_COST } from "@/lib/judge-charts";
+import { dumbbellRoas } from "@/lib/chart-math";
 
 interface SubAd { channel: string; label: string; spend: number; }
 interface Group {
@@ -184,12 +185,8 @@ function ChannelInner() {
     const color = (k: string) => SALES_GROUP_COLORS[k] || "#6b7280";
     const short = (l: string) => l.split(" (")[0];
     const rev: DumbbellRow[] = withCmp.map((g) => ({ key: g.key, label: short(g.label), color: color(g.key), prev: g.cmp!.prevRevenue, cur: g.cmp!.revenue }));
-    const roas: DumbbellRow[] = withCmp.map((g) => {
-      const c = g.cmp!;
-      const small = c.adSpend < MULTIPLE_MIN_COST || c.prevAdSpend < MULTIPLE_MIN_COST;
-      const note = c.adSpend <= 0 && c.prevAdSpend <= 0 ? "광고비 0 (ROAS 없음)" : small ? "광고비가 작아 빈칸" : undefined;
-      return { key: g.key, label: short(g.label), color: color(g.key), prev: small ? null : c.prevRoas, cur: small ? null : c.roas, missingNote: note };
-    });
+    // 광고비 0·5만 원 미만이면 어느 쪽인지 사실대로(chart-math dumbbellRoas, 테스트 있음)
+    const roas: DumbbellRow[] = withCmp.map((g) => ({ key: g.key, label: short(g.label), color: color(g.key), ...dumbbellRoas(g.cmp!, MULTIPLE_MIN_COST) }));
     const md2 = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
     return { rev, roas, prevRange: `${md2(data.prevFrom)}~${md2(data.prevCompareThrough)}`, curRange: `${md2(from)}~${md2(data.compareThrough)}` };
   })();

@@ -463,11 +463,11 @@ function KeywordsInner() {
                 <>
                   <p className="text-xs text-muted-foreground mb-1">
                     가로 = 광고비 순위(1위부터), 막대 = 그 키워드 광고비, 빨간 선 = 1위부터 더한 누적 비중(오른쪽 축). 점선 = {PARETO_LINE}%.
-                    매체·키워드 쌍 {pareto.rows.length.toLocaleString("ko-KR")}개 중 위 30개만 막대로 그립니다.
+                    광고비가 있는 매체·키워드 쌍 {pareto.rows.length.toLocaleString("ko-KR")}개 중 위 30개만 막대로 그립니다(누적은 전체 기준).
                   </p>
                   <p data-tour="keywords-pareto-verdict" className="text-sm mb-2">
                     {pareto.rows.length === 0 ? <span className="text-muted-foreground">이 기간 광고비가 쓰인 키워드가 없습니다.</span>
-                      : <>광고비의 <b>{PARETO_LINE}%</b>가 상위 <b>{pareto.reachCount}개</b> 키워드(전체 {pareto.rows.length}개의 {((pareto.reachCount / pareto.rows.length) * 100).toFixed(0)}%)에 몰려 있습니다.</>}
+                      : <>광고비의 <b>{PARETO_LINE}%</b>가 상위 <b>{pareto.reachCount}개</b> 키워드(광고비가 있는 키워드 {pareto.rows.length}개의 {((pareto.reachCount / pareto.rows.length) * 100).toFixed(0)}%)에 몰려 있습니다.</>}
                   </p>
                   {pareto.rows.length > 0 && <ParetoChart rows={pareto.rows} format={(v) => formatCurrency(Math.round(v))} valueName="광고비" />}
                   <p className="text-xs text-muted-foreground mt-2">

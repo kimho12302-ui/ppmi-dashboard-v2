@@ -6,22 +6,14 @@
 // - 계열이 하나라 색은 강조색 하나의 진하기 5단계(시각화 아카이브 「무채색 + 강조 하나」).
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { calendarWeeks, weekdayMon } from "@/lib/chart-math";
 
 export interface CalendarDay { date: string; value: number }
 
 const WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"];
 const LEVELS = 5;
 
-/** 월요일 시작 요일 번호(0=월) */
-function weekday(d: string) {
-  const w = new Date(`${d}T00:00:00Z`).getUTCDay();
-  return (w + 6) % 7;
-}
-function addDays(d: string, n: number) {
-  const t = new Date(`${d}T00:00:00Z`);
-  t.setUTCDate(t.getUTCDate() + n);
-  return t.toISOString().slice(0, 10);
-}
+const weekday = weekdayMon;
 const md = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
 
 export function CalendarHeatmap({
@@ -37,14 +29,9 @@ export function CalendarHeatmap({
   const [hover, setHover] = useState<CalendarDay | null>(null);
   const { weeks, max } = useMemo(() => {
     if (!days.length) return { weeks: [] as (CalendarDay | null)[][], max: 0 };
-    const first = days[0].date;
-    const start = addDays(first, -weekday(first)); // 그 주 월요일
+    // 주 배치(월요일 시작, 기간 밖 칸 비움)는 src/lib/chart-math.ts calendarWeeks(테스트 있음)
     const byDate = new Map(days.map((d) => [d.date, d]));
-    const last = days[days.length - 1].date;
-    const out: (CalendarDay | null)[][] = [];
-    for (let s = start; s <= last; s = addDays(s, 7)) {
-      out.push(Array.from({ length: 7 }, (_, i) => byDate.get(addDays(s, i)) ?? null));
-    }
+    const out = calendarWeeks(days.map((d) => d.date)).map((w) => w.map((d) => (d ? byDate.get(d) ?? null : null)));
     const settled = days.filter((d) => !pendingFrom || d.date < pendingFrom);
     return { weeks: out, max: Math.max(0, ...settled.map((d) => d.value)) };
   }, [days, pendingFrom]);

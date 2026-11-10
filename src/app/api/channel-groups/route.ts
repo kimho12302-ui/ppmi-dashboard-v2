@@ -8,6 +8,7 @@ import { formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
 import { baseStoreAdSpend, isBalancelabMetaGoogle } from "@/lib/ad-store";
 import { fetchSalesThrough, compareCut } from "@/lib/sales-through";
+import { storeCompare } from "@/lib/chart-math";
 
 // 채널(판매처) 성과 — 판매처별 매출 vs 그 판매처를 끌어온 광고비.
 // ★ 브랜드 판매처 구조 반영(2026-06 수정):
@@ -164,10 +165,10 @@ async function getImpl(req: NextRequest) {
       // 판매 집계일까지(위 주석)
       const revenueToSales = pick(curTo.revByCh);
       const adSpendToSales = storeAd(g.key, curTo.adByCh, curTo.blMG);
-      const roasToSales = adSpendToSales > 0 ? revenueToSales / adSpendToSales : 0;
       const prevRevCut = pick(prevToCut.revByCh);
       const prevAdCut = storeAd(g.key, prevToCut.adByCh, prevToCut.blMG);
-      const prevRoasCut = prevAdCut > 0 ? prevRevCut / prevAdCut : 0;
+      // 카드 ▲▼ 증감률과 덤벨 두 점(cmp)을 한 함수에서 같이 만든다(src/lib/chart-math.ts storeCompare, 테스트 있음)
+      const { roasToSales, revDelta, roasDelta, cmp } = storeCompare({ revenueToSales, adSpendToSales, prevRevCut, prevAdCut });
       return {
         key: g.key,
         label: g.key === "naver" ? naverLabel(brand) : g.label,
@@ -183,14 +184,11 @@ async function getImpl(req: NextRequest) {
         // 남아 있어 공통 비용처럼 읽혔다.
         subAds: storeSubAds(g.key, cur.adByCh, cur.blMG).filter((a) => a.spend > 0),
         // 매출·ROAS 전기간 대비는 같은 길이(판매 집계일까지)끼리, 광고비 전기간 대비는 기간 전체끼리.
-        revDelta: prevRevCut > 0 ? ((revenueToSales / prevRevCut) - 1) * 100 : null,
+        revDelta,
         adDelta: prevAd > 0 ? ((adSpend / prevAd) - 1) * 100 : null,
-        roasDelta: prevRoasCut > 0 && adSpendToSales > 0 ? ((roasToSales / prevRoasCut) - 1) * 100 : null,
+        roasDelta,
         // 덤벨 그래프(2026-11-10)용: 위 증감률을 만든 두 점 그대로(판매 집계일까지·같은 길이). 새 계산 아님.
-        cmp: {
-          revenue: revenueToSales, adSpend: adSpendToSales, roas: adSpendToSales > 0 ? roasToSales : null,
-          prevRevenue: prevRevCut, prevAdSpend: prevAdCut, prevRoas: prevAdCut > 0 ? prevRoasCut : null,
-        },
+        cmp,
       };
     });
 

@@ -67,6 +67,10 @@ export function DumbbellChart({
                 <span className="absolute top-1/2 -translate-y-1/2 text-[9px] leading-none"
                   style={{ left: `calc(${x(r.cur!)}% + 9px)`, color: good ? "var(--sig-ok)" : "var(--sig-danger)" }}>{up ? "▲" : "▼"}</span>
               )}
+              {both && r.prev === r.cur && (
+                <span className="absolute top-1/2 -translate-y-1/2 text-[10px] leading-none text-muted-foreground whitespace-nowrap"
+                  style={{ left: `calc(${x(r.cur!)}% + 10px)` }}>변화 없음</span>
+              )}
               {!both && (
                 <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[10.5px] text-muted-foreground">{r.missingNote || "비교 불가"}</span>
               )}
@@ -78,7 +82,7 @@ export function DumbbellChart({
         <span className="min-h-[18px] tabular-nums">
           {h ? (
             <><b className="text-foreground">{h.label}</b> · {prevLabel} <span className="chart-num">{h.prev != null ? format(h.prev) : "-"}</span> → {curLabel} <b className="text-foreground chart-num">{h.cur != null ? format(h.cur) : "-"}</b>
-              {h.prev != null && h.cur != null && h.prev > 0 && <> ({h.cur >= h.prev ? "▲" : "▼"}{Math.abs((h.cur / h.prev - 1) * 100).toFixed(0)}%)</>}
+              {h.prev != null && h.cur != null && (h.cur === h.prev ? <> (변화 없음)</> : h.prev > 0 && <> ({h.cur > h.prev ? "▲" : "▼"}{Math.abs((h.cur / h.prev - 1) * 100).toFixed(0)}%)</>)}
               {(h.prev == null || h.cur == null) && h.missingNote ? ` · ${h.missingNote}` : ""}</>
           ) : <>줄에 마우스를 올리거나 누르면 두 값이 나옵니다 · 축 0 ~ {axisLabel} {max > 0 ? format(max) : "-"}</>}
         </span>
