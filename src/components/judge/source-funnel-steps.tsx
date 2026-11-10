@@ -37,6 +37,8 @@ export interface SourceFunnel {
   sessions: number;
   /** 같은 행에서 장바구니가 수집되지 않으면 null(단계 자체를 그리지 않는다). */
   cartAdds: number | null;
+  /** 장바구니가 구매보다 적으면 false. 두 단계의 수집 범위가 어긋난 것이라 단계로 잇지 않는다(/api/funnel 의 valid 와 같은 규칙). */
+  cartValid: boolean;
   orders: number;
   /** 유입→구매 전환율(%) = 관리도 p̄. 판정 가능한 날이 없으면 null. */
   rate: number | null;
@@ -55,6 +57,7 @@ export function useSourceFunnels(brand: string, from: string, to: string) {
         const used = chart.points.filter((p) => p.rate != null);
         const usedDates = new Set(used.map((p) => p.date));
         const cartAdds = s.days.filter((d) => usedDates.has(d.date)).reduce((acc, d) => acc + (d.cartAdds || 0), 0);
+        const orders = used.reduce((acc, p) => acc + (p.orders || 0), 0);
         return {
           key: s.key, label: s.label, note: s.note,
           days: used.length,
@@ -62,7 +65,9 @@ export function useSourceFunnels(brand: string, from: string, to: string) {
           lastDate: used[used.length - 1]?.date ?? null,
           sessions: used.reduce((acc, p) => acc + (p.sessions || 0), 0),
           cartAdds: cartAdds > 0 ? cartAdds : null,
-          orders: used.reduce((acc, p) => acc + (p.orders || 0), 0),
+          // ★ 장바구니 < 구매 이면 장바구니가 일부만 수집된 것(QA2 L4). 퍼널 단계로 이으면 "구매가 장바구니보다 많은" 깔때기가 된다.
+          cartValid: cartAdds >= orders,
+          orders,
           rate: chart.center,
         };
       });
@@ -126,7 +131,7 @@ export function SourceFunnelSteps({ brand, from, to }: { brand: string; from: st
               {f.days > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <Step name="유입" value={f.sessions} />
-                  {f.cartAdds != null && (
+                  {f.cartAdds != null && f.cartValid && (
                     <>
                       <span className="text-muted-foreground" aria-hidden>→</span>
                       <Step name="장바구니" value={f.cartAdds} sub={`유입 대비 ${pct(f.cartAdds, f.sessions)}`} />
@@ -135,6 +140,11 @@ export function SourceFunnelSteps({ brand, from, to }: { brand: string; from: st
                   <span className="text-muted-foreground" aria-hidden>→</span>
                   <Step name="구매" value={f.orders} sub={`유입 대비 ${f.rate != null ? `${f.rate.toFixed(2)}%` : "-"}`} />
                 </div>
+              )}
+              {f.days > 0 && f.cartAdds != null && !f.cartValid && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-500 mt-1.5">
+                  장바구니 {formatNumber(f.cartAdds)}건이 구매 {formatNumber(f.orders)}건보다 적어 이 원천은 장바구니가 일부만 수집된 것으로 보고 단계로 잇지 않습니다.
+                </p>
               )}
               {f.note && <p className="text-[11px] text-muted-foreground mt-1.5">{f.note}</p>}
             </div>
