@@ -167,7 +167,7 @@ async function postImpl(req: NextRequest) {
       // 원가(시트가 정본이던 값). 위킵 SKU 마다 한 줄. 시트 은퇴 뒤에는 여기서만 고친다
       const cost = Number(d.cost);
       if (!sku) return bad("SKU 를 고르세요");
-      if (!Number.isFinite(cost) || cost <= 0) return bad("원가는 0 보다 큰 숫자");
+      if (!Number.isFinite(cost) || cost < 0) return bad("원가는 0 이상 숫자 (무상 샘플은 0)");
       const { error } = await supabase.from("inventory_costs").upsert(
         { cost_key: sku, sku_no: sku, product_name: str(d.product_name, 300) || sku, cost, source: "설정 입력", note: optStr(d.note), updated_at: now },
         { onConflict: "cost_key" });

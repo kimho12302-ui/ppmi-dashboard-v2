@@ -144,11 +144,11 @@ function CostPanel({ data, onSaved }: { data: InventorySettingsData; onSaved: ()
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <div className="col-span-2"><label className="text-xs text-muted-foreground">위킵 SKU</label><SkuSelect skus={data.skus} value={f.sku_no} onChange={(v) => setF({ ...f, sku_no: v, cost: costBySku.get(v) ? String(costBySku.get(v)?.cost) : f.cost })} /></div>
-        <div><label className="text-xs text-muted-foreground">원가(원, 낱개 1개)</label><input type="number" min={1} value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value })} className={inp} /></div>
+        <div><label className="text-xs text-muted-foreground">원가(원, 낱개 1개)</label><input type="number" min={0} value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value })} className={inp} /></div>
         <div className="col-span-2"><label className="text-xs text-muted-foreground">메모</label><input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} className={inp} placeholder="예: 11월 매입가 인상" /></div>
       </div>
       <div className="flex items-center gap-3">
-        <button type="button" onClick={save} disabled={!f.sku_no || !(Number(f.cost) > 0)} className={btn}>저장</button><StatusBadge status={status} />
+        <button type="button" onClick={save} disabled={!f.sku_no || f.cost === "" || !(Number(f.cost) >= 0)} className={btn}>저장</button><StatusBadge status={status} />
         <label className="ml-auto text-xs flex items-center gap-1.5"><input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} /> 원가 없는 위킵 SKU 만 보기 ({missingSkus.length})</label>
       </div>
       <SimpleTable head={onlyMissing ? ["위킵 상품", "원가", "", "", "위킵 재고", ""] : ["상품", "원가", "출처", "메모", "구분", ""]} rows={rows} />

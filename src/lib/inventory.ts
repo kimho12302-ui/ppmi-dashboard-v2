@@ -442,7 +442,7 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     openOrders.set(o.sku_no, list);
   }
   // 원가는 SKU 로만 찾는다. 0 원 이하는 원가 없음
-  const costBySku = new Map((input.skuCosts ?? []).filter((c) => c.sku_no && Number(c.cost) > 0).map((c) => [c.sku_no as string, c]));
+  const costBySku = new Map((input.skuCosts ?? []).filter((c) => c.sku_no && c.cost !== null && c.cost !== undefined && Number(c.cost) >= 0).map((c) => [c.sku_no as string, c]));
 
   // 쿠팡 판매(기본 품목) → SKU. 같은 품목을 가진 SKU 가 여럿이면(마케팅용·파손 재고) 머리표 없는 것 하나에만 붙인다
   const coupangByComponent = new Map<string, number>();
@@ -682,7 +682,7 @@ export function extractSheetCosts(tabs: Readonly<Record<string, readonly (readon
     rows.slice(headIdx + 1).forEach((r, i) => {
       const name = String(r?.[nameCol] ?? "").trim();
       const cost = parseWon(r?.[costCol]);
-      if (!name || cost === null || cost <= 0 || /배송비/.test(name)) return;
+      if (!name || cost === null || cost < 0 || /배송비/.test(name)) return;
       const bc = barcodeCol >= 0 ? String(r?.[barcodeCol] ?? "").trim() : "";
       out.push({ tab, cell: `${colLetter(costCol)}${headIdx + 2 + i}`, name, barcode: bc || null, cost });
     });

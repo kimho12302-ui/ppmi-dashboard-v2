@@ -142,7 +142,7 @@ create table if not exists inventory_costs (
   cost_key      text primary key,
   sku_no        text unique,
   product_name  text not null,
-  cost          numeric not null check (cost > 0),
+  cost          numeric not null check (cost >= 0),
   source        text,
   note          text,
   updated_at    timestamptz not null default now()
