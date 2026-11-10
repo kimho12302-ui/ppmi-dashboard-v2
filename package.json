@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "smoke": "next build && node scripts/smoke.mjs",
+    "test": "node --test scripts/tests/*.test.mjs",
     "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
