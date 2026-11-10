@@ -13,11 +13,18 @@
 //   (stale-while-revalidate). 뒤에서 새로 읽은 값은 캐시에 들어가 다음 조회부터 쓰인다.
 //   2026-11-09 속도 수정: 예전엔 5분 넘은 값이면 버리고 DB 에서 그 자리에서 다시 읽었다. 그런데 뒤의 재조회도
 //   따로 돌아 DB 를 두 번 읽었고, 그 자리에서 읽은 값은 캐시에 안 들어가 연달아 온 조회가 전부 다시 읽었다
-//   (측정: 개요 API 6개가 전부 expired 3초대). 이제는 나이 제한(MAX_STALE_SECONDS) 안이고 같은 날(KST)이면
-//   옛 값을 바로 주고(X-Cache: stale) 뒤의 재조회 한 번에 맡긴다. 화면의 "데이터 기준 시각"은 X-Data-As-Of
-//   (실제로 DB 에서 읽은 시각)라 옛 값이면 옛 시각이 그대로 보인다.
-//   나이 제한을 넘었거나 날짜가 바뀐 값(어제 기준 "어제 날짜" 판정이 섞인 응답)은 예전처럼 그 자리에서 다시 읽는다.
-//   데이터가 바뀌는 쓰기·수집은 태그를 지우므로(아래 2·3) 그 뒤 조회는 옛 값이 아니라 새로 읽은 값이다.
+//   (측정: 개요 API 6개가 전부 expired 3초대). 지금 규칙(아래 cachedGET):
+//   - 5분 안: 그대로 준다(X-Cache: hit).
+//   - 5분 ~ 15분(MAX_STALE_SECONDS) 이고 같은 날(KST): 옛 값을 바로 주고(X-Cache: stale) 뒤의 재조회 한 번에 맡긴다.
+//     2026-11-10 QA2 M1: 3시간이던 한도를 15분으로 줄였다. 뒤의 재조회가 실패해도(일시 오류는 캐시 안 됨) 옛 값이
+//     200 으로 3시간 나가 화면에 「갱신 실패」가 보이지 않았다.
+//   - 15분을 넘었거나 날짜가 바뀐 값(어제 기준 "어제 날짜" 판정이 섞인 응답): 그 자리에서 다시 읽는다(X-Cache: expired).
+//   - 이 서버 인스턴스가 그 태그를 지운 뒤(revalidateTagsNow) 읽은 값이 아니면: 나이와 상관없이 그 자리에서 다시 읽는다
+//     (X-Cache: invalidated). 태그 무효화 직후 저장 전 값이 stale 이나 hit 으로 나가는 것을 막는다.
+//     한계: 이 표식은 모듈 메모리라 같은 인스턴스 안에서만 유효하다. 다른 인스턴스가 무효화했다면 Next 캐시 저장소의
+//     태그 무효화에 맡긴다(로컬 파일 캐시는 무효화된 항목을 아예 안 준다. Vercel 원격 캐시가 옛 값을 stale 로
+//     돌려주는 경우가 남는데, 이때도 15분 한도 안에서만이다).
+//   화면의 "데이터 기준 시각"은 X-Data-As-Of(실제로 DB 에서 읽은 시각)라 옛 값이면 옛 시각이 그대로 보인다.
 //
 // 200 이 아닌 응답은 캐시하지 않는다(일시 오류가 5분 동안 박히지 않게).
 import { timingSafeEqual } from "node:crypto";
@@ -27,8 +34,8 @@ import { CACHE_BYPASS_HEADER } from "@/lib/fresh-fetch";
 import { KST_OFFSET_MS } from "@/lib/date";
 
 export const CACHE_SECONDS = 300;
-/** 만료된 값을 그대로 내줄 수 있는 최대 나이. 업무 시간엔 warm 워크플로가 10분마다 데워 이보다 훨씬 젊다. */
-export const MAX_STALE_SECONDS = 3 * 60 * 60;
+/** 만료된 값을 그대로 내줄 수 있는 최대 나이(15분, QA2 M1 2026-11-10). 업무 시간엔 warm 워크플로가 10분마다 데운다. */
+export const MAX_STALE_SECONDS = 15 * 60;
 /** 핸들러가 200 이지만 캐시하면 안 되는 응답(일부 조회 실패 등)에 붙이는 응답 헤더. 값 "1". 2026-11-10 */
 export const NO_CACHE_HEADER = "x-no-cache";
 export const ALL_TAG = "all";
@@ -74,15 +81,18 @@ function cacheKeyOf(req: NextRequest, params: readonly string[]): string {
 type Handler = (req: NextRequest) => Promise<Response>;
 
 async function render(handler: Handler, req: NextRequest): Promise<CachedBody> {
+  // asOf 는 읽기를 시작한 시각으로 적는다. 끝난 시각으로 적으면 읽는 도중 태그가 지워졌을 때
+  // 지우기 전 데이터가 "지운 뒤에 읽은 값"으로 보인다(invalidatedSince).
+  const startedAt = new Date().toISOString();
   const res = await handler(req);
   const body = await res.text();
   const contentType = res.headers.get("content-type") || "application/json";
   // 200 이 아니거나, 200 이어도 핸들러가 "캐시 말 것"을 표시했으면 이번 한 번만 내보낸다.
   if (res.status !== 200 || res.headers.get(NO_CACHE_HEADER) === "1") throw new UncachedResponse(res.status, body, contentType);
-  return { body, contentType, asOf: new Date().toISOString() };
+  return { body, contentType, asOf: startedAt };
 }
 
-function respond(hit: CachedBody, tags: readonly string[], source: "hit" | "miss" | "bypass" | "stale" | "expired") {
+function respond(hit: CachedBody, tags: readonly string[], source: "hit" | "miss" | "bypass" | "stale" | "expired" | "invalidated") {
   return new Response(hit.body, {
     status: 200,
     headers: {
@@ -97,6 +107,16 @@ function respond(hit: CachedBody, tags: readonly string[], source: "hit" | "miss
 }
 
 const ageSeconds = (iso: string) => (Date.now() - new Date(iso).getTime()) / 1000;
+
+/** 이 인스턴스에서 태그를 지운 시각(ms). revalidateTagsNow 가 적는다. */
+const tagInvalidatedAt = new Map<string, number>();
+
+/** 이 값(asOf 에 읽음)을 읽은 뒤에 그 태그 중 하나라도 지워졌는가 */
+function invalidatedSince(asOf: string, tags: readonly string[]): boolean {
+  const readAt = new Date(asOf).getTime();
+  if (!Number.isFinite(readAt)) return true;
+  return tags.some((t) => (tagInvalidatedAt.get(t) ?? 0) > readAt);
+}
 
 /** KST 날짜(YYYY-MM-DD). 날짜가 바뀌면 "어제"가 달라지는 응답이 있어 옛 값을 넘기지 않는다. */
 const kstDay = (ms: number) => new Date(ms + KST_OFFSET_MS).toISOString().slice(0, 10);
@@ -129,6 +149,10 @@ export function cachedGET(handler: Handler, tags: DataTag[], params: readonly st
       const t0 = Date.now();
       const hit = await run();
       if (new Date(hit.asOf).getTime() >= t0) source = "miss"; // 방금 새로 만든 값
+      // 이 인스턴스가 태그를 지운 뒤에 읽은 값이 아니면 나이와 상관없이 다시 읽는다(파일 머리 주석).
+      if (source === "hit" && invalidatedSince(hit.asOf, allTags)) {
+        return respond(await render(handler, req), tags, "invalidated");
+      }
       // 만료 항목: unstable_cache 가 이미 뒤에서 한 번 새로 읽고 있다. 제한 안이면 지금 값을 바로 준다(파일 머리 주석).
       if (ageSeconds(hit.asOf) > CACHE_SECONDS) {
         if (canServeStale(hit.asOf)) return respond(hit, tags, "stale");
@@ -152,6 +176,10 @@ export function cachedGET(handler: Handler, tags: DataTag[], params: readonly st
  */
 export async function revalidateTagsNow(tags: string[]): Promise<string[]> {
   const done = Array.from(new Set(tags)).filter(isKnownTag);
+  // 지운 시각을 적어 둔다. 이보다 먼저 읽은 캐시 값은 이 인스턴스가 다시 내주지 않는다(cachedGET).
+  // "all" 을 지우면 모든 항목이 걸린다(모든 항목에 all 태그가 붙어 있다).
+  const now = Date.now();
+  for (const t of done) tagInvalidatedAt.set(t, now);
   for (const t of done) revalidateTag(t);
   if (done.length === 0) return done;
   try {
