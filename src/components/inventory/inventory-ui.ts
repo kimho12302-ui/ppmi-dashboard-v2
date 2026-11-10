@@ -73,7 +73,7 @@ export const fmtManWon = (n: number) => (n >= 10000 ? `${Math.round(n / 10000).t
 /** 11-18 처럼 월-일 */
 export const md = (ymd: string | null | undefined) => (ymd ? ymd.slice(5) : "-");
 
-export type InventoryResponse = (InventoryResult & { mode: "db" | "dev-files"; missing: string[]; today: string; scale_error?: string | null; setupNeeded?: false })
+export type InventoryResponse = (InventoryResult & { mode: "db" | "dev-files"; missing: string[]; today: string; scale_error?: string | null; coupang_rg_error?: string | null; setupNeeded?: false })
   | { setupNeeded: true; mode: "db" | "dev-files"; missing: string[] };
 
 /** 쿠팡 재고 출처 한 마디: 「WING 11-10」(로켓그로스 자동값) · 「손 입력 11-08」. 값이 없으면 null */

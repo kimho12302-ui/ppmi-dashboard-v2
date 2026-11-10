@@ -428,7 +428,13 @@ function CoupangRule({ data }: { data: Exclude<InventoryResponse, { setupNeeded:
 /** 쿠팡 로켓그로스 경고: 짝 없는 옵션에 재고가 있음 · 값이 오래됨 */
 function CoupangRgNotice({ data }: { data: Exclude<InventoryResponse, { setupNeeded: true }> }) {
   const rg = data.coupang_rg;
-  if (!rg) return null;
+  if (!rg) {
+    return data.coupang_rg_error ? (
+      <div className="rounded-lg border px-3 py-2 text-sm" style={{ background: "var(--sig-warn-surface)", borderColor: "var(--sig-warn-border)", color: "var(--sig-warn)" }}>
+        쿠팡 로켓그로스 재고 표를 읽지 못해 손 입력 쿠팡 재고로 판정했습니다: {data.coupang_rg_error}
+      </div>
+    ) : null;
+  }
   const stray = rg.unmapped_with_stock;
   return (
     <>

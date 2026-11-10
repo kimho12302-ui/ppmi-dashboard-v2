@@ -195,7 +195,8 @@ export function splitRgInbound(r: Pick<RgInventoryRow, "inbound" | "inbounds">):
   let shipped = 0;
   let requested = 0;
   for (const x of list) {
-    const q = Number(x.inProgress) || 0;
+    if (!x || typeof x !== "object") continue;
+    const q = Math.max(0, Number(x.inProgress) || 0);
     if (RG_NOT_SHIPPED_STATUSES.includes(String(x.status ?? ""))) requested += q;
     else shipped += q;
   }
@@ -220,7 +221,12 @@ export interface RgOption {
 }
 /** 위킵 SKU 하나에 모인 RG 값(낱개 환산) */
 export interface RgSku {
+  /** 판매 가능 합(판매중지 옵션 포함, 실물 재고·재고 가치용) */
   orderable: number;
+  /** 판매 중 옵션만의 판매 가능. 남은 날은 이것으로 센다(판매중지 옵션 재고가 부족을 가리지 않게) */
+  orderable_active: number;
+  /** 판매 중 옵션인데 30일 판매 통계가 비어 있음(null). 속도가 0 으로 잡혀 쿠팡 쪽이 판정에서 빠질 수 있어 이유에 적는다 */
+  sales_missing: boolean;
   /** 입고 중(위킵에서 나간 것만, 낱개) */
   inbound: number;
   /** 입고 요청만 한 것(위킵 미출고, 낱개). 남은 날·재고 합에 안 넣는다 */
@@ -276,9 +282,11 @@ export function summarizeCoupangRg(rows: readonly RgInventoryRow[], map: readonl
     const s30 = r.sales_30d ?? null;
     for (const p of ps) {
       const q = Number(p.qty);
-      const prev = bySku.get(p.sku_no) ?? { orderable: 0, inbound: 0, inbound_requested: 0, sales_7d: 0, sales_30d: 0, active: false, needs_review: false, options: [] };
+      const prev = bySku.get(p.sku_no) ?? { orderable: 0, orderable_active: 0, sales_missing: false, inbound: 0, inbound_requested: 0, sales_7d: 0, sales_30d: 0, active: false, needs_review: false, options: [] };
       bySku.set(p.sku_no, {
         orderable: prev.orderable + orderable * q,
+        orderable_active: prev.orderable_active + (r.sale_suspended ? 0 : orderable * q),
+        sales_missing: prev.sales_missing || (!r.sale_suspended && (s30 === null || s30 === undefined)),
         inbound: prev.inbound + inbound * q,
         inbound_requested: prev.inbound_requested + requested * q,
         sales_7d: prev.sales_7d + (Number(s7) || 0) * q,
@@ -830,7 +838,10 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     let speedBasis: InventoryRow["coupang_speed_basis"] = null;
     let coupangNote: string | null = null;
     if (rgSku) {
-      if (rgSku.active) { coupangPerDay = rgSku.sales_30d / COUPANG_RG_SALES_DAYS; speedBasis = "wing30"; }
+      if (rgSku.active) {
+        coupangPerDay = rgSku.sales_30d / COUPANG_RG_SALES_DAYS; speedBasis = "wing30";
+        if (rgSku.sales_missing) coupangNote = "판매 중인 쿠팡 옵션에 30일 판매 통계가 비어 있어 쿠팡 속도가 낮게 잡혔을 수 있음";
+      }
       else coupangNote = "쿠팡 로켓그로스 옵션이 모두 판매중지라 쿠팡 쪽은 판정에서 뺌";
     } else {
       if (brand === "nutty" && coupang !== null && input.coupangWindow && m?.component && coupangOwner.get(nameKey(m.component)) === s.sku_no) {
@@ -843,8 +854,10 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     const coupangInbound = rgSku ? rgSku.inbound : null;
 
     const runwayW = runwayDays(wekeepSide, speed.perDay);
-    const runwayC = coupang !== null && coupangPerDay !== null ? runwayDays(coupang, coupangPerDay) : null;
-    const runwayCIn = coupang !== null && coupangPerDay !== null ? runwayDays(coupang + (coupangInbound ?? 0), coupangPerDay) : null;
+    // 남은 날은 판매 중 옵션 재고로만(판매중지 옵션 재고는 팔 수 없어 부족을 가리면 안 됨). 재고 합·가치는 실물 전부
+    const coupangSellable = rgSku ? rgSku.orderable_active : coupang;
+    const runwayC = coupangSellable !== null && coupangPerDay !== null ? runwayDays(coupangSellable, coupangPerDay) : null;
+    const runwayCIn = coupangSellable !== null && coupangPerDay !== null ? runwayDays(coupangSellable + (coupangInbound ?? 0), coupangPerDay) : null;
     const candidates = [runwayW, runwayC].filter((x): x is number => x !== null);
     const runway = candidates.length ? Math.min(...candidates) : null;
 
@@ -874,7 +887,14 @@ export function computeInventory(input: ComputeInput): InventoryResult {
       const cSide = `쿠팡 쪽(${coupangSource === "wing" ? `WING ${coupangAsOf}` : `손 입력 ${coupangAsOf}`})`;
       const side = runwayC !== null && runwayW !== null ? (runwayC <= runwayW ? cSide : "위킵 쪽") : runwayC !== null ? cSide : "위킵 쪽";
       reason = `${side} 남은 ${r1(runway)}일 (발주 필요 ≤ ${t.warn} · 곧 발주 ≤ ${t.soon} · 과재고 > ${t.over}, ${t.basis})${missingNote}`;
-      if (isCoupangRestock(status, runwayW, runwayC, wekeepSide, t)) {
+      const inFlight = (coupangInbound ?? 0) + (rgSku?.inbound_requested ?? 0);
+      const restock = isCoupangRestock(status, runwayW, runwayC, wekeepSide, t, { coupang: coupangSellable ?? 0, coupangPerDay: coupangPerDay ?? 0, inFlight });
+      if (restock === "covered") {
+        // 쿠팡 쪽은 짧지만 이미 보내는 중(입고 중 + 입고 요청)인 수량으로 곧 발주 기준을 넘는다: 같은 요청을 두 번 하지 않게 위킵 쪽으로만 판정
+        status = runwayW === null ? "ok" : statusFromRunway(runwayW, t);
+        reason = `쿠팡 쪽 남은 ${r1(runwayC ?? 0)}일이나 입고 중·입고 요청 ${inFlight}개 포함하면 ${r1(((coupangSellable ?? 0) + inFlight) / (coupangPerDay || 1))}일: `
+          + `이미 보내는 중이라 위킵 쪽(${runwayW === null ? `재고 ${wekeepSide}개, 최근 출고 0` : `${r1(runwayW)}일`})으로 판정 (${t.basis})`;
+      } else if (restock === "restock") {
         // 쿠팡 쪽만 짧고 위킵에는 넉넉하다: 할 일은 발주가 아니라 위킵 → 쿠팡 입고 요청(2026-11-10 김호 결정)
         const inb = coupangInbound ? ` · 쿠팡 입고 중 ${coupangInbound}개 포함하면 ${r1(runwayCIn ?? 0)}일` : "";
         const req = rgSku?.inbound_requested ? ` · 입고 요청만 하고 위킵 미출고 ${rgSku.inbound_requested}개` : "";
@@ -983,11 +1003,20 @@ export function computeInventory(input: ComputeInput): InventoryResult {
  * 쿠팡 입고 요청: 남은 날이 짧게 나온 원인이 쿠팡 쪽이고(쿠팡 남은 날 ≤ 위킵 남은 날) 위킵 쪽은 곧 발주 기준보다 길 때.
  * 위킵 쪽이 최근 출고 0 이라 남은 날이 없어도 재고가 있으면 보낼 수 있으니 같은 취급. 위킵도 짧으면 그대로 발주 필요·곧 발주
  */
-export function isCoupangRestock(status: InvStatus, runwayW: number | null, runwayC: number | null, wekeepSide: number, t: Pick<Thresholds, "soon">): boolean {
-  if (status !== "order" && status !== "soon") return false;
-  if (runwayC === null || wekeepSide <= 0) return false;
-  if (runwayW !== null && runwayC > runwayW) return false;
-  return runwayW === null || runwayW > t.soon;
+export function isCoupangRestock(
+  status: InvStatus, runwayW: number | null, runwayC: number | null, wekeepSide: number, t: Pick<Thresholds, "soon">,
+  c: { coupang: number; coupangPerDay: number; inFlight: number },
+): "restock" | "covered" | null {
+  if (status !== "order" && status !== "soon") return null;
+  if (runwayC === null || wekeepSide <= 0) return null;
+  if (runwayW !== null && runwayC > runwayW) return null;
+  if (runwayW !== null && runwayW <= t.soon) return null;
+  // 이미 보내는 중(입고 중 + 입고 요청)인 것으로 쿠팡 쪽이 곧 발주 기준을 넘으면 새로 요청할 것 없음(위킵 쪽으로 판정)
+  if (c.coupangPerDay > 0 && (c.coupang + c.inFlight) / c.coupangPerDay > t.soon) return "covered";
+  // 보낼 물량 하한: 위킵 + 쿠팡 + 보내는 중이 쿠팡 판매 곧 발주 일수치를 못 채우면 위킵 속도가 작아 길게 나온 것일 뿐, 진짜 발주 건이다.
+  // (합친 속도 = 위킵 출고 + 쿠팡 판매 는 위킵 출고에 위킵→쿠팡 이송이 섞여 이중으로 세므로 쓰지 않는다. 2026-11-10 검수 HIGH)
+  if (wekeepSide + c.coupang + c.inFlight < c.coupangPerDay * t.soon) return null;
+  return "restock";
 }
 
 /** 정렬에 쓰는 남은 날. 품절은 0(최근 기간 출고가 0 이라 남은 날이 없어도 맨 뒤로 가지 않게) */

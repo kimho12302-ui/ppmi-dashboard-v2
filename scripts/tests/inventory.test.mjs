@@ -594,3 +594,30 @@ test("쿠팡 RG: 짝 없는 옵션 재고는 경고 목록으로, 짝 없는 너
   const s = summarizeCoupangRg([rgRow("1", { orderable: 2 })], rgMap, "2026-11-10");
   assert.equal(s.bySku.get("N").orderable, 4);
 });
+
+test("쿠팡 입고 요청 검수(11-10): 위킵 물량이 쿠팡 판매 30일치도 안 되면 발주 필요, 이미 보내는 중이면 요청 안 함", () => {
+  // 위킵 5개·출고 0 + 쿠팡 0개·하루 10 → 보낼 물량 없음 → 발주 필요(위킵 남은 날 null 이라도 하한)
+  const r1 = computeInventory({ ...rgBase(), snapshot: [snap("N", "너티사운드_냠", 5)], daily: [],
+    coupangRg: { rows: [rgRow(1, { orderable: 0, sales_30d: 150 })], map: rgMap } }).rows[0];
+  assert.notEqual(r1.status, "restock");
+  // 위킵 30개를 하루 0.5 로 60일, 쿠팡 20개 하루 10 → 50 < 300 → 발주 필요
+  const daily = [day("2026-11-01", "N", { shipout_qty: 14 })];
+  const r2 = computeInventory({ ...rgBase(), snapshot: [snap("N", "너티사운드_냠", 30)], daily,
+    coupangRg: { rows: [rgRow(1, { orderable: 10, sales_30d: 150 })], map: rgMap } }).rows[0];
+  assert.equal(r2.status, "order");
+  // 이미 보내는 중: 쿠팡 판매 가능 0, 입고 중 500 묶음(1000개, 하루 2 → 500일) → 위킵 쪽 판정
+  const r3 = computeInventory({ ...rgBase(), coupangRg: { rows: [rgRow(1, { orderable: 0, inbound: 500, sales_30d: 30 })], map: rgMap } }).rows[0];
+  assert.notEqual(r3.status, "restock");
+  assert.match(r3.reason, /이미 보내는 중/);
+});
+
+test("쿠팡 RG 검수(11-10): 판매중지 옵션 재고는 남은 날에 안 셈, 판매 통계 비면 이유에 적음, 깨진 입고 건은 건너뜀", () => {
+  const map = [{ vendor_item_id: 1, sku_no: "N", qty: 1 }, { vendor_item_id: 2, sku_no: "N", qty: 1 }];
+  const r = computeInventory({ ...rgBase(), coupangRg: { rows: [rgRow(1, { orderable: 0, sales_30d: 300 }), rgRow(2, { orderable: 500, sale_suspended: true })], map } }).rows[0];
+  assert.equal(r.coupang, 500); // 실물 재고는 그대로
+  assert.equal(r.runway_coupang, 0); // 판매 중 옵션 0 ÷ 10
+  const m = computeInventory({ ...rgBase(), coupangRg: { rows: [rgRow(1, { orderable: 5, sales_30d: null })], map: rgMap } }).rows[0];
+  assert.match(m.coupang_note, /판매 통계가 비어/);
+  const b = computeInventory({ ...rgBase(), coupangRg: { rows: [rgRow(1, { orderable: 5, inbound: 3, inbounds: [null, { status: "UNLOADING", inProgress: 3 }] })], map: rgMap } }).rows[0];
+  assert.equal(b.coupang_inbound, 6);
+});

@@ -135,7 +135,18 @@ function rowProblem(t: Target, r: Record<string, unknown>, today: string): strin
     if (typeof v !== "number" || !Number.isInteger(v) || v < 1) return `${f} 가 1 이상 정수가 아님: ${String(v)}`;
   }
   for (const f of t.bools ?? []) if (r[f] !== undefined && r[f] !== null && typeof r[f] !== "boolean") return `${f} 가 참/거짓이 아님: ${String(r[f])}`;
-  for (const f of t.arrays ?? []) if (r[f] !== undefined && r[f] !== null && !Array.isArray(r[f])) return `${f} 가 배열이 아님`;
+  for (const f of t.arrays ?? []) {
+    const v = r[f];
+    if (v === undefined || v === null) continue;
+    if (!Array.isArray(v)) return `${f} 가 배열이 아님`;
+    if (v.length > 200) return `${f} 가 200건을 넘음: ${v.length}`;
+    // 원소는 객체, inProgress 는 0 이상 정수(재고 화면이 이 값으로 입고 중을 다시 센다. 깨진 원소 하나로 화면이 죽지 않게)
+    for (const x of v) {
+      if (!x || typeof x !== "object" || Array.isArray(x)) return `${f} 원소가 객체가 아님`;
+      const ip = (x as Record<string, unknown>).inProgress;
+      if (ip !== undefined && ip !== null && (typeof ip !== "number" || !Number.isInteger(ip) || ip < 0)) return `${f} 원소 inProgress 가 0 이상 정수가 아님: ${String(ip)}`;
+    }
+  }
   return null;
 }
 

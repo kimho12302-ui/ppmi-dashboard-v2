@@ -60,7 +60,10 @@ for (const r of res.rows.filter((x) => x.status !== "excluded" && x.total_stock 
 console.log(`품절 중 최근 28일 출고도 0 인 것 ${res.rows.filter((r) => r.status === "soldout" && r.speed.total === 0).length}개 (판매 규모 등급·보류 묶음은 판매 원장이 있어야 해서 화면 /api/inventory 에서만 계산)`);
 
 console.log(`\n## 28일 방식 vs 시트 방식(너티 월평균÷30.4 · 사입 위킵 일평균, 같은 기준 일수, 손 입력 재고 없음)`);
-const diff = res.rows.filter((r) => r.status !== r.sheet_status);
+// 쿠팡 입고 요청은 시트 방식에 없는 상태라 늘 차이로 잡힌다. 따로 세고 차이 목록에서는 뺀다
+const restockRows = res.rows.filter((r) => r.status === "restock");
+if (restockRows.length) console.log(`(쿠팡 입고 요청 ${restockRows.length}개는 시트에 없는 상태라 비교에서 뺌: ${restockRows.map((r) => r.bare_name).join(", ")})`);
+const diff = res.rows.filter((r) => r.status !== r.sheet_status && r.status !== "restock");
 for (const r of diff) {
   console.log(`- ${r.name} | 대시보드 ${label(r.status)}(${f1(r.runway)}일, 하루 ${f1(r.speed.perDay)}) vs 시트 방식 ${label(r.sheet_status)}(${f1(r.sheet_runway)}일, 하루 ${f1(r.sheet_per_day)}) | 가용 ${r.available}`);
 }

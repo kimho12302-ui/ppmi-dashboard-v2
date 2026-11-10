@@ -290,6 +290,8 @@ export interface LoadedInputs {
   setupNeeded: boolean;
   /** 판매 규모 등급 재료를 못 읽은 이유(등급 없이 화면을 그림). 읽었으면 null */
   scaleError: string | null;
+  /** 쿠팡 RG 표를 못 읽음(표 없음 말고 다른 오류). 화면 전체를 죽이지 않고 손 입력으로 대체하되 경고로 알린다 */
+  coupangRgError: string | null;
   input: ComputeInput;
 }
 
@@ -317,8 +319,10 @@ export async function loadInventoryInputs(window: number): Promise<LoadedInputs>
     scaleWindow instanceof Error || !scaleWindow
       ? Promise.resolve(scaleWindow instanceof Error ? scaleWindow : new Error("판매 원장에 너티·사입 판매가 없음"))
       : salesScaleInput(scaleWindow, index).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))),
-    dev ? Promise.resolve(devCoupangRg(dev)) : coupangRgDb(),
+    dev ? Promise.resolve(devCoupangRg(dev)) : coupangRgDb().catch((e: unknown) => (e instanceof Error ? e : new Error(String(e)))),
   ]);
+  const rgError = coupangRg instanceof Error ? coupangRg : null;
+  if (rgError) console.error("[inventory] 쿠팡 RG 읽기 실패, 손 입력으로 대체:", rgError.message);
   // 개발용: 매칭표 표가 아직 없으면 볼트 초안을, 손 입력 표가 없으면 목업 파일을 쓴다
   const map = dev && missing.has("wekeep_sku_map") ? devMap(dev) : mapDb;
   const mock = dev ? devManual() : {};
@@ -329,6 +333,7 @@ export async function loadInventoryInputs(window: number): Promise<LoadedInputs>
     missing: [...missing] as InventoryTable[],
     setupNeeded,
     scaleError: scale instanceof Error ? scale.message : null,
+    coupangRgError: rgError ? rgError.message : null,
     input: {
       snapshot, daily, map,
       stocks: pick("inventory_manual_stock", stocks, mock.stocks),
@@ -336,7 +341,7 @@ export async function loadInventoryInputs(window: number): Promise<LoadedInputs>
       notes: pick("inventory_notes", notes, mock.notes),
       rules: pick("inventory_rules", rules, mock.rules),
       skuCosts: pick("inventory_costs", costs, mock.costs),
-      coupangRg,
+      coupangRg: coupangRg instanceof Error ? null : coupangRg,
       coupangSales: coupang.sales, coupangWindow: coupang.window, coupangUnmapped: coupang.unmapped,
       salesScale: scale instanceof Error ? null : scale, window, today: kstDate() },
   };
