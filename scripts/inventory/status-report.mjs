@@ -32,7 +32,7 @@ const toDaily = (v) => ({ ymd: v.ymd, sku_no: v.skuNo, shipin_qty: v.shipinQty, 
   faulty_shipin_qty: v.faultyShipinQty, damage_shipin_qty: v.damageShipinQty, center_qty: v.centerQty });
 const byKey = new Map();
 const bf = join(RAW, "wekeep-backfill");
-if (existsSync(bf)) for (const f of readdirSync(bf).filter((x) => x.endsWith(".json"))) for (const r of mergeDailyRows(readJson(join(bf, f)).daily.map(toDaily))) byKey.set(`${r.ymd}|${r.sku_no}`, r);
+if (existsSync(bf)) for (const f of readdirSync(bf).filter((x) => x.endsWith(".json"))) for (const r of mergeDailyRows((readJson(join(bf, f)).daily ?? []).map(toDaily))) byKey.set(`${r.ymd}|${r.sku_no}`, r);
 for (const r of mergeDailyRows(Object.values(readJson(join(RAW, "wekeep-daily.json")).items).map(toDaily))) byKey.set(`${r.ymd}|${r.sku_no}`, r);
 const map = readJson(join(RAW, "wekeep-sku-map.draft.json")).rows.map((r) => {
   const codes = r.codes || [];
