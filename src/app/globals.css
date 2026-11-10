@@ -209,6 +209,10 @@
   --chart-dim: #b3b9c2;         /* 마우스 안내선·연결 점선 */
   --chart-ink: #14171b;         /* x축 말풍선 바탕 */
   --chart-on-ink: #ffffff;
+  --wf-start: #2563eb;          /* 워터폴: 시작(매출) */
+  --wf-minus: #94a3b8;          /* 워터폴: 빼는 비용 */
+  --wf-plus: #059669;           /* 워터폴: 남은 이익 */
+  --wf-loss: #dc2626;           /* 워터폴: 손실 */
   --chart-font: "Pretendard Variable", Pretendard, var(--font-geist-sans), "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, -apple-system, sans-serif;
   --chart-mono: "Roboto Mono", var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -218,6 +222,10 @@
   --chart-dim: #5b636d;
   --chart-ink: #f1f3f5;
   --chart-on-ink: #14171b;
+  --wf-start: #3b82f6;
+  --wf-minus: #475569;
+  --wf-plus: #10b981;
+  --wf-loss: #f87171;
 }
 .recharts-wrapper { font-family: var(--chart-font); }
 .recharts-wrapper text { font-variant-numeric: tabular-nums; }

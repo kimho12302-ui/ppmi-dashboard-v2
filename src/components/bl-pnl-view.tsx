@@ -6,6 +6,7 @@ import { useFetch } from "@/hooks/use-dashboard-data";
 import { cn } from "@/lib/utils";
 import { kstDate } from "@/lib/date";
 import { PnlBlockTable, PNL_EXPORT_COLS, type PnlTableRow } from "@/components/bl-pnl-table";
+import { WaterfallChart, type WaterfallStep } from "@/components/charts/waterfall-chart";
 import {
   PNL_PRODUCTS, PNL_SELECTABLE, GONGGU_COMMISSION_RATE, SHIP_FEE, GONGGU_SHIP_TIMES,
   MANUAL_COST_DEFAULT_KIND, MANUAL_COST_KIND_MAX,
@@ -89,6 +90,33 @@ export function BlPnlView({ year, pick, onPickChange }: { year: string; pick: Pi
     return { gRows, sRows, gTotal: sumRows(gTot), sTotal: sumRows(sTot) };
   }, [data, pick, thisMonth]);
 
+  // 워터폴(2026-11-10): 고른 제품 × 고른 달(또는 연 합계)의 공구+자체를 매출 → 공헌 이익으로 내려 그린다.
+  // 숫자는 아래 두 표의 행 그대로(같은 rowsFor·sumRows). 「공구 구분 불가」 달의 공구 행은 표 합계처럼 빼고, 아직 안 온 달은 없다.
+  const [wfMonth, setWfMonth] = useState<string | null>(null);
+  const wf = useMemo(() => {
+    if (!view) return null;
+    const months = view.sRows
+      .map((sr, i) => ({ month: sr.month, self: sr.row, gonggu: view.gRows[i].blockedText ? null : view.gRows[i].row, blocked: !!view.gRows[i].blockedText }))
+      .filter((m) => m.self && (m.self.revenue > 0 || (m.gonggu?.revenue ?? 0) > 0));
+    const done = months.filter((m) => m.month < thisMonth);
+    const pickKey = wfMonth ?? (done[done.length - 1] ?? months[months.length - 1])?.month ?? "year";
+    const sel = pickKey === "year"
+      ? { gonggu: view.gTotal, self: view.sTotal, blocked: view.gRows.some((r) => !!r.blockedText) }
+      : months.find((m) => m.month === pickKey) ?? null;
+    if (!sel || !sel.self) return { months, pickKey, steps: null as WaterfallStep[] | null, blocked: false };
+    const g = sel.gonggu, s2 = sel.self;
+    const tot = sumRows(g ? [g, s2] : [s2]);
+    const steps: WaterfallStep[] = [
+      { key: "rev", label: "매출", amount: tot.revenue, kind: "start", note: `공구 ${won(g?.revenue ?? 0)} + 자체 ${won(s2.revenue)}원` },
+      { key: "mat", label: "재료비 원가", amount: tot.materialCost, kind: "minus", note: "판매수량 × 제품 재료비 단가(아래 「계산 규칙과 설정값」)" },
+      { key: "fee", label: "공구 수수료", amount: g?.marketing ?? 0, kind: "minus", note: `공구 매출 × ${(GONGGU_COMMISSION_RATE * 100).toFixed(1)}%` },
+      { key: "mkt", label: "광고·마케팅", amount: s2.marketing, kind: "minus", note: "자체: 네이버 검색·쇼핑 + 메타(GFA 제외) + 광고 외 마케팅비" },
+      { key: "ship", label: "배송비", amount: tot.shipping, kind: "minus", note: `${won(SHIP_FEE)}원 × 주문 × 배송 횟수(공구 ${GONGGU_SHIP_TIMES}회, 자체는 제품별)` },
+      { key: "cm", label: "공헌 이익", amount: tot.contribution, kind: "result", note: "표의 「공헌 이익」 칸(공구 + 자체)" },
+    ];
+    return { months, pickKey, steps, blocked: sel.blocked };
+  }, [view, wfMonth, thisMonth]);
+
   const download = useCallback(async () => {
     if (!data?.months) return;
     const XLSX = await import("xlsx");
@@ -130,6 +158,33 @@ export function BlPnlView({ year, pick, onPickChange }: { year: string; pick: Pi
 
       {error && <p className="text-sm text-red-600">불러오지 못했습니다: {error}</p>}
       {loading && !data && <div className="h-64 rounded-xl bg-muted animate-pulse" />}
+      {view && wf && (
+        <Card data-tour="pnl-waterfall">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
+              <div>
+                <h3 className="font-semibold text-sm">{label} · 매출에서 공헌 이익까지 · {wf.pickKey === "year" ? `${year}년 합계` : `${Number(wf.pickKey.slice(5))}월`}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">공구와 자체를 합친 값입니다. 숫자는 아래 두 표의 같은 달(또는 「합계」 줄)을 더한 값과 같습니다.</p>
+              </div>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                달
+                <select value={wf.pickKey} onChange={(e) => setWfMonth(e.target.value)} className="text-xs px-2 py-1 rounded-md bg-muted border-none text-foreground">
+                  {wf.months.map((m) => <option key={m.month} value={m.month}>{m.month}{m.month === thisMonth ? " (진행 중)" : ""}</option>)}
+                  <option value="year">{year}년 합계</option>
+                </select>
+              </label>
+            </div>
+            {wf.pickKey === thisMonth && (
+              <p className="text-xs text-amber-700 dark:text-amber-500 mb-1">진행 중인 달이라 흐리게 그립니다. 판매가 며칠 늦게 들어와(최근 5일 미반영 가능) 공헌 이익이 작게 보일 수 있습니다.</p>
+            )}
+            {wf.blocked && (
+              <p className="text-xs text-muted-foreground mb-1">「공구 구분 불가」 달의 공구 판매는 자체에 섞여 있어 공구 수수료로 빼지 않습니다(아래 공구 표 합계와 같은 규칙).</p>
+            )}
+            {wf.steps ? <WaterfallChart steps={wf.steps} faded={wf.pickKey === thisMonth} height={230} />
+              : <p className="text-sm text-muted-foreground py-6 text-center">이 해에 판매가 기록된 달이 없습니다.</p>}
+          </CardContent>
+        </Card>
+      )}
       {view && (
         <>
           <div data-tour="pnl-gonggu-table">

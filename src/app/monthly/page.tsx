@@ -12,9 +12,10 @@ import { kstDate } from "@/lib/date";
 import { BlPnlView, PNL_DEFAULT_PICK, isPnlPick, type PnlPick } from "@/components/bl-pnl-view";
 import { md } from "@/lib/sales-through-label";
 import {
-  LineChart, Line, ReferenceLine, Cell,
+  LineChart, Line, ReferenceLine,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ComposedChart, Bar,
 } from "recharts";
+import { WaterfallChart } from "@/components/charts/waterfall-chart";
 import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, useEnterAnim, tickOf, BAR_RADIUS } from "@/components/charts/chart-style";
 
 interface MonthlySummary {
@@ -33,6 +34,8 @@ interface MonthlySummary {
   adRatio: number;
   cac: number;
   channelCosts: Record<string, number>;
+  /** 잡비(이익·MER 에만 반영). 옛 응답에는 없을 수 있다 */
+  miscCost?: number;
   /** 비율(ROAS·MER·광고비중·CAC)의 분모 = 판매 원장 마지막 날까지의 매체비(QA 3회차). 끝난 달은 adSpend 와 같다 */
   adSpendToSales?: number;
   /** 비율을 판매 원장 마지막 날에서 잘랐으면 그 날(「~M/D」 표시). 안 잘랐으면 null */
@@ -67,13 +70,8 @@ interface MonthlyData {
   cogsMatchRate?: number | null;
 }
 
-// 차트 색: 무채색 + 강조 하나(시각화 아카이브 원칙). 매출만 강조색, 비용은 회색 단계로 구분한다.
-const C_ACCENT = "#2563eb";
-// 광고비가 가장 진하고 원가·배송비 순으로 옅다. 라이트·다크 둘 다에서 보이는 중간 톤(#475569 는 다크 배경에 묻혔다).
-const C_COST = { adSpend: "#64748b", cogs: "#a3afc0", shippingCost: "#d5dce6" } as const;
+// 미니 선 그래프 색: 무채색(시각화 아카이브 원칙). 매출→이익 워터폴 색은 globals.css --wf-* (2026-11-10).
 const C_LINE = "#475569";
-/** 진행 중인 달 막대·점은 흐리게. 며칠치만 들어 있어 다른 달과 같은 무게로 보이면 안 된다 */
-const IN_PROGRESS_OPACITY = 0.35;
 /** 그 달 비율(ROAS·MER)을 낼 수 있는지: 판매 원장 조회가 실패한 진행 중인 달이거나 판매 집계일까지 광고비가 0 이면 "-" */
 const ratioOk = (m: { ratioUnknown?: boolean; adSpendToSales?: number; adSpend: number }) =>
   !m.ratioUnknown && (m.adSpendToSales ?? m.adSpend) > 0;
@@ -201,6 +199,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
   );
 
   const enterAnim = useEnterAnim();
+  const [wfMonth, setWfMonth] = useState<string | null>(null);
   const summary = useMemo(() => data?.summary || [], [data]);
   const rawSummary = summary;
   const ytd = data?.ytd;
@@ -236,6 +235,10 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
     return out;
   }, [rawSummary]);
   const channelData = chartSummary.map((m) => ({ month: m.month, ...m.channelCosts }));
+  // 워터폴 달 고르기: 매출이 있는 달만, 기본은 마지막으로 끝난 달(진행 중인 달은 판매 일부·광고비 전부라 이익이 왜곡된다)
+  const wfMonths = rawSummary.filter((m) => m.revenue > 0);
+  const wfDefault = [...wfMonths].reverse().find((m) => m.month !== inProgress?.month) ?? wfMonths[wfMonths.length - 1];
+  const wfRow = wfMonths.find((m) => m.month === wfMonth) ?? wfDefault ?? null;
 
   // 이익 각주 (2026-11-04). 이익은 매출에서 광고비·잡비·원가·배송비를 뺀 값인데
   //  (1) 원가표에 없는 제품은 원가 0 으로 들어가 이익이 커 보이고(Overview 와 같은 매칭률 기준)
@@ -304,34 +307,47 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
         </div>
       )}
 
-      {/* 매출 vs 총비용: 매출 막대 하나와 비용 3종을 쌓은 막대 하나를 나란히 */}
+      {/* 워터폴(2026-11-10): 옛 「매출 vs 총비용」(묶음+쌓음 막대)을 대체. 한 달의 매출에서 비용을 하나씩 빼 이익까지 내려간다.
+          숫자는 서버 /api/monthly-summary 그 달 행 그대로(매출 − 원가 − 광고비 − 배송비 − 잡비 = 이익, 서버 profit 과 같은 등식). */}
       <Card data-tour="monthly-chart-cost">
         <CardContent className="p-4">
-          <h3 className="font-semibold text-sm mb-1">매출 vs 총비용</h3>
-          <p className="text-xs text-muted-foreground mb-3">
-            왼쪽 막대는 매출, 오른쪽 막대는 광고비·원가·배송비를 쌓은 값입니다. 잡비는 이익에만 반영하고 막대에는 넣지 않았습니다.
-            {inProgress && (inProgress.salesDays != null
-              ? ` 흐린 막대(${inProgress.month})는 진행 중인 달이라 ${inProgress.salesDays}일치만 들어 있습니다.`
-              : ` 흐린 막대(${inProgress.month})는 진행 중인 달입니다(판매가 며칠치 들어왔는지는 조회 실패로 확인하지 못했습니다).`)}
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
+            <div>
+              <h3 className="font-semibold text-sm">매출에서 이익까지 · {wfRow ? `${Number(wfRow.month.slice(0, 4))}년 ${Number(wfRow.month.slice(5))}월` : "-"}</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                맨 왼쪽 매출에서 원가·광고비·배송비·잡비를 차례로 빼면 맨 오른쪽 이익이 남습니다. 막대 위 숫자는 만 원, 마우스를 올리면 원 단위와 매출 대비 비율.
+              </p>
+            </div>
+            <label data-tour="monthly-waterfall-month" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              달
+              <select value={wfRow?.month ?? ""} onChange={(e) => setWfMonth(e.target.value)}
+                className="text-xs px-2 py-1 rounded-md bg-muted border-none text-foreground">
+                {wfMonths.map((m) => (
+                  <option key={m.month} value={m.month}>{m.month}{m.month === inProgress?.month ? " (진행 중)" : ""}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {wfRow && wfRow.month === inProgress?.month && (
+            <p className="text-xs text-amber-700 dark:text-amber-500 mb-1">
+              진행 중인 달이라 흐리게 그립니다. {inProgress.salesDays != null ? `판매는 ${inProgress.salesDays}일치만 들어왔고` : "판매가 며칠치 들어왔는지 조회하지 못했고"} 광고비는 오늘까지 쓴 돈 전부라 이익이 실제보다 작게 보입니다. 완료된 달과 견주지 마세요.
+            </p>
+          )}
+          {wfRow ? (
+            <WaterfallChart faded={wfRow.month === inProgress?.month} steps={[
+              { key: "revenue", label: "매출", amount: wfRow.revenue, kind: "start", note: "판매 원장 자체매출(공구 별도 판매처 행 제외)" },
+              { key: "cogs", label: "원가", amount: wfRow.cogs, kind: "minus", note: "원가표에 맞춘 제품 원가 합. 원가표에 없는 제품은 0 으로 들어갑니다" },
+              { key: "ad", label: "광고비", amount: wfRow.adSpend, kind: "minus", note: "그 달 매체 광고비 합(진행 중인 달은 오늘까지)" },
+              { key: "ship", label: "배송비", amount: wfRow.shippingCost, kind: "minus", note: "배송비 원장 합. 원장이 비어 있으면 0" },
+              { key: "misc", label: "잡비", amount: wfRow.miscCost ?? 0, kind: "minus", note: "잡비 원장(misc_costs) 합" },
+              { key: "profit", label: "이익", amount: wfRow.profit, kind: "result", note: profitNotes.length > 0 ? `* ${profitNotes.join(" · ")}` : undefined },
+            ]} />
+          ) : <p className="text-sm text-muted-foreground py-8 text-center">이 해에 매출이 기록된 달이 없습니다.</p>}
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            처음엔 마지막으로 끝난 달을 보여 줍니다. 달별 비교는 아래 표와 이익률·ROAS 그래프로 합니다.
+            {profitNotes.length > 0 && <> 이익 *: {profitNotes.join(" · ")}.</>}
+            {wfRow && (wfRow.shippingCost === 0 || (wfRow.miscCost ?? 0) === 0) && <> 높이가 없는 칸은 그 달 그 원장이 0 원인 칸입니다(빼지 않고 자리를 둡니다).</>}
           </p>
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart data={chartSummary} barGap={2}>
-              <CartesianGrid {...gridProps} />
-              <XAxis {...xAxisProps} dataKey="month" />
-              <YAxis {...yAxisProps} tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-              <Tooltip {...tooltipProps({ kind: "bar" })} formatter={(val) => formatCurrency(Number(val))} />
-              <Legend {...legendProps} itemSorter={null} />
-              <Bar {...barProps} dataKey="revenue" name="매출" stackId="rev" fill={C_ACCENT} radius={BAR_RADIUS} isAnimationActive={false}>
-                {chartSummary.map((m) => <Cell key={m.month} fillOpacity={m.month === inProgress?.month ? IN_PROGRESS_OPACITY : 1} />)}
-              </Bar>
-              {(["adSpend", "cogs", "shippingCost"] as const).map((k, i) => (
-                <Bar {...barProps} key={k} dataKey={k} name={k === "adSpend" ? "광고비" : k === "cogs" ? "원가" : "배송비"} stackId="cost" fill={C_COST[k]}
-                  radius={i === 2 ? BAR_RADIUS : undefined} isAnimationActive={false}>
-                  {chartSummary.map((m) => <Cell key={m.month} fillOpacity={m.month === inProgress?.month ? IN_PROGRESS_OPACITY : 1} />)}
-                </Bar>
-              ))}
-            </ComposedChart>
-          </ResponsiveContainer>
         </CardContent>
       </Card>
 
