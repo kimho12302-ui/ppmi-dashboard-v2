@@ -19,7 +19,7 @@ import { loadComponentIndex } from "@/lib/product-components-server";
 import { expandSales } from "@/lib/product-components";
 import productMaster from "@/lib/product-master.json";
 import {
-  addDays, mergeDailyRows, COUPANG_WINDOW_DAYS, parseWekeepName,
+  addDays, mergeDailyRows, COUPANG_WINDOW_DAYS, COUPANG_SALES_LAG_DAYS, parseWekeepName,
   type ComputeInput, type CostRow, type DailyRow, type ManualStockRow, type NoteRow, type OrderRow, type RuleRow,
   type SkuMapRow, type SnapshotRow,
 } from "@/lib/inventory";
@@ -45,6 +45,16 @@ export function devRawDir(): string | null {
   if (process.env.NODE_ENV === "production") return null;
   const dir = process.env.INVENTORY_DEV_RAW_DIR;
   return dir && existsSync(dir) ? dir : null;
+}
+
+/**
+ * 개발용 손 입력 목업. INVENTORY_DEV_MANUAL_FILE 에 { stocks, orders, notes, rules } json 을 주면 그 표가 없을 때만 대신 쓴다.
+ * 입고 대기·쿠팡 재고 화면을 SQL 실행 전에 확인하려는 것. 운영(NODE_ENV=production)에서는 devRawDir 와 같이 꺼진다.
+ */
+function devManual(): { stocks?: ManualStockRow[]; orders?: OrderRow[]; notes?: NoteRow[]; rules?: RuleRow[] } {
+  if (!devRawDir()) return {};
+  const p = process.env.INVENTORY_DEV_MANUAL_FILE;
+  return p && existsSync(p) ? readJson(p) : {};
 }
 
 /* ── 개발용: 볼트 원천 json → DB 행 모양 ── */
@@ -143,14 +153,16 @@ async function dailyDb(from: string, missing: Set<string>, sku?: string, to?: st
   }
 }
 
-/** 너티 쿠팡 판매(기본 품목 낱개). 끝 = 너티×쿠팡 판매 원장의 실제 마지막 날(오늘 제외). 판매 동기화가 늦게 차는 날은 원래 행이 없다 */
+/** 너티 쿠팡 판매(기본 품목 낱개). 끝 = min(너티×쿠팡 판매 원장 마지막 날, 오늘 − 지연 5일). 판매 동기화가 늦게 차는 최근 날은 뺀다 */
 async function coupangSales(): Promise<{ sales: { component: string; qty: number }[]; window: ComputeInput["coupangWindow"] }> {
   const today = kstDate();
   const { data, error } = await supabase.from("product_sales").select("date").eq("brand", "nutty").eq("channel", "coupang")
     .lt("date", today).order("date", { ascending: false }).limit(1);
   if (error) throw new Error(`product_sales 쿠팡 마지막 날: ${error.message}`);
-  const to = (data?.[0]?.date as string | undefined) ?? null;
-  if (!to) return { sales: [], window: null };
+  const last = (data?.[0]?.date as string | undefined) ?? null;
+  if (!last) return { sales: [], window: null };
+  const lagEnd = addDays(today, -COUPANG_SALES_LAG_DAYS);
+  const to = last < lagEnd ? last : lagEnd;
   const from = addDays(to, -(COUPANG_WINDOW_DAYS - 1));
   const [rows, index] = await Promise.all([
     fetchAll<{ date: string; brand: string; product: string; quantity: number; revenue: number }>(
@@ -191,14 +203,22 @@ export async function loadInventoryInputs(window: number): Promise<LoadedInputs>
     })(),
     coupangSales(),
   ]);
-  // 개발용: 매칭표 표가 아직 없으면 볼트 초안을 쓴다
+  // 개발용: 매칭표 표가 아직 없으면 볼트 초안을, 손 입력 표가 없으면 목업 파일을 쓴다
   const map = dev && missing.has("wekeep_sku_map") ? devMap(dev) : mapDb;
+  const mock = dev ? devManual() : {};
+  const pick = <T,>(table: InventoryTable, real: T[], fake: T[] | undefined) => (missing.has(table) && fake ? fake : real);
   const setupNeeded = !dev && (missing.has("raw_wekeep_snapshot") || missing.has("raw_wekeep_daily"));
   return {
     mode: dev ? "dev-files" : "db",
     missing: [...missing] as InventoryTable[],
     setupNeeded,
-    input: { snapshot, daily, map, stocks, orders, notes, rules, costs, coupangSales: coupang.sales, coupangWindow: coupang.window, window, codeNames: CODE_NAMES },
+    input: {
+      snapshot, daily, map,
+      stocks: pick("inventory_manual_stock", stocks, mock.stocks),
+      orders: pick("inventory_orders", orders, mock.orders?.filter((o) => o.status === "ordered")),
+      notes: pick("inventory_notes", notes, mock.notes),
+      rules: pick("inventory_rules", rules, mock.rules),
+      costs, coupangSales: coupang.sales, coupangWindow: coupang.window, window, codeNames: CODE_NAMES },
   };
 }
 

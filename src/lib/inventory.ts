@@ -24,6 +24,12 @@ export const RUNWAY_AXIS_DAYS = 120;
 export const SHEET_MONTH_DAYS = 30.4;
 /** 쿠팡 판매 속도 기간(일). 판매 동기화가 늦게 차는 날은 빼고 직전 이 일수 */
 export const COUPANG_WINDOW_DAYS = 28;
+/**
+ * 쿠팡 판매 창 끝을 오늘에서 이만큼 앞으로 당긴다. 판매 동기화가 4~5일 늦게 차서 최근 날 판매가 덜 들어와 있을 수 있다
+ * (dashboard-health.ts SALES_NORMAL_LAG_DAYS 와 같은 5일). 창 끝 = min(너티 쿠팡 판매 마지막 날, 오늘 − 5일).
+ * 11-10 실측으로는 너티 쿠팡 행이 11-09 까지 평소만큼 차 있었다. 계속 그러면 줄여도 된다.
+ */
+export const COUPANG_SALES_LAG_DAYS = 5;
 
 export interface Thresholds {
   /** 이 일수 이하 = 발주 필요 */

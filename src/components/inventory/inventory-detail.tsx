@@ -72,6 +72,9 @@ export function InventoryDetail({ row, asOf, windowDays }: { row: InventoryRow; 
         </Fact>
         <Fact title="판정">
           {row.reason}
+          {row.runway_coupang !== null && (
+            <span className="block">위킵 쪽 {row.runway_wekeep === null ? "계산 불가" : `${fmt1(row.runway_wekeep)}일`} · 쿠팡 쪽 {fmt1(row.runway_coupang)}일 (짧은 쪽으로 판정)</span>
+          )}
           <span className="block text-muted-foreground">
             {row.coupang_per_day !== null && <>쿠팡 하루 판매 {fmt1(row.coupang_per_day)}개 · </>}
             재고 가치 {fmtWon(row.value)}{row.unit_cost ? ` (원가 ${fmtInt(row.unit_cost)}원)` : ""}

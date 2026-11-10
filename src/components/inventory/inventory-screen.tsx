@@ -269,9 +269,12 @@ function Badge({ status }: { status: InvStatus }) {
 }
 
 const missingText = (n: number | null) => (n === null ? "미입력" : fmtInt(n));
+const fmtDays = (n: number | null) => (n === null ? "계산 불가" : `${fmtSpeed(n)}일`);
 
 function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: string | null; first: boolean; active: boolean; onClick: () => void }) {
   const other = row.transit === null && row.internal === null ? null : (row.transit ?? 0) + (row.internal ?? 0);
+  // 너티에 쿠팡 재고가 들어 있으면 위킵 쪽·쿠팡 쪽 남은 날을 둘 다 보인다(판정은 짧은 쪽)
+  const both = row.coupang !== null && row.coupang_per_day !== null;
   const name = (
     <span className="min-w-0">
       <span className="block truncate text-sm">{row.bare_name}</span>
@@ -287,8 +290,8 @@ function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: s
       {/* 데스크톱: 한 줄 */}
       <div className={`hidden md:grid ${COLS} gap-2 items-center num text-xs`}>
         {name}
-        <span className="text-right">{fmtInt(row.available)}</span>
-        <span className="text-right text-muted-foreground">{row.brand === "nutty" ? missingText(row.coupang) : ""}</span>
+        <span className="text-right">{fmtInt(row.available)}{both && <span className="block text-[10px] text-muted-foreground">{fmtDays(row.runway_wekeep)}</span>}</span>
+        <span className="text-right text-muted-foreground">{row.brand === "nutty" ? missingText(row.coupang) : ""}{both && <span className="block text-[10px]">{fmtDays(row.runway_coupang)}</span>}</span>
         <span className="text-right text-muted-foreground">{other === null ? "" : fmtInt(other)}</span>
         <span className="text-right" style={row.incoming ? { color: "#2563eb" } : undefined}>
           {row.incoming ? `${fmtInt(row.incoming.qty)} · ${md(row.incoming.expected_at)}` : ""}
@@ -307,7 +310,7 @@ function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: s
         <div className="flex items-start gap-2">{name}<span className="ml-auto shrink-0"><Badge status={row.status} /></span></div>
         <RunwayBar row={row} asOf={asOf} />
         <p className="num text-[11px] text-muted-foreground">
-          위킵 {fmtInt(row.available)}{row.brand === "nutty" ? ` · 쿠팡 ${missingText(row.coupang)}` : ""} · 하루 {fmtSpeed(row.speed.perDay)}(시트 {fmtSpeed(row.sheet_per_day)})
+          위킵 {fmtInt(row.available)}{both ? `(${fmtDays(row.runway_wekeep)})` : ""}{row.brand === "nutty" ? ` · 쿠팡 ${missingText(row.coupang)}${both ? `(${fmtDays(row.runway_coupang)})` : ""}` : ""} · 하루 {fmtSpeed(row.speed.perDay)}(시트 {fmtSpeed(row.sheet_per_day)})
           · 소진 {md(row.stockout_date)} · {row.total_stock <= 0 ? "재고 0" : row.value === null ? "원가 없음" : fmtManWon(row.value)}
           {row.incoming ? ` · 입고 ${fmtInt(row.incoming.qty)}(${md(row.incoming.expected_at)})` : ""}
         </p>
