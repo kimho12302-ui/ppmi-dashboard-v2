@@ -682,7 +682,7 @@ export function extractSheetCosts(tabs: Readonly<Record<string, readonly (readon
     rows.slice(headIdx + 1).forEach((r, i) => {
       const name = String(r?.[nameCol] ?? "").trim();
       const cost = parseWon(r?.[costCol]);
-      if (!name || cost === null || /배송비/.test(name)) return;
+      if (!name || cost === null || cost <= 0 || /배송비/.test(name)) return;
       const bc = barcodeCol >= 0 ? String(r?.[barcodeCol] ?? "").trim() : "";
       out.push({ tab, cell: `${colLetter(costCol)}${headIdx + 2 + i}`, name, barcode: bc || null, cost });
     });
