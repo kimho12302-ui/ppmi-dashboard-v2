@@ -215,6 +215,10 @@ async function getImpl(req: NextRequest) {
     const prevRevenueCut = adjPrevSales.reduce((s, r) => (upTo(r.date, prevRoasThrough) ? s + Number(r.revenue) : s), 0);
     const prevAdCut = prevNonGa4Ad.reduce((s, r) => (upTo(r.date, prevRoasThrough) ? s + Number(r.spend) : s), 0);
     const prevRoas = prevAdCut > 0 ? prevRevenueCut / prevAdCut : 0;
+    // ★ 매출·주문 증감률도 같은 길이끼리(2026-11-10 최종 리뷰 MEDIUM-1). 금액 카드 값은 기간 전체 그대로 두고
+    //   증감 계산에만 판매 집계일까지 자른 값을 쓴다. 자르지 않으면 동기화 지연 며칠이 그대로 "감소"로 보였다.
+    const ordersToSales = adjSales.reduce((s, r) => (upTo(r.date, roasThrough) ? s + Number(r.orders || 0) : s), 0);
+    const prevOrdersCut = adjPrevSales.reduce((s, r) => (upTo(r.date, prevRoasThrough) ? s + Number(r.orders || 0) : s), 0);
     const cogsRate = totalRevenue > 0 ? totalCOGS / totalRevenue : 0;
     // ★ 직전 기간 이익은 추정이다: 원가를 이번 기간 원가율로 가정하고 배송비·잡비를 넣지 않는다.
     //   그래서 화면은 이익 증감률을 내지 않는다(kpi.profitPrevEstimated). 값은 CSV 내보내기용으로만 남긴다.
@@ -440,6 +444,7 @@ async function getImpl(req: NextRequest) {
       // Computed KPI
       kpi: {
         revenue: totalRevenue, revenuePrev: prevRevenue,
+        revenueCmp: revenueToSales, revenuePrevCmp: prevRevenueCut, ordersCmp: ordersToSales, ordersPrevCmp: prevOrdersCut,
         adSpend: totalMediaSpend, adSpendPrev: prevAdSpendTotal,
         // roas·mer 는 판매 원장 마지막 날(roasThrough)까지의 매출 ÷ 같은 날까지의 광고비. adSpendToSales = 그 분모.
         roas, roasPrev: prevRoas, roasThrough, adSpendToSales: mediaToSales,

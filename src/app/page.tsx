@@ -34,6 +34,8 @@ type KpiKey = "revenue" | "adSpend" | "orders" | "profit" | "aov" | null;
 interface DashboardData {
   kpi: {
     revenue: number; revenuePrev: number; adSpend: number; adSpendPrev: number;
+    /** 증감률 계산용: 판매 집계일까지·같은 길이로 자른 값(금액 표시는 revenue/orders 그대로) */
+    revenueCmp?: number; revenuePrevCmp?: number; ordersCmp?: number; ordersPrevCmp?: number;
     roas: number; roasPrev: number; orders: number; ordersPrev: number;
     profit: number; profitPrev: number; mer: number; merPrev: number;
     aov: number; aovPrev: number; cogs: number; shippingCost: number;
@@ -370,13 +372,13 @@ function OverviewInner() {
       />
       {/* 모바일에서 hero 3장을 세로로 쌓으면 603px 를 먹는다. 매출만 전폭으로 두고 광고비·ROAS 를 2열로 붙인다. */}
       <div data-tour="overview-kpi" className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <KpiCard size="hero" className="col-span-2 sm:col-span-1" title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} changeLabel={changeLabel} confidence={revenueConfidence} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
+        <KpiCard size="hero" className="col-span-2 sm:col-span-1" title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenueCmp ?? kpi.revenue, kpi.revenuePrevCmp ?? kpi.revenuePrev)} changeLabel={changeLabel} confidence={revenueConfidence} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
         <KpiCard size="hero" title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, kpi.adSpendPrev)} changeLabel={changeLabel} confidence={adSpendConfidence} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
         <KpiCard size="hero" title="ROAS" subtitle={`판매 원장 매출 ÷ 매체비${roasThroughLabel ? ` (${roasThroughLabel})` : ""}`} value={roasMeasurable ? `${(kpi.roas || 0).toFixed(2)}x` : "-"} change={roasMeasurable ? pctChange(kpi.roas, kpi.roasPrev) : undefined} changeLabel={changeLabel} confidence={roasConfidence} />
       </div>
       {/* MER 은 잡비가 있을 때만 나온다. 열 수를 고정하면 없는 날 오른쪽에 빈 칸이 남는다. */}
       <div data-tour="overview-kpi-sub" className={`grid grid-cols-2 gap-2.5 ${(kpi.miscCost || 0) > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
-        <KpiCard size="compact" title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, kpi.ordersPrev)} changeLabel={changeLabel} confidence={quiet(revenueConfidence)} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
+        <KpiCard size="compact" title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.ordersCmp ?? kpi.orders, kpi.ordersPrevCmp ?? kpi.ordersPrev)} changeLabel={changeLabel} confidence={quiet(revenueConfidence)} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
         {/* 이익률은 이익 카드 안에 적는다(같은 각주를 두 카드가 반복하던 것을 하나로).
             직전 기간 이익은 원가율 가정 추정치라 증감률을 내지 않는다. */}
         <KpiCard size="compact" title="이익" value={formatCurrency(kpi.profit)} subtitle={profitRateText}

@@ -114,7 +114,7 @@ async function getImpl(request: NextRequest) {
     // ★ 전체 ROAS 는 판매 원장 마지막 날까지의 매출 ÷ 같은 날까지의 광고비(QA 3회차, 2026-11-10).
     //   판매 동기화가 며칠 늦어 그 뒤 날짜는 광고비만 있다. 기간 전체 광고비로 나누면 ROAS 가 낮게 나와
     //   "기준 미달" 카드가 동기화 지연 때문에 떴다. Overview ROAS 카드와 같은 규칙(compareCut)·같은 날짜다.
-    const { cut: roasThrough } = compareCut(from, to, salesThrough);
+    const { cut: roasThrough, prevCut: prevSalesCut } = compareCut(from, to, salesThrough);
     const upTo = (d: string) => !!roasThrough && d <= roasThrough;
     const roasRevenue = salesRows.reduce((s, r) => (upTo(r.date) ? s + Number(r.revenue) : s), 0);
     const totalAdSpend = adRows.reduce((s, r) => (upTo(r.date) ? s + Number(r.spend) : s), 0);
@@ -260,23 +260,35 @@ async function getImpl(request: NextRequest) {
     // ★ 이전 기간에도 현재와 똑같이 형식-A 공구를 빼야 비교가 성립한다.
     //   한쪽만 차감하면 밸런스랩이 항상 "매출 59% 하락"으로 잡혔다(실제로는 +76% 성장, 2026-08 리뷰).
     const prevSales = subtractFormAGonggu(rawPrevSales || [], formAByDateChannel(prevProdRows));
-    const prevRevenue = prevSales.reduce((s, r) => s + Number(r.revenue), 0);
+    // ★ 증감은 같은 길이끼리 비교한다(2026-11-10 최종 리뷰 MEDIUM-1). 이번 기간은 판매 원장 마지막 날(roasThrough)까지,
+    //   직전 기간은 같은 길이(prevSalesCut)까지 자른다. 자르지 않으면 동기화가 이틀만 늦어도
+    //   -14.8% 가 -18.4% 로 보여 15% 문턱을 넘는 critical 카드가 떴다. 판매 원장이 없으면(null) 비교하지 않는다.
+    const inCur = (d: string) => !!roasThrough && d <= roasThrough;
+    const inPrev = (d: string) => !!prevSalesCut && d <= prevSalesCut;
+    const curSalesCut = salesRows.filter((r) => inCur(r.date));
+    const prevSalesCutRows = prevSales.filter((r) => inPrev(r.date));
+    const curRevenueCut = curSalesCut.reduce((s, r) => s + Number(r.revenue), 0);
+    const prevRevenue = prevSalesCutRows.reduce((s, r) => s + Number(r.revenue), 0);
 
-    if (prevRevenue > 0 && totalRevenue < prevRevenue * 0.85) {
+    if (prevRevenue > 0 && curRevenueCut < prevRevenue * 0.85) {
       // Revenue dropped 15%+ → find root cause
-      const revenueDropPct = ((1 - totalRevenue / prevRevenue) * 100).toFixed(0);
+      const revenueDropPct = ((1 - curRevenueCut / prevRevenue) * 100).toFixed(0);
 
       // Brand-level drill (밸런스랩은 이전 기간도 형식-A 공구 차감)
       const prevBrandSales = new Map<string, number>();
-      for (const r of prevSales || []) {
+      for (const r of prevSalesCutRows) {
         prevBrandSales.set(r.brand, (prevBrandSales.get(r.brand) || 0) + Number(r.revenue));
+      }
+      const curBrandSales = new Map<string, number>();
+      for (const r of curSalesCut) {
+        curBrandSales.set(r.brand, (curBrandSales.get(r.brand) || 0) + Number(r.revenue));
       }
 
       const brandChanges: string[] = [];
-      for (const [brand, currData] of Array.from(brandSales.entries())) {
+      for (const [brand, curBrandRev] of Array.from(curBrandSales.entries())) {
         const prevBrandRev = prevBrandSales.get(brand) || 0;
         if (prevBrandRev > 0) {
-          const changePct = ((currData.revenue / prevBrandRev - 1) * 100);
+          const changePct = ((curBrandRev / prevBrandRev - 1) * 100);
           if (changePct < -10) {
             brandChanges.push(`${brandLabels[brand] || brand} ${changePct.toFixed(0)}%`);
           }
@@ -285,11 +297,15 @@ async function getImpl(request: NextRequest) {
 
       // Channel-level drill (smartstore 도 이전 기간 형식-A 공구 차감)
       const prevChannelSales = new Map<string, number>();
-      for (const r of prevSales || []) {
+      for (const r of prevSalesCutRows) {
         prevChannelSales.set(r.channel, (prevChannelSales.get(r.channel) || 0) + Number(r.revenue));
       }
+      const curChannelSales = new Map<string, number>();
+      for (const r of curSalesCut) {
+        curChannelSales.set(r.channel, (curChannelSales.get(r.channel) || 0) + Number(r.revenue));
+      }
       const channelChanges: string[] = [];
-      for (const [ch, rev] of Array.from(salesChannelMap.entries())) {
+      for (const [ch, rev] of Array.from(curChannelSales.entries())) {
         const prevChRev = prevChannelSales.get(ch) || 0;
         const chLabel = CHANNEL_LABELS[ch] || ch;
         if (prevChRev > 0) {
@@ -304,15 +320,21 @@ async function getImpl(request: NextRequest) {
       // prevProdRows 는 위에서 이미 조회했으므로 추가 왕복 없이 재사용한다.
       const prevProdMap = new Map<string, number>();
       for (const r of expandSales(prevProdRows, components)) {
+        if (!inPrev(r.date)) continue;
         if (isGongguAggregate(r)) continue;
         if (r.brand === "balancelab" && isGonggu(r)) continue;
         prevProdMap.set(r.product, (prevProdMap.get(r.product) || 0) + Number(r.revenue));
       }
+      const curProdCut = new Map<string, number>();
+      for (const r of selfProdRows) {
+        if (!inCur(r.date)) continue;
+        curProdCut.set(r.product, (curProdCut.get(r.product) || 0) + Number(r.revenue));
+      }
       const prodChanges: string[] = [];
-      for (const [prod, data] of topProds.slice(0, 10)) {
+      for (const [prod] of topProds.slice(0, 10)) {
         const prevProdRev = prevProdMap.get(prod) || 0;
         if (prevProdRev > 0) {
-          const changePct = ((data.revenue / prevProdRev - 1) * 100);
+          const changePct = (((curProdCut.get(prod) || 0) / prevProdRev - 1) * 100);
           if (changePct < -15) {
             prodChanges.push(`${prod} ${changePct.toFixed(0)}%`);
           }
@@ -320,12 +342,12 @@ async function getImpl(request: NextRequest) {
       }
 
       // 원인 판정이 아니다. 어디서 줄었는지의 분해일 뿐이라 제목·본문에 '원인'을 쓰지 않는다.
-      let detail = `이전 같은 길이 기간(${prevFrom} ~ ${prevTo}) ${man(prevRevenue)} → 이번 ${man(totalRevenue)}. 10% 넘게 줄어든 항목:\n`;
+      let detail = `이전 같은 길이 기간(${prevFrom} ~ ${prevSalesCut}) ${man(prevRevenue)} → 이번(${from} ~ ${roasThrough}) ${man(curRevenueCut)}. 판매 집계일까지 같은 길이로 잘라 비교. 10% 넘게 줄어든 항목:\n`;
       if (brandChanges.length > 0) detail += `\n📦 브랜드: ${brandChanges.join(", ")}`;
       if (channelChanges.length > 0) detail += `\n🏪 채널: ${channelChanges.join(", ")}`;
       if (prodChanges.length > 0) detail += `\n🏷️ 제품: ${prodChanges.join(", ")}`;
       // 판매 원장은 며칠 늦게 들어온다. 기간 끝이 최근이면 감소의 일부는 아직 안 들어온 매출일 수 있다.
-      detail += `\n\n판매 원장은 며칠 늦게 들어와 기간 끝 며칠은 낮게 잡힐 수 있습니다.`;
+      if (roasThrough && roasThrough < to) detail += `\n\n판매 원장이 ${md(roasThrough)}까지만 들어와 그 뒤 날짜는 양쪽 모두 비교에서 뺐습니다.`;
 
       insights.unshift({
         type: "critical",
