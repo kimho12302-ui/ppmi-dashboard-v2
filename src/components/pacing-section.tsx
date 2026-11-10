@@ -6,6 +6,7 @@ import { pacingUrl } from "@/lib/api-urls";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency } from "@/lib/utils";
 import { BRAND_LABELS } from "@/lib/types";
+import { BulletChart } from "@/components/charts/bullet-chart";
 
 interface PacingData {
   month: string;
@@ -144,9 +145,19 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
   //   광고비 금액은 실제 돈(오늘 장중 포함)으로 보여 주고, % 와 막대·세로선만 원장 마지막 날까지 기준이다.
   const adCompareAch = achievement.adThrough ?? achievement.ad;
   const salesNote = data.salesThrough ? ` (판매 ${md(data.salesThrough)}까지)` : "";
+  // 불릿 그래프의 「이 속도면 월말」(2026-11-10). 새 집계가 아니라 서버가 준 일평균 × 남은 날 수를 지금 실적에 더한 값이다.
+  //   매출 = 누적 매출 + 판매 일평균 × 판매 잔여일, 광고비 = 광고비 원장 마지막 날까지 쓴 돈 + 광고 일평균 × 광고 잔여일.
+  //   초반(판단 보류)이거나 일평균이 0 이면 그리지 않는다(며칠치로 월말을 말하지 않는다).
+  const adThroughActual = actual.adThroughSum ?? actual.ad;
+  const projRevenue = !early && remaining.dailyAvgRevenue > 0 && data.salesDaysRemaining > 0
+    ? actual.revenue + remaining.dailyAvgRevenue * data.salesDaysRemaining : null;
+  const projAd = !early && remaining.dailyAvgAd > 0 && data.adDaysRemaining > 0
+    ? adThroughActual + remaining.dailyAvgAd * data.adDaysRemaining : null;
   const rows = [
-    { key: "매출", target: target.revenue, actual: actual.revenue, ach: achievement.revenue, marker: salesProgress, fmt: formatCurrency, color: "#2563eb" },
-    { key: "광고비", target: target.ad, actual: actual.ad, ach: adCompareAch, achNote: data.adThrough ? `${md(data.adThrough)}까지` : undefined, marker: adProgress, fmt: formatCurrency, color: "#dc2626", invert: true },
+    { key: "매출", target: target.revenue, actual: actual.revenue, ach: achievement.revenue, marker: salesProgress, fmt: formatCurrency, color: "#2563eb",
+      bullet: { actual: actual.revenue, projected: projRevenue } },
+    { key: "광고비", target: target.ad, actual: actual.ad, ach: adCompareAch, achNote: data.adThrough ? `${md(data.adThrough)}까지` : undefined, marker: adProgress, fmt: formatCurrency, color: "#dc2626", invert: true,
+      bullet: { actual: adThroughActual, projected: projAd } },
     { key: `ROAS${salesNote}`, target: target.roas, actual: actual.roas, ach: achievement.roas, marker: undefined, fmt: (v: number) => `${v.toFixed(2)}x`, color: "#10b981" },
     { key: `광고비 비중${salesNote}`, target: target.adRatio, actual: actual.adRatio, ach: target.adRatio > 0 ? actual.adRatio / target.adRatio : 0, marker: undefined, fmt: (v: number) => pct(v), color: "#8b5cf6", invert: true },
   ];
@@ -211,7 +222,18 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
                     {"achNote" in r && r.achNote && <span className="ml-1 text-[10px]">({r.achNote} 기준)</span>}
                   </span>
                 </div>
-                <ProgressBar value={r.ach} marker={r.marker} color={r.color} />
+                {"bullet" in r && r.bullet ? (
+                  <>
+                    <BulletChart actual={r.bullet.actual} target={r.target} projected={r.bullet.projected} marker={r.marker} color={r.color} label={r.key} />
+                    <p className="text-[11px] text-muted-foreground">
+                      {r.bullet.projected != null
+                        ? <>이 속도면 월말 <b className="text-foreground chart-num">{formatCurrency(Math.round(r.bullet.projected))}</b> (목표의 {pct(r.target > 0 ? r.bullet.projected / r.target : 0)}){r.invert && r.bullet.projected > r.target ? " · 예산을 넘길 속도" : ""}</>
+                        : early ? "월말 예상: 초반이라 그리지 않음" : "월말 예상: 일평균이 0이거나 남은 날이 없어 그리지 않음"}
+                    </p>
+                  </>
+                ) : (
+                  <ProgressBar value={r.ach} marker={r.marker} color={r.color} />
+                )}
               </div>
             );
           })}
@@ -281,13 +303,18 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
             <p className="text-xs text-muted-foreground">
               브랜드별 매출 달성률 (마커=판매 집계 진행률 {pct(salesProgress)}) · 목표는 <b>공구 포함</b> 기준 · ROAS 는 브랜드마다 판매가 들어온 날까지의 광고비로 나눔{early ? " · 초반이라 색 판정 보류" : ""}
             </p>
+            {data.perBrand.some((pb) => pb.targetRevenue <= 0) && (
+              <p className="text-xs text-muted-foreground">
+                이번 달 매출 목표가 없는 브랜드는 막대를 그리지 않습니다: {data.perBrand.filter((pb) => pb.targetRevenue <= 0).map((pb) => `${BRAND_LABELS[pb.brand] || pb.brand} ${formatCurrency(pb.actualRevenue)}`).join(", ")} (설정에서 목표를 넣으면 나타납니다).
+              </p>
+            )}
             {data.perBrand.filter(pb => pb.targetRevenue > 0).map((pb) => {
               const roasOk = pb.targetRoas > 0 && pb.actualRoas >= pb.targetRoas * 0.9;
               const barColor = early ? "#94a3b8" : pb.revAchievement >= salesProgress * 0.9 ? "#10b981" : "#ef4444";
               return (
               <div key={pb.brand} className="flex items-center gap-3 text-sm">
                 <span className="w-16 flex-shrink-0 text-xs">{BRAND_LABELS[pb.brand] || pb.brand}</span>
-                <div className="flex-1"><ProgressBar value={pb.revAchievement} marker={salesProgress} color={barColor} /></div>
+                <div className="flex-1"><BulletChart actual={pb.actualRevenue} target={pb.targetRevenue} projected={null} marker={salesProgress} color={barColor} label={BRAND_LABELS[pb.brand] || pb.brand} /></div>
                 <span className="w-12 text-right text-xs font-medium">{pct(pb.revAchievement)}</span>
                 {/* ROAS 목표 대비 (매출 달성했어도 ROAS 미달이면 크리에이티브 점검 신호)
                     공구가 있는 브랜드는 자체매출 기준 ROAS를 괄호로 병기한다 — 공구는 광고와 무관해
