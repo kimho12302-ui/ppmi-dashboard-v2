@@ -17,7 +17,9 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const READY_TIMEOUT_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 
-const ROUTES = ["/", "/monthly", "/sales", "/settings", "/daily", "/channel", "/keywords", "/api/pacing", "/api/search-demand"];
+const ROUTES = ["/", "/monthly", "/sales", "/settings", "/daily", "/channel", "/keywords", "/api/pacing", "/api/search-demand",
+  // 키워드 탭 밸런스랩 칸(2026-11-10). 표가 없거나 비어도 200 이어야 한다(ready:false 안내).
+  "/api/sa-routine-candidates", "/api/sa-medinex-test", "/api/sa-shopping-rank"];
 const SETTINGS_HEADINGS = [
   "데이터 수집 현황", "엑셀 업로드", "브랜드 관리", "채널 관리", "제품 원가", "월별 목표 설정", "마케팅 이벤트 관리",
 ];

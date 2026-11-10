@@ -33,7 +33,7 @@ export const DATA_TAGS = [
   "content_board", "content_candidates", "content_performance", "ops_status", "utm_analytics",
   "naver_campaign_daily", "meta_ad_daily", "ad_product_performance", "sa_change_log",
   "raw_coupang_keyword", "raw_gfa_campaign", "raw_naver_search_term", "sync_heartbeat",
-  "naver_sa_keyword", "sa_keyword_hold",
+  "naver_sa_keyword", "sa_keyword_hold", "sa_keyword_candidate", "sa_shopping_rank",
   "bl_gonggu_schedule", "bl_pnl_manual_cost", "product_components",
   "ext_gsc", "ext_meta",
 ] as const;
