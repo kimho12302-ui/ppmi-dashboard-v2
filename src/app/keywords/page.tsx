@@ -53,7 +53,7 @@ function KeywordsInner() {
   //   다른 화면의 「전체」는 그대로다(사이드바 이동은 브랜드를 안 들고 간다).
   const brand = rawBrand === "all" ? "balancelab" : rawBrand;
   useEffect(() => { if (rawBrand === "all") setBrand("balancelab"); }, [rawBrand, setBrand]);
-  const { data, loading } = useFetch<{ keywords: KeywordPerformance[]; latestCollected?: string | null; sources?: SourceLatest[] }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
+  const { data, loading } = useFetch<{ keywords: KeywordPerformance[]; latestCollected?: string | null; sources?: SourceLatest[]; sourcesError?: boolean }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
   const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr" | "roas" | "waste">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [tab, setTab] = useState<KeywordTab>("keywords");
@@ -224,7 +224,7 @@ function KeywordsInner() {
       {/* 수집 중단을 빈 화면으로 오독하지 않도록 마지막 수집일을 명시한다(2026-08 리뷰, 2026-11-10 플랫폼·브랜드별로).
           멈춘 원천은 지우지 않고 「수집 멈춤(마지막 YYYY-MM-DD)」으로 남긴다. */}
       {tab === "keywords" && !loading && (
-        <KeywordSourceStatus stalled={stalled} labels={PLATFORM_LABELS} from={from} to={to} latestCollected={data?.latestCollected} />
+        <KeywordSourceStatus stalled={stalled} labels={PLATFORM_LABELS} from={from} to={to} latestCollected={data?.latestCollected} sourcesError={data?.sourcesError} />
       )}
 
       {tab === "keywords" && <>

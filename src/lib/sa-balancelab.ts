@@ -72,6 +72,16 @@ export const ROUTINE_RESULT_ORDER = [
 /** 처음부터 펼쳐 두는 결과. 나머지는 접는다. */
 export const ROUTINE_OPEN_RESULTS = new Set(["등록", "확인 필요"]);
 const NO_RESULT = "(결과 없음)";
+/** 루틴 후보 응답에 싣는 최대 행 수. 넘으면 결과별 개수만 보낸다(라우트). */
+export const ROUTINE_MAX_ROWS = 2000;
+
+/** 결과별 개수(행이 너무 많을 때 화면이 이것만 보인다). 순서는 ROUTINE_RESULT_ORDER. */
+export function countRoutineResults(rows: Pick<RoutineCandidate, "result">[]): { result: string; count: number }[] {
+  const m = new Map<string, number>();
+  for (const r of rows) { const k = r.result || NO_RESULT; m.set(k, (m.get(k) || 0) + 1); }
+  const rank = (k: string) => { const i = ROUTINE_RESULT_ORDER.indexOf(k); return i < 0 ? ROUTINE_RESULT_ORDER.length : i; };
+  return Array.from(m.entries()).sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0])).map(([result, count]) => ({ result, count }));
+}
 
 export interface RoutineGroup { result: string; open: boolean; rows: RoutineCandidate[] }
 
@@ -138,7 +148,12 @@ export interface MedinexRow {
   state: string; tone: StateTone; reviewOn: string | null; addedOn: string;
 }
 
-export interface MedinexTotals { keywords: number; impressions: number; clicks: number; cost: number; overLine: number; locked: number; spent: number }
+export interface MedinexTotals {
+  keywords: number; impressions: number; clicks: number; cost: number; overLine: number; locked: number; spent: number;
+  /** 잠금선 이상이면서 실제로 켜져 있는(상태 「켜짐」) 키워드 수. 경고·빨강 판정은 이 값만 쓴다.
+   *  (overLine - locked 로 빼면 잠금선 미만 수동 잠금이 경고를 지우고, 꺼진 캠페인·그룹을 켜짐으로 셌다. 11-10 리뷰) */
+  overLineOpen: number;
+}
 export interface MedinexGroup extends MedinexTotals { adgroup: string }
 
 export interface MedinexTest {
@@ -149,7 +164,10 @@ export interface MedinexTest {
   missing: number;
 }
 
-const zeroTotals = (): MedinexTotals => ({ keywords: 0, impressions: 0, clicks: 0, cost: 0, overLine: 0, locked: 0, spent: 0 });
+const zeroTotals = (): MedinexTotals => ({ keywords: 0, impressions: 0, clicks: 0, cost: 0, overLine: 0, locked: 0, spent: 0, overLineOpen: 0 });
+
+/** 잠금선을 넘었는데 아직 켜진 키워드. 구매가 없으면 잠글 대상이라 화면이 빨갛게 표시한다. */
+export const isOverLineOpen = (r: Pick<MedinexRow, "overLine" | "tone">) => r.overLine && r.tone === "ok";
 
 function addRow(t: MedinexTotals, r: MedinexRow): void {
   t.keywords += 1;
@@ -159,23 +177,35 @@ function addRow(t: MedinexTotals, r: MedinexRow): void {
   if (r.overLine) t.overLine += 1;
   if (r.tone === "locked") t.locked += 1;
   if (r.cost > 0) t.spent += 1;
+  if (isOverLineOpen(r)) t.overLineOpen += 1;
 }
 
-/** 같은 키워드를 두 번 넣었으면 마지막 등록만 쓴다. keyword_id 가 없으면 광고그룹+키워드로 가른다. */
-function latestAdds(adds: MedinexAdd[]): MedinexAdd[] {
+const altKey = (adgroup: string | null | undefined, keyword: string) => `${adgroup || ""}|${keyword}`;
+/** 시각 비교는 문자열이 아니라 시각 값으로(오프셋 표기 +00:00 / Z 가 섞여도 맞게). 못 읽으면 가장 이른 것으로 본다. */
+const timeOf = (iso: string) => { const t = Date.parse(iso); return Number.isNaN(t) ? -Infinity : t; };
+
+/**
+ * 같은 키워드를 두 번 넣었으면 마지막 등록만 쓴다. 키는 keyword_id, 없으면 광고그룹|키워드.
+ * id 가 있는 등록과 없는 등록이 같은 광고그룹|키워드면 한 키워드로 본다(대체 키로 한 번 더 대조).
+ */
+export function latestAdds(adds: MedinexAdd[]): MedinexAdd[] {
+  const idOfAlt = new Map<string, string>();
+  for (const a of adds) if (a.keyword_id) idOfAlt.set(altKey(a.adgroup, a.keyword), a.keyword_id);
   const m = new Map<string, MedinexAdd>();
   for (const a of adds) {
-    const k = a.keyword_id || `${a.adgroup || ""}|${a.keyword}`;
+    const k = a.keyword_id || idOfAlt.get(altKey(a.adgroup, a.keyword)) || altKey(a.adgroup, a.keyword);
     const cur = m.get(k);
-    if (!cur || a.applied_at > cur.applied_at) m.set(k, a);
+    if (!cur || timeOf(a.applied_at) > timeOf(cur.applied_at)) m.set(k, a);
   }
   return Array.from(m.values());
 }
 
 export function buildMedinexTest(adds: MedinexAdd[], snaps: KeywordSnapshot[], lockLine = LOCK_LINE_WON): MedinexTest {
   const byId = new Map(snaps.map((s) => [s.keyword_id, s]));
+  const byAlt = new Map(snaps.map((s) => [altKey(s.adgroup, s.keyword), s]));
   const rows: MedinexRow[] = latestAdds(adds).map((a) => {
-    const s = a.keyword_id ? byId.get(a.keyword_id) || null : null;
+    // keyword_id 가 없거나(옛 기록) 목록에서 못 찾으면 광고그룹|키워드로 한 번 더 찾는다.
+    const s = (a.keyword_id ? byId.get(a.keyword_id) : undefined) || byAlt.get(altKey(a.adgroup, a.keyword)) || null;
     const st = keywordState(s);
     const cost = Number(s?.cost_30d) || 0;
     return {
@@ -244,6 +274,8 @@ export interface RankLine {
   prevOur: number | null; prevCatalog: number | null; deltaOur: number | null; deltaCatalog: number | null;
   /** 직전 회차에 같은 (검색어, 제품) 줄이 있었나 */
   hadPrev: boolean;
+  /** 직전과 측정 방식(method)이 달라 변화를 계산하지 않았다 */
+  methodChanged: boolean;
 }
 
 export interface RankProduct { product: string; lines: RankLine[]; ranked: number }
@@ -271,13 +303,16 @@ export function buildRankView(rows: ShoppingRankRow[], latest: string | null, pr
   const byProduct = new Map<string, RankLine[]>();
   for (const r of target) {
     const p = prevMap.get(`${r.query}|${r.product}`);
+    // 측정 방식이 다르면(얕은 integrated ↔ 깊은 openapi) 순위 숫자의 뜻이 달라 변화를 셈하지 않는다.
+    const methodChanged = !!p && p.method !== r.method;
+    const comparable = p && !methodChanged ? p : undefined;
     const line: RankLine = {
       query: r.query, query_group: r.query_group, method: r.method, module: r.module,
       our_rank: r.our_rank, catalog_rank: r.catalog_rank, ad_seen: r.ad_seen, seen_up_to: r.seen_up_to, page1: r.page1,
       ourLabel: rankLabel(r.our_rank, r), catalogLabel: rankLabel(r.catalog_rank, r),
       prevOur: p?.our_rank ?? null, prevCatalog: p?.catalog_rank ?? null,
-      deltaOur: rankDelta(p?.our_rank, r.our_rank), deltaCatalog: rankDelta(p?.catalog_rank, r.catalog_rank),
-      hadPrev: !!p,
+      deltaOur: rankDelta(comparable?.our_rank, r.our_rank), deltaCatalog: rankDelta(comparable?.catalog_rank, r.catalog_rank),
+      hadPrev: !!p, methodChanged,
     };
     const list = byProduct.get(r.product) || [];
     list.push(line);

@@ -11,10 +11,11 @@ import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
+import { kstDate } from "@/lib/date";
 import { SortTable, type SortCol } from "@/components/sort-table";
 import { Notice, Folded } from "@/components/add-keyword-candidates";
 import {
-  groupRoutine, routineProducts, PAGE1_RANK,
+  groupRoutine, routineProducts, isOverLineOpen, addDays, PAGE1_RANK, LOCK_LINE_WON, MEDINEX_DAILY_BUDGET_WON,
   type RoutineCandidate, type MedinexRow, type MedinexGroup, type MedinexTotals, type RankView, type RankLine,
 } from "@/lib/sa-balancelab";
 
@@ -34,7 +35,11 @@ function StateLine({ loading, error, notReady, emptyText, sqlText }: {
 // ── 루틴이 본 후보 ─────────────────────────────────────────────
 
 type RRow = RoutineCandidate & { name: string };
-type RoutineResp = (NotReady | { ready: true; date: string; rows: RoutineCandidate[] }) & { error?: string };
+type RoutineResp = (NotReady | {
+  ready: true; date: string; rows: RoutineCandidate[]; total?: number;
+  /** 한 회차가 상한을 넘으면 행 대신 결과별 개수만 온다 */
+  truncated?: boolean; maxRows?: number; counts?: { result: string; count: number }[];
+}) & { error?: string };
 
 const ROUTINE_COLS: SortCol<RRow>[] = [
   { key: "name", label: "검색어", value: (r) => r.name, render: (r) => r.name, left: true },
@@ -62,7 +67,7 @@ export function RoutineCandidates() {
   return (
     <div className="space-y-2" data-tour="keywords-naver-routine">
       <h4 className="font-semibold text-sm">
-        루틴이 본 후보 <span className="text-xs font-normal text-muted-foreground">밸런스랩 검색광고 일일 키워드 루틴이 본 검색어 전부와 결과{data?.ready ? ` · ${data.date} 회차 ${formatNumber(rows.length)}개` : ""}</span>
+        루틴이 본 후보 <span className="text-xs font-normal text-muted-foreground">밸런스랩 검색광고 일일 키워드 루틴이 본 검색어 전부와 결과{data?.ready ? ` · ${data.date} 회차 ${formatNumber(data.total ?? rows.length)}개` : ""}</span>
       </h4>
       <p className="text-xs text-muted-foreground">
         위 「실적에서 나온 후보」는 이 화면이 검색어 보고서로 계산한 것이고, 이 칸은 루틴이 그날 직접 본 결과입니다. 둘이 다르면 루틴 쪽이 등록 여부의 기록입니다.
@@ -71,7 +76,13 @@ export function RoutineCandidates() {
       <StateLine loading={loading && !data} error={error || data?.error} notReady={notReady}
         sqlText="루틴 후보 표가 아직 DB 에 없습니다(SQL 실행 전). 볼트 settings/search-ads/routine/sql 의 표 정의를 실행하면 다음 루틴부터 나타납니다."
         emptyText="루틴이 아직 이 표에 남긴 후보가 없습니다. 루틴이 표에 적기 시작하면 가장 최근 회차가 여기에 나옵니다." />
-      {data?.ready && (
+      {data?.ready && data.truncated && (
+        <Notice tone="warn">
+          이 회차 후보가 {formatNumber(data.total ?? 0)}개로 화면 상한({formatNumber(data.maxRows ?? 0)}개)을 넘어 결과별 개수만 보입니다:{" "}
+          {(data.counts || []).map((c) => `「${c.result}」 ${formatNumber(c.count)}개`).join(" · ")}. 검색어 목록은 루틴 보고서에서 봅니다.
+        </Notice>
+      )}
+      {data?.ready && !data.truncated && (
         <>
           {products.length > 1 && (
             <div className="flex flex-wrap gap-0.5 rounded-lg bg-muted p-1 w-fit">
@@ -104,16 +115,19 @@ export function RoutineCandidates() {
 
 // ── 메디넥스 10일 시험 ─────────────────────────────────────────
 
-type MedinexResp = (NotReady | {
+type MedinexOk = {
   ready: true; seenOn: string | null; testFrom: string; lockLine: number; dailyBudget: number;
   rows: MedinexRow[]; groups: MedinexGroup[]; total: MedinexTotals;
   firstAddedOn: string | null; reviewOn: string | null; missing: number;
-}) & { error?: string };
+};
+type MedinexResp = (NotReady | MedinexOk) & { error?: string };
 
 type MRow = MedinexRow & { name: string };
 type GRow = MedinexGroup & { name: string };
 
 const pctOf = (p: number) => `${Math.round(p * 100)}%`;
+/** 네이버 등록 키워드 목록의 비용은 30일 이동 합계라, 시험 시작 이 일수 뒤부터는 시험 누적과 달라진다 */
+const ROLLING_DAYS = 30;
 
 function medinexCols(lockLine: number): SortCol<MRow>[] {
   return [
@@ -126,7 +140,8 @@ function medinexCols(lockLine: number): SortCol<MRow>[] {
     {
       key: "progress", label: `잠금선(${formatNumber(lockLine)}원) 대비`, value: (r) => r.progress,
       render: (r) => (r.overLine ? `${pctOf(r.progress)} 도달` : pctOf(r.progress)),
-      danger: (r) => r.overLine && r.tone !== "locked",
+      // 잠금선을 넘었는데 실제로 켜진 것만 빨강. 꺼진 캠페인·그룹, 검수 중, 목록에 없음은 켜짐으로 세지 않는다.
+      danger: (r) => isOverLineOpen(r),
     },
     { key: "state", label: "현재 상태", value: (r) => r.state, render: (r) => r.state, left: true, danger: (r) => r.tone === "locked" || r.tone === "missing" },
     { key: "reviewOn", label: "검토일", value: (r) => r.reviewOn || "", render: (r) => md(r.reviewOn), left: true },
@@ -140,72 +155,101 @@ const GROUP_COLS: SortCol<GRow>[] = [
   { key: "impressions", label: "노출", value: (r) => r.impressions, render: (r) => formatNumber(r.impressions) },
   { key: "clicks", label: "클릭", value: (r) => r.clicks, render: (r) => formatNumber(r.clicks) },
   { key: "cost", label: "누적 비용", value: (r) => r.cost, render: (r) => won(r.cost) },
-  { key: "overLine", label: "잠금선 도달", value: (r) => r.overLine, render: (r) => `${formatNumber(r.overLine)}개`, danger: (r) => r.overLine > r.locked },
+  { key: "overLine", label: "잠금선 도달", value: (r) => r.overLine, render: (r) => `${formatNumber(r.overLine)}개`, danger: (r) => r.overLineOpen > 0 },
+  { key: "overLineOpen", label: "도달·켜짐", value: (r) => r.overLineOpen, render: (r) => `${formatNumber(r.overLineOpen)}개`, danger: (r) => r.overLineOpen > 0 },
   { key: "locked", label: "잠김", value: (r) => r.locked, render: (r) => `${formatNumber(r.locked)}개` },
 ];
+
+function MedinexSummary({ total }: { total: MedinexTotals }) {
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+      {[
+        ["시험 키워드", `${formatNumber(total.keywords)}개`],
+        ["누적 비용 합계", won(total.cost)],
+        ["클릭 합계", formatNumber(total.clicks)],
+        ["잠금선 도달 (켜짐)", `${formatNumber(total.overLine)}개 (${formatNumber(total.overLineOpen)}개)`],
+        ["잠김", `${formatNumber(total.locked)}개`],
+      ].map(([k, v]) => (
+        <div key={k} className="rounded border px-3 py-2">
+          <p className="text-muted-foreground">{k}</p>
+          <p className="font-semibold text-sm num">{v}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MedinexGroups({ groups, total }: { groups: GRow[]; total: MedinexTotals }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium">광고그룹별 소계</p>
+      <SortTable rows={groups} cols={GROUP_COLS} initial="cost" maxHeight={300} />
+      <p className="text-xs text-muted-foreground">
+        전체 합계: 키워드 {formatNumber(total.keywords)}개 · 돈 쓴 키워드 {formatNumber(total.spent)}개 · 노출 {formatNumber(total.impressions)} ·
+        클릭 {formatNumber(total.clicks)} · 누적 비용 {won(total.cost)} · 잠금선 도달 {formatNumber(total.overLine)}개(켜짐 {formatNumber(total.overLineOpen)}개) · 잠김 {formatNumber(total.locked)}개
+      </p>
+    </div>
+  );
+}
+
+function MedinexBody({ ok }: { ok: MedinexOk }) {
+  const rows: MRow[] = useMemo(() => ok.rows.map((r) => ({ ...r, name: r.keyword_id || `${r.adgroup}|${r.keyword}` })), [ok]);
+  const groups: GRow[] = useMemo(() => ok.groups.map((g) => ({ ...g, name: g.adgroup })), [ok]);
+  const cols = useMemo(() => medinexCols(ok.lockLine), [ok]);
+  const rollingFrom = ok.firstAddedOn ? addDays(ok.firstAddedOn, ROLLING_DAYS) : null;
+  return (
+    <>
+      <MedinexSummary total={ok.total} />
+      {ok.total.overLineOpen > 0 && (
+        <Notice tone="warn">잠금선을 넘었는데 아직 켜져 있는 키워드가 {formatNumber(ok.total.overLineOpen)}개 있습니다. 구매가 났으면 유지, 아니면 루틴이 다음 회차에 잠급니다. 루틴 보고서에서 확인하세요(이 화면에는 키워드별 구매가 없습니다).</Notice>
+      )}
+      {ok.missing > 0 && (
+        <Notice tone="warn">등록 키워드 목록(기준일 {ok.seenOn ?? "-"})에서 못 찾은 키워드가 {formatNumber(ok.missing)}개 있습니다. 지워졌거나 목록 수집 전에 넣은 것입니다. 비용은 0으로 셉니다.</Notice>
+      )}
+      <Notice>
+        구매 수는 싣지 않았습니다. 네이버가 키워드 단위 구매를 확실히 주는 원천이 없어, 구매 판정은 SA 루틴 보고서가 합니다.
+        {rollingFrom && <> 비용·클릭은 30일 이동 합계라 {rollingFrom} 부터는 앞쪽 날이 빠져 시험 누적보다 작게 나옵니다.</>}
+      </Notice>
+      <MedinexGroups groups={groups} total={ok.total} />
+      <div className="space-y-1">
+        <p className="text-xs font-medium">키워드별</p>
+        <SortTable rows={rows} cols={cols} initial="cost" maxHeight={480} />
+      </div>
+    </>
+  );
+}
 
 export function MedinexTestCard() {
   const { data, loading, error } = useFetch<MedinexResp>("/api/sa-medinex-test");
   const notReady = data && !data.ready ? data : null;
   const ok = data && data.ready ? data : null;
-  const rows: MRow[] = useMemo(() => (ok ? ok.rows.map((r) => ({ ...r, name: r.keyword_id || `${r.adgroup}|${r.keyword}` })) : []), [ok]);
-  const groups: GRow[] = useMemo(() => (ok ? ok.groups.map((g) => ({ ...g, name: g.adgroup })) : []), [ok]);
-  const cols = useMemo(() => medinexCols(ok?.lockLine || 10000), [ok]);
-  const pending = ok ? ok.total.overLine - ok.total.locked : 0;
+  const lockLine = ok?.lockLine ?? LOCK_LINE_WON;
+  // 검토일이 지나면 시험이 끝난 것이라 기본은 접어 둔다(제목 줄을 누르면 펼침).
+  const reviewPassed = !!ok?.reviewOn && ok.reviewOn < kstDate();
 
   return (
     <Card data-tour="keywords-medinex-test"><CardContent className="p-4 space-y-3">
       <div>
         <h3 className="font-semibold text-sm">
           메디넥스 10일 시험 <span className="text-xs font-normal text-muted-foreground">
-            {ok ? `${md(ok.firstAddedOn)}~${md(ok.reviewOn)} · ` : ""}P10.메디넥스 파워링크 신규 키워드 · 일예산 {formatCurrency(ok?.dailyBudget ?? 25000)}
+            {ok ? `${md(ok.firstAddedOn)}~${md(ok.reviewOn)} · ` : ""}P10.메디넥스 파워링크 신규 키워드 · 일예산 {formatCurrency(ok?.dailyBudget ?? MEDINEX_DAILY_BUDGET_WON)}
+            {reviewPassed ? " · 검토일 지남" : ""}
           </span>
         </h3>
         <p className="text-xs text-muted-foreground mt-1">
-          판정 규칙: 키워드마다 <b>{formatCurrency(ok?.lockLine ?? 10000)}</b>(VAT 포함)을 쓰고 구매가 0이면 SA 루틴이 자동으로 잠급니다(김호 승인 11-09). 나머지는 검토일 판정 회의에서 사람이 정합니다.
+          판정 규칙: 키워드마다 <b>{formatCurrency(lockLine)}</b>(VAT 포함)을 쓰고 구매가 0이면 SA 루틴이 자동으로 잠급니다(김호 승인 11-09). 나머지는 검토일 판정 회의에서 사람이 정합니다.
           비용·클릭은 네이버 등록 키워드 목록의 30일 합계(기준일 {ok?.seenOn ?? "-"})이고, 시험 키워드는 시작일에 새로 넣어 시험 누적과 같습니다. 이 비용의 VAT 포함 여부는 미확인이라 잠금선 근처는 루틴 보고서 숫자로 봅니다.
         </p>
       </div>
       <StateLine loading={loading && !data} error={error || data?.error} notReady={notReady}
-        sqlText="등록 키워드 표가 아직 DB 에 없습니다(SQL 실행 전)."
+        sqlText="조정 기록이나 등록 키워드 표가 아직 DB 에 없습니다(SQL 실행 전)."
         emptyText="조정 기록에 시험 시작일 이후 P10.메디넥스 신규 키워드가 없습니다." />
-      {ok && (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
-            {[
-              ["시험 키워드", `${formatNumber(ok.total.keywords)}개`],
-              ["누적 비용 합계", won(ok.total.cost)],
-              ["클릭 합계", formatNumber(ok.total.clicks)],
-              ["잠금선 도달", `${formatNumber(ok.total.overLine)}개`],
-              ["잠김", `${formatNumber(ok.total.locked)}개`],
-            ].map(([k, v]) => (
-              <div key={k} className="rounded border px-3 py-2">
-                <p className="text-muted-foreground">{k}</p>
-                <p className="font-semibold text-sm num">{v}</p>
-              </div>
-            ))}
-          </div>
-          {pending > 0 && (
-            <Notice tone="warn">잠금선을 넘었는데 아직 켜져 있는 키워드가 {formatNumber(pending)}개 있습니다. 구매가 났으면 유지, 아니면 루틴이 다음 회차에 잠급니다. 루틴 보고서에서 확인하세요(이 화면에는 키워드별 구매가 없습니다).</Notice>
-          )}
-          {ok.missing > 0 && (
-            <Notice tone="warn">등록 키워드 목록(기준일 {ok.seenOn ?? "-"})에서 못 찾은 키워드가 {formatNumber(ok.missing)}개 있습니다. 지워졌거나 목록 수집 전에 넣은 것입니다. 비용은 0으로 셉니다.</Notice>
-          )}
-          <Notice>구매 수는 싣지 않았습니다. 네이버가 키워드 단위 구매를 확실히 주는 원천이 없어, 구매 판정은 SA 루틴 보고서가 합니다.</Notice>
-          <div className="space-y-1">
-            <p className="text-xs font-medium">광고그룹별 소계</p>
-            <SortTable rows={groups} cols={GROUP_COLS} initial="cost" maxHeight={300} />
-            <p className="text-xs text-muted-foreground">
-              전체 합계: 키워드 {formatNumber(ok.total.keywords)}개 · 돈 쓴 키워드 {formatNumber(ok.total.spent)}개 · 노출 {formatNumber(ok.total.impressions)} ·
-              클릭 {formatNumber(ok.total.clicks)} · 누적 비용 {won(ok.total.cost)} · 잠금선 도달 {formatNumber(ok.total.overLine)}개 · 잠김 {formatNumber(ok.total.locked)}개
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs font-medium">키워드별</p>
-            <SortTable rows={rows} cols={cols} initial="cost" maxHeight={480} />
-          </div>
-        </>
-      )}
+      {ok && (reviewPassed ? (
+        <details className="rounded border px-3 py-2">
+          <summary className="cursor-pointer text-xs text-muted-foreground">검토일({ok.reviewOn})이 지나 접어 두었습니다. 눌러서 보기</summary>
+          <div className="mt-2 space-y-3"><MedinexBody ok={ok} /></div>
+        </details>
+      ) : <MedinexBody ok={ok} />)}
     </CardContent></Card>
   );
 }
@@ -216,7 +260,11 @@ type RankResp = (NotReady | ({ ready: true } & RankView)) & { error?: string };
 
 // 양수 = 순위가 올라감(숫자가 작아짐). 둘 중 한쪽이라도 순위가 없으면 비교하지 않는다.
 const oneDelta = (d: number | null) => (d == null ? "-" : d === 0 ? "그대로" : d > 0 ? `▲${d}` : `▼${-d}`);
-const deltaText = (l: RankLine) => (l.hadPrev ? `우리 ${oneDelta(l.deltaOur)} · 카탈로그 ${oneDelta(l.deltaCatalog)}` : "직전 없음");
+const deltaText = (l: RankLine) => {
+  if (!l.hadPrev) return "직전 없음";
+  if (l.methodChanged) return "측정 방식이 달라 비교 안 함";
+  return `우리 ${oneDelta(l.deltaOur)} · 카탈로그 ${oneDelta(l.deltaCatalog)}`;
+};
 
 function RankTable({ lines, previous }: { lines: RankLine[]; previous: string | null }) {
   return (

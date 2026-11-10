@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { cachedGET } from "@/lib/api-cache";
-import { isMissing, errMessage } from "@/lib/pg-errors";
+import { isMissing, routeFailure } from "@/lib/pg-errors";
 import {
   MEDINEX_CAMPAIGN, MEDINEX_TEST_FROM, LOCK_LINE_WON, MEDINEX_DAILY_BUDGET_WON,
   buildMedinexTest, type MedinexAdd, type KeywordSnapshot,
@@ -50,7 +50,7 @@ async function getImpl() {
       ...buildMedinexTest(adds, snaps),
     });
   } catch (e) {
-    return NextResponse.json({ error: errMessage(e) }, { status: 500 });
+    return routeFailure("sa-medinex-test", e); // 표 없음은 ready:false(sql), 그 밖은 고정 문구 500
   }
 }
 

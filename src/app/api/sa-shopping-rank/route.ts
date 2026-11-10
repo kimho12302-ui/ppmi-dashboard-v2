@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { cachedGET } from "@/lib/api-cache";
-import { isMissing, errMessage } from "@/lib/pg-errors";
+import { isMissing, routeFailure } from "@/lib/pg-errors";
 import { buildRankView, type ShoppingRankRow } from "@/lib/sa-balancelab";
 
 // 키워드 탭 > 네이버 검색어 > 「메디넥스 쇼핑 자연 순위」. 2026-11-10 신설.
@@ -38,7 +38,7 @@ async function getImpl() {
     );
     return NextResponse.json({ ready: true, ...buildRankView(rows, latest, previous) });
   } catch (e) {
-    return NextResponse.json({ error: errMessage(e) }, { status: 500 });
+    return routeFailure("sa-shopping-rank", e); // 표 없음은 ready:false(sql), 그 밖은 고정 문구 500
   }
 }
 

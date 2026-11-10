@@ -21,9 +21,18 @@ export function stalledChipNote(platform: string, stalled: SourceLatest[], sourc
   return n >= all ? " · 수집 멈춤" : " · 일부 멈춤";
 }
 
-export function KeywordSourceStatus({ stalled, labels, from, to, latestCollected }: {
+export function KeywordSourceStatus({ stalled, labels, from, to, latestCollected, sourcesError }: {
   stalled: SourceLatest[]; labels: Record<string, string>; from: string; to: string; latestCollected: string | null | undefined;
+  /** 마지막 수집일 조회 실패. 이때 띠가 없는 것은 "멈춘 곳 없음"이 아니라 "모름"이다 */
+  sourcesError?: boolean;
 }) {
+  if (sourcesError) {
+    return (
+      <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-500" data-tour="keywords-stalled">
+        수집 상태를 확인하지 못했습니다. 멈춘 원천이 있는지 지금은 알 수 없으니, 비어 있는 플랫폼을 성과 0으로 읽지 말고 잠시 뒤 「새로고침」을 눌러 주세요.
+      </div>
+    );
+  }
   const allBefore = !!latestCollected && latestCollected < from;
   if (stalled.length === 0 && !allBefore) return null;
   return (

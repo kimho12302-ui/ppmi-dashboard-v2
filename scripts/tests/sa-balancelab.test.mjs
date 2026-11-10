@@ -114,3 +114,58 @@ test("쇼핑 순위 화면: 목표 검색어만, 제품 순서, 직전 회차 �
   assert.equal(only.previous, null);
   assert.equal(only.products[0].lines[0].deltaCatalog, null);
 });
+
+// ── 2026-11-10 독립 리뷰 반영 ──
+import { latestAdds, countRoutineResults, isOverLineOpen } from "../../src/lib/sa-balancelab.ts";
+
+test("잠금선 경고: 켜진 것만 세고, 잠금선 미만 수동 잠금이나 꺼진 그룹이 상쇄하지 않음", () => {
+  const add = (id, kw) => ({ keyword_id: id, keyword: kw, adgroup: "01.씨맥스", bid_after: 100, review_on: "2026-11-19", applied_at: "2026-11-09T11:00:00Z" });
+  const adds = [add("a", "켜진도달"), add("b", "잠금선미만잠김"), add("c", "그룹꺼짐도달"), add("d", "잠긴도달")];
+  const snaps = [
+    snap({ keyword_id: "a", cost_30d: 11000 }),
+    snap({ keyword_id: "b", cost_30d: 3000, keyword_lock: true }),
+    snap({ keyword_id: "c", cost_30d: 15000, adgroup_status: "PAUSED" }),
+    snap({ keyword_id: "d", cost_30d: 10000, keyword_lock: true }),
+  ];
+  const t = buildMedinexTest(adds, snaps);
+  assert.equal(t.total.overLine, 3);
+  assert.equal(t.total.locked, 2);
+  assert.equal(t.total.overLineOpen, 1, "예전 계산(overLine - locked = 1)은 우연히 같아도 뜻이 달랐다");
+  assert.deepEqual(t.rows.filter(isOverLineOpen).map((r) => r.keyword_id), ["a"]);
+  // 수동 잠금 하나 더(잠금선 미만)가 켜진 도달 키워드의 경고를 지우면 안 된다
+  const t2 = buildMedinexTest([...adds, add("e", "또미만잠김")], [...snaps, snap({ keyword_id: "e", cost_30d: 100, keyword_lock: true })]);
+  assert.equal(t2.total.overLine - t2.total.locked, 0, "옛 계산은 0 으로 경고가 사라졌다");
+  assert.equal(t2.total.overLineOpen, 1);
+});
+
+test("신규 등록 묶기: 시각 값 비교, id 없는 등록은 광고그룹|키워드로 대조", () => {
+  const rows = latestAdds([
+    { keyword_id: null, keyword: "x", adgroup: "g", bid_after: 1, review_on: null, applied_at: "2026-11-09T23:00:00+09:00" },
+    { keyword_id: "k", keyword: "x", adgroup: "g", bid_after: 2, review_on: null, applied_at: "2026-11-09T13:30:00Z" },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].bid_after, 1, "23:00+09 = 14:00Z 가 13:30Z 보다 늦다(문자열 비교면 반대)");
+  const t = buildMedinexTest(
+    [{ keyword_id: null, keyword: "옛기록", adgroup: "01.씨맥스", bid_after: 100, review_on: null, applied_at: "2026-11-09T11:00:00Z" }],
+    [snap({ keyword_id: "z", keyword: "옛기록", adgroup: "01.씨맥스", cost_30d: 500 })],
+  );
+  assert.equal(t.missing, 0);
+  assert.equal(t.total.cost, 500);
+});
+
+test("쇼핑 순위: 측정 방식이 바뀌면 변화를 셈하지 않음", () => {
+  const base = { query_group: "golden", is_target: true, module: "price-compare", our_rank: null, catalog_id: null, ad_seen: false, seen_up_to: 40, page1: true, measured_at: "" };
+  const v = buildRankView([
+    { ...base, measured_on: "2026-11-16", query: "q", product: "씨맥스", method: "openapi", catalog_rank: 10 },
+    { ...base, measured_on: "2026-11-09", query: "q", product: "씨맥스", method: "integrated", catalog_rank: 3 },
+  ], "2026-11-16", "2026-11-09");
+  const l = v.products[0].lines[0];
+  assert.equal(l.hadPrev, true);
+  assert.equal(l.methodChanged, true);
+  assert.equal(l.deltaCatalog, null);
+});
+
+test("루틴 결과별 개수", () => {
+  assert.deepEqual(countRoutineResults([{ result: "차단" }, { result: "등록" }, { result: null }, { result: "등록" }]),
+    [{ result: "등록", count: 2 }, { result: "차단", count: 1 }, { result: "(결과 없음)", count: 1 }]);
+});

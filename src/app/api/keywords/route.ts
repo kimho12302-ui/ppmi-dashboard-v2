@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { groupKeywordSummary, tryRpc } from "@/lib/summary-rpc";
-import { cachedGET } from "@/lib/api-cache";
+import { cachedGET, NO_CACHE_HEADER } from "@/lib/api-cache";
 import type { SourceLatest } from "@/lib/sa-balancelab";
 
 // 키워드 분석 탭이 플랫폼별로 수집 멈춤을 가르려고 보는 플랫폼·브랜드. 기록이 한 번도 없던 조합은 빠진다.
@@ -12,6 +12,8 @@ const ALL_BRANDS = ["balancelab", "nutty", "ironpet", "saip"];
 
 /**
  * (플랫폼, 브랜드)별 마지막 수집일. 기간과 무관하게 본다.
+ * 조합마다 한 번씩(최대 24번) 부른다. 한 번에 묶으려면 GROUP BY 가 필요한데 PostgREST 기본 질의로는 안 되고
+ * DB 함수·뷰(SQL)가 있어야 해서 만들지 않았다(2026-11-10). 각 조회는 정렬 + limit 1 이라 가볍다.
  * ★ 2026-11-10: 예전엔 표 전체의 마지막 날 하나(latestCollected)만 봐서, 밸런스랩 네이버 검색이 매일 들어오는 한
  *   05-04 에 멈춘 네이버 쇼핑·03-12 에 멈춘 GFA·구글·메타가 경고 없이 "그 기간 0" 처럼 보였다.
  */
@@ -51,8 +53,9 @@ async function getImpl(req: NextRequest) {
     const scope = brand === "all" ? ALL_BRANDS : expandBrands(brand);
     const [summary, sources] = await Promise.all([
       tryRpc<unknown[]>("keyword_summary", { p_from: from, p_to: to, p_brands: brand !== "all" ? expandBrands(brand) : null }),
-      // 마지막 수집일 조회가 실패해도 키워드 표는 낸다(예전에도 이 조회는 실패를 무시했다). 띠만 안 뜬다.
-      latestBySource(scope).catch((e) => { console.error("keywords latestBySource:", e); return [] as SourceLatest[]; }),
+      // 마지막 수집일 조회가 실패해도 키워드 표는 낸다. 대신 sourcesError 로 알리고(빈 목록 = "멈춘 곳 없음"과 구별),
+      // 그 응답은 캐시하지 않는다(5분 동안 "수집 상태 모름"이 박히지 않게).
+      latestBySource(scope).catch((e) => { console.error("keywords latestBySource:", e); return null; }),
     ]);
 
     // PostgREST 의 db-max-rows(1000)가 클라이언트 range 보다 우선하므로
@@ -61,8 +64,13 @@ async function getImpl(req: NextRequest) {
     const data = summary ?? groupKeywordSummary(await fetchAll(query));
 
     // latestCollected = 이 브랜드 범위에서 가장 늦은 수집일(예전엔 표 전체 기준이라 밸런스랩 수집이 다른 브랜드 멈춤을 가렸다).
-    const latestCollected = sources.reduce<string | null>((m, s) => (!m || s.latest > m ? s.latest : m), null);
-    return NextResponse.json({ keywords: data, latestCollected, sources });
+    const sourcesError = sources === null;
+    const list = sources ?? [];
+    const latestCollected = list.reduce<string | null>((m, s) => (!m || s.latest > m ? s.latest : m), null);
+    return NextResponse.json(
+      { keywords: data, latestCollected, sources: list, sourcesError },
+      sourcesError ? { headers: { [NO_CACHE_HEADER]: "1" } } : undefined,
+    );
   } catch (error) {
     console.error("Keywords API error:", error);
     return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });

@@ -5,8 +5,8 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { cachedGET } from "@/lib/api-cache";
-import { isMissing, errMessage } from "@/lib/pg-errors";
-import type { RoutineCandidate } from "@/lib/sa-balancelab";
+import { isMissing, routeFailure } from "@/lib/pg-errors";
+import { ROUTINE_MAX_ROWS, countRoutineResults, type RoutineCandidate } from "@/lib/sa-balancelab";
 
 // 키워드 탭 > 네이버 검색어 > 추가할 검색어 > 「루틴이 본 후보」. 2026-11-10 신설.
 // 원천: sa_keyword_candidate (밸런스랩 SA 일일 키워드 루틴이 그날 본 후보 전부와 결과, 스펙 7-1).
@@ -23,13 +23,23 @@ async function getImpl() {
     if (head.error) throw head.error;
     const date = head.data?.[0]?.date as string | undefined;
     if (!date) return NextResponse.json({ ready: false, reason: "empty" });
+    // 한 회차가 ROUTINE_MAX_ROWS 를 넘으면 행 대신 결과별 개수만 보낸다(화면·응답이 너무 커지지 않게).
+    const cnt = await supabase.from("sa_keyword_candidate").select("keyword_norm", { count: "exact", head: true }).eq("date", date);
+    if (cnt.error) throw cnt.error;
+    const total = cnt.count ?? 0;
+    if (total > ROUTINE_MAX_ROWS) {
+      const results = await fetchAll<{ result: string | null }>(
+        supabase.from("sa_keyword_candidate").select("keyword_norm,result").eq("date", date), "keyword_norm",
+      );
+      return NextResponse.json({ ready: true, date, rows: [], truncated: true, total, maxRows: ROUTINE_MAX_ROWS, counts: countRoutineResults(results) });
+    }
     const rows = await fetchAll<RoutineCandidate>(
       supabase.from("sa_keyword_candidate").select(COLS).eq("date", date),
       "keyword_norm", // 이 표에는 id 칸이 없다. (date, keyword_norm) 이 기본키라 날짜를 고정하면 이걸로 순서가 선다
     );
-    return NextResponse.json({ ready: true, date, rows });
+    return NextResponse.json({ ready: true, date, rows, truncated: false, total });
   } catch (e) {
-    return NextResponse.json({ error: errMessage(e) }, { status: 500 });
+    return routeFailure("sa-routine-candidates", e); // 표 없음은 ready:false(sql), 그 밖은 고정 문구 500
   }
 }
 

@@ -20,6 +20,8 @@ import { NextRequest } from "next/server";
 import { CACHE_BYPASS_HEADER } from "@/lib/fresh-fetch";
 
 export const CACHE_SECONDS = 300;
+/** 핸들러가 200 이지만 캐시하면 안 되는 응답(일부 조회 실패 등)에 붙이는 응답 헤더. 값 "1". 2026-11-10 */
+export const NO_CACHE_HEADER = "x-no-cache";
 export const ALL_TAG = "all";
 
 /** 배포마다 키가 달라진다. 옛 배포가 만든 응답 모양이 새 코드에 섞이지 않게. */
@@ -66,7 +68,8 @@ async function render(handler: Handler, req: NextRequest): Promise<CachedBody> {
   const res = await handler(req);
   const body = await res.text();
   const contentType = res.headers.get("content-type") || "application/json";
-  if (res.status !== 200) throw new UncachedResponse(res.status, body, contentType);
+  // 200 이 아니거나, 200 이어도 핸들러가 "캐시 말 것"을 표시했으면 이번 한 번만 내보낸다.
+  if (res.status !== 200 || res.headers.get(NO_CACHE_HEADER) === "1") throw new UncachedResponse(res.status, body, contentType);
   return { body, contentType, asOf: new Date().toISOString() };
 }
 
