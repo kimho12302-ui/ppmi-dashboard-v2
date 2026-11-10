@@ -10,6 +10,7 @@ import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import {
   ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
+import { xAxisProps, yAxisProps, gridProps, tooltipCardProps, TIP_CARD } from "@/components/charts/chart-style";
 import { AD_CHANNEL_COLORS, type KeywordPerformance } from "@/lib/types";
 import { CoupangKeywordSection } from "@/components/coupang-keywords";
 import { NaverSearchTermSection } from "@/components/naver-search-terms";
@@ -438,15 +439,15 @@ function KeywordsInner() {
               </p>
               <ResponsiveContainer width="100%" height={380}>
                 <ScatterChart margin={{ top: 10, right: 30, bottom: 30, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <CartesianGrid {...gridProps} />
                   <XAxis
+                    {...xAxisProps}
                     type="number" dataKey="ctr" name="CTR"
-                    tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
                     label={{ value: "CTR (%)", position: "insideBottom", offset: -10, fontSize: 11, fill: "var(--muted-foreground)" }}
                   />
                   <YAxis
+                    {...yAxisProps}
                     type="number" dataKey="impressions" name="노출"
-                    tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
                     tickFormatter={(v) => v >= 10000 ? `${(v / 10000).toFixed(0)}만` : formatNumber(v)}
                     label={{ value: "노출", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--muted-foreground)" }}
                   />
@@ -456,13 +457,14 @@ function KeywordsInner() {
                   <ReferenceLine y={avgImp} stroke="#94a3b8" strokeDasharray="4 4"
                     label={{ value: `평균 노출 ${avgImp >= 10000 ? (avgImp / 10000).toFixed(0) + "만" : formatNumber(Math.round(avgImp))}`, position: "right", fontSize: 9, fill: "#94a3b8" }} />
                   <Tooltip
-                    cursor={{ strokeDasharray: "3 3", stroke: "#94a3b8" }}
+                    {...tooltipCardProps}
+                    cursor={{ strokeDasharray: "3 3", stroke: "var(--chart-dim)" }}
                     wrapperStyle={{ zIndex: 100 }}
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
                       const d = payload[0].payload;
                       return (
-                        <div className="bg-card border border-border rounded-lg shadow-lg px-3.5 py-2.5 text-xs">
+                        <div className={TIP_CARD}>
                           <p className="font-bold text-sm mb-1.5">{d.keyword}</p>
                           <p>CTR: <b>{d.ctr}%</b></p>
                           <p>노출: <b>{formatNumber(d.impressions)}</b></p>
@@ -615,16 +617,16 @@ function GscSection({ brand, from, to }: { brand: string; from: string; to: stri
             ) : (
               <ResponsiveContainer width="100%" height={420}>
                 <ScatterChart margin={{ top: 10, right: 60, bottom: 30, left: 10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <CartesianGrid {...gridProps} />
                   <XAxis
+                    {...xAxisProps}
                     type="number" dataKey="ctr" name="CTR" domain={[0, "auto"]}
-                    tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
                     tickFormatter={(v) => `${Number(v).toFixed(1)}%`}
                     label={{ value: "CTR (%)", position: "insideBottom", offset: -10, fontSize: 11, fill: "var(--muted-foreground)" }}
                   />
                   <YAxis
+                    {...yAxisProps}
                     type="number" dataKey="impressions" name="노출"
-                    tick={{ fontSize: 10 }} stroke="var(--muted-foreground)"
                     tickFormatter={(v) => v >= 10000 ? `${(v / 10000).toFixed(0)}만` : formatNumber(v)}
                     label={{ value: "노출", angle: -90, position: "insideLeft", fontSize: 11, fill: "var(--muted-foreground)" }}
                   />
@@ -634,13 +636,14 @@ function GscSection({ brand, from, to }: { brand: string; from: string; to: stri
                   <ReferenceLine y={avgImp} stroke="#94a3b8" strokeDasharray="4 4"
                     label={{ value: `평균 ${avgImp >= 10000 ? (avgImp / 10000).toFixed(0) + "만" : formatNumber(Math.round(avgImp))}`, position: "right", fontSize: 9, fill: "#94a3b8" }} />
                   <Tooltip
-                    cursor={{ strokeDasharray: "3 3", stroke: "#94a3b8" }}
+                    {...tooltipCardProps}
+                    cursor={{ strokeDasharray: "3 3", stroke: "var(--chart-dim)" }}
                     wrapperStyle={{ zIndex: 100 }}
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
                       const d = payload[0].payload;
                       return (
-                        <div className="bg-card border border-border rounded-lg shadow-lg px-3.5 py-2.5 text-xs">
+                        <div className={TIP_CARD}>
                           <p className="font-bold text-sm mb-1.5">{d.query}</p>
                           <p>CTR: <b>{d.ctr.toFixed(2)}%</b></p>
                           <p>노출: <b>{formatNumber(d.impressions)}</b></p>

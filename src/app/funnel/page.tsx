@@ -17,6 +17,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
   BarChart, Bar, Legend,
 } from "recharts";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, BAR_RADIUS } from "@/components/charts/chart-style";
 
 interface FunnelStep { name: string; value: number; rate?: number | null; channels?: Record<string, number>; rateNote?: string | null; rateBase?: number; rateNum?: number; }
 interface TrendPoint { date: string; sessions: number; cart_adds: number; purchases: number; impressions: number; [key: string]: string | number; }
@@ -193,15 +194,15 @@ function FunnelInner() {
             </div>
             <DeferredResponsiveContainer width="100%" height={220}>
               <AreaChart data={trendRows}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v: number) => formatNumber(v)} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                <CartesianGrid {...gridProps} />
+                <XAxis {...xAxisProps} dataKey="date" />
+                <YAxis {...yAxisProps} tickFormatter={(v: number) => formatNumber(v)} />
+                <Tooltip {...tooltipProps({ kind: "line" })}
                   formatter={(v: unknown) => (v == null ? "-" : formatNumber(Number(v)))} />
-                <Legend />
+                <Legend {...legendProps} />
                 {metricDef.series.map((sr) => (
                   <Area key={sr.key} type="monotone" dataKey={sr.key} name={sr.label} stackId="m" isAnimationActive={false}
-                    stroke={sr.color} fill={sr.color} fillOpacity={0.5} connectNulls={false} />
+                    stroke={sr.color} fill={sr.color} fillOpacity={0.5} connectNulls={false} {...activeDotProps} />
                 ))}
               </AreaChart>
             </DeferredResponsiveContainer>
@@ -219,12 +220,12 @@ function FunnelInner() {
                 <p className="text-xs text-muted-foreground mb-3">채널별 구매 전환율 (구매 ÷ 유입, %). 판매처마다 유입을 재는 방법이 달라 높낮이로 우열을 가리지 않습니다</p>
                 <DeferredResponsiveContainer width="100%" height={180}>
                   <BarChart data={channelFunnel}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                    <XAxis dataKey="channel" tick={{ fontSize: 12 }} stroke="var(--muted-foreground)" />
-                    <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v: number) => `${v.toFixed(1)}%`} />
-                    <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                    <CartesianGrid {...gridProps} />
+                    <XAxis {...xAxisProps} dataKey="channel" />
+                    <YAxis {...yAxisProps} tickFormatter={(v: number) => `${v.toFixed(1)}%`} />
+                    <Tooltip {...tooltipProps({ kind: "bar" })}
                       formatter={(v: unknown) => [`${Number(v).toFixed(2)}%`, "전환율"]} />
-                    <Bar dataKey="convRate" name="전환율" radius={[4, 4, 0, 0]} fill="var(--neutral-1)" isAnimationActive={false} />
+                    <Bar {...barProps} dataKey="convRate" name="전환율" radius={BAR_RADIUS} fill="var(--neutral-1)" isAnimationActive={false} />
                   </BarChart>
                 </DeferredResponsiveContainer>
               </div>

@@ -15,6 +15,7 @@ import {
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { NAVER_ROAS_UNTRUSTED_ACCOUNTS } from "@/lib/conversion-tracking";
 import { LineChart, Line, YAxis, XAxis, ReferenceLine, Tooltip } from "recharts";
+import { ActiveDot, TIP_CARD_SM } from "@/components/charts/chart-style";
 
 const ACCENT = "var(--sig-danger)";
 const NEUTRAL = "var(--muted-foreground)";
@@ -122,14 +123,15 @@ export function NaverCampaignMultiples({ brand, to }: { brand: string; to: strin
                           if (!active || !payload?.length) return null;
                           const p = payload[0].payload as { week: string; v: number | null; cost: number };
                           return (
-                            <div className="rounded border bg-card px-1.5 py-1 text-[10px] shadow-sm">
+                            <div className={TIP_CARD_SM}>
                               {md(p.week)} 주 · {shownMetric === "roas" ? (p.v == null ? "비용 0" : fmt(p.v, shownMetric)) : fmt(p.v, shownMetric)}
                             </div>
                           );
                         }}
                       />
                       <Line type="linear" dataKey="v" stroke={flagged ? ACCENT : NEUTRAL} strokeWidth={flagged ? 2 : 1.25}
-                        dot={false} connectNulls={false} isAnimationActive={false} />
+                        dot={false} connectNulls={false} isAnimationActive={false}
+                        activeDot={(p: { cx?: number; cy?: number }) => <ActiveDot cx={p.cx} cy={p.cy} fill={flagged ? ACCENT : NEUTRAL} />} />
                     </LineChart>
                   </DeferredResponsiveContainer>
                 )}

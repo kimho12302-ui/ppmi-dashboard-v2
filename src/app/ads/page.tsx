@@ -30,6 +30,7 @@ import {
   Legend,
   CartesianGrid,
 } from "recharts";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, activeDotProps } from "@/components/charts/chart-style";
 
 type ViewTab = "overview" | "channels" | "ga4" | "creatives" | "naver";
 const VIEW_TABS: { key: ViewTab; label: string }[] = [
@@ -372,17 +373,17 @@ function AdsPageInner() {
               <p className="text-xs text-muted-foreground mt-0.5 mb-3">가로 = 날짜, 세로 = 매체가 신고한 전환매출 ÷ 그 매체 광고비(배). 매체끼리 더하면 안 됩니다. 점선 = 1.0x</p>
               <DeferredResponsiveContainer width="100%" height={280}>
                 <LineChart data={dailyRoas}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                  <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}x`} />
+                  <CartesianGrid {...gridProps} />
+                  <XAxis {...xAxisProps} dataKey="date" />
+                  <YAxis {...yAxisProps} tickFormatter={(v) => `${v}x`} />
                   <ReferenceLine y={1} stroke="var(--muted-foreground)" strokeDasharray="4 4" label={{ value: "1.0x", position: "right", fontSize: 10, fill: "var(--muted-foreground)" }} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                    {...tooltipProps({ kind: "line" })}
                     formatter={(val) => (val == null ? "-" : `${Number(val).toFixed(2)}x`)}
                   />
-                  <Legend />
+                  <Legend {...legendProps} />
                   {activeChannels.map((ch) => (
-                    <Line key={ch} type="monotone" dataKey={ch} name={channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch} stroke={CHANNEL_COLORS[ch] || "#6b7280"} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                    <Line key={ch} type="monotone" dataKey={ch} name={channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch} stroke={CHANNEL_COLORS[ch] || "#6b7280"} strokeWidth={1.5} dot={false} isAnimationActive={false} {...activeDotProps} />
                   ))}
                 </LineChart>
               </DeferredResponsiveContainer>
@@ -396,23 +397,14 @@ function AdsPageInner() {
               <p className="text-xs text-muted-foreground mt-0.5 mb-3">가로 = 날짜, 세로 = 원(매체별로 쌓음, GA4 제외)</p>
               <DeferredResponsiveContainer width="100%" height={300}>
                 <AreaChart data={dailyTrend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-                  <YAxis
-                    tick={{ fontSize: 11 }}
-                    stroke="var(--muted-foreground)"
-                    tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`}
-                  />
+                  <CartesianGrid {...gridProps} />
+                  <XAxis {...xAxisProps} dataKey="date" />
+                  <YAxis {...yAxisProps} tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                   <Tooltip
-                    contentStyle={{
-                      backgroundColor: "var(--card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
+                    {...tooltipProps({ kind: "line" })}
                     formatter={(val) => formatCurrency(Number(val))}
                   />
-                  <Legend />
+                  <Legend {...legendProps} />
                   {activeChannels.map((ch) => (
                     <Area
                       key={ch}
@@ -424,6 +416,7 @@ function AdsPageInner() {
                       stroke={CHANNEL_COLORS[ch] || "#6b7280"}
                       fill={CHANNEL_COLORS[ch] || "#6b7280"}
                       fillOpacity={0.3}
+                      {...activeDotProps}
                     />
                   ))}
                 </AreaChart>

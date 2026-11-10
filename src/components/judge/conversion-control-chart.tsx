@@ -14,6 +14,7 @@ import { buildControlChart, CONTROL_MIN_DAYS, CONTROL_SIGMA, CONTROL_IMPLAUSIBLE
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { SINGLE_BRAND_FUNNEL_NOTE } from "@/components/judge/source-funnel-steps";
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, ReferenceArea } from "recharts";
+import { xAxisProps, yAxisProps, gridProps, tooltipProps, ActiveDot, TIP_CARD, AXIS_FONT } from "@/components/charts/chart-style";
 
 const ACCENT = "var(--sig-danger)";
 const NEUTRAL = "var(--muted-foreground)";
@@ -124,18 +125,18 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
         </p>
 
         <DeferredResponsiveContainer width="100%" height={220}>
-          <LineChart data={rows} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" minTickGap={16} />
-            <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={44} tickFormatter={(v: number) => `${v.toFixed(1)}%`} />
+          <LineChart data={rows} margin={{ top: 8, right: 64, left: 0, bottom: 0 }}>
+            <CartesianGrid {...gridProps} />
+            <XAxis {...xAxisProps} dataKey="label" minTickGap={16} />
+            <YAxis {...yAxisProps} width={44} tickFormatter={(v: number) => `${v.toFixed(1)}%`} />
             <Tooltip
-              contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+              {...tooltipProps({ kind: "line" })}
               content={({ active: on, payload }) => {
                 if (!on || !payload?.length) return null;
                 const p = payload[0].payload as ControlPoint & { label: string };
                 return (
-                  <div className="rounded-lg border bg-card px-2 py-1.5 text-[11px] shadow-sm">
-                    <div className="font-medium">{p.date}</div>
+                  <div className={TIP_CARD}>
+                    <div className="font-semibold text-[11.5px] text-muted-foreground mb-0.5">{p.date}</div>
                     {p.rate != null ? (
                       <>
                         <div>전환율 {p.rate.toFixed(2)}% {p.status === "out" && <b style={{ color: ACCENT }}>(범위 밖)</b>}</div>
@@ -156,7 +157,7 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
             ))}
             {chart.enough && chart.center != null && (
               <ReferenceLine y={chart.center} stroke={NEUTRAL} strokeWidth={1} ifOverflow="extendDomain"
-                label={{ value: `평균 ${chart.center.toFixed(2)}%`, position: "insideTopRight", fontSize: 10, fill: "var(--muted-foreground)" }} />
+                label={{ value: `평균 ${chart.center.toFixed(2)}%`, position: "right", fontSize: AXIS_FONT, fill: "var(--foreground)" }} />
             )}
             {chart.enough && (
               <Line type="step" dataKey="ucl" stroke={ACCENT} strokeOpacity={0.6} strokeDasharray="4 4" strokeWidth={1}
@@ -167,15 +168,18 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
                 dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} />
             )}
             <Line
-              type="linear" dataKey="rate" stroke={NEUTRAL} strokeOpacity={0.45} strokeWidth={1.25}
+              type="linear" dataKey="rate" stroke={NEUTRAL} strokeOpacity={0.8} strokeWidth={1.4}
               connectNulls={false} isAnimationActive={false}
               dot={(props: { cx?: number; cy?: number; payload?: ControlPoint; index?: number }) => {
                 const { cx, cy, payload, index } = props;
                 if (cx == null || cy == null || !payload || payload.rate == null) return <g key={`d${index}`} />;
                 const out = payload.status === "out";
-                return <circle key={`d${index}`} cx={cx} cy={cy} r={out ? 4.5 : 2.5} fill={out ? ACCENT : NEUTRAL} fillOpacity={out ? 1 : 0.7} stroke="none" />;
+                // 보통 날 = 속이 흰 작은 원(테두리 회색), 한계선 밖 = 강조색으로 꽉 찬 큰 원(판정 정보라 그대로)
+                return out
+                  ? <circle key={`d${index}`} cx={cx} cy={cy} r={4.5} fill={ACCENT} stroke="var(--card)" strokeWidth={1.5} />
+                  : <circle key={`d${index}`} cx={cx} cy={cy} r={2.4} fill="var(--card)" stroke={NEUTRAL} strokeWidth={1.3} />;
               }}
-              activeDot={{ r: 4 }}
+              activeDot={(p: { cx?: number; cy?: number }) => <ActiveDot cx={p.cx} cy={p.cy} fill={NEUTRAL} />}
             />
           </LineChart>
         </DeferredResponsiveContainer>
