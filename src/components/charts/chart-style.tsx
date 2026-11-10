@@ -62,7 +62,9 @@ const tooltipBase = {
   contentStyle: {
     backgroundColor: "var(--card)", color: "var(--foreground)",
     border: "1px solid var(--chart-tooltip-border)", borderRadius: 12, padding: "8px 11px",
-    fontSize: 12, lineHeight: "18px", boxShadow: TIP_SHADOW, whiteSpace: "nowrap", minWidth: 112,
+    fontSize: 12, lineHeight: "18px", boxShadow: TIP_SHADOW,
+    // 좁은 화면에서 넘치지 않게: 그래프 그림 영역 폭(화면 폭 − 카드 여백·y축 약 140px)을 넘지 않고, 넘치면 줄을 바꾼다(검수 L6)
+    whiteSpace: "normal", overflowWrap: "anywhere", minWidth: 112, maxWidth: "min(320px, calc(100vw - 140px))",
   },
   labelStyle: { fontWeight: 600, fontSize: 11.5, color: "var(--muted-foreground)", marginBottom: 4 },
   // color 는 넣지 않는다. recharts 가 계열 색을 li 에 넣고, 그 색으로 앞의 점을 칠한다(globals.css .chart-tip)

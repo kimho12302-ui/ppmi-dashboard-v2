@@ -250,7 +250,7 @@
 .chart-tip .recharts-tooltip-item-name { color: var(--muted-foreground); }
 .chart-tip .recharts-tooltip-item-separator { display: none; }
 .chart-tip .recharts-tooltip-item-value {
-  margin-left: auto; padding-left: 16px; font-weight: 700; color: var(--foreground);
+  margin-left: auto; padding-left: 16px; font-weight: 700; color: var(--foreground); white-space: nowrap;
   font-family: var(--chart-mono); font-variant-numeric: tabular-nums;
 }
 .chart-tip .recharts-tooltip-item-unit { color: var(--muted-foreground); }
@@ -260,6 +260,7 @@
   border: 1px solid var(--chart-tooltip-border); border-radius: 12px; padding: 8px 11px;
   font-size: 12px; line-height: 18px; font-family: var(--chart-font); font-variant-numeric: tabular-nums;
   box-shadow: 0 10px 28px -8px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.08);
+  max-width: min(320px, calc(100vw - 140px)); white-space: normal; overflow-wrap: anywhere;
 }
 .chart-tip-card--sm { border-radius: 8px; padding: 3px 7px; font-size: 10.5px; line-height: 15px; }
 .chart-num { font-family: var(--chart-mono); font-variant-numeric: tabular-nums; }
