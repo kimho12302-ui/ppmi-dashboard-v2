@@ -573,7 +573,7 @@ function OverviewInner() {
       {/* 광고 신고 vs 실제: 매체별 신고 ROAS 는 이 표에서만 본다(합산 불가) */}
       <SectionHeading eyebrow="Attribution" title="광고 신고 vs 실제" note="채널 ROAS 를 더하면 실매출을 넘습니다" />
       <div data-tour="overview-attribution" className="empty:hidden">
-        <AttributionGap channels={data?.channels || []} actualRevenue={kpi.revenue} adSpend={kpi.adSpend} />
+        <AttributionGap channels={data?.channels || []} actualRevenue={kpi.revenue} adSpend={kpi.adSpend} headlineRoas={kpi.roas} />
       </div>
 
       {/* 매체별 광고비 + 판매처별 매출 + TOP 5 제품. 두 축(매체·판매처)은 조인되지 않는다. */}

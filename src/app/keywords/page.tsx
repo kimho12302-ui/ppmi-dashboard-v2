@@ -302,7 +302,7 @@ function KeywordsInner() {
       {/* 키워드 테이블 */}
       <Card data-tour="keywords-top50">
         <CardContent className="p-4 overflow-x-auto">
-          <h3 className="font-semibold mb-4">TOP 50 키워드 <span className="md:hidden text-xs font-normal text-muted-foreground">(좁은 화면은 4열만, 넓히면 10열)</span></h3>
+          <h3 className="font-semibold mb-4">TOP 50 키워드 <span className="md:hidden text-xs font-normal text-muted-foreground">(좁은 화면은 4열만, 넓히면 11열)</span></h3>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left border-b text-muted-foreground">
@@ -477,7 +477,7 @@ function KeywordsInner() {
                 </ScatterChart>
               </ResponsiveContainer>
               <p className="text-xs text-muted-foreground mt-2">
-                참조선: CTR 은 노출 가중 평균(클릭 합 ÷ 노출 합), 노출은 키워드당 평균. 비용 상위 30개 키워드만 그립니다.
+                참조선: CTR 은 노출 가중 평균(클릭 합 ÷ 노출 합), 노출은 키워드당 평균. 지금 고른 정렬 순서로 위 30개 키워드만 그립니다(기본 비용순이면 비용 상위 30개).
               </p>
             </CardContent>
           </Card>

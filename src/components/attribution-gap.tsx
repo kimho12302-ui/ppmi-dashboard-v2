@@ -17,15 +17,19 @@ interface ChannelRow { channel: string; spend: number; roas: number; reportedRev
  * 헤드라인 ROAS 는 실매출 기준이라 안전하고, 채널 ROAS 는 채널 내부 비교에만 쓴다.
  */
 export function AttributionGap({
-  channels, actualRevenue, adSpend,
-}: { channels: ChannelRow[]; actualRevenue: number; adSpend: number }) {
+  channels, actualRevenue, adSpend, headlineRoas,
+}: {
+  channels: ChannelRow[]; actualRevenue: number; adSpend: number;
+  /** 맨 위 ROAS 카드 값(판매 집계일까지 광고비로 나눈 값). 주면 「이 값을 쓰세요」가 그 값과 같아진다. */
+  headlineRoas?: number;
+}) {
   const rows = (channels || []).filter(c => (c.reportedRevenue ?? 0) > 0 || c.spend > 0);
   const reported = rows.reduce((s, c) => s + (c.reportedRevenue ?? 0), 0);
   if (rows.length === 0 || reported <= 0 || actualRevenue <= 0) return null;
 
   const ratio = reported / actualRevenue;
   const overclaim = ratio > 1.15;
-  const realRoas = adSpend > 0 ? actualRevenue / adSpend : 0;
+  const realRoas = headlineRoas ?? (adSpend > 0 ? actualRevenue / adSpend : 0);
   const reportedRoas = adSpend > 0 ? reported / adSpend : 0;
 
   return (

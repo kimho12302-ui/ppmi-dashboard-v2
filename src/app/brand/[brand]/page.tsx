@@ -306,7 +306,7 @@ function BrandInner({ brand }: { brand: string }) {
 
       <SectionHeading eyebrow="Attribution" title="광고 신고 vs 실제" note="채널 ROAS 를 더하면 실매출을 넘습니다" />
       <div data-tour="brand-attribution" className="empty:hidden">
-        <AttributionGap channels={dash?.channels || []} actualRevenue={kpi?.revenue || 0} adSpend={kpi?.adSpend || 0} />
+        <AttributionGap channels={dash?.channels || []} actualRevenue={kpi?.revenue || 0} adSpend={kpi?.adSpend || 0} headlineRoas={kpi?.roas} />
       </div>
 
       <SectionHeading eyebrow="Channels" title="매체와 라인업" />
