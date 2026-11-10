@@ -216,6 +216,8 @@
   --bullet-band-1: #e2e8f0;     /* 불릿: 목표 0~50% */
   --bullet-band-2: #edf1f6;     /*        50~100% */
   --bullet-band-3: #f6f8fb;     /*        100~120% */
+  --cal-0: #eef1f5;             /* 달력: 0 원인 날 */
+  --cal-rgb: 37 99 235;         /* 달력: 강조색 하나의 진하기 */
   --chart-font: "Pretendard Variable", Pretendard, var(--font-geist-sans), "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, -apple-system, sans-serif;
   --chart-mono: "Roboto Mono", var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -232,6 +234,8 @@
   --bullet-band-1: #26304a;
   --bullet-band-2: #1d263c;
   --bullet-band-3: #161e31;
+  --cal-0: #18213a;
+  --cal-rgb: 96 165 250;
 }
 .recharts-wrapper { font-family: var(--chart-font); }
 .recharts-wrapper text { font-variant-numeric: tabular-nums; }
@@ -259,6 +263,17 @@
 }
 .chart-tip-card--sm { border-radius: 8px; padding: 3px 7px; font-size: 10.5px; line-height: 15px; }
 .chart-num { font-family: var(--chart-mono); font-variant-numeric: tabular-nums; }
+/* 달력 히트맵 */
+.cal-l0 { background: var(--cal-0); }
+.cal-l1 { background: rgb(var(--cal-rgb) / .18); }
+.cal-l2 { background: rgb(var(--cal-rgb) / .36); }
+.cal-l3 { background: rgb(var(--cal-rgb) / .55); }
+.cal-l4 { background: rgb(var(--cal-rgb) / .75); }
+.cal-l5 { background: rgb(var(--cal-rgb) / .95); }
+.cal-pending {
+  background: repeating-linear-gradient(135deg, var(--cal-0) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 1px var(--chart-grid-soft);
+}
 @media (prefers-reduced-motion: reduce) {
   .recharts-wrapper .hb { transition: none; }
 }

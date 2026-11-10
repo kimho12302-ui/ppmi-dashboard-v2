@@ -20,6 +20,7 @@ import { periodAxis, periodKey, periodCalendarDays } from "@/lib/sales-period";
 import { biggestShareShift, SHARE_LOOKBACK, SHARE_MIN_SHIFT_PP } from "@/lib/judge-charts";
 import { BRAND_LABELS } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
+import { CalendarHeatmap } from "@/components/charts/calendar-heatmap";
 import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, BAR_RADIUS, NO_RADIUS, TIP_CARD } from "@/components/charts/chart-style";
 
 // ★ 색은 설정 「채널 관리」·「브랜드 관리」에 보이는 정본 색(useConfig, types.ts)을 쓴다(2026-11-10 김호 지시).
@@ -45,6 +46,8 @@ interface Bucket {
 export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow[]; channels: ChannelInfo[]; from: string; to: string }) {
   const [mode, setMode] = useState<Mode>("weekly");
   const [dimPick, setDimPick] = useState<Dim>("channel");
+  /** 막대(주·월) | 달력(일별 히트맵, 2026-11-10). mode(주·월 키)와 따로 둔다 */
+  const [view, setView] = useState<"bars" | "calendar">("bars");
   const unit = mode === "weekly" ? "주" : "달";
   // 브랜드가 하나뿐이면(브랜드 필터) 브랜드 쌓기는 의미가 없어 토글을 숨긴다.
   const brandKeys = useMemo(() => {
@@ -109,13 +112,28 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
   });
   const lastBucket = buckets[buckets.length - 1];
 
+  // 달력: 기간 전체 날짜에 그날 매출 합계(판매처·브랜드 구분 없이). 값이 없는 날은 0, 마지막 판매일 뒤는 동기화 대기.
+  const calendar = useMemo(() => {
+    const days = daysBetween(from, to);
+    if (!days.length) return null;
+    const tot = new Map<string, number>();
+    for (const r of sales) {
+      const d = String(r.date).slice(0, 10);
+      tot.set(d, (tot.get(d) || 0) + (Number(r.revenue) || 0));
+    }
+    const last = sales.length ? lastDataDate(sales) : null;
+    const pendingFrom = last ? days.find((d) => d > last) ?? null : days[0];
+    return { days: days.map((d) => ({ date: d, value: tot.get(d) || 0 })), pendingFrom, last };
+  }, [sales, from, to]);
+  const mdShort = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+
   return (
     <Card>
       <CardContent className="p-4">
         <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
           <div>
             <h3 className="font-semibold">매출 구성</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">가로 = {unit}, 세로 = 원(판매 원장 자체매출), 칸 = {what}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{view === "calendar" ? "가로 = 주(월요일 시작), 세로 = 요일, 칸 = 그날 매출 합계(판매 원장 자체매출)" : <>가로 = {unit}, 세로 = 원(판매 원장 자체매출), 칸 = {what}</>}</p>
             <p className="text-xs text-muted-foreground">판단: 매출이 어느 {what}에서 늘고 줄었는지 (광고 귀속 아님)</p>
           </div>
           <div data-tour="sales-mix-toggle" className="flex flex-wrap gap-2">
@@ -131,17 +149,23 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
           )}
           <div className="flex gap-1 bg-muted rounded-md p-0.5">
             {(["weekly", "monthly"] as const).map((m) => (
-              <button key={m} onClick={() => setMode(m)}
-                className={cn("px-2 py-1 text-xs rounded", mode === m ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
+              <button key={m} onClick={() => { setMode(m); setView("bars"); }}
+                className={cn("px-2 py-1 text-xs rounded", view === "bars" && mode === m ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
                 {m === "weekly" ? "주별" : "월별"}
               </button>
             ))}
+            <button onClick={() => setView("calendar")}
+              className={cn("px-2 py-1 text-xs rounded", view === "calendar" ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
+              달력
+            </button>
           </div>
           </div>
         </div>
 
         <p data-tour="sales-mix-verdict" className="text-sm mb-2">
-          {order.length < 2 ? (
+          {view === "calendar" ? (
+            <span className="text-muted-foreground">칸 하나 = 하루 매출 합계({what} 구분 없이). 진할수록 많이 판 날이고, 빗금 칸은 판매 동기화 대기{calendar?.last ? `(마지막 판매일 ${mdShort(calendar.last)} 뒤)` : ""}입니다.</span>
+          ) : order.length < 2 ? (
             <span className="text-muted-foreground">이 기간 {what}가 {order[0] ? labelOf(order[0]) : "없음"} 하나라 구성 비교는 없습니다. 막대는 {unit}별 매출 합계입니다.</span>
           ) : shift ? (
             <><b style={{ color: color(shift.channel) }}>{labelOf(shift.channel)}</b> 비중이 직전 {shift.priorCount}{unit} 합계 대비 마지막 완료 {unit}에 {shift.shiftPp > 0 ? "+" : ""}{shift.shiftPp.toFixed(1)}%p 움직였습니다.</>
@@ -150,52 +174,65 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
           )}
         </p>
 
-        <DeferredResponsiveContainer width="100%" height={240}>
-          <ComposedChart data={rows} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid {...gridProps} />
-            <XAxis {...xAxisProps} dataKey="period" />
-            <YAxis {...yAxisProps} tickFormatter={(v) => `${(Number(v) / 10000).toFixed(0)}만`} />
-            <Tooltip
-              {...tooltipProps({ kind: "bar" })}
-              content={({ active, payload }) => {
-                if (!active || !payload?.length) return null;
-                const r = payload[0].payload as Record<string, string | number | null>;
-                const tot = order.reduce((s, ch) => s + (Number(r[ch]) || 0), 0);
-                const note = r.state === "in_progress" ? " (진행 중)" : r.state === "partial_range" ? " (기간 일부)" : r.state === "pending" ? " (판매 미수집)" : "";
-                return (
-                  <div className={TIP_CARD}>
-                    <div className="font-semibold text-[11.5px] text-muted-foreground mb-0.5">{String(r.period)}{note}</div>
-                    <div className="flex justify-between gap-3 font-semibold border-b mb-1 pb-1"><span>합계</span><span className="chart-num">{formatCurrency(tot)}</span></div>
-                    {order.filter((ch) => Number(r[ch]) > 0).map((ch) => (
-                      <div key={ch} className="flex justify-between gap-3">
-                        <span>{labelOf(ch)}</span>
-                        <span className="chart-num">{formatCurrency(Number(r[ch]))} ({tot > 0 ? ((Number(r[ch]) / tot) * 100).toFixed(0) : 0}%)</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              }}
-            />
-            <Legend {...legendProps}
-              formatter={(v) => <span style={{ color: "var(--foreground)" }}>{labelOf(String(v))}</span>} />
-            {order.map((ch, i) => (
-              <Bar {...barProps} key={ch} dataKey={ch} name={ch} stackId="channel" fill={color(ch)} isAnimationActive={false}
-                stroke={shift?.channel === ch ? "var(--foreground)" : undefined} strokeWidth={shift?.channel === ch ? 1.5 : 0}
-                radius={i === order.length - 1 ? BAR_RADIUS : NO_RADIUS}>
-                {rows.map((r) => (
-                  <Cell key={String(r.period)} fillOpacity={r.state === "complete" ? 1 : INCOMPLETE_OPACITY} />
-                ))}
-              </Bar>
-            ))}
-            {/* 합계 라벨. 막대 위 라벨은 맨 위 판매처 값이 0 인 주에 안 그려져서, 보이지 않는 선의 점에 단다. */}
-            <Line dataKey="__total" stroke="none" dot={false} activeDot={false} legendType="none" isAnimationActive={false} tooltipType="none">
-              <LabelList dataKey="__total" position="top" fontSize={10} fill="var(--muted-foreground)"
-                formatter={(v: unknown) => (v == null ? "" : `${Math.round(Number(v) / 10000).toLocaleString("ko-KR")}만`)} />
-            </Line>
-          </ComposedChart>
-        </DeferredResponsiveContainer>
+        {view === "calendar" && calendar ? (
+          <CalendarHeatmap days={calendar.days} pendingFrom={calendar.pendingFrom} valueLabel="매출" format={(v) => formatCurrency(v)} />
+        ) : (
+          <DeferredResponsiveContainer width="100%" height={240}>
+            <ComposedChart data={rows} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid {...gridProps} />
+              <XAxis {...xAxisProps} dataKey="period" />
+              <YAxis {...yAxisProps} tickFormatter={(v) => `${(Number(v) / 10000).toFixed(0)}만`} />
+              <Tooltip
+                {...tooltipProps({ kind: "bar" })}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const r = payload[0].payload as Record<string, string | number | null>;
+                  const tot = order.reduce((s, ch) => s + (Number(r[ch]) || 0), 0);
+                  const note = r.state === "in_progress" ? " (진행 중)" : r.state === "partial_range" ? " (기간 일부)" : r.state === "pending" ? " (판매 미수집)" : "";
+                  return (
+                    <div className={TIP_CARD}>
+                      <div className="font-semibold text-[11.5px] text-muted-foreground mb-0.5">{String(r.period)}{note}</div>
+                      <div className="flex justify-between gap-3 font-semibold border-b mb-1 pb-1"><span>합계</span><span className="chart-num">{formatCurrency(tot)}</span></div>
+                      {order.filter((ch) => Number(r[ch]) > 0).map((ch) => (
+                        <div key={ch} className="flex justify-between gap-3">
+                          <span>{labelOf(ch)}</span>
+                          <span className="chart-num">{formatCurrency(Number(r[ch]))} ({tot > 0 ? ((Number(r[ch]) / tot) * 100).toFixed(0) : 0}%)</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }}
+              />
+              <Legend {...legendProps}
+                formatter={(v) => <span style={{ color: "var(--foreground)" }}>{labelOf(String(v))}</span>} />
+              {order.map((ch, i) => (
+                <Bar {...barProps} key={ch} dataKey={ch} name={ch} stackId="channel" fill={color(ch)} isAnimationActive={false}
+                  stroke={shift?.channel === ch ? "var(--foreground)" : undefined} strokeWidth={shift?.channel === ch ? 1.5 : 0}
+                  radius={i === order.length - 1 ? BAR_RADIUS : NO_RADIUS}>
+                  {rows.map((r) => (
+                    <Cell key={String(r.period)} fillOpacity={r.state === "complete" ? 1 : INCOMPLETE_OPACITY} />
+                  ))}
+                </Bar>
+              ))}
+              {/* 합계 라벨. 막대 위 라벨은 맨 위 판매처 값이 0 인 주에 안 그려져서, 보이지 않는 선의 점에 단다. */}
+              <Line dataKey="__total" stroke="none" dot={false} activeDot={false} legendType="none" isAnimationActive={false} tooltipType="none">
+                <LabelList dataKey="__total" position="top" fontSize={10} fill="var(--muted-foreground)"
+                  formatter={(v: unknown) => (v == null ? "" : `${Math.round(Number(v) / 10000).toLocaleString("ko-KR")}만`)} />
+              </Line>
+            </ComposedChart>
+          </DeferredResponsiveContainer>
+        )}
 
         <div data-tour="sales-mix-rule" className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
+          {view === "calendar" ? (<>
+          <p>
+            기간 안 날짜는 매출이 0 인 날도 칸을 둡니다(가장 옅은 칸). 진하기는 동기화된 날 가운데 가장 큰 날을 5단계로 나눈 것입니다.
+            판매는 1~3일(길면 5일) 늦게 들어와, 빗금 바로 앞 며칠의 옅은 칸도 아직 덜 들어온 날일 수 있습니다(최근 5일 미반영 가능).
+          </p>
+          <p>
+            달력 줄은 월요일 시작이라 「주별」 막대(1월 1일이 든 주가 W01, 한국 시간 토요일 시작)와 묶음이 다릅니다. 별도 공구 판매처 행은 빠져 있어 위 매출 KPI 와 같은 범위입니다.
+          </p>
+          </>) : (<>
           <p>
             막대 위 숫자 = 그 {unit} 매출 합계(만원, 마우스를 올리면 원 단위). 흐린 막대 = 다 안 찬 {unit}
             {lastBucket && lastBucket.state === "in_progress" ? ` (마지막 ${lastBucket.period} 은 진행 중, 판매 동기화가 1~3일 늦게 들어옵니다)` : ""}. 비중 비교에서 뺍니다.
@@ -204,6 +241,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
             강조 규칙: 마지막 완료 {unit}의 {what} 비중을 직전 최대 {SHARE_LOOKBACK}{unit}(완료된 것만) 합계 비중과 비교해 가장 크게 움직인 {what} 하나에 테두리를 칩니다({SHARE_MIN_SHIFT_PP}%p 미만이면 표시하지 않음). 색은 설정 「채널 관리」·「브랜드 관리」 색과 같습니다.
             별도 공구 판매처 행은 빠져 있어 위 매출 KPI 와 같은 범위입니다.
           </p>
+          </>)}
         </div>
       </CardContent>
     </Card>
