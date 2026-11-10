@@ -141,12 +141,12 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
   //   광고비 막대: 광고비 원장 마지막 날(adThrough)까지 집행 ÷ 목표, 세로선 = 같은 날까지의 집계 진행률.
   //     오늘 장중 집행은 비교에 넣지 않는다(실제 돈은 아래 「잔여 광고예산」·초과 경고가 오늘 포함으로 보여 준다).
   //   ROAS·광고비 비중: 매출이 들어온 날(salesThrough)까지의 광고비로 나눈 값(서버 계산).
-  const adCompare = actual.adThroughSum ?? actual.ad;
+  //   광고비 금액은 실제 돈(오늘 장중 포함)으로 보여 주고, % 와 막대·세로선만 원장 마지막 날까지 기준이다.
   const adCompareAch = achievement.adThrough ?? achievement.ad;
   const salesNote = data.salesThrough ? ` (판매 ${md(data.salesThrough)}까지)` : "";
   const rows = [
     { key: "매출", target: target.revenue, actual: actual.revenue, ach: achievement.revenue, marker: salesProgress, fmt: formatCurrency, color: "#2563eb" },
-    { key: `광고비${data.adThrough ? ` (${md(data.adThrough)}까지)` : ""}`, target: target.ad, actual: adCompare, ach: adCompareAch, marker: adProgress, fmt: formatCurrency, color: "#dc2626", invert: true },
+    { key: "광고비", target: target.ad, actual: actual.ad, ach: adCompareAch, achNote: data.adThrough ? `${md(data.adThrough)}까지` : undefined, marker: adProgress, fmt: formatCurrency, color: "#dc2626", invert: true },
     { key: `ROAS${salesNote}`, target: target.roas, actual: actual.roas, ach: achievement.roas, marker: undefined, fmt: (v: number) => `${v.toFixed(2)}x`, color: "#10b981" },
     { key: `광고비 비중${salesNote}`, target: target.adRatio, actual: actual.adRatio, ach: target.adRatio > 0 ? actual.adRatio / target.adRatio : 0, marker: undefined, fmt: (v: number) => pct(v), color: "#8b5cf6", invert: true },
   ];
@@ -208,6 +208,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
                   <span className="text-xs text-muted-foreground">
                     <span className="text-foreground font-medium">{r.fmt(r.actual)}</span> / {r.fmt(r.target)}
                     <span className={`ml-2 font-semibold ${behind ? "text-red-500" : "text-foreground"}`}>{pct(r.ach)}</span>
+                    {"achNote" in r && r.achNote && <span className="ml-1 text-[10px]">({r.achNote} 기준)</span>}
                   </span>
                 </div>
                 <ProgressBar value={r.ach} marker={r.marker} color={r.color} />
