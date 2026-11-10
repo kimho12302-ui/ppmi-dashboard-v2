@@ -47,7 +47,7 @@ export function DmSettingsPanel({ settings, onSaved }: { settings: Setting[]; on
   const summary = `${vals["제안 종류"]} · ${vals["상품"]} · 체험 키트 ${vals["체험 키트 제공"]} · 공구가 ${vals["공구가 언급"] === "예" ? vals["공구가"] : "언급 안 함"} · 수수료 ${vals["수수료 언급"] === "예" ? vals["수수료"] : "언급 안 함"}`;
 
   return (
-    <div className="rounded-xl border">
+    <div className="rounded-xl border" data-tour="influencers-dm-settings">
       <button className="w-full flex items-center justify-between px-4 py-3 text-sm" onClick={() => setOpen(!open)}>
         <span><b>DM 제안 조건</b> <span className="text-muted-foreground ml-2">{summary}</span></span>
         <span className="text-xs text-muted-foreground">{open ? "접기" : "펼쳐서 수정"}</span>
@@ -94,7 +94,9 @@ const DM_STYLE: Record<string, string> = {
   회신: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
 };
 
-export function DmEditor({ row, onChanged }: { row: Row; onChanged: () => void }) {
+// tourAnchor = 표에서 DM 칸이 열린 첫 행에만 true. 가이드(단계별 투어)가 이 행의 칸을 가리킨다.
+export function DmEditor({ row, onChanged, tourAnchor = false }: { row: Row; onChanged: () => void; tourAnchor?: boolean }) {
+  const tour = (name: string) => (tourAnchor ? name : undefined);
   const h = row["핸들"];
   const [stLocal, setStLocal] = useState("");
   const st = stLocal || row["DM 상태"] || (row["상태"] === "후보" ? "초안 대기" : "");
@@ -133,7 +135,7 @@ export function DmEditor({ row, onChanged }: { row: Row; onChanged: () => void }
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-tour={tour("influencers-dm")}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="font-medium">DM</span>
         <span className={cn("px-2 py-0.5 rounded", DM_STYLE[st] || "bg-muted")}>{st || "-"}</span>
@@ -150,7 +152,7 @@ export function DmEditor({ row, onChanged }: { row: Row; onChanged: () => void }
         <div className="space-y-1">
           <textarea className="w-full min-h-[160px] rounded border bg-background px-2 py-1.5 text-sm leading-relaxed" value={text}
             onChange={(e) => setText(e.target.value)} disabled={sent || st === "승인" || busy === "fix"} />
-          <p className={cn("text-xs text-right tabular-nums", tooLong ? "text-red-500 font-medium" : "text-muted-foreground")}>
+          <p className={cn("text-xs text-right tabular-nums", tooLong ? "text-red-500 font-medium" : "text-muted-foreground")} data-tour={tour("influencers-dm-length")}>
             {text.length.toLocaleString()}/{IG_DM_MAX.toLocaleString()}자{tooLong && " · 인스타 DM 은 1,000자에서 잘려 보낼 수 없습니다. 줄여 주세요"}
           </p>
         </div>
@@ -164,7 +166,7 @@ export function DmEditor({ row, onChanged }: { row: Row; onChanged: () => void }
             <button className={cn(btn, "border")} disabled={!!busy || !dirty} onClick={() => act("save", { text })}>{busy === "save" ? "저장 중…" : "초안 저장"}</button>
           )}
           {st !== "승인" && text && row["상태"] === "후보" && (
-            <button className={cn(btn, "text-white")} style={{ background: "var(--primary)" }} disabled={!!busy || tooLong}
+            <button data-tour={tour("influencers-approve")} className={cn(btn, "text-white")} style={{ background: "var(--primary)" }} disabled={!!busy || tooLong}
               title={tooLong ? "1,000자를 넘으면 보낼 수 없습니다" : undefined} onClick={() => act("approve", { text })}>
               {busy === "approve" ? "승인 중…" : "발송 승인"}
             </button>
@@ -174,12 +176,12 @@ export function DmEditor({ row, onChanged }: { row: Row; onChanged: () => void }
             <>
               <input className="flex-1 min-w-[180px] rounded border bg-background px-2 py-1 text-xs" placeholder="고칠 지시 (예: 육아 얘기로 시작, 더 짧게)" value={instr} onChange={(e) => setInstr(e.target.value)} />
               {text && (
-                <button className={cn(btn, "border border-violet-500/50 text-violet-700 dark:text-violet-400")} disabled={!!busy} onClick={fixNow}
+                <button data-tour={tour("influencers-fix")} className={cn(btn, "border border-violet-500/50 text-violet-700 dark:text-violet-400")} disabled={!!busy} onClick={fixNow}
                   title="지금 초안과 시트에 있는 계정 정보로 Claude 가 바로 고칩니다. 프로필은 다시 읽지 않습니다">
                   {busy === "fix" ? "고치는 중…" : "바로 고치기"}
                 </button>
               )}
-              <button className={cn(btn, "border")} disabled={!!busy} onClick={() => act("redraft", { instruction: instr })}
+              <button data-tour={tour("influencers-redraft")} className={cn(btn, "border")} disabled={!!busy} onClick={() => act("redraft", { instruction: instr })}
                 title="PC 의 DM 워커가 다음 정시에 인스타 프로필을 다시 읽고 새로 씁니다">
                 {text ? "프로필 다시 읽고 새로 쓰기 (다음 정시)" : "초안 다시 쓰기"}
               </button>

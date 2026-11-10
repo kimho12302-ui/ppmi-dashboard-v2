@@ -37,7 +37,7 @@ export function DateRangeSelector({ preset, onChange, onCustomRange, from, to, i
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 flex-wrap">
+      <div data-tour="shell-period-filter" className="flex items-center gap-0.5 rounded-lg bg-muted p-1 flex-wrap">
         {PRESETS.map((p) => (
           <button
             key={p.value}
@@ -52,6 +52,7 @@ export function DateRangeSelector({ preset, onChange, onCustomRange, from, to, i
           </button>
         ))}
         <button
+          data-tour="shell-custom-range"
           onClick={() => setShowCustom(v => !v)}
           className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
             isCustom || showCustom

@@ -54,7 +54,9 @@ function InsightsInner() {
     <PageShell title="인사이트" description="목표 페이싱 · 트렌드 분석 · 효율 경고 · 원인 분석">
       {/* 목표 대비 페이싱: 의사결정 1순위 (통계시트 '광고 예산안' 재현).
           2026-11-03 김호 지시로 Overview 맨 위에서 이 화면 맨 위로 옮겼다. */}
-      <PacingSection brand={brand || "all"} from={from} to={to} />
+      <div data-tour="insights-pacing">
+        <PacingSection brand={brand || "all"} from={from} to={to} />
+      </div>
 
       {/* 일간 이상치 카드는 2026-11-03 뺐다. 마지막 이틀 ±30% 를 이상치로 불러 하루 1~2건인 브랜드가 -100% 로 떴다.
           "우연한 흔들림인지" 는 표본 크기를 감안하는 퍼널 관리도가 판정한다. */}
@@ -77,7 +79,7 @@ function InsightsInner() {
         </div>
       ) : (<>
       {/* Summary badges */}
-      <div className="flex flex-wrap gap-2">
+      <div data-tour="insights-badges" className="flex flex-wrap gap-2">
         {(["critical", "warning", "opportunity", "info"] as InsightType[]).map((level) => {
           const count = countByLevel[level] || 0;
           if (count === 0) return null;
@@ -91,7 +93,7 @@ function InsightsInner() {
       </div>
 
       {/* Insight cards */}
-      <div className="space-y-3">
+      <div data-tour="insights-cards" className="space-y-3">
         {insights.length === 0 && (
           <Card className="border-l-4 border-l-blue-500 bg-blue-500/5">
             <CardContent className="p-4">
@@ -147,7 +149,7 @@ function InsightsInner() {
       </div>
       </>)}
 
-      <Card>
+      <Card data-tour="insights-rules">
         <CardContent className="p-4">
           <p className="text-xs text-muted-foreground">
             규칙 기반 자동 감지: 전체 ROAS(기준 3.0x), 매체별 플랫폼 ROAS(1.0x·2.0x 미만), 전환 추적 미연동, 전환율·장바구니 이탈률, 브랜드·채널·제품 매출 비중, 이전 같은 기간 대비 15% 넘는 매출 감소의 브랜드·채널·제품별 분해.

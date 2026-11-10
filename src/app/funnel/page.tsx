@@ -137,7 +137,7 @@ function FunnelInner() {
   return (
     <PageShell title="퍼널" description="전환 퍼널 분석">
       {isSharedStorefront && (
-        <Card className="border-l-4 border-l-amber-500 bg-amber-500/5">
+        <Card className="border-l-4 border-l-amber-500 bg-amber-500/5" data-tour="funnel-shared-note">
           <CardContent className="p-3 flex items-start gap-2 text-sm">
             <span>ⓘ</span>
             <span>
@@ -149,26 +149,30 @@ function FunnelInner() {
 
       {/* KPI: 이 화면의 본문은 아래 원천별 단계표와 관리도라 KPI 는 compact 한 줄로 누른다.
           (원천별 구매 전환율 문장은 2026-11-04 뺐다. 단계표의 「유입 대비 %」와 같은 숫자다.) */}
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-3 gap-2.5" data-tour="funnel-kpis">
         <KpiCard size="compact" title="총 세션" value={formatNumber(sessionsStep?.value || 0)} />
         <KpiCard size="compact" title="장바구니 이탈률" value={abandonComputable ? `${abandonRate.toFixed(1)}%` : "산출 불가"} />
         <KpiCard size="compact" title="총 구매" value={formatNumber(purchaseVal)} subtitle={repurchase.value > 0 ? `재구매 ${formatNumber(repurchase.value)}건 · ${repurchase.rate.toFixed(1)}%` : undefined} />
       </div>
       {cartNote && (
-        <p className="text-xs text-muted-foreground -mt-2">
+        <p className="text-xs text-muted-foreground -mt-2" data-tour="funnel-cart-note">
           ⓘ {abandonComputable ? `장바구니 이탈률은 ${cartNote}` : cartNote}
         </p>
       )}
 
       {/* 원천별 단계표 (2026-11-03, 옛 「전환 퍼널」 깔때기 대체). 원천 사이를 잇거나 합치지 않는다. */}
-      <SourceFunnelSteps brand={brand || "all"} from={from} to={to} />
+      <div data-tour="funnel-steps">
+        <SourceFunnelSteps brand={brand || "all"} from={from} to={to} />
+      </div>
 
       {/* 판단용: 일별 전환율 관리도 (2026-11-03). 같은 원천의 유입·구매로만 계산한다. */}
-      <ConversionControlChart brand={brand || "all"} from={from} to={to} />
+      <div data-tour="funnel-control">
+        <ConversionControlChart brand={brand || "all"} from={from} to={to} />
+      </div>
 
       {/* 일별 추이: 노출·유입·구매 중 하나를 골라 본다. 재구매는 퍼널 단계가 아니라 별도 수치라 위 구매 카드에 적는다. */}
       {trend.length > 0 && (
-        <Card>
+        <Card data-tour="funnel-trend-impressions">
           <CardContent className="p-4">
             <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
               <div>
@@ -207,7 +211,7 @@ function FunnelInner() {
 
       {/* 채널별 퍼널 비교 */}
       {channelFunnel.length > 0 && (
-        <Card>
+        <Card data-tour="funnel-channel-compare">
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">채널별 퍼널 비교</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -261,7 +265,7 @@ function FunnelInner() {
 
       {/* Meta 광고 퍼널: 노출→클릭(CTR)만 실측. 도달은 미수집이라 칸을 두지 않는다. */}
       {metaFunnel.impressions > 0 && (
-        <Card className="border-l-4 border-l-blue-500">
+        <Card className="border-l-4 border-l-blue-500" data-tour="funnel-meta">
           <CardContent className="p-4">
             <h3 className="font-semibold mb-4">Meta 광고 퍼널</h3>
             <div className="flex items-center gap-1">

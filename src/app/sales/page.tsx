@@ -18,6 +18,7 @@ import { periodKey, periodAxis } from "@/lib/sales-period";
 import { ChannelMixChart } from "@/components/judge/channel-mix-chart";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { isGonggu as isGongguRow, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
+import { buildComponentIndex, expandSales, type ComponentRow } from "@/lib/product-components";
 import { Suspense, useMemo, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
@@ -64,6 +65,7 @@ function SalesPageInner() {
     prevSales: DailySales[];
     blDaily?: { date: string; self: number; gonggu: number }[];
     gongguSalesTotal?: number;
+    productComponents?: ComponentRow[];
   }>(`/api/dashboard?${params}&raw=sales,products,prevSales&lean=1`);
   // (채널 효율 사분면은 2026-11-03 뺐다: 신고 전환으로 만든 CAC·ROAS 라 매체 간 비교가 성립하지 않는다.
   //  매체 효율은 /ads 매체별 상세 표와 네이버 캠페인 12주 스몰 멀티플이 본다.)
@@ -192,9 +194,11 @@ function SalesPageInner() {
   }, [products]);
 
   /* TOP 제품 */
+  // 판매 상품을 구성표로 기본 품목까지 풀어 센다(2026-11-09, src/lib/product-components.ts).
+  // 「스트레스제로껌 2개」는 껌 2개, 「뉴트리션 + 종이결과지」는 뉴트리션 1 + 종이결과지 1. 표가 없으면 그대로.
   const topProducts = useMemo(() => {
     const map: Record<string, { revenue: number; quantity: number; product: string; brand: string }> = {};
-    for (const r of products) {
+    for (const r of expandSales(products, buildComponentIndex(data?.productComponents))) {
       const key = `${r.brand}-${r.product}`;
       if (!map[key]) map[key] = { revenue: 0, quantity: 0, product: r.product, brand: r.brand };
       map[key].revenue += r.revenue || 0;
@@ -203,7 +207,7 @@ function SalesPageInner() {
     return Object.values(map)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10);
-  }, [products]);
+  }, [products, data?.productComponents]);
 
   if (loading) {
     return (
@@ -225,7 +229,7 @@ function SalesPageInner() {
   return (
     <PageShell title="매출 분석" description="판매처별·브랜드별 매출 트렌드">
       {/* KPI: 매출이 이 화면의 대표 지표라 hero, 주문·객단가는 보조(compact). */}
-      <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
+      <div data-tour="sales-kpi" className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-3">
         <KpiCard size="hero" title="매출" subtitle="판매 원장 자체매출(공구 제외)" value={formatCurrency(totals.revenue)} change={pctChange(totals.revenue, prevTotals.revenue)} changeLabel="직전 같은 기간 대비" />
         <div className="grid grid-cols-2 sm:grid-cols-1 gap-2.5">
           <KpiCard size="compact" title="주문 수" value={formatNumber(totals.orders)} change={pctChange(totals.orders, prevTotals.orders)} />
@@ -236,10 +240,12 @@ function SalesPageInner() {
       {/* 판단용: 매출 구성 (2026-11-03). 예전 '주별/월별 매출' 합계 막대를 판매처별로 쌓았다.
           2026-11-04 「판매처 / 브랜드」 쌓기 토글을 붙이고 「브랜드별 누적 매출 트렌드」(일별 브랜드 막대)를 뺐다.
           막대 높이(그 주·월 합계)는 예전과 같다. 기간 합계는 아래 판매처 카드가 보여 준다. */}
-      <ChannelMixChart sales={sales} channels={byChannel} from={from} to={to} />
+      <div data-tour="sales-channel-mix">
+        <ChannelMixChart sales={sales} channels={byChannel} from={from} to={to} />
+      </div>
 
       {CATEGORY_BRANDS.includes(brand) && byCategory.length > 0 && (
-        <Card>
+        <Card data-tour="sales-category">
           <CardContent className="p-4">
             <h3 className="font-semibold">카테고리별 매출</h3>
             <p className="text-xs text-muted-foreground mt-0.5 mb-3">가로 = 원(상품 판매 원장), {BRAND_LABELS[brand] || brand} 분류 기준</p>
@@ -258,7 +264,7 @@ function SalesPageInner() {
 
       {(
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div data-tour="sales-store-cards" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {byChannel.map((c) => (
               <Card key={c.channel} className="p-4" style={{ borderLeft: `4px solid ${c.color}` }}>
                 <CardContent className="p-0 space-y-1">
@@ -279,12 +285,14 @@ function SalesPageInner() {
 
       {/* 상품 추이는 화면 중간 아래다. 올해 전체면 응답이 커서(묶음 4천여 줄) 위쪽 숫자까지 늦췄다.
           보일 때 부른다(2026-10-14). */}
-      <LazyMount minHeight={420}>
-        <ProductTrendChart brand={brand || "all"} from={from} to={to} />
-      </LazyMount>
+      <div data-tour="sales-product-trend">
+        <LazyMount minHeight={420}>
+          <ProductTrendChart brand={brand || "all"} from={from} to={to} />
+        </LazyMount>
+      </div>
 
       {(
-        <Card>
+        <Card data-tour="sales-top10">
           <CardContent className="p-4 overflow-x-auto">
             <h3 className="font-semibold mb-4">TOP 10 제품</h3>
             <table className="w-full text-sm">
@@ -327,7 +335,7 @@ function SalesPageInner() {
       {(!brand || brand === "all" || brand === "balancelab") && (
         <div className="space-y-4">
           {/* 자체 vs 공구 비교 */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div data-tour="sales-bl-summary" className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Card>
               <CardContent className="p-4 text-center">
                 <p className="text-sm text-muted-foreground">밸런스랩 전체</p>
@@ -351,7 +359,7 @@ function SalesPageInner() {
           </div>
 
           {/* 자체 vs 공구 시간 추이 */}
-          <Card>
+          <Card data-tour="sales-bl-trend">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold">밸런스랩 자체 vs 공구 추이</h3>
@@ -396,7 +404,7 @@ function SalesPageInner() {
           </Card>
 
           {/* 셀러별 테이블 */}
-          <Card>
+          <Card data-tour="sales-gonggu-sellers">
             <CardContent className="p-4">
               <h3 className="font-semibold mb-3">공구 셀러별 매출</h3>
               {gongguData.sellers.length > 0 ? (

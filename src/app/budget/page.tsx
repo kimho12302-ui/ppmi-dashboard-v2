@@ -100,14 +100,14 @@ function BudgetInner() {
   return (
     <PageShell title="예산 페이싱" description={`${yearNum}년 ${monthNum}월 광고 예산 집행 (${t?.daysElapsed ?? 0}/${t?.daysInMonth ?? 0}일 경과, 광고비 원장 ${adDays}일치${t?.adThrough ? ` · ${t.adThrough}까지` : ""}, 매체비 기준)`} hideFilters>
       {!hasTarget && (
-        <Card><CardContent className="p-4 text-sm text-muted-foreground">
+        <Card data-tour="budget-no-target"><CardContent className="p-4 text-sm text-muted-foreground">
           이번 달 광고예산 목표가 없습니다. <a href="/settings?tab=targets" className="text-primary hover:underline">설정 &gt; 목표설정</a>에서 등록하면 목표 대비 소진율이 표시됩니다.
         </CardContent></Card>
       )}
 
       {/* 예산 초과 경고 */}
       {hasTarget && remaining < 0 && (
-        <Card className="border-l-4 border-l-red-500 bg-red-500/5">
+        <Card data-tour="budget-over" className="border-l-4 border-l-red-500 bg-red-500/5">
           <CardContent className="p-3 text-sm font-medium text-red-600">
             ⚠ 광고예산 초과: {formatCurrency(Math.abs(remaining))} (목표 {formatCurrency(targetAd)} 대비 {pct(consumption)} 소진)
           </CardContent>
@@ -115,7 +115,7 @@ function BudgetInner() {
       )}
 
       {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div data-tour="budget-kpi" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard title="목표 광고예산" value={hasTarget ? formatCurrency(targetAd) : "-"} subtitle="이번 달 매체비 목표" />
         <KpiCard title="집행" value={formatCurrency(actualAd)} subtitle={hasTarget ? `소진율 ${pct(consumptionThrough)} · 집계 진행 ${pct(adProgress)} (어제까지 기준)` : `일 평균 ${formatCurrency(Math.round(dailyAvg))} (원장 ${adDays}일)`} />
         <KpiCard title="월말 예상" value={formatCurrency(projected)} subtitle={`일 평균 × ${t?.daysInMonth ?? 0}일 (원장 ${adDays}일 기준)${hasTarget ? (projOver ? ` · 목표 ${formatCurrency(targetAd)} 초과 예상` : ` · 목표 대비 ${pct(targetAd > 0 ? projected / targetAd : 0)}`) : ""}`} />
@@ -124,7 +124,7 @@ function BudgetInner() {
 
       {/* 소진 페이스 바 */}
       {hasTarget && (
-        <Card>
+        <Card data-tour="budget-pace">
           <CardContent className="p-4 space-y-2">
             <div className="flex items-center justify-between text-sm">
               <h3 className="font-semibold">예산 소진 페이스</h3>
@@ -142,7 +142,7 @@ function BudgetInner() {
       )}
 
       {/* 브랜드별 목표 대비 집행 */}
-      <Card>
+      <Card data-tour="budget-brands">
         <CardContent className="p-4">
           <h3 className="font-semibold mb-4">브랜드별 광고예산 (목표 대비)</h3>
           <div className="space-y-3">
@@ -178,7 +178,7 @@ function BudgetInner() {
 
       {/* 매체별 집행: 예전엔 막대그래프와 표가 같은 금액을 두 번 보여 줬다(2026-11-04 하나로).
           매체별 일별 내역은 「매체별 집행」 화면에 있다. */}
-      <Card>
+      <Card data-tour="budget-channel-table">
         <CardContent className="p-4 overflow-x-auto">
           <h3 className="font-semibold mb-3">매체별 집행 (이번 달)</h3>
           <table className="w-full text-sm">

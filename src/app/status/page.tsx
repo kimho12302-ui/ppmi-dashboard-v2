@@ -31,12 +31,12 @@ export default function StatusPage() {
         <div className="space-y-6">
           <Verdict data={data} onRefresh={refresh} loading={loading} />
 
-          <section>
+          <section data-tour="status-issues">
             <SectionTitle title="고장·주의" hint={`기준일 ${data.referenceDate} (어제까지 들어와 있어야 정상)`} />
             <IssueList issues={data.issues} />
           </section>
 
-          <section>
+          <section data-tour="status-sources">
             <SectionTitle
               title="소스별 신선도"
               hint="회색은 일부러 멈췄거나 운영하지 않는 채널입니다. 고장이 아닙니다"
@@ -46,19 +46,25 @@ export default function StatusPage() {
 
           <section className="space-y-3">
             <SectionTitle title="자동화 상태" hint="매일 도는 수집이 오늘 돌았는지" />
+            <div data-tour="status-automation">
             <CollectorTable rows={data.collectors} dailySync={data.dailySync} />
+            </div>
+            <div data-tour="status-local-collect">
             <OpsStatusPanel
               section="collector"
               title="로컬 자동 수집 (관제판 보고)"
               hint="쿠팡 광고비·GFA·카페24·스마트스토어는 로컬 aside 수집기가 매일 07:36 에 채웁니다. 로그인이 풀리면 사람이 다시 로그인해야 합니다"
             />
+            </div>
+            <div data-tour="status-report">
             <OpsStatusPanel section="report" title="보고 자동화" />
+            </div>
             <p className="text-xs text-muted-foreground">
               콘텐츠 자동화 상태는 <Link href="/content" className="underline underline-offset-2">콘텐츠/SNS</Link> 화면에 있습니다.
             </p>
           </section>
 
-          <section>
+          <section data-tour="status-inputs">
             <SectionTitle title="손 입력 대기" />
             <InputList inputs={data.inputs} />
           </section>

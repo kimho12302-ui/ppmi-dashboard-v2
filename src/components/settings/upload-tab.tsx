@@ -246,6 +246,7 @@ export function UploadTab() {
           <h3 className="text-lg font-semibold">📤 엑셀 업로드</h3>
 
           {/* 판매 실적 */}
+          <div data-tour="daily-upload-sales">
           <BatchUploadSection
             title="판매 실적 (이카운트)"
             description="이카운트 엑셀 → 제품별/일별 매출 (DB + 시트 동시 기록). 파일 내 날짜 자동 인식."
@@ -254,8 +255,10 @@ export function UploadTab() {
             onUpload={uploadSales}
             onSuccess={refreshMissing}
           />
+          </div>
 
           {/* 쿠팡 퍼널 */}
+          <div data-tour="daily-upload-coupang-funnel">
           <BatchUploadSection
             title="쿠팡 퍼널"
             description="쿠팡 퍼널 엑셀 → 조회/방문자/장바구니/구매"
@@ -264,9 +267,10 @@ export function UploadTab() {
             onUpload={uploadCoupangFunnel}
             onSuccess={refreshMissing}
           />
+          </div>
 
           {/* 쿠팡 광고 보고서 */}
-          <div className="border rounded-lg p-4 space-y-3">
+          <div data-tour="daily-upload-coupang-ads" className="border rounded-lg p-4 space-y-3">
             <div>
               <h4 className="font-medium">쿠팡 광고 보고서</h4>
               <p className="text-xs text-muted-foreground">쿠팡 광고 엑셀 → 광고비/노출/클릭/전환</p>

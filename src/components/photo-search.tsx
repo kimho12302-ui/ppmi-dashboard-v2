@@ -284,7 +284,7 @@ export function PhotoSearch() {
   const emptyResult = !loading && !problem && req.q.length >= MIN_QUERY_LEN && photos.length === 0;
 
   return (
-    <BoardCard>
+    <BoardCard tour="content-photo">
       <Masthead
         eyebrow="사진 찾기"
         title="Pexels 실사진 검색"

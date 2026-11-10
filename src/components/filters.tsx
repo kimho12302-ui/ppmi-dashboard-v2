@@ -32,7 +32,7 @@ export function Filters({
   return (
     <div className="flex flex-wrap items-center gap-3 overflow-x-auto">
       {/* 브랜드 필터 — 기본은 그룹(전체/펫/밸런스랩), 사이드바에서 개별 브랜드 진입 시 활성 칩 추가 표시 */}
-      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 flex-shrink-0">
+      <div data-tour="shell-brand-filter" className="flex items-center gap-0.5 rounded-lg bg-muted p-1 flex-shrink-0">
         {BRANDS.filter((b) => !(hideAllBrand && b === "all")).map((b) => (
           <button
             key={b}

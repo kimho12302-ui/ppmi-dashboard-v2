@@ -13,7 +13,7 @@ interface MonthlyParts {
   gonggu: { month: string; channel: string; lineup: string | null; product: string; revenue: number; n: number }[];
   cogs: { month: string; product: string; brand: string; channel: string; lineup: string | null; quantity: number; n: number }[];
 }
-import { isGongguInDailySales } from "@/lib/gonggu";
+import { isGongguInDailySales, formAByDateChannel } from "@/lib/gonggu";
 import { kstDate, kstNow } from "@/lib/date";
 import { cachedGET } from "@/lib/api-cache";
 
@@ -91,13 +91,13 @@ async function getImpl(request: NextRequest) {
     const shipData = shipRes.data;
     const productCostsData = productCostsRes.data;
 
+    // 공구 판정·금액은 다른 화면과 같은 함수(gonggu.ts formAByDateChannel)로 구한다.
+    // 이 화면은 매출을 달 합계로만 받아(DB 합산 함수 sales 묶음에 판매처·브랜드 칸이 없다)
+    // 날짜·판매처까지 맞춰 뺄 수 없어 달 단위로 뺀다. 지금 원장에선 결과가 같다
+    // (형식-A 공구는 전부 스마트스토어, 밸런스랩 매출 행은 하루 한 줄, 2026-11-09 실측).
     const formAByMonth = new Map<string, number>();
-    for (const r of ps as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
-      if (isGongguInDailySales(r)) {
-        const m = r.date.slice(0, 7);
-        formAByMonth.set(m, (formAByMonth.get(m) || 0) + Number(r.revenue || 0));
-      }
-    }
+    formAByDateChannel(ps as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[])
+      .forEach((v, k) => { const m = k.slice(0, 7); formAByMonth.set(m, (formAByMonth.get(m) || 0) + v); });
 
     const costMap = new Map<string, number>();
     for (const pc of productCostsData || []) {

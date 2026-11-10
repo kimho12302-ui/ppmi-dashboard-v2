@@ -39,7 +39,7 @@ export function GfaInputCard({ today, onSaved }: { today: string; onSaved?: () =
   };
 
   return (
-    <Card>
+    <Card data-tour="daily-gfa">
       <CardContent className="p-4">
         <ManualRowTable
           title="GFA 광고비 (너티·사입·밸런스랩 브랜드별)"
@@ -94,8 +94,11 @@ export function MiscCostCard({ onSaved }: { onSaved?: () => void }) {
             body: JSON.stringify({ type: "misc_cost", forceOverride: true, data: { date, brand: BRAND_MAP[brand] || brand, category, description, amount: Number(amount) || 0, note } }),
           });
           const j2 = await res2.json();
-          setStatus(res2.ok ? "✅ 저장 완료" : `❌ ${j2.error}`);
-          if (res2.ok) { setDescription(""); setAmount(""); setNote(""); }
+          // 덮어쓰기는 기존 줄의 금액·비고를 바꾼다(서버가 id 로 update). 새 줄이 생기지 않는다.
+          setStatus(res2.ok ? (j2.updated ? "✅ 저장 완료 (기존 비용을 새 값으로 바꿈)" : "✅ 저장 완료") : `❌ ${j2.error || j2.message}`);
+          if (res2.ok) { setDescription(""); setAmount(""); setNote(""); onSaved?.(); }
+        } else {
+          setStatus("취소됨: 저장하지 않았습니다");
         }
       } else {
         setStatus(res.ok ? "✅ 저장 완료" : `❌ ${json.error || json.message}`);
@@ -107,7 +110,7 @@ export function MiscCostCard({ onSaved }: { onSaved?: () => void }) {
   const sel = "border rounded px-2 py-1.5 text-sm bg-transparent w-full";
 
   return (
-    <Card>
+    <Card data-tour="daily-misc-cost">
       <CardContent className="p-4 space-y-3">
         <h3 className="font-medium">🧾 건별 비용 입력 <span className="text-xs text-muted-foreground font-normal">인플루언서/협찬/촬영비/디자인비 등</span></h3>
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
@@ -203,7 +206,7 @@ export function EventInputCard() {
   const brandLabels: Record<string, string> = { all: "전체", nutty: "너티", ironpet: "아이언펫", saip: "사입", balancelab: "밸런스랩" };
 
   return (
-    <Card>
+    <Card data-tour="daily-event">
       <CardContent className="p-4 space-y-3">
         <h3 className="font-medium">📌 마케팅 이벤트 <span className="text-xs text-muted-foreground font-normal">캠페인·프로모션·신제품 출시 등, 차트에 표시됨</span></h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -264,4 +267,3 @@ export function EventInputCard() {
     </Card>
   );
 }
-

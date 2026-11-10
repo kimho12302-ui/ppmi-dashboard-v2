@@ -7,6 +7,8 @@ import { useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { SortTable, type SortCol } from "@/components/sort-table";
 import { NaverAddKeywordCard } from "@/components/add-keyword-candidates";
+import { RoutineCandidates, MedinexTestCard, ShoppingRankCard } from "@/components/sa-balancelab-cards";
+import { SaChangeLog } from "@/components/sa-change-log";
 
 // 키워드 탭 > 네이버 검색어. 사람들이 실제로 친 검색어(등록 키워드가 아님). 2026-09-18 신설.
 // 네이버는 **파워링크 검색어 단위 전환을 주지 않는다.** 구매·ROAS 는 쇼핑검색에만 있다. 파워링크 전환은
@@ -18,6 +20,11 @@ import { NaverAddKeywordCard } from "@/components/add-keyword-candidates";
 //     전체  → 칩 [전체·너티·사입·아이언펫·밸런스랩]
 //     펫    → 칩 [전체·너티·사입·아이언펫]   (밸런스랩 칩은 안 보인다)
 //     그 외 → 칩 없음. 상단에서 이미 하나로 좁혔다
+//
+// ★ 2026-11-10: 키워드 화면은 상단 「전체」를 없앴다(펫 계정과 밸런스랩 계정은 키워드가 안 겹친다, 김호 확인).
+//   그래서 「전체」 칩 줄(밸런스랩 칩이 상단 밸런스랩과 겹치던 줄)은 지웠다. 펫일 때만 안쪽 칩이 남는다.
+//   밸런스랩이면 이 탭 아래에 밸런스랩 검색광고 일을 모은다: 추가할 검색어(실적 후보 + 루틴 후보),
+//   메디넥스 10일 시험, 메디넥스 쇼핑 자연 순위, 직접 조정 이력(키워드 분석 탭에서 옮겨 옴).
 
 type AdType = "powerlink" | "shopping";
 interface Sum { impressions: number; clicks: number; cost: number; purchases: number; purchase_value: number; cart_adds: number }
@@ -51,10 +58,6 @@ const nameCol = (label: string): SortCol<Row> => ({ key: "name", label, value: (
 
 // 상단 브랜드 필터별로 하위에 낼 칩. 빈 배열이면 칩 줄 자체를 안 그린다.
 const SUB_BRANDS: Record<string, { key: string; label: string }[]> = {
-  all: [
-    { key: "all", label: "전체" }, { key: "nutty", label: "너티" }, { key: "saip", label: "사입" },
-    { key: "ironpet", label: "아이언펫" }, { key: "balancelab", label: "밸런스랩" },
-  ],
   pet: [
     { key: "pet", label: "전체" }, { key: "nutty", label: "너티" },
     { key: "saip", label: "사입" }, { key: "ironpet", label: "아이언펫" },
@@ -67,6 +70,7 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
   // 옮기면 사입 데이터가 밸런스랩 화면에 남는다.
   const [sub, setSub] = useState<string | null>(null);
   const effective = subs.some(s => s.key === sub) ? (sub as string) : brand;
+  const isBl = effective === "balancelab";
   const { data, loading } = useFetch<Resp>(`/api/naver-search-terms?brand=${effective}&from=${from}&to=${to}`);
   const [type, setType] = useState<"all" | AdType>("all");
   const [picked, setPicked] = useState<string | null>(null);
@@ -135,7 +139,7 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
             ))}
           </div>
         )}
-        <div className="flex gap-0.5 rounded-lg bg-muted p-1">
+        <div className="flex gap-0.5 rounded-lg bg-muted p-1" data-tour="keywords-naver-type">
           {([["all", "전체"], ["powerlink", "파워링크"], ["shopping", "쇼핑검색"]] as const).map(([k, l]) => (
             <button key={k} onClick={() => { setType(k); setPicked(null); }}
               className={cn("px-3 py-1.5 text-xs rounded-md", type === k ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>{l}</button>
@@ -153,6 +157,7 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
             {data?.latestCollected && data.latestCollected >= from && (
               <p className="text-xs">수집은 돌고 있습니다. 이 브랜드가 그 기간에 검색광고를 집행하지 않았다는 뜻입니다.</p>
             )}
+            {isBl && <div className="pt-3 border-t mt-3"><RoutineCandidates /></div>}
           </CardContent></Card>
         ) : (
           <>
@@ -169,7 +174,7 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
               <KpiCard title="장바구니 (쇼핑검색)" value={formatNumber(total.cart_adds)} />
             </div>
 
-            <Card><CardContent className="p-4">
+            <Card data-tour="keywords-naver-products"><CardContent className="p-4">
               <h3 className="font-semibold text-sm">상품별 <span className="text-xs font-normal text-muted-foreground">쇼핑검색은 상품, 파워링크는 광고그룹 · 누르면 아래 검색어 표가 그 상품으로 바뀝니다</span></h3>
               <div className="mt-2">
                 <SortTable rows={products} initial="cost" onRowClick={(r) => pick(r.name)} activeName={picked} maxHeight={360}
@@ -179,7 +184,7 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
             </CardContent></Card>
 
             {waste.length > 0 && (
-              <Card><CardContent className="p-4">
+              <Card data-tour="keywords-naver-waste"><CardContent className="p-4">
                 <h3 className="font-semibold text-sm">돈만 쓰는 검색어 <span className="text-xs font-normal text-muted-foreground">쇼핑검색 · 광고비 {formatCurrency(WASTE_MIN_COST)} 이상 · 구매 0 · {waste.length}개</span></h3>
                 <p className="text-xs text-muted-foreground mb-2">제외 검색어 후보입니다. 기간이 짧으면 우연일 수 있으니 기간을 넓혀 다시 보세요.</p>
                 <SortTable rows={waste} initial="cost" maxHeight={320}
@@ -188,7 +193,7 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
             )}
 
             {/* 추가할 검색어(2026-10-20). 위 유형·상품 선택과 무관하게 이 브랜드 전체를 본다. */}
-            <NaverAddKeywordCard brand={effective} from={from} to={to} />
+            <NaverAddKeywordCard brand={effective} from={from} to={to} routine={isBl ? <RoutineCandidates /> : undefined} />
 
             <div ref={kwRef} className="scroll-mt-4">
               <Card><CardContent className="p-4 space-y-3">
@@ -210,6 +215,16 @@ export function NaverSearchTermSection({ brand, from, to }: { brand: string; fro
             </div>
           </>
         )}
+
+      {/* 밸런스랩 검색광고 운영(2026-11-10). 검색어 표와 따로, 기간과 무관한 칸들이다. */}
+      {isBl && (
+        <div className="space-y-4" data-tour="keywords-bl-sa">
+          <h3 className="text-sm font-semibold pt-2">밸런스랩 검색광고 운영 <span className="text-xs font-normal text-muted-foreground">위 기간 선택과 관계없이 최신 기록</span></h3>
+          <MedinexTestCard />
+          <ShoppingRankCard />
+          <SaChangeLog brand="balancelab" />
+        </div>
+      )}
     </div>
   );
 }

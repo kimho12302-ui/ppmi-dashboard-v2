@@ -7,7 +7,7 @@ import { EventManagerPanel } from "@/components/event-markers";
 export function EventsTab() {
   return (
     <div className="space-y-4">
-      <Card>
+      <Card data-tour="settings-events">
         <CardContent className="p-4">
           <h3 className="font-semibold mb-1">마케팅 이벤트 관리</h3>
           <p className="text-xs text-muted-foreground mb-4">

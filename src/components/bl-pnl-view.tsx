@@ -115,7 +115,7 @@ export function BlPnlView({ year, pick, onPickChange }: { year: string; pick: Pi
   const label = PICKS.find((p) => p.key === pick)?.label ?? "";
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
+      <div data-tour="pnl-product-buttons" className="flex flex-wrap items-center gap-2">
         {PICKS.map((p) => (
           <button key={p.key} onClick={() => setPick(p.key)}
             className={cn("px-3 py-1.5 text-sm rounded-md border transition-colors",
@@ -123,7 +123,7 @@ export function BlPnlView({ year, pick, onPickChange }: { year: string; pick: Pi
             {p.label}
           </button>
         ))}
-        <button onClick={download} disabled={!data} className="ml-auto px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
+        <button data-tour="pnl-excel" onClick={download} disabled={!data} className="ml-auto px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
           엑셀로 내려받기
         </button>
       </div>
@@ -132,14 +132,17 @@ export function BlPnlView({ year, pick, onPickChange }: { year: string; pick: Pi
       {loading && !data && <div className="h-64 rounded-xl bg-muted animate-pulse" />}
       {view && (
         <>
+          <div data-tour="pnl-gonggu-table">
           <PnlBlockTable title={`${label} · 공구`} marketingLabel="마케팅비(수수료)"
             subtitle={`마케팅비 = 매출 × ${(GONGGU_COMMISSION_RATE * 100).toFixed(1)}% · 배송비 = ${won(SHIP_FEE)}원 × 주문 ${GONGGU_SHIP_TIMES}회`}
             rows={view.gRows} total={view.gTotal} totalNote="공구 구분 불가 달은 뺀 합계" />
+          </div>
           {editing && canEdit && (
             <ManualCostEditor key={`${pick}-${editing.month}`} month={editing.month} product={pick}
               items={editing.products[pick].extra ?? []} ready={data?.manualCostReady ?? false}
               onClose={() => setEditMonth(null)} onSaved={refetch} />
           )}
+          <div data-tour="pnl-self-table">
           <PnlBlockTable title={`${label} · 자체`} marketingLabel="마케팅비(광고비 + 광고 외)"
             subtitle={canEdit
               ? "마케팅비 = 네이버 검색·쇼핑 + 메타 광고비(GFA 제외) + 광고 외 마케팅비(체험 키트 원가 등). 칸에 마우스를 올리면 내역, 누르면 광고 외 마케팅비 입력"
@@ -147,6 +150,7 @@ export function BlPnlView({ year, pick, onPickChange }: { year: string; pick: Pi
             rows={view.sRows} total={view.sTotal}
             onMarketingClick={canEdit ? (m) => setEditMonth((cur) => (cur === m ? null : m)) : undefined}
             editingMonth={editMonth} />
+          </div>
         </>
       )}
       <RulesCard />
@@ -156,7 +160,7 @@ export function BlPnlView({ year, pick, onPickChange }: { year: string; pick: Pi
 
 function RulesCard() {
   return (
-    <Card>
+    <Card data-tour="pnl-rules">
       <CardContent className="p-4 space-y-3 text-sm">
         <h3 className="font-semibold">계산 규칙과 설정값</h3>
         <table className="text-xs border-collapse">
@@ -227,7 +231,7 @@ function ManualCostEditor({ month, product, items, ready, onClose, onSaved }: {
   const valid = trimmed.length > 0 && trimmed.length <= MANUAL_COST_KIND_MAX && amount.trim() !== "" && Number.isInteger(parsed) && parsed >= 0;
   const inputCls = "px-2 py-1.5 rounded-md border bg-background text-sm text-foreground disabled:opacity-60";
   return (
-    <Card className="border-primary/40">
+    <Card data-tour="pnl-editor" className="border-primary/40">
       <CardContent className="p-4 space-y-3 text-sm">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h3 className="font-semibold">광고 외 마케팅비 · {productConfig(product).label} · {Number(month.slice(5))}월</h3>

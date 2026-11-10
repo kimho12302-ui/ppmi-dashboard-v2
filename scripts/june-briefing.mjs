@@ -1,7 +1,9 @@
+// 2026-11-09 대시보드 전체 잠금: 환경변수 PPMI_API_KEY 를 x-ppmi-key 로 보낸다 (값은 C:/Users/harry/.claude/secrets/secrets.env)
+const KEY_HEADERS = process.env.PPMI_API_KEY ? { "x-ppmi-key": process.env.PPMI_API_KEY } : {};
 const B = "https://ppmi-dashboard-kappa.vercel.app";
 const J = { from: "2026-06-01", to: "2026-06-27" };   // 6월 MTD
 const M = { from: "2026-05-01", to: "2026-05-31" };   // 5월 비교
-const g = async (p) => { const r = await fetch(B + p); return r.ok ? r.json() : { __err: r.status }; };
+const g = async (p) => { const r = await fetch(B + p, { headers: KEY_HEADERS }); return r.ok ? r.json() : { __err: r.status }; };
 const won = (n) => Math.round(n || 0).toLocaleString();
 
 const [dJun, dMay, cgJun, cgMay, pac, fun] = await Promise.all([

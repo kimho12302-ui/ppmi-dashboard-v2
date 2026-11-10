@@ -79,7 +79,7 @@ type View = "work" | "photos";
 
 function ViewSwitch({ view, onChange }: { view: View; onChange: (v: View) => void }) {
   return (
-    <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
+    <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit" data-tour="content-view-switch">
       {([
         { key: "work", label: "성과·진행" },
         { key: "photos", label: "사진 찾기" },
@@ -179,8 +179,10 @@ function ContentInner() {
     return (
       <PageShell hideAllBrand title={PAGE_TITLE} description={PAGE_DESC}>
         <ViewSwitch view={view} onChange={setView} />
-        <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행" brand={brand}
-          hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
+        <div data-tour="content-ops">
+          <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행" brand={brand}
+            hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
+        </div>
         <BrandBoards brand={brand} />
         <Card>
           <CardContent className="p-8 text-center text-muted-foreground">
@@ -194,11 +196,13 @@ function ContentInner() {
   return (
     <PageShell hideAllBrand title={PAGE_TITLE} description={PAGE_DESC}>
       <ViewSwitch view={view} onChange={setView} />
-      <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행" brand={brand}
-        hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
+      <div data-tour="content-ops">
+        <OpsStatusPanel section="content" title="✍️ 콘텐츠 진행" brand={brand}
+          hint="작성부터 발행까지 어디서 막혔는지. 발행 대기(Staged)가 오래 쌓이면 뒤 공정이 멈춘 것입니다." />
+      </div>
       <BrandBoards brand={brand} />
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3" data-tour="content-kpis">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">총 게시물</p>
@@ -232,7 +236,7 @@ function ContentInner() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit">
+      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit" data-tour="content-tabs">
         {([
           { key: "overview", label: "유형별 성과" },
           { key: "trend", label: "트렌드" },
@@ -253,7 +257,7 @@ function ContentInner() {
       {tab === "overview" && (
         <>
           {/* Content type performance bar chart */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-tour="content-type-charts">
             <Card>
               <CardContent className="p-4">
                 <h3 className="font-semibold text-sm mb-3">콘텐츠 유형별 게시 수</h3>
@@ -305,7 +309,7 @@ function ContentInner() {
           </div>
 
           {/* Content type table */}
-          <Card>
+          <Card data-tour="content-type-table">
             <CardContent className="p-4 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -342,7 +346,7 @@ function ContentInner() {
       {tab === "trend" && (
         <>
           {/* Posts trend by content type */}
-          <Card>
+          <Card data-tour="content-posts-trend">
             <CardContent className="p-4">
               <h3 className="font-semibold text-sm mb-3">주간별 게시 트렌드</h3>
               <ResponsiveContainer width="100%" height={280}>
@@ -370,7 +374,7 @@ function ContentInner() {
 
           {/* Follower trend */}
           {followerTrend.length > 0 && (
-            <Card>
+            <Card data-tour="content-followers">
               <CardContent className="p-4">
                 <h3 className="font-semibold text-sm mb-3">팔로워 추이</h3>
                 <ResponsiveContainer width="100%" height={220}>
@@ -408,7 +412,7 @@ function BrandBoards({ brand }: { brand: string }) {
   return (
     <>
       {showBl && (
-        <section className="space-y-3">
+        <section className="space-y-3" data-tour="content-boards">
           {brand === "all" && <h2 className="text-sm font-semibold">밸런스랩</h2>}
           <ResearchFreshness only="balancelab" />
           <ThreadsCandidates only="balancelab" />
@@ -417,7 +421,7 @@ function BrandBoards({ brand }: { brand: string }) {
         </section>
       )}
       {showPet && (
-        <section className="space-y-3">
+        <section className="space-y-3" data-tour="content-boards">
           {brand === "all" && <h2 className="text-sm font-semibold">너티 · 아이언펫</h2>}
           <ResearchFreshness only="pet" />
           <ThreadsCandidates only="pet" />
@@ -444,7 +448,7 @@ function UtmSection({ from, to }: { from: string; to: string }) {
   if (sources.length === 0 && campaigns.length === 0) return null;
 
   return (
-    <Card>
+    <Card data-tour="content-utm">
       <CardContent className="p-4 space-y-4">
         <div className="flex items-baseline justify-between flex-wrap gap-2">
           <h3 className="font-semibold text-sm">유입 경로 · 캠페인 성과 (UTM)</h3>

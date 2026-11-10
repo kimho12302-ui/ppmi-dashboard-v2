@@ -34,13 +34,13 @@ function withNames<T extends object>(rows: T[], label: (r: T) => string): (T & {
   });
 }
 
-function Notice({ children, tone = "info" }: { children: ReactNode; tone?: "info" | "warn" }) {
+export function Notice({ children, tone = "info" }: { children: ReactNode; tone?: "info" | "warn" }) {
   return tone === "warn"
     ? <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-500">{children}</div>
     : <div className="rounded-lg border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">{children}</div>;
 }
 
-function Folded({ title, count, children }: { title: string; count: number; children: ReactNode }) {
+export function Folded({ title, count, children }: { title: string; count: number; children: ReactNode }) {
   if (count === 0) return null;
   return (
     <details className="rounded border px-3 py-2">
@@ -124,7 +124,12 @@ function NaverSection({ title, rows, cols, brands, caution, shopping }: {
   );
 }
 
-export function NaverAddKeywordCard({ brand, from, to }: { brand: string; from: string; to: string }) {
+/**
+ * 네이버 「추가할 검색어」 카드.
+ * ★ 2026-11-10: 밸런스랩이면 두 칸으로 나눈다. (a) 「실적에서 나온 후보」 = 아래 계산 그대로,
+ *   (b) 「루틴이 본 후보」 = routine 으로 받은 칸(SA 일일 키워드 루틴이 남긴 표). 펫은 (a)만이라 예전 모양 그대로.
+ */
+export function NaverAddKeywordCard({ brand, from, to, routine }: { brand: string; from: string; to: string; routine?: ReactNode }) {
   const { data, loading, error } = useFetch<NaverResp>(`/api/keyword-candidates?channel=naver&brand=${brand}&from=${from}&to=${to}`);
   const brands = useMemo(() => {
     if (brand === "all") return BRAND_ORDER;
@@ -134,7 +139,7 @@ export function NaverAddKeywordCard({ brand, from, to }: { brand: string; from: 
   const days = daysBetween(from, to);
 
   return (
-    <Card><CardContent className="p-4 space-y-3">
+    <Card data-tour="keywords-naver-add"><CardContent className="p-4 space-y-3">
       <div>
         <h3 className="font-semibold text-sm">추가할 검색어 <span className="text-xs font-normal text-muted-foreground">네이버 · 이미 운영 중인 키워드는 뺐습니다</span></h3>
         <p className="text-xs text-muted-foreground mt-1">
@@ -142,6 +147,11 @@ export function NaverAddKeywordCard({ brand, from, to }: { brand: string; from: 
           밸런스랩은 승인 후 직접 조정, 너티·사입은 대행사 지시서로 넘깁니다.
         </p>
       </div>
+      {routine && (
+        <h4 className="font-semibold text-sm border-t pt-3" data-tour="keywords-naver-add-perf">
+          실적에서 나온 후보 <span className="text-xs font-normal text-muted-foreground">이 화면이 고른 기간의 검색어 보고서로 계산</span>
+        </h4>
+      )}
       {days < SHORT_PERIOD_DAYS && <Notice tone="warn">기간이 짧아 후보가 적게 나옵니다. 기준은 어제까지 30일입니다(지금 {days}일).</Notice>}
 
       {loading && !data ? <Notice>추가할 검색어 계산 중...</Notice>
@@ -168,6 +178,7 @@ export function NaverAddKeywordCard({ brand, from, to }: { brand: string; from: 
             />
           </>
         ) : null}
+      {routine && <div className="border-t pt-3">{routine}</div>}
     </CardContent></Card>
   );
 }
@@ -225,7 +236,7 @@ export function CoupangAddKeywordCard({ from, to }: { from: string; to: string }
   const manual = rows.filter((r) => r.manualHit).length;
 
   return (
-    <Card><CardContent className="p-4 space-y-3">
+    <Card data-tour="keywords-coupang-add"><CardContent className="p-4 space-y-3">
       <div>
         <h3 className="font-semibold text-sm">
           추가할 키워드 <span className="text-xs font-normal text-muted-foreground">쿠팡 검색 영역에서 주문이 난 키워드 · 수동 키워드 후보</span>

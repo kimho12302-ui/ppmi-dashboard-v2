@@ -101,7 +101,7 @@ export function ThreadsCandidates({ only }: { only?: "balancelab" | "pet" } = {}
   const axes = (["balancelab", "pet"] as const).filter((a) => (!only || a === only) && items.some((i) => i.axis === a));
 
   return (
-    <Card>
+    <Card data-tour="content-threads">
       <CardContent className="p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold text-sm">🧵 이번 주 쓰레드 후보</h3>
@@ -178,9 +178,12 @@ function QueueLine({ picked, done }: { picked: number; done: number }) {
     <p className="text-xs" style={{ color: "var(--sig-ok)" }}>
       <b>{picked}건 선택됨</b>
       <span className="text-muted-foreground">
+        {/* 2026-11-09: 여러 건일 때 "한 주에 1건씩, 나머지는 다음 주로" 라고 적혀 있었다. 주 1편 상한을 뗀
+            2026-09-28 이전 문구다. 크론([2-E])은 pending 을 --week-cap 없이 부르므로 고른 것 전부가
+            다음 회차에 처리된다. 위 안내 문단과 같은 말이어야 한다. */}
         {picked === 1
           ? ` · 다음 자동 회차에 나갑니다${sent}`
-          : ` · 한 주에 1건씩 나갑니다. 다음 차례는 대기열 1번, 나머지 ${picked - 1}건은 다음 주로${sent}`}
+          : ` · ${picked}건 모두 다음 자동 회차에 나갑니다. 순서는 먼저 고른 것부터입니다${sent}`}
       </span>
     </p>
   );

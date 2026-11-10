@@ -363,13 +363,13 @@ function OverviewInner() {
         }
       />
       {/* 모바일에서 hero 3장을 세로로 쌓으면 603px 를 먹는다. 매출만 전폭으로 두고 광고비·ROAS 를 2열로 붙인다. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      <div data-tour="overview-kpi" className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <KpiCard size="hero" className="col-span-2 sm:col-span-1" title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} changeLabel={changeLabel} confidence={revenueConfidence} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
         <KpiCard size="hero" title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, kpi.adSpendPrev)} changeLabel={changeLabel} confidence={adSpendConfidence} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
         <KpiCard size="hero" title="ROAS" subtitle="판매 원장 매출 ÷ 매체비" value={`${(kpi.roas || 0).toFixed(2)}x`} change={pctChange(kpi.roas, kpi.roasPrev)} changeLabel={changeLabel} confidence={roasConfidence} />
       </div>
       {/* MER 은 잡비가 있을 때만 나온다. 열 수를 고정하면 없는 날 오른쪽에 빈 칸이 남는다. */}
-      <div className={`grid grid-cols-2 gap-2.5 ${(kpi.miscCost || 0) > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
+      <div data-tour="overview-kpi-sub" className={`grid grid-cols-2 gap-2.5 ${(kpi.miscCost || 0) > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
         <KpiCard size="compact" title="주문 수" value={formatNumber(kpi.orders)} change={pctChange(kpi.orders, kpi.ordersPrev)} changeLabel={changeLabel} confidence={quiet(revenueConfidence)} onClick={() => toggleKpi("orders")} active={selectedKpi === "orders"} />
         {/* 이익률은 이익 카드 안에 적는다(같은 각주를 두 카드가 반복하던 것을 하나로).
             직전 기간 이익은 원가율 가정 추정치라 증감률을 내지 않는다. */}
@@ -413,7 +413,7 @@ function OverviewInner() {
 
       {/* 경고 */}
       {warnings.length > 0 && (
-        <div className="space-y-2">
+        <div data-tour="overview-warnings" className="space-y-2">
           {warnings.map((w, i) => (
             <Card key={i} className="border-l-4 border-l-amber-500 bg-amber-500/5">
               <CardContent className="p-3 flex items-center gap-2">
@@ -430,7 +430,7 @@ function OverviewInner() {
         <SectionHeading eyebrow="Business Mix" title="사업 그룹" note="펫(너티·아이언펫·사입) vs 밸런스랩" />
       )}
       {(brand === "all" || !brand) && (data?.groupRevenue || []).length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div data-tour="overview-business-mix" className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {(data?.groupRevenue || []).map(g => {
             const total = (data?.groupRevenue || []).reduce((s, x) => s + x.revenue, 0);
             const share = total > 0 ? (g.revenue / total) * 100 : 0;
@@ -497,7 +497,7 @@ function OverviewInner() {
 
       {/* 밸런스랩 단독 선택 시 검사 라인별 카드 */}
       {brand === "balancelab" && (data?.blTestLines || []).length > 0 && (
-        <Card>
+        <Card data-tour="overview-bl-lines">
           <CardContent className="p-4 space-y-2">
             <h3 className="font-semibold text-sm">🧬 검사 라인별 매출 <span className="text-xs text-muted-foreground font-normal">(자체매출 기준, 공구 제외)</span></h3>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -515,7 +515,7 @@ function OverviewInner() {
 
       {/* 일별 트렌드 */}
       <SectionHeading eyebrow="Trend" title="일별 흐름" note="선택 기간 일별" />
-      <Card>
+      <Card data-tour="overview-trend">
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
             <div>
@@ -566,11 +566,13 @@ function OverviewInner() {
 
       {/* 광고 신고 vs 실제: 매체별 신고 ROAS 는 이 표에서만 본다(합산 불가) */}
       <SectionHeading eyebrow="Attribution" title="광고 신고 vs 실제" note="채널 ROAS 를 더하면 실매출을 넘습니다" />
-      <AttributionGap channels={data?.channels || []} actualRevenue={kpi.revenue} adSpend={kpi.adSpend} />
+      <div data-tour="overview-attribution" className="empty:hidden">
+        <AttributionGap channels={data?.channels || []} actualRevenue={kpi.revenue} adSpend={kpi.adSpend} />
+      </div>
 
       {/* 매체별 광고비 + 판매처별 매출 + TOP 5 제품. 두 축(매체·판매처)은 조인되지 않는다. */}
       <SectionHeading eyebrow="Channels & Products" title="매체 · 판매처 · 제품" note="매체=집행, 판매처=주문. 두 축은 조인되지 않습니다" />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div data-tour="overview-channels" className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
@@ -627,7 +629,7 @@ function OverviewInner() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card data-tour="overview-top5">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold">TOP 5 제품</h3>
@@ -679,7 +681,7 @@ function BrandDetailSection({ brand, from, to }: { brand: string; from: string; 
   if (lineups.length === 0 && gongguSales.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div data-tour="overview-brand-detail" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {lineups.length > 0 && (
         <Card>
           <CardContent className="p-4">

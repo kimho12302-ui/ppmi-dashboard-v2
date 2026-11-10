@@ -14,7 +14,7 @@
 
 import { classifyBlProduct } from "@/lib/brand-groups";
 
-export type PnlProductKey = "nutrition" | "heavy" | "saliva" | "food" | "supplement" | "etc";
+export type PnlProductKey = "nutrition" | "heavy" | "saliva" | "food" | "supplement" | "paper" | "etc";
 
 export interface PnlProductConfig {
   key: PnlProductKey;
@@ -33,7 +33,12 @@ export const PNL_PRODUCTS: PnlProductConfig[] = [
   { key: "saliva", label: "큐타액호르몬검사", unitCost: 36_650, selfShipTimes: 2, note: "김호 확정 2026-10-28 (시트 수식 10,000·30,000 대신)" },
   { key: "food", label: "큐음식물과민증검사", unitCost: 194_000, selfShipTimes: 2, note: "시트 AG80 =수량×194,000" },
   { key: "supplement", label: "메디넥스(영양제)", unitCost: 30_000, selfShipTimes: 1, note: "시트 AG103 =수량×30,000, 배송 1회(AD103)" },
-  { key: "etc", label: "기타(구분 안 되는 상품)", unitCost: 10_000, selfShipTimes: 2, note: "옵션 없는 큐모발검사·큐모발검사 미네랄 등. 합계에만 들어감" },
+  // 2026-11-09 구성표로 「검사 + 종이결과지」를 검사 1 + 종이결과지 1 로 푼 뒤 생긴 줄. 합계에만 들어감.
+  // 검사와 같이 나가므로 따로 배송비를 잡지 않는다(구매자 수가 검사 쪽에만 남아 주문건수 0).
+  // 재료비 4,000원 = 판매가 4,000원, 마진 0 (김호 확정 2026-11-09). 세트 매출을 정가 비율로 나눈 몫이라
+  // 할인 판매·「65,000 + 4,000」 같은 판매는 몫이 4,000원보다 조금 작아 마진이 약간 마이너스일 수 있다.
+  { key: "paper", label: "종이결과지(검사 옵션)", unitCost: 4_000, selfShipTimes: 0, note: "김호 확정 2026-11-09: 재료비 4,000원, 마진 0. 판매가 4,000원 = 「+ 종이결과지」 상품과 검사 단품의 차이" },
+  { key: "etc", label: "기타(구분 안 되는 상품)", unitCost: 10_000, selfShipTimes: 2, note: "옵션 없는 큐모발검사 등. 합계에만 들어감" },
 ];
 
 /** 화면 제품 선택 순서. etc 는 합계에만 넣고 따로 고르지는 않는다 */
@@ -73,11 +78,26 @@ export function productConfig(key: PnlProductKey): PnlProductConfig {
 
 // ── 판매 원장 행 → 손익 제품 ──
 // 영양제를 먼저 본다. 판매 원장의 category "하루가꿈"(맞춤영양제)과 메디넥스 상품(10월~).
-// ★ "큐모발검사 뉴트리션 + 맞춤 영양제" 묶음은 뉴트리션으로 간다(검사가 본품).
-//   시트는 이 묶음에서 영양제 몫을 손으로 떼어 영양제 블록에 적었지만 DB 는 한 상품이라 뗄 근거가 없다.
+// ★ 2026-11-09: 판매 행은 이 함수에 오기 전에 구성표(src/lib/product-components.ts)로 기본 품목까지 푼다.
+//   "큐모발검사 뉴트리션 + 맞춤 영양제" 는 뉴트리션 1 + 맞춤영양제 1 로 나뉘어, 영양제 몫(정가 비율)이
+//   영양제로 간다. 시트가 손으로 떼어 영양제 블록에 적던 것과 같은 방향이다.
+//   (2026-10-28 에는 "DB 는 한 상품이라 뗄 근거가 없다"며 통째로 뉴트리션에 넣었다. 구성표가 그 근거다.)
+//   "+ 종이결과지" 의 종이결과지 몫은 paper 로 간다. 구성표가 없으면(SQL 실행 전) 예전처럼 통째로 검사 쪽이다.
 const SUPPLEMENT = /메디넥스|하루가꿈/;
+
+// ── 매출만 있는 품목 (키트·발송 없음) ──
+// 판매 상품 「큐모발검사 미네랄」은 구성표로 이 품목 1개로 풀린다. 김호 2026-11-09: 중금속만 산 사람이
+// 미네랄 결과를 뒤늦게 보려고 추가 결제만 하는 상품이라 새 키트도 발송도 없다.
+// 손익은 뉴트리션 매출로 보되 판매수량·주문건수(배송비)·재료비는 0 으로 둔다(bl-product-pnl route 의 addSales).
+export const MINERAL_ADDON = "큐모발 미네랄 추가열람";
+export function isRevenueOnlyProduct(product: string | null | undefined): boolean {
+  return String(product ?? "").replace(/\s+/g, "") === MINERAL_ADDON.replace(/\s+/g, "");
+}
+
 export function classifyPnlProduct(product: string, category?: string | null): PnlProductKey {
   const p = String(product || "");
+  if (p.replace(/\s+/g, "") === "종이결과지") return "paper";
+  if (isRevenueOnlyProduct(p)) return "nutrition";
   if (category === "하루가꿈" || SUPPLEMENT.test(p)) return "supplement";
   if (/영양제/.test(p) && !/검사/.test(p)) return "supplement";
   switch (classifyBlProduct(p)) {

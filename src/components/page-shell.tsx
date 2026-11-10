@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Filters } from "./filters";
 import { DataStatusRail } from "./data-status-rail";
 import { DataFreshness } from "./data-freshness";
-import { GuideButton } from "./guide-drawer";
+import { GuideButtons } from "./guide/guide-buttons";
 import { useFilterParams } from "@/hooks/use-dashboard-data";
 
 interface PageShellProps {
@@ -33,17 +33,18 @@ function PageShellInner({ title, description, children, hideFilters, hideAllBran
           기간은 칩으로 떼어내 '지금 보고 있는 범위'를 한눈에 세운다. */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 pb-3 border-b">
         <div className="min-w-0">
-          <h1 className="text-2xl sm:text-[28px] font-bold tracking-tight leading-none">{title}</h1>
+          <h1 data-tour="shell-title" className="text-2xl sm:text-[28px] font-bold tracking-tight leading-none">{title}</h1>
           {description && (
             <p className="text-xs sm:text-sm text-muted-foreground mt-1.5">{description}</p>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <DataFreshness />
-          {/* 화면별 이용 가이드 (2026-11-06). 문구는 src/lib/guides, 경로로 찾는다. */}
-          <GuideButton />
+          {/* 화면별 「가이드」(단계별 투어)·「매뉴얼」(설명서 창) (2026-11-09 v2). 문구는 src/lib/guides/screens, 경로로 찾는다.
+              투어가 짚는 요소에는 data-tour="..." 표식이 붙어 있다(이 머리말은 shell-*, 사이드바는 sidebar-*). */}
+          <GuideButtons />
           {!hideFilters && from && to && (
-            <span className="num inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border bg-muted/60 text-muted-foreground whitespace-nowrap">
+            <span data-tour="shell-period-chip" className="num inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border bg-muted/60 text-muted-foreground whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--primary)" }} aria-hidden />
               {from} ~ {to}
             </span>
@@ -53,7 +54,7 @@ function PageShellInner({ title, description, children, hideFilters, hideAllBran
       {showStatusRail && <DataStatusRail />}
       {!hideFilters && (
         // 스크롤을 내려도 '무슨 브랜드 / 무슨 기간'이 화면에 남아 있어야 한다.
-        <div className="filter-dock -mx-3 sm:-mx-4 px-3 sm:px-4 py-2">
+        <div data-tour="shell-filters" className="filter-dock -mx-3 sm:-mx-4 px-3 sm:px-4 py-2">
           <Filters
             brand={brand}
             onBrandChange={setBrand}

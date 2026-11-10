@@ -4,7 +4,7 @@ import { expandBrands, PET_BRANDS } from "@/lib/brand-groups";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
-import { isGongguInDailySales } from "@/lib/gonggu";
+import { formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
 import { kstDate, kstMonth } from "@/lib/date";
 
@@ -54,7 +54,7 @@ async function getImpl(req: NextRequest) {
     else tQ = tQ.in("brand", BRANDS);
 
     // 자체매출만 집계: 공구 채널 제외 (목표 스코프와 일치). 공구는 별도 표시.
-    let salesQ = supabase.from("daily_sales").select("date,revenue,orders,brand").gte("date", monthStart).lte("date", monthEnd).neq("channel", "total").not("channel", "like", "공구%");
+    let salesQ = supabase.from("daily_sales").select("date,revenue,orders,brand,channel").gte("date", monthStart).lte("date", monthEnd).neq("channel", "total").not("channel", "like", "공구%");
     if (brand !== "all") salesQ = salesQ.in("brand", expandBrands(brand));
     else salesQ = salesQ.in("brand", BRANDS);
 
@@ -92,12 +92,13 @@ async function getImpl(req: NextRequest) {
     const salesDays = coveredDays(salesThrough, monthStart, monthEnd, daysInMonth);
     const adDays = coveredDays(adThrough, monthStart, monthEnd, daysInMonth);
 
-    // 형식-A 공구 날짜별 차감액 (밸런스랩)
-    const formAByDate = new Map<string, number>();
-    for (const r of psRows as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
-      if (isGongguInDailySales(r)) formAByDate.set(r.date, (formAByDate.get(r.date) || 0) + Number(r.revenue || 0));
-    }
-    const totalFormA = [...formAByDate.values()].reduce((s, v) => s + v, 0);
+    // 형식-A 공구를 뺀 자체매출 행 (밸런스랩). 공구 행과 날짜·판매처가 같은 매출 행에서만 뺀다
+    // (gonggu.ts subtractFormAGonggu, 오버뷰·판매처 성과와 같은 함수). 공구 금액 = 실제로 빠진 금액.
+    const ownSales = subtractFormAGonggu(
+      sales as { date: string; brand: string; channel: string; revenue: number; orders: number }[],
+      formAByDateChannel(psRows as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]),
+    );
+    const sumRev = (rows: readonly { revenue: number | string | null }[]) => rows.reduce((s, r) => s + Number(r.revenue || 0), 0);
     const targetRevenue = (targetsData || []).reduce((s, r) => s + Number(r.revenue_target || 0), 0);
     const targetAd = (targetsData || []).reduce((s, r) => s + Number(r.ad_budget_target || 0), 0);
     // ROAS 목표: 가중(목표매출/목표광고비). 광고비비중 목표 = 목표광고비/목표매출.
@@ -109,8 +110,9 @@ async function getImpl(req: NextRequest) {
     //   3월부터 공구가 매출의 66~97%를 차지하는데 실적에서만 공구를 빼서 비교하는 바람에
     //   밸런스랩 달성률이 6월 3%, 7월 7%로 표시됐다(공구 포함 시 13%, 51%).
     //   → 달성률은 공구 포함(Gross) 기준으로 계산하고, 자체매출은 함께 병기한다.
-    const grossRevenue = sales.reduce((s, r) => s + Number(r.revenue || 0), 0);
-    const actualRevenueOwn = grossRevenue - totalFormA;  // 자체매출 (공구 제외)
+    const grossRevenue = sumRev(sales);
+    const actualRevenueOwn = sumRev(ownSales);           // 자체매출 (공구 제외)
+    const totalFormA = grossRevenue - actualRevenueOwn;  // 빠진 공구 금액
     const actualRevenue = grossRevenue;                   // 목표 비교용 = 공구 포함
     const actualOrders = sales.reduce((s, r) => s + Number(r.orders || 0), 0);
     const actualAd = ads.reduce((s, r) => s + Number(r.spend || 0), 0);
@@ -172,8 +174,8 @@ async function getImpl(req: NextRequest) {
         // 목표가 공구 포함 기준이므로 달성률·ROAS는 공구 포함(aRev)으로 비교하고,
         // 자체매출(aRevOwn)은 병기한다.
         const aRev = revByBrand.get(b) || 0;
-        const gonggu = b === "balancelab" ? totalFormA : 0;
-        const aRevOwn = aRev - gonggu;
+        const aRevOwn = sumRev(ownSales.filter((r) => r.brand === b));
+        const gonggu = aRev - aRevOwn;
 
         const aAd = adByBrand.get(b) || 0;
         return {
@@ -204,8 +206,7 @@ async function getImpl(req: NextRequest) {
       const end = Math.min(e, daysInMonth);
       const wDays = end - s + 1;
       const inWeek = (dateStr: string) => { const d = Number(dateStr.slice(8, 10)); return d >= s && d <= end; };
-      let wFormA = 0; formAByDate.forEach((v, d) => { if (inWeek(d)) wFormA += v; });
-      const wRev = sales.filter((r) => inWeek(r.date)).reduce((acc, r) => acc + Number(r.revenue || 0), 0) - wFormA;
+      const wRev = sumRev(ownSales.filter((r) => inWeek(r.date)));
       const wAd = ads.filter((r) => inWeek(r.date)).reduce((acc, r) => acc + Number(r.spend || 0), 0);
       const wTargetRev = targetRevenue * (wDays / daysInMonth);
       const wTargetAd = targetAd * (wDays / daysInMonth);

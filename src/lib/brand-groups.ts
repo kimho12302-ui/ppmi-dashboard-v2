@@ -65,7 +65,10 @@ export const GROUP_LABELS: Record<string, string> = {
 //   타액호르몬은 아직 매출이 0이지만 판매는 하고 있으므로 "런칭 전"으로 표시하지 않는다.
 //   (매출 0 = 안 팔린 것이지 안 파는 것이 아니다)
 export const BL_TEST_LINES: { key: string; label: string; match: RegExp; preLaunch?: boolean }[] = [
-  { key: "hair_nutrition", label: "큐모발검사 뉴트리션", match: /뉴트리션/ },
+  // 「큐모발 미네랄 추가열람」(판매 상품 「큐모발검사 미네랄」을 구성표로 푼 품목)은 중금속만 산 사람이
+  // 미네랄 결과를 추가 결제로 여는 상품이라 뉴트리션 라인이다(김호 2026-11-09). 「미네랄」 한 낱말로는
+  // 잡지 않는다(사입 사료 이름에도 「미네랄」이 있다).
+  { key: "hair_nutrition", label: "큐모발검사 뉴트리션", match: /뉴트리션|미네랄\s*추가열람/ },
   { key: "hair_metal", label: "큐모발검사 중금속", match: /중금속/ },
   { key: "saliva", label: "큐타액호르몬검사", match: /타액|호르몬/ },
   { key: "food", label: "큐음식물과민증검사", match: /과민증|지연성|알러지|알레르기|음식물|IgG/i },
@@ -77,4 +80,15 @@ export function classifyBlProduct(product: string): string {
   const p = String(product || "");
   for (const line of BL_TEST_LINES) if (line.match.test(p)) return line.key;
   return "etc";
+}
+
+/**
+ * 검사 라인 키, 안 맞으면 null. `classifyBlProduct` 의 "etc" 는 '못 묶음'이라는 뜻인데
+ * 문자열이라 참으로 읽혀, 광고와 판매를 잇는 곳(/api/product-ads)에서 "etc" 끼리 이어져
+ * 검사 라인 밖 판매 전체가 한 광고 상품 실매출로 붙었다(2026-11-09, 밸런스랩검사 광고에
+ * 메디넥스 비타민C 225,600원). 잇는 용도에는 이 함수를 쓴다.
+ */
+export function blTestLineOrNull(product: string): string | null {
+  const key = classifyBlProduct(product);
+  return key === "etc" ? null : key;
 }

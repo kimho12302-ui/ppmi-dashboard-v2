@@ -126,7 +126,7 @@ export function CoupangKeywordSection({ brand, from, to }: { brand: string; from
 
       {data?.rows ? (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4" data-tour="keywords-coupang-kpis">
             <KpiCard title={picked ? `광고비 · ${picked}` : "광고비"} value={formatCurrency(total.spend)} />
             <KpiCard title="클릭" value={formatNumber(total.clicks)} />
             <KpiCard title="전환매출 (14일)" value={formatCurrency(total.conv_sales_14d)} />
@@ -139,7 +139,7 @@ export function CoupangKeywordSection({ brand, from, to }: { brand: string; from
             <SortTable rows={placements} cols={[nameCol("지면"), ...METRIC_COLS]} initial="spend" />
           </CardContent></Card>
 
-          <Card><CardContent className="p-4">
+          <Card data-tour="keywords-coupang-products"><CardContent className="p-4">
             <h3 className="font-semibold text-sm">상품별 <span className="text-xs font-normal text-muted-foreground">캠페인 기준 · 누르면 아래 키워드 표가 그 상품으로 바뀝니다</span></h3>
             <p className="text-xs text-muted-foreground mb-2">쿠팡 캠페인을 상품 하나씩 짜 두어 캠페인 이름으로 묶었습니다(앞의 &quot;로켓배송_&quot;·날짜는 뗌).</p>
             <SortTable
@@ -150,7 +150,7 @@ export function CoupangKeywordSection({ brand, from, to }: { brand: string; from
           </CardContent></Card>
 
           {waste.length > 0 && (
-            <Card><CardContent className="p-4">
+            <Card data-tour="keywords-coupang-waste"><CardContent className="p-4">
               <h3 className="font-semibold text-sm">돈만 쓰는 키워드 <span className="text-xs font-normal text-muted-foreground">광고비 {formatCurrency(WASTE_MIN_SPEND)} 이상 · 14일 주문 0 · {waste.length}개{picked ? ` · ${picked}` : ""}</span></h3>
               <p className="text-xs text-muted-foreground mb-2">제외 키워드 후보입니다. 기간이 짧으면 우연일 수 있으니 기간을 넓혀 다시 보세요.</p>
               <SortTable rows={waste} cols={[nameCol("키워드"), ...METRIC_COLS]} initial="spend" maxHeight={320} />

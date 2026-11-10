@@ -79,7 +79,7 @@ export function NaverProgressBoard() {
   const months = groupByMonth(blogPosts, (r) => r.date);
 
   return (
-    <BoardCard>
+    <BoardCard tour="content-naver-board">
       <Masthead
         eyebrow={`BLOG.NAVER.COM / ${(recentBlog?.blog || "밸런스랩").toUpperCase()}`}
         title="네이버 블로그 진행판"

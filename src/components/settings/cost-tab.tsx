@@ -91,7 +91,7 @@ export function CostTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
+      <div data-tour="settings-cost-subtabs" className="flex gap-2">
         {(["product", "shipping"] as const).map(t => (
           <button key={t} onClick={() => setSubtab(t)}
             className={cn("px-3 py-1.5 text-sm rounded-md", subtab === t ? "bg-primary text-primary-foreground" : "bg-muted")}>
@@ -105,7 +105,7 @@ export function CostTab() {
           <CardContent className="p-4 space-y-4">
             <h3 className="font-semibold">제품 원가 ({costs.length}개 등록)</h3>
             {missing.length > 0 && (
-              <div className="text-sm bg-amber-500/10 text-amber-600 p-3 rounded">
+              <div data-tour="settings-cost-missing" className="text-sm bg-amber-500/10 text-amber-600 p-3 rounded">
                 ⚠️ 원가 미등록 제품 {missing.length}개: {missing.slice(0, 5).map(m => m.product).join(", ")}{missing.length > 5 ? ` 외 ${missing.length - 5}개` : ""}
                 <button onClick={() => { setEditKey(null); setForm(f => ({ ...f, product: missing[0].product, brand: missing[0].brand })); }} className="ml-2 underline text-xs">첫 번째 등록</button>
               </div>
@@ -135,7 +135,7 @@ export function CostTab() {
               </table>
             </div>
 
-            <div className="border-t pt-4">
+            <div data-tour="settings-cost-form" className="border-t pt-4">
               <h4 className="text-sm font-medium mb-3">{editKey ? "원가 수정" : "원가 추가"}</h4>
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 <div><label className="text-xs text-muted-foreground">브랜드</label>

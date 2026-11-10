@@ -5,8 +5,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { masterByProduct } from "@/lib/product-master";
-import { isGonggu, isGongguAggregate, isGongguInDailySales } from "@/lib/gonggu";
+import { isGonggu, isGongguAggregate, isGongguInDailySales, formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
+import { loadComponentRows } from "@/lib/product-components-server";
+import { buildComponentIndex, expandSales } from "@/lib/product-components";
 
 const RAW_KEYS = ["sales", "ads", "products", "prevSales", "prevAds"] as const;
 type RawKey = (typeof RAW_KEYS)[number];
@@ -51,7 +53,7 @@ async function getImpl(req: NextRequest) {
     else adQuery = adQuery.neq("brand", "all");
 
     // 직전기간도 형식-A 공구를 날짜별로 빼려면 date·brand 가 필요하다(2026-10-15).
-    let prevSalesQ = supabase.from("daily_sales").select("date, brand, revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total").not("channel", "like", "공구%");
+    let prevSalesQ = supabase.from("daily_sales").select("date, brand, channel, revenue, orders").gte("date", prevFrom).lte("date", prevTo).neq("channel", "total").not("channel", "like", "공구%");
     if (brand !== "all") prevSalesQ = prevSalesQ.in("brand", expandBrands(brand));
     else prevSalesQ = prevSalesQ.neq("brand", "all");
 
@@ -81,7 +83,7 @@ async function getImpl(req: NextRequest) {
     // ── 모든 DB 호출을 1회 병렬 배치로 실행 (이전: 순차 12회 왕복) ──
     const [
       sales, adSpend, prevSales, prevAd, cogsProdData, prodData, gongguData,
-      productCostsRes, shippingRes, miscRes, prevGongguData,
+      productCostsRes, shippingRes, miscRes, prevGongguData, componentRows,
     ] = await Promise.all([
       fetchAll(salesQuery),
       fetchAll(adQuery),
@@ -96,7 +98,12 @@ async function getImpl(req: NextRequest) {
       // (daily_funnel·monthly_targets 조회는 2026-11-04 뺐다. 받던 퍼널 요약·목표는 화면 어디서도 쓰지 않았다.
       //  Overview 목표 막대는 /api/targets, 퍼널은 /api/funnel·/api/funnel-control 이 맡는다.)
       prevGongguPromise,
+      loadComponentRows(),
     ]);
+    // ★ 제품 단위 칸(검사 라인별 매출·TOP 제품·제품 비중)은 판매 상품을 구성표로 기본 품목까지 푼 행으로 센다
+    //   (2026-11-09, src/lib/product-components.ts). 매출은 정가 비율로 나눠 합은 그대로다.
+    //   원가(COGS)·사입 유통 브랜드 분해는 판매 상품명 그대로 둔다(원가표·정본이 판매 상품명 키라서).
+    const prodExpanded = expandSales(prodData || [], buildComponentIndex(componentRows));
     const productCostsData = productCostsRes.data;
     const shippingData = shippingRes.data;
     const miscData = miscRes.data;
@@ -155,29 +162,13 @@ async function getImpl(req: NextRequest) {
     }
 
     // ── 형식-A 공구 차감: 밸런스랩 daily_sales smartstore 에 셀러 공구가 섞여 자체매출 부풀림 ──
-    // product_sales(gongguData)의 형식-A(채널이 공구*가 아닌 공구)를 날짜별로 구해 balancelab 매출에서 차감.
-    const formAByDate = new Map<string, number>();
-    for (const r of gongguData || []) {
-      if (isGongguInDailySales(r)) formAByDate.set((r as { date: string }).date, (formAByDate.get((r as { date: string }).date) || 0) + Number((r as { revenue: number }).revenue || 0));
-    }
-    // 헤드라인/트렌드/브랜드 집계에 쓰는 자체매출 보정본 (raw sales 반환값은 그대로 유지)
-    const subtractFormA = <T extends { brand: string; date: string; revenue: number }>(rows: T[], byDate: Map<string, number>): T[] =>
-      rows.map((r) => {
-        if (r.brand === "balancelab") {
-          const g = byDate.get(r.date) || 0;
-          if (g > 0) return { ...r, revenue: Math.max(0, Number(r.revenue) - g) };
-        }
-        return r;
-      });
-    const adjSales = subtractFormA(sales || [], formAByDate);
+    // 공구 행과 날짜·판매처가 같은 밸런스랩 daily_sales 행에서만 뺀다(gonggu.ts subtractFormAGonggu,
+    // channel-groups·insights·pacing 과 같은 함수). raw sales 반환값은 차감본(adjSales)이다.
+    const adjSales = subtractFormAGonggu(sales || [], formAByDateChannel(gongguData || []));
 
     // ★ 직전기간도 같은 규칙으로 뺀다(2026-10-15 김호 결정). 예전엔 이번 기간만 빼서 밸런스랩 전기 대비가
-    //   공구가 많던 달 기준으로 부풀려 비교됐다. 같은 판정 함수(isGongguInDailySales)·같은 날짜 매칭.
-    const prevFormAByDate = new Map<string, number>();
-    for (const r of (prevGongguData || []) as { date: string; channel: string; lineup: string | null; product: string; revenue: number }[]) {
-      if (isGongguInDailySales(r)) prevFormAByDate.set(r.date, (prevFormAByDate.get(r.date) || 0) + Number(r.revenue || 0));
-    }
-    const adjPrevSales = subtractFormA(prevSales || [], prevFormAByDate);
+    //   공구가 많던 달 기준으로 부풀려 비교됐다. 같은 함수·같은 날짜·판매처 매칭.
+    const adjPrevSales = subtractFormAGonggu(prevSales || [], formAByDateChannel(prevGongguData || []));
 
     // 판매 원장(이 필터 범위)이 들어온 마지막 날. 그 뒤 날짜는 판매 0 이 아니라 동기화 대기다.
     const salesLastDate = (sales || []).reduce((m: string, r: { date: string }) => (r.date > m ? r.date : m), "") || null;
@@ -309,7 +300,7 @@ async function getImpl(req: NextRequest) {
     // ── 밸런스랩 검사 라인별 매출 (product_sales 기반, 공구 제외 = 헤드라인 스코프 동일) ──
     // 타액·음식물과민증은 런칭 전이어도 항상 0으로 표시 (런칭 후 자동 분류).
     const blLineAgg = new Map<string, { revenue: number; quantity: number }>();
-    for (const ps of prodData || []) {
+    for (const ps of prodExpanded) {
       if (ps.brand !== "balancelab") continue;
       if (isGongguInDailySales(ps as { channel: string; lineup: string | null; product: string })) continue;
       const key = classifyBlProduct(ps.product);
@@ -355,7 +346,7 @@ async function getImpl(req: NextRequest) {
 
     // ── Top 5 products ──
     const prodMap = new Map<string, { revenue: number; quantity: number; brand: string }>();
-    for (const r of prodData || []) {
+    for (const r of prodExpanded) {
       if (isGongguAggregate(r)) continue; // 집계 행 제외
       const e = prodMap.get(r.product) || { revenue: 0, quantity: 0, brand: r.brand };
       e.revenue += Number(r.revenue); e.quantity += Number(r.quantity);
@@ -444,6 +435,8 @@ async function getImpl(req: NextRequest) {
       trend, channels, salesLastDate,
       brandRevenue, brandProfit, groupRevenue, blTestLines, petBrands, saipBrands,
       salesByChannel, topProducts,
+      // /sales 「TOP 10 제품」이 원본 상품 행(raw products)을 같은 규칙으로 풀 수 있게 구성표를 같이 보낸다(작다)
+      ...(rawKeys.includes("products") ? { productComponents: componentRows } : {}),
       gongguSalesTotal,
     });
   } catch (error) {
@@ -453,4 +446,4 @@ async function getImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_sales", "misc_costs", "product_costs", "product_sales", "shipping_costs"], ["brand", "from", "lean", "raw", "to"]);
+export const GET = cachedGET(getImpl, ["daily_ad_spend", "daily_sales", "misc_costs", "product_costs", "product_sales", "shipping_costs", "product_components"], ["brand", "from", "lean", "raw", "to"]);

@@ -12,6 +12,7 @@ import { CHANNEL_LABELS, CHANNEL_COLORS, BRAND_LABELS, type DailyAdSpend } from 
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { isPurchaseConversionMeasured, NAVER_ROAS_UNTRUSTED_ACCOUNTS } from "@/lib/conversion-tracking";
+import { AdsUtmSection } from "@/components/ads-utm-section";
 import { useConfig } from "@/hooks/use-config";
 import { daysBetween } from "@/lib/bucket";
 import { formatCurrency, formatNumber, formatPercent, formatRoas, isRoasUntracked, cn } from "@/lib/utils";
@@ -28,12 +29,6 @@ import {
   Legend,
   CartesianGrid,
 } from "recharts";
-
-const GA4_LABEL: Record<string, string> = {
-  "ga4_Performance Max": "GA4 P-Max",
-  "ga4_Demand Gen": "GA4 Demand Gen",
-  "ga4_Search": "GA4 Search",
-};
 
 type ViewTab = "overview" | "channels" | "ga4" | "creatives" | "naver";
 const VIEW_TABS: { key: ViewTab; label: string }[] = [
@@ -149,7 +144,7 @@ function AdsPageInner() {
     return Object.entries(map)
       .map(([ch, v]) => ({
         channel: ch,
-        label: GA4_LABEL[ch] || channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch,
+        label: channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch,
         color: channelMap[ch]?.color || CHANNEL_COLORS[ch] || "#6b7280",
         ...v,
         roas: v.spend > 0 ? v.convValue / v.spend : 0,
@@ -229,13 +224,16 @@ function AdsPageInner() {
 
   return (
     <PageShell title="광고 분석" description="매체별 광고 효율 및 ROAS">
-      <AdAlerts />
+      <div data-tour="ads-alerts" className="empty:hidden">
+        <AdAlerts />
+      </div>
       {/* 탭 전환 */}
       {/* 모바일 390px 에서 탭 5개가 409px 라 문서 폭이 425px 로 늘었다. 넘치면 탭 바 안에서만 가로로 민다. */}
-      <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit max-w-full overflow-x-auto">
+      <div data-tour="ads-tabs" className="flex items-center gap-0.5 rounded-lg bg-muted p-1 w-fit max-w-full overflow-x-auto">
         {VIEW_TABS.map((t) => (
           <button
             key={t.key}
+            data-tour={`ads-tab-${t.key}`}
             onClick={() => setTab(t.key)}
             className={cn(
               "px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap",
@@ -252,7 +250,7 @@ function AdsPageInner() {
       {/* KPI
           ROAS 는 Overview 와 같은 실매출 기준. 매체 신고 합산은 보조로만 적는다(2026-11-03).
           전환수·CPA 는 구매 전환이 측정되는 매체만 넣고 그 범위를 카드에 적는다. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div data-tour="ads-kpi" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <KpiCard size="hero" title="총 광고비" value={formatCurrency(totals.spend)} change={pctChange(totals.spend, prevTotals.spend)} changeLabel="직전 같은 기간 대비" subtitle="GA4 UTM 제외(구글 광고비와 중복)" />
         <KpiCard
           size="hero"
@@ -287,7 +285,7 @@ function AdsPageInner() {
       {tab === "overview" && (
         <>
           {/* 채널별 카드 (GA4 제외) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div data-tour="ads-channel-cards" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {byChannel
               .filter((c) => !c.channel.startsWith("ga4_"))
               .map((c) => (
@@ -364,7 +362,7 @@ function AdsPageInner() {
           </div>
 
           {/* 5.3-2: 매체별 ROAS 트렌드 */}
-          <Card>
+          <Card data-tour="ads-roas-trend">
             <CardContent className="p-4">
               <h3 className="font-semibold">매체별 ROAS 트렌드</h3>
               <p className="text-xs text-muted-foreground mt-0.5 mb-3">가로 = 날짜, 세로 = 매체가 신고한 전환매출 ÷ 그 매체 광고비(배). 매체끼리 더하면 안 됩니다. 점선 = 1.0x</p>
@@ -388,7 +386,7 @@ function AdsPageInner() {
           </Card>
 
           {/* 5.3-1: 매체별 광고비 트렌드 */}
-          <Card>
+          <Card data-tour="ads-spend-trend">
             <CardContent className="p-4">
               <h3 className="font-semibold">매체별 광고비 트렌드</h3>
               <p className="text-xs text-muted-foreground mt-0.5 mb-3">가로 = 날짜, 세로 = 원(매체별로 쌓음, GA4 제외)</p>
@@ -433,7 +431,7 @@ function AdsPageInner() {
       )}
 
       {tab === "channels" && (
-        <Card>
+        <Card data-tour="ads-channel-table">
           <CardContent className="p-4 overflow-x-auto">
             <h3 className="font-semibold mb-4">매체별 상세 성과</h3>
             <table className="w-full text-sm">
@@ -480,50 +478,7 @@ function AdsPageInner() {
         </Card>
       )}
 
-      {tab === "ga4" && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {byChannel
-              .filter((c) => c.channel.startsWith("ga4_"))
-              .map((c) => (
-                <Card
-                  key={c.channel}
-                  className="p-4"
-                  style={{ borderLeft: `4px solid ${CHANNEL_COLORS.google_pmax}` }}
-                >
-                  <CardContent className="p-0 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-sm">{c.label}</span>
-                      <span className="text-sm font-bold">{formatCurrency(c.spend)}</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-                      <div>
-                        <p>ROAS</p>
-                        <p className="font-medium text-foreground">{c.roas.toFixed(2)}x</p>
-                      </div>
-                      <div>
-                        <p>클릭</p>
-                        <p className="font-medium text-foreground">{formatNumber(c.clicks)}</p>
-                      </div>
-                      <div>
-                        <p>노출</p>
-                        <p className="font-medium text-foreground">{formatNumber(c.impressions)}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">
-                💡 GA4 UTM 데이터는 Google Ads의 자동태깅(gclid)을 통해 수집됩니다.
-                Google Ads 광고비와 중복되므로 총 광고비 집계에서 제외됩니다.
-              </p>
-            </CardContent>
-          </Card>
-        </>
-      )}
+      {tab === "ga4" && <AdsUtmSection from={from} to={to} />}
 
       {tab === "creatives" && (
         <CreativesSection brand={brand} from={from} to={to} />
@@ -579,8 +534,10 @@ function NaverCampaignsSection({ brand, from, to }: { brand: string; from: strin
   return (
     <>
       {/* 판단용: 캠페인별 주간 추이 스몰 멀티플 (2026-11-03). 탭에 들어오면 이것부터 본다(2026-11-04 맨 위로). */}
-      <NaverCampaignMultiples brand={brand} to={to} />
-      <Card>
+      <div data-tour="ads-naver-multiples">
+        <NaverCampaignMultiples brand={brand} to={to} />
+      </div>
+      <Card data-tour="ads-naver-table">
         <CardContent className="p-4 overflow-x-auto">
           <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
             <h3 className="font-semibold">캠페인별 성과</h3>
@@ -695,7 +652,7 @@ function CreativesSection({ brand, from, to }: { brand: string; from: string; to
         <p className="text-xs text-muted-foreground">밸런스랩 소재는 메타 픽셀의 구매 전환이 막혀 있어 구매·ROAS 대신 <b>상세조회</b>(ViewContent)와 클릭당 상세조회 비율로 표시합니다.</p>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div data-tour="ads-creatives" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {creatives.slice(0, 30).map(c => (
           <Card key={c.id} className={cn("overflow-hidden", c.purchaseTracked === false ? "" : c.roas >= 3 ? "border-green-500/30" : c.roas >= 1 ? "border-yellow-500/30" : c.roas > 0 ? "border-red-500/30" : "")}>
             <CardContent className="p-3">

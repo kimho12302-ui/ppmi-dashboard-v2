@@ -73,7 +73,7 @@ function RawInner() {
     <PageShell title="Raw Data" description="DB 테이블 직접 조회" hideFilters>
       {/* 테이블 선택 */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-0.5 rounded-lg bg-muted p-1 flex-wrap">
+        <div data-tour="raw-table-picker" className="flex items-center gap-0.5 rounded-lg bg-muted p-1 flex-wrap">
           {TABLES.map((t) => (
             <button
               key={t.key}
@@ -88,6 +88,7 @@ function RawInner() {
           ))}
         </div>
         <button
+          data-tour="raw-csv"
           onClick={downloadCSV}
           className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
         >
@@ -97,7 +98,7 @@ function RawInner() {
 
       {/* 데이터 */}
       <Card>
-        <CardContent className="p-4 overflow-x-auto">
+        <CardContent data-tour="raw-table" className="p-4 overflow-x-auto">
           {loading ? (
             <div className="h-32 flex items-center justify-center text-muted-foreground">로딩 중...</div>
           ) : error ? (
@@ -105,8 +106,8 @@ function RawInner() {
           ) : (
             <>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-muted-foreground">총 {totalIsEstimate ? "약 " : ""}{total.toLocaleString("ko-KR")}행 · {columns.length}열</span>
-                <div className="flex items-center gap-2">
+                <span data-tour="raw-count" className="text-sm text-muted-foreground">총 {totalIsEstimate ? "약 " : ""}{total.toLocaleString("ko-KR")}행 · {columns.length}열</span>
+                <div data-tour="raw-pager" className="flex items-center gap-2">
                   <button
                     onClick={() => setPage(Math.max(0, page - 1))}
                     disabled={page === 0}

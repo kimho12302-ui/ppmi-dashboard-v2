@@ -122,7 +122,7 @@ export function MagazineBoard() {
   const viewsReadAt = summary?.viewsReadAt || recent.find((r) => r.viewsReadAt)?.viewsReadAt || null;
 
   return (
-    <BoardCard>
+    <BoardCard tour="content-magazine">
       <Masthead
         eyebrow="IRONPET.STORE / MAGAZINE"
         title="자사몰 매거진"

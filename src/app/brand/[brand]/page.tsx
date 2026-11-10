@@ -169,7 +169,7 @@ function BrandInner({ brand }: { brand: string }) {
   return (
     <PageShell title={label} description={`${label} 종합 성과: 판매처·라인업·제품·광고비`} hideFilters>
       {/* 기간 선택만 — 브랜드는 경로 고정, 전역 필터(전체/펫/밸런스랩 탭) 숨김 (혼동 방지) */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div data-tour="brand-period" className="flex items-center justify-between flex-wrap gap-2">
         <span className="text-sm text-muted-foreground">{from} ~ {to}</span>
         <DateRangeSelector preset={preset} onChange={setPreset} onCustomRange={setCustomRange} from={from} to={to} isCustom={isCustom} />
       </div>
@@ -177,7 +177,7 @@ function BrandInner({ brand }: { brand: string }) {
       {/* KPI. 공구가 있는 브랜드(밸런스랩)는 매출의 대부분이 공구라 자체매출만 보면
           브랜드 규모가 크게 과소 표시된다 → '총매출(공구 포함)'을 맨 앞에 병기한다.
           단 ROAS·이익은 광고/원가와 대응하는 자체매출 기준을 유지한다(공구는 광고와 무관). */}
-      <div className={cn("grid grid-cols-2 gap-4", hasGonggu ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
+      <div data-tour="brand-kpi" className={cn("grid grid-cols-2 gap-4", hasGonggu ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
         {hasGonggu && (
           <KpiCard
             size="hero"
@@ -191,19 +191,19 @@ function BrandInner({ brand }: { brand: string }) {
         <KpiCard size="hero" title="ROAS" value={`${(kpi?.roas || 0).toFixed(2)}x`} change={pct(kpi?.roas, kpi?.roasPrev)} />
       </div>
       {/* 보조 지표는 폭을 묶는다. 전폭으로 늘리면 hero 와 무게가 같아져 계층이 무너진다. */}
-      <div className="grid grid-cols-2 gap-2.5 sm:max-w-lg">
+      <div data-tour="brand-kpi-sub" className="grid grid-cols-2 gap-2.5 sm:max-w-lg">
         <KpiCard size="compact" title="주문 수" value={formatNumber(kpi?.orders || 0)} change={pct(kpi?.orders, kpi?.ordersPrev)} />
         <KpiCard size="compact" title="이익" value={formatCurrency(kpi?.profit || 0)} change={pct(kpi?.profit, kpi?.profitPrev)} />
       </div>
       {hasGonggu && (
-        <p className="text-xs text-muted-foreground -mt-2">
+        <p data-tour="brand-gonggu-note" className="text-xs text-muted-foreground -mt-2">
           총매출 = 자체 {formatCurrency(detail?.selfSalesTotal || 0)} + 공구 {formatCurrency(detail?.gongguSalesTotal || 0)}
           {" · "}ROAS·이익은 광고·원가와 대응하는 <b>자체매출</b> 기준입니다 (공구는 광고와 무관).
         </p>
       )}
 
       {/* 매출 구성 누적 막대 — 판매처/라인업/제품 × 일/주/월 */}
-      <Card>
+      <Card data-tour="brand-mix">
         <CardContent className="p-4">
           <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
             <h3 className="font-semibold text-sm">
@@ -259,10 +259,13 @@ function BrandInner({ brand }: { brand: string }) {
 
       {/* 판매처 개별 추이 — 개요와 같은 컴포넌트를 쓴다 */}
       {/* 판매처 상세는 위에서 받은 channel-groups 를 그대로 쓴다(같은 API 두 번 호출 제거, 2026-11-09) */}
-      <StoreDetailChartView data={cg} from={from} to={to} />
+      {/* 가이드 투어 표식. 데이터가 없어 차트가 안 그려지면 빈 div 는 숨긴다(간격 유지) */}
+      <div data-tour="brand-store-detail" className="empty:hidden">
+        <StoreDetailChartView data={cg} from={from} to={to} />
+      </div>
 
       {/* 판매처(채널)별 성과 */}
-      <Card>
+      <Card data-tour="brand-store-table">
         <CardContent className="p-4">
           <h3 className="font-semibold text-sm mb-3">판매처별 성과 <span className="text-xs text-muted-foreground font-normal">매출 vs 그 판매처를 끌어온 광고비</span></h3>
           <div className="overflow-x-auto">
@@ -293,10 +296,12 @@ function BrandInner({ brand }: { brand: string }) {
       </Card>
 
       <SectionHeading eyebrow="Attribution" title="광고 신고 vs 실제" note="채널 ROAS 를 더하면 실매출을 넘습니다" />
-      <AttributionGap channels={dash?.channels || []} actualRevenue={kpi?.revenue || 0} adSpend={kpi?.adSpend || 0} />
+      <div data-tour="brand-attribution" className="empty:hidden">
+        <AttributionGap channels={dash?.channels || []} actualRevenue={kpi?.revenue || 0} adSpend={kpi?.adSpend || 0} />
+      </div>
 
       <SectionHeading eyebrow="Channels" title="매체와 라인업" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div data-tour="brand-media-lineup" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* 매체별 광고비 */}
         <Card>
           <CardContent className="p-4">
@@ -329,11 +334,15 @@ function BrandInner({ brand }: { brand: string }) {
 
       <SectionHeading eyebrow="Products" title="제품" note="왼쪽은 판매 원장(매출), 아래는 광고 원장(광고비·ROAS)" />
       {/* 제품별 광고 성과 — 광고 원장(ad_product_performance) 기준 */}
-      <ProductTrendChart brand={brand} from={from} to={to} />
-      <ProductAdTable from={from} to={to} brand={brand} />
+      <div data-tour="brand-product-trend">
+        <ProductTrendChart brand={brand} from={from} to={to} />
+      </div>
+      <div data-tour="brand-product-ads">
+        <ProductAdTable from={from} to={to} brand={brand} />
+      </div>
 
       {/* 제품별 성과 — 판매 원장(product_sales) 기준 */}
-      <Card>
+      <Card data-tour="brand-top-products">
         <CardContent className="p-4">
           <h3 className="font-semibold text-sm mb-3">제품별 성과 (TOP 15)</h3>
           {(detail?.topProducts || []).length > 0 ? (
@@ -363,7 +372,7 @@ function BrandInner({ brand }: { brand: string }) {
 
       {/* 밸런스랩: 공구 셀러별 (자체매출과 분리) */}
       {brand === "balancelab" && (detail?.gongguSales || []).length > 0 && (
-        <Card>
+        <Card data-tour="brand-gonggu-sellers">
           <CardContent className="p-4">
             <h3 className="font-semibold text-sm mb-3">
               공구 셀러별 매출 <span className="text-xs text-muted-foreground font-normal">

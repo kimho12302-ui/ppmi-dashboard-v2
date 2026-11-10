@@ -22,9 +22,11 @@ async function getImpl(req: NextRequest) {
     const prevFromStr = prevFrom.toISOString().slice(0, 10);
     const prevToStr = prevTo.toISOString().slice(0, 10);
 
-    // ga4_* 채널은 UTM 추적 전용 (퍼널 데이터) — 광고비 집계에서 제외
+    // ga4_* 채널은 GA4 가 본 구글 광고 비용(sync_all.py 6번, 너티)이라 google_ads 와 겹친다. 광고비 집계에서 제외(2026-04-06).
+    //   이 행은 구글 광고를 멈춘 2026-05-14 에 끝났다. 「GA4 UTM」 탭은 이 행이 아니라 /api/utm(utm_analytics)을 쓴다.
+    // ★ 직전 기간에도 conversions 를 불러온다(2026-11-09). 빠져 있어 직전 전환이 늘 0 → 「전환수」·「CPA」가 늘 ▲100% 였다.
     let query = supabase.from("daily_ad_spend").select("*").gte("date", from).lte("date", to).not("channel", "like", "ga4_%").order("date");
-    let prevQuery = supabase.from("daily_ad_spend").select("date,brand,channel,spend,clicks,impressions,conversion_value").gte("date", prevFromStr).lte("date", prevToStr).not("channel", "like", "ga4_%");
+    let prevQuery = supabase.from("daily_ad_spend").select("date,brand,channel,spend,clicks,impressions,conversions,conversion_value").gte("date", prevFromStr).lte("date", prevToStr).not("channel", "like", "ga4_%");
 
     if (brand && brand !== "all") {
       query = query.in("brand", expandBrands(brand));

@@ -13,7 +13,7 @@ export function ManualEntries() {
   const { data, loading } = useFetch<{ since: string; items: Item[]; error?: string }>("/api/manual-entries");
   if (loading || !data || data.error) return null;
   return (
-    <Card>
+    <Card data-tour="daily-manual-entries">
       <CardContent className="p-4">
         <h3 className="font-semibold text-sm">✋ 사람이 넣은 값 <span className="text-xs font-normal text-muted-foreground">최근 30일 · {data.items.length}칸</span></h3>
         <p className="text-xs text-muted-foreground mb-2">자동 수집이 채우는 칸인데 입력 폼·엑셀로 사람이 넣은 값입니다. 다음 자동 회차가 같은 칸을 쓰면 자동 값으로 바뀌고 여기서 빠집니다.</p>

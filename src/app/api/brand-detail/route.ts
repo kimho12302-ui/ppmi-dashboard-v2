@@ -5,6 +5,8 @@ import { fetchAll } from "@/lib/db";
 import { isGonggu, isGongguAggregate, gongguSeller } from "@/lib/gonggu";
 import { masterByProduct } from "@/lib/product-master";
 import { cachedGET } from "@/lib/api-cache";
+import { loadComponentIndex } from "@/lib/product-components-server";
+import { expandSales } from "@/lib/product-components";
 
 async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -18,10 +20,13 @@ async function getImpl(req: NextRequest) {
 
   try {
     // Product sales for this brand
-    const products = await fetchAll(
-      supabase.from("product_sales").select("date,product,channel,lineup,category,revenue,quantity,buyers")
-        .in("brand", expandBrands(brand)).gte("date", from).lte("date", to)
-    );
+    const [products, components] = await Promise.all([
+      fetchAll(
+        supabase.from("product_sales").select("date,brand,product,channel,lineup,category,revenue,quantity,buyers")
+          .in("brand", expandBrands(brand)).gte("date", from).lte("date", to)
+      ),
+      loadComponentIndex(),
+    ]);
 
     // "공구 합계" 집계 행 제외
     const allRows = products.filter(r => !isGongguAggregate(r));
@@ -34,14 +39,21 @@ async function getImpl(req: NextRequest) {
     //   ⚠ 공구 제외는 **밸런스랩에만** 적용한다. `isGonggu` 는 `lineup` 유무로 판정하는데
     //   lineup 은 모든 브랜드의 정규 라인업 컬럼이기도 하다(너티 "하루루틴" 등).
     //   전 브랜드에 걸면 너티 168행이 전부 탈락해 제품 매출이 0이 된다(실측 12,029,450 → 0).
-    const filteredProducts = brand === "balancelab" ? allRows.filter(r => !isGonggu(r)) : allRows;
+    const selfRows = brand === "balancelab" ? allRows.filter(r => !isGonggu(r)) : allRows;
+
+    // ★ 제품 단위 칸은 판매 상품을 구성표로 기본 품목까지 푼 행으로 센다(2026-11-09, src/lib/product-components.ts).
+    //   「냠 단호박」「냠 단호박_낱개」「사운드시리즈 냠+바삭」의 냠 몫이 한 줄로 모이고,
+    //   「큐모발검사 뉴트리션 + 종이결과지」는 뉴트리션 1 + 종이결과지 1 로 나뉜다. 매출은 정가 비율로 나눠
+    //   합은 그대로라 판매처·일별 합계는 안 바뀐다. 구매자 수는 대표 품목에만 남아 주문 합도 그대로다.
+    //   원래 판매 상품명은 sale_product 에 남는다(사입 유통 브랜드·너티 라인업은 그 이름과 원장 lineup 으로 정한다).
+    const filteredProducts = expandSales(selfRows, components);
 
     // ── Lineup/SubBrand breakdown ──
     // 라인업 키 결정은 시계열(누적 막대)에서도 같은 기준을 써야 하므로 함수로 뺀다.
-    const lineupKey = (r: { product: string; lineup: string | null }): string => {
+    const lineupKey = (r: { product: string; sale_product?: string; lineup: string | null }): string => {
       if (brand === "nutty") return r.lineup || "기타";
-      // 사입 판정은 오버뷰 카드와 공용 함수를 쓴다 (brand-groups.saipBrandKey).
-      if (brand === "saip") return saipBrandKey(r, p => masterByProduct(p)?.brand_ko || null);
+      // 사입 판정은 오버뷰 카드와 공용 함수를 쓴다 (brand-groups.saipBrandKey). 판매 원장 이름으로 정본을 찾는다.
+      if (brand === "saip") return saipBrandKey({ product: r.sale_product ?? r.product, lineup: r.lineup }, p => masterByProduct(p)?.brand_ko || null);
       if (brand === "balancelab") {
         // 검사 라인은 brand-groups 의 단일 분류기를 쓴다.
         // 이전에는 `includes("검사") → 큐모발검사` 하드코딩이라, 런칭 예정인
@@ -193,4 +205,4 @@ async function getImpl(req: NextRequest) {
 }
 
 // 5분 캐시·쓰기 후 무효화 (src/lib/api-cache.ts)
-export const GET = cachedGET(getImpl, ["product_sales"], ["brand", "from", "to"]);
+export const GET = cachedGET(getImpl, ["product_sales", "product_components"], ["brand", "from", "to"]);
