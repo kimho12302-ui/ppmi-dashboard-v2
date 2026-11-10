@@ -4,6 +4,28 @@ import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { groupKeywordSummary, tryRpc } from "@/lib/summary-rpc";
 import { cachedGET } from "@/lib/api-cache";
+import type { SourceLatest } from "@/lib/sa-balancelab";
+
+// 키워드 분석 탭이 플랫폼별로 수집 멈춤을 가르려고 보는 플랫폼·브랜드. 기록이 한 번도 없던 조합은 빠진다.
+const PLATFORMS = ["naver_search", "naver_shopping", "naver_gfa", "google_search", "google_display", "meta"];
+const ALL_BRANDS = ["balancelab", "nutty", "ironpet", "saip"];
+
+/**
+ * (플랫폼, 브랜드)별 마지막 수집일. 기간과 무관하게 본다.
+ * ★ 2026-11-10: 예전엔 표 전체의 마지막 날 하나(latestCollected)만 봐서, 밸런스랩 네이버 검색이 매일 들어오는 한
+ *   05-04 에 멈춘 네이버 쇼핑·03-12 에 멈춘 GFA·구글·메타가 경고 없이 "그 기간 0" 처럼 보였다.
+ */
+async function latestBySource(brands: string[]): Promise<SourceLatest[]> {
+  const pairs = PLATFORMS.flatMap((platform) => brands.map((brand) => ({ platform, brand })));
+  const found = await Promise.all(pairs.map(async ({ platform, brand }) => {
+    const { data, error } = await supabase.from("keyword_performance").select("date")
+      .eq("platform", platform).eq("brand", brand).order("date", { ascending: false }).limit(1);
+    if (error) throw error;
+    const latest = data?.[0]?.date as string | undefined;
+    return latest ? { platform, brand, latest } : null;
+  }));
+  return found.filter((x): x is SourceLatest => x !== null);
+}
 
 async function getImpl(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
@@ -26,10 +48,10 @@ async function getImpl(req: NextRequest) {
     // ★ DB 합산 함수가 있으면 (플랫폼, 키워드) 로 묶인 합계만 받는다(2026-10-14). 화면은 그 단위로만 더한다.
     //   올해 전체 기준 원본 2.66MB 가 묶음 수백 개로 준다. 함수가 없으면(SQL 실행 전) 옛 경로.
     //   마지막 수집일 조회는 서로 기다릴 이유가 없어 같이 보낸다.
-    const latestQ = supabase.from("keyword_performance").select("date").order("date", { ascending: false }).limit(1);
-    const [summary, { data: latestRow }] = await Promise.all([
+    const scope = brand === "all" ? ALL_BRANDS : expandBrands(brand);
+    const [summary, sources] = await Promise.all([
       tryRpc<unknown[]>("keyword_summary", { p_from: from, p_to: to, p_brands: brand !== "all" ? expandBrands(brand) : null }),
-      latestQ,
+      latestBySource(scope),
     ]);
 
     // PostgREST 의 db-max-rows(1000)가 클라이언트 range 보다 우선하므로
@@ -37,7 +59,9 @@ async function getImpl(req: NextRequest) {
     // 함수가 없으면(SQL 실행 전) 같은 묶음을 서버에서 JS 로 만든다. 화면으로 가는 양은 그때도 준다.
     const data = summary ?? groupKeywordSummary(await fetchAll(query));
 
-    return NextResponse.json({ keywords: data, latestCollected: latestRow?.[0]?.date || null });
+    // latestCollected = 이 브랜드 범위에서 가장 늦은 수집일(예전엔 표 전체 기준이라 밸런스랩 수집이 다른 브랜드 멈춤을 가렸다).
+    const latestCollected = sources.reduce<string | null>((m, s) => (!m || s.latest > m ? s.latest : m), null);
+    return NextResponse.json({ keywords: data, latestCollected, sources });
   } catch (error) {
     console.error("Keywords API error:", error);
     return NextResponse.json({ error: "Failed to fetch data" }, { status: 500 });

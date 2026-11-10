@@ -165,7 +165,8 @@ function DemandChart({ data }: { data: SearchDemand }) {
           ))}
         </div>
         <p className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground/80">수동 수집, 마지막 수집일 {data.collectedAt}</span>
+          {/* 2026-11-10: 브랜드 필터와 무관한 밸런스랩 주제 묶음이라는 것을 먼저 밝힌다(키워드 탭 정리) */}
+          <span className="font-medium text-foreground/80">밸런스랩 주제 · 정적 데이터, 수동 수집 마지막 수집일 {data.collectedAt}</span>
           {" · "}자동 갱신 안 됨 · 상단 기간·브랜드 선택과 상관없이 {data.weeks[0].slice(0, 7)} 부터 전 기간
         </p>
       </div>

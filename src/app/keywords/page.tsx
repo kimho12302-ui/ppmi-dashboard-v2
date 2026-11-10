@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,8 +13,10 @@ import {
 import type { KeywordPerformance } from "@/lib/types";
 import { CoupangKeywordSection } from "@/components/coupang-keywords";
 import { NaverSearchTermSection } from "@/components/naver-search-terms";
-import { SaChangeLog } from "@/components/sa-change-log";
 import { SearchDemandSection } from "@/components/search-demand";
+import { KeywordSourceStatus, useStalled, stalledChipNote } from "@/components/keyword-source-status";
+import { kstDate } from "@/lib/date";
+import type { SourceLatest } from "@/lib/sa-balancelab";
 
 const PLATFORM_LABELS: Record<string, string> = {
   naver_search: "네이버 검색",
@@ -45,13 +47,20 @@ export default function KeywordsPage() {
 }
 
 function KeywordsInner() {
-  const { from, to, brand } = useFilterParams();
-  const { data, loading } = useFetch<{ keywords: KeywordPerformance[]; latestCollected?: string | null }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
+  const { from, to, brand: rawBrand, setBrand } = useFilterParams();
+  // ★ 2026-11-10: 키워드 화면은 「전체」를 쓰지 않는다. 펫(검색광고 계정 main)과 밸런스랩(계정 balancelab)은 키워드가
+  //   안 겹쳐(김호 확인) 합치면 KPI 가 두 계정을 섞는다. 「전체」로 들어오면 밸런스랩으로 바꾼다(콘텐츠 화면과 같은 방식).
+  //   다른 화면의 「전체」는 그대로다(사이드바 이동은 브랜드를 안 들고 간다).
+  const brand = rawBrand === "all" ? "balancelab" : rawBrand;
+  useEffect(() => { if (rawBrand === "all") setBrand("balancelab"); }, [rawBrand, setBrand]);
+  const { data, loading } = useFetch<{ keywords: KeywordPerformance[]; latestCollected?: string | null; sources?: SourceLatest[] }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
   const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr" | "roas" | "waste">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [tab, setTab] = useState<KeywordTab>("keywords");
   // SA 조정 이력 칸은 키워드 응답이 올 때까지 마운트되지 않는다. 기다리지 않게 같이 부른다.
-  usePrefetch([(tab === "keywords" || tab === "naver") && (brand === "balancelab" || brand === "all") ? saChangesUrl(brand) : null]);
+  // 2026-11-10 부터 조정 이력은 네이버 검색어 탭(밸런스랩)에만 있다. 칸이 부르는 주소와 글자까지 같아야 미리 부른 응답을 쓴다.
+  usePrefetch([tab === "naver" && brand === "balancelab" ? saChangesUrl("balancelab") : null]);
+  const stalled = useStalled(data?.sources, kstDate());
 
   const keywords = useMemo(() => data?.keywords || [], [data]);
 
@@ -165,7 +174,7 @@ function KeywordsInner() {
 
   if (loading) {
     return (
-      <PageShell title="키워드" description="키워드별 광고 성과">
+      <PageShell hideAllBrand title="키워드" description="키워드별 광고 성과">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
             <Card key={i} className="p-5 animate-pulse">
@@ -181,15 +190,15 @@ function KeywordsInner() {
   }
 
   return (
-    <PageShell title="키워드" description="키워드별 광고 성과">
+    <PageShell hideAllBrand title="키워드" description="키워드별 광고 성과">
       {/* 탭. 좁은 화면에서는 줄을 바꾼다(390px 에서 가로로 넘쳤다) */}
       <div className="flex flex-wrap items-center gap-0.5 rounded-lg bg-muted p-1 w-fit max-w-full" data-tour="keywords-tabs">
         {([
           { key: "keywords", label: "키워드 분석" },
-          { key: "gsc", label: "Google Search Console" },
+          { key: "gsc", label: "Google Search Console (ironpet.store)" },
           { key: "coupang", label: "쿠팡 광고 키워드" },
           { key: "naver", label: "네이버 검색어" },
-          { key: "demand", label: "검색 수요" },
+          { key: "demand", label: "검색 수요 (밸런스랩 주제·정적)" },
         ] as { key: KeywordTab; label: string }[]).map((t) => (
           <button
             key={t.key}
@@ -210,16 +219,12 @@ function KeywordsInner() {
       {tab === "naver" && <NaverSearchTermSection brand={brand} from={from} to={to} />}
       {tab === "demand" && <SearchDemandSection />}
 
-      {/* 밸런스랩 검색광고는 Claude 가 직접 조정한다(2026-10-12~). 무엇을 언제 바꿨고 그 뒤 어떻게 됐는지. */}
-      {(tab === "keywords" || tab === "naver") && (brand === "balancelab" || brand === "all") && <SaChangeLog brand={brand} />}
+      {/* 밸런스랩 검색광고 직접 조정 이력은 2026-11-10 네이버 검색어 탭으로 옮겼다(두 탭에 같은 칸이 있었다). */}
 
-      {/* 수집 중단을 빈 화면으로 오독하지 않도록 최종 수집일을 명시한다(2026-08 리뷰).
-          조회 기간보다 마지막 수집일이 앞서면 "이 기간엔 애초에 데이터가 없다"는 뜻. */}
-      {tab === "keywords" && !loading && data?.latestCollected && data.latestCollected < from && (
-        <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-500" data-tour="keywords-stalled">
-          키워드 수집이 <b>{data.latestCollected}</b> 이후 중단돼 선택하신 기간({from} ~ {to})에는 데이터가 없습니다.
-          아래가 비어 있는 것은 성과가 0이어서가 아니라 <b>수집이 멈춘 것</b>입니다.
-        </div>
+      {/* 수집 중단을 빈 화면으로 오독하지 않도록 마지막 수집일을 명시한다(2026-08 리뷰, 2026-11-10 플랫폼·브랜드별로).
+          멈춘 원천은 지우지 않고 「수집 멈춤(마지막 YYYY-MM-DD)」으로 남긴다. */}
+      {tab === "keywords" && !loading && (
+        <KeywordSourceStatus stalled={stalled} labels={PLATFORM_LABELS} from={from} to={to} latestCollected={data?.latestCollected} />
       )}
 
       {tab === "keywords" && <>
@@ -274,7 +279,7 @@ function KeywordsInner() {
                 platformFilter === p ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {PLATFORM_LABELS[p] || p}
+              {PLATFORM_LABELS[p] || p}{stalledChipNote(p, stalled)}
             </button>
           ))}
         </div>
@@ -561,6 +566,9 @@ function GscSection({ brand, from, to }: { brand: string; from: string; to: stri
   const summary = data?.summary;
   return (
     <>
+      <p className="text-xs text-muted-foreground" data-tour="keywords-gsc-scope">
+        구글 <b>자연 검색</b>(광고 아님)입니다. 연결된 사이트는 <b>ironpet.store 하나</b>라 펫 검색어만 있습니다.
+      </p>
       {summary && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard title="총 클릭" value={formatNumber(summary.totalClicks)} />
