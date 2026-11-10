@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { formatWon, cn } from "@/lib/utils";
 import { bucketAxis, bucketKey, bucketLabel, lastDataDate, type Gran } from "@/lib/bucket";
+import { md } from "@/lib/sales-through-label";
 import { SALES_GROUP_COLORS } from "@/lib/types";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
@@ -51,11 +52,18 @@ function RoasText({ r, a }: { r: number; a: number }) {
   return <span style={{ color: roasColor(roas) }}>{roas.toFixed(1)}x</span>;
 }
 
-function CellTd({ r, a, pending = false }: { r: number; a: number; pending?: boolean }) {
+/** 판매 집계일이 걸친 칸의 ROAS 뒤에 붙이는 「~M/D」. 그 칸 ROAS 는 그날까지의 매출 ÷ 그날까지의 광고비다. */
+function CutMark({ through }: { through: string | null }) {
+  if (!through) return null;
+  return <span className="ml-0.5 text-[10px]" title={`판매 집계일 ${md(through)}까지의 매출 ÷ 같은 날까지의 광고비. 광고비 금액은 칸 전체`}>~{md(through)}</span>;
+}
+
+/** 한 칸. r·a = 칸 전체 매출·광고비(금액 표시), rTo·aTo = 판매 집계일까지(ROAS 계산). through = 칸이 집계일에 걸쳤으면 그 날 */
+function CellTd({ r, a, rTo, aTo, through, pending = false }: { r: number; a: number; rTo: number; aTo: number; through: string | null; pending?: boolean }) {
   return (
     <td className="py-2 px-3 text-right whitespace-nowrap">
       <div>{pending ? <span className="text-muted-foreground">판매 미수집</span> : formatWon(r)}</div>
-      <div className="text-[11px] text-muted-foreground">{formatWon(a)} · {pending ? "-" : <RoasText r={r} a={a} />}</div>
+      <div className="text-[11px] text-muted-foreground">{formatWon(a)} · {pending ? "-" : <><RoasText r={rTo} a={aTo} />{aTo > 0 && <CutMark through={through} />}</>}</div>
     </td>
   );
 }
@@ -83,27 +91,43 @@ function ChannelInner() {
     [data, series]
   );
   const buckets = useMemo(() => {
-    const m: Record<string, { naver: { r: number; a: number }; jasamol: { r: number; a: number }; coupang: { r: number; a: number }; other: { r: number; a: number } }> = {};
-    const empty = () => ({ naver: { r: 0, a: 0 }, jasamol: { r: 0, a: 0 }, coupang: { r: 0, a: 0 }, other: { r: 0, a: 0 } });
+    // r·a = 칸 전체 매출·광고비(금액 칸), rT·aT = 판매 집계일(salesLast)까지만 더한 값(ROAS 칸).
+    // ★ 칸이 판매 집계일에 걸치면(주·월 칸에 집계일 뒤 날짜가 섞이면) 그 칸 ROAS 는 집계일까지로 나눈다(QA 3회차).
+    //   카드·주간 그래프와 같은 규칙이다. 광고비 금액은 실제 돈이라 칸 전체 그대로 둔다.
+    type Acc = { r: number; a: number; rT: number; aT: number };
+    type Row = { naver: Acc; jasamol: Acc; coupang: Acc; other: Acc; cut: boolean };
+    const m: Record<string, Row> = {};
+    const z = (): Acc => ({ r: 0, a: 0, rT: 0, aT: 0 });
+    const empty = (): Row => ({ naver: z(), jasamol: z(), coupang: z(), other: z(), cut: false });
     if (!series.length) return [];
     // 축 = 선택 기간 전체(오늘까지). 매출·광고비가 없는 날도 0 으로 남긴다(2026-10-28).
     for (const key of bucketAxis(from, to, gran)) m[key] = empty();
     for (const row of series) {
       const key = bucketKey(row.date, gran);
       if (!m[key]) m[key] = empty();
-      m[key].naver.r += row.naver?.revenue || 0; m[key].naver.a += row.naver?.adSpend || 0;
-      m[key].jasamol.r += row.jasamol?.revenue || 0; m[key].jasamol.a += row.jasamol?.adSpend || 0;
-      m[key].coupang.r += row.coupang?.revenue || 0; m[key].coupang.a += row.coupang?.adSpend || 0;
+      const inSales = !salesLast || row.date <= salesLast;
+      if (!inSales) m[key].cut = true;
       // 기타(피피·에이블리 등)도 합산해야 전체 매출이 헤드라인과 맞는다.
-      m[key].other.r += row.other?.revenue || 0; m[key].other.a += row.other?.adSpend || 0;
+      for (const g of ["naver", "jasamol", "coupang", "other"] as const) {
+        const cell = row[g];
+        const acc = m[key][g];
+        const rv = cell?.revenue || 0, av = cell?.adSpend || 0;
+        acc.r += rv; acc.a += av;
+        if (inSales) { acc.rT += rv; acc.aT += av; }
+      }
     }
     return Object.keys(m).sort().map((key) => {
       const b = m[key];
-      const totalRev = b.naver.r + b.jasamol.r + b.coupang.r + b.other.r;
-      const totalAd = b.naver.a + b.jasamol.a + b.coupang.a + b.other.a;
+      const gs = [b.naver, b.jasamol, b.coupang, b.other];
+      const totalRev = gs.reduce((s2, x) => s2 + x.r, 0);
+      const totalAd = gs.reduce((s2, x) => s2 + x.a, 0);
+      const totalRevTo = gs.reduce((s2, x) => s2 + x.rT, 0);
+      const totalAdTo = gs.reduce((s2, x) => s2 + x.aT, 0);
       // 마지막 판매일 뒤에 시작한 칸은 매출이 아직 안 들어온 칸이다(0원·0.0x 로 찍지 않는다).
       const pending = !!salesLast && key > bucketKey(salesLast, gran);
-      return { key, label: bucketLabel(key, gran), ...b, totalRev, totalAd, pending };
+      // 집계일이 걸친 칸: 칸 안에 집계일 뒤 날짜(광고비만 있는 날)가 섞인 칸. 미수집 칸은 따로 표시하므로 제외.
+      const through = !pending && b.cut && salesLast ? salesLast : null;
+      return { key, label: bucketLabel(key, gran), ...b, totalRev, totalAd, totalRevTo, totalAdTo, pending, through };
     });
   }, [series, gran, from, to, salesLast]);
 
@@ -288,12 +312,12 @@ function ChannelInner() {
                   {buckets.slice().reverse().map((b) => (
                     <tr key={b.key} className="border-b border-border/50">
                       <td className="py-2 pr-3 font-medium whitespace-nowrap">{b.label}</td>
-                      <CellTd r={b.naver.r} a={b.naver.a} pending={b.pending} />
-                      <CellTd r={b.jasamol.r} a={b.jasamol.a} pending={b.pending} />
-                      <CellTd r={b.coupang.r} a={b.coupang.a} pending={b.pending} />
+                      <CellTd r={b.naver.r} a={b.naver.a} rTo={b.naver.rT} aTo={b.naver.aT} through={b.through} pending={b.pending} />
+                      <CellTd r={b.jasamol.r} a={b.jasamol.a} rTo={b.jasamol.rT} aTo={b.jasamol.aT} through={b.through} pending={b.pending} />
+                      <CellTd r={b.coupang.r} a={b.coupang.a} rTo={b.coupang.rT} aTo={b.coupang.aT} through={b.through} pending={b.pending} />
                       <td className="py-2 pl-3 text-right whitespace-nowrap">
                         <div className="font-semibold">{b.pending ? <span className="font-normal text-muted-foreground">판매 미수집</span> : formatWon(b.totalRev)}</div>
-                        <div className="text-[11px] text-muted-foreground">{formatWon(b.totalAd)} · {b.pending ? "-" : <RoasText r={b.totalRev} a={b.totalAd} />}</div>
+                        <div className="text-[11px] text-muted-foreground">{formatWon(b.totalAd)} · {b.pending ? "-" : <><RoasText r={b.totalRevTo} a={b.totalAdTo} />{b.totalAdTo > 0 && <CutMark through={b.through} />}</>}</div>
                       </td>
                     </tr>
                   ))}
@@ -302,7 +326,7 @@ function ChannelInner() {
             </div>
           )}
           <p className="text-[11px] text-muted-foreground/70" data-tour="channel-rule-note">
-            스마트스토어=스마트스토어 매출÷(네이버검색+쇼핑+GFA+밸런스랩메타) · 자사몰=카페24÷(메타·구글, 밸런스랩 제외) · 쿠팡=쿠팡÷쿠팡광고. 밸런스랩은 스마트스토어 전용이라 메타도 여기 포함. 매출은 공구 제외 자체매출. 주별=월요일 기준.
+            스마트스토어=스마트스토어 매출÷(네이버검색+쇼핑+GFA+밸런스랩메타) · 자사몰=카페24÷(메타·구글, 밸런스랩 제외) · 쿠팡=쿠팡÷쿠팡광고. 밸런스랩은 스마트스토어 전용이라 메타도 여기 포함. 매출은 공구 제외 자체매출. 주별=월요일 기준. 「~M/D」가 붙은 칸의 ROAS 는 판매 집계일까지의 매출 ÷ 같은 날까지의 광고비(광고비 금액은 칸 전체).
           </p>
         </CardContent>
       </Card>
