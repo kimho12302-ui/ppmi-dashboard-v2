@@ -169,3 +169,22 @@ test("루틴 결과별 개수", () => {
   assert.deepEqual(countRoutineResults([{ result: "차단" }, { result: "등록" }, { result: null }, { result: "등록" }]),
     [{ result: "등록", count: 2 }, { result: "차단", count: 1 }, { result: "(결과 없음)", count: 1 }]);
 });
+
+test("쇼핑 순위: 깊은·얕은 측정이 섞이면 회차 전체를 얕은 측정으로 부르지 않는다", () => {
+  const base = { measured_on: "2026-11-10", product: "씨맥스", query_group: "golden", is_target: true, module: null,
+    catalog_rank: null, catalog_id: null, ad_seen: false, measured_at: "2026-11-10T10:00:00+09:00" };
+  const rows = [
+    { ...base, query: "씨맥스", method: "aside", our_rank: 4, seen_up_to: 120, page1: true },
+    { ...base, query: "메가도스", method: "aside", our_rank: null, seen_up_to: 120, page1: false },
+    { ...base, query: "흡연자영양제", method: "integrated", our_rank: null, seen_up_to: 7, page1: null },
+  ];
+  const v = buildRankView(rows, "2026-11-10", null);
+  assert.equal(v.shallow, false);
+  assert.equal(v.deepTargets, 2);
+  assert.equal(v.shallowTargets, 1);
+  const lines = v.products[0].lines;
+  assert.equal(lines.find((l) => l.query === "메가도스").ourLabel, "40위 밖");
+  assert.equal(lines.find((l) => l.query === "흡연자영양제").ourLabel, "판정 불가");
+  const allShallow = buildRankView([rows[2]], "2026-11-10", null);
+  assert.equal(allShallow.shallow, true);
+});

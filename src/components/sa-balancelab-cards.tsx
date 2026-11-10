@@ -266,6 +266,9 @@ const deltaText = (l: RankLine) => {
   return `우리 ${oneDelta(l.deltaOur)} · 카탈로그 ${oneDelta(l.deltaCatalog)}`;
 };
 
+// 깊게 = 쇼핑 화면 최대 120위(aside) 또는 검색 API(openapi), 얕게 = 통합검색 가격비교 칸 3~8개(integrated)
+const methodText = (m: string) => (m === "integrated" ? "얕게" : m === "aside" || m === "openapi" ? "깊게" : m || "-");
+
 function RankTable({ lines, previous }: { lines: RankLine[]; previous: string | null }) {
   return (
     <div className="overflow-auto rounded border" style={{ maxHeight: 360 }}>
@@ -274,6 +277,7 @@ function RankTable({ lines, previous }: { lines: RankLine[]; previous: string | 
           <tr className="text-muted-foreground border-b">
             <th className="py-1.5 px-2 text-left">검색어</th>
             <th className="py-1.5 px-2 text-left">묶음</th>
+            <th className="py-1.5 px-2 text-left">측정</th>
             <th className="py-1.5 px-2 text-right">우리 상품</th>
             <th className="py-1.5 px-2 text-right">가격비교 카탈로그</th>
             <th className="py-1.5 px-2 text-right">{previous ? `직전(${md(previous)}) 대비` : "직전 대비"}</th>
@@ -286,6 +290,7 @@ function RankTable({ lines, previous }: { lines: RankLine[]; previous: string | 
             <tr key={l.query} className="border-b last:border-0">
               <td className="py-1.5 px-2">{l.query}</td>
               <td className="py-1.5 px-2 text-muted-foreground">{l.query_group || "-"}</td>
+              <td className="py-1.5 px-2 text-muted-foreground">{methodText(l.method)}</td>
               <td className="py-1.5 px-2 text-right num" style={l.our_rank == null ? { color: "var(--muted-foreground)" } : undefined}>{l.ourLabel}</td>
               <td className="py-1.5 px-2 text-right num" style={l.catalog_rank == null ? { color: "var(--muted-foreground)" } : undefined}>{l.catalogLabel}</td>
               <td className="py-1.5 px-2 text-right num">{deltaText(l)}</td>
@@ -325,7 +330,13 @@ export function ShoppingRankCard() {
           {ok.shallow && (
             <Notice tone="warn">
               이번 회차는 <b>얕은 측정</b>입니다(통합검색 화면의 가격비교 칸 3~8개만 봄). 순위가 비어 있으면 「없다」가 아니라 <b>판정 불가</b>입니다.
-              1페이지({PAGE1_RANK}위) 안 여부는 깊은 측정 회차에서만 판정합니다.
+              1페이지({PAGE1_RANK}위) 안 여부는 깊은 측정 줄에서만 판정합니다.
+            </Notice>
+          )}
+          {!ok.shallow && (ok.shallowTargets ?? 0) > 0 && (
+            <Notice>
+              깊은 측정 {formatNumber(ok.deepTargets ?? 0)}줄은 쇼핑 화면을 최대 120위까지 본 순위라 1페이지({PAGE1_RANK}위) 안·밖을 판정합니다.
+              「측정」 칸이 <b>얕게</b>인 {formatNumber(ok.shallowTargets ?? 0)}줄은 통합검색 가격비교 칸 3~8개만 본 것이라, 순위가 비어 있으면 「없다」가 아니라 <b>판정 불가</b>입니다.
             </Notice>
           )}
           {!ok.previous && <Notice>측정이 한 회차뿐이라 직전 대비 변화는 다음 회차부터 나옵니다.</Notice>}

@@ -284,8 +284,12 @@ export interface RankView {
   latest: string | null; previous: string | null;
   /** 최신 회차 측정 방식 종류 */
   methods: string[];
-  /** 최신 회차에 integrated(얕은 측정) 줄이 있나 */
+  /** 최신 회차의 목표 검색어가 전부 integrated(얕은 측정)인가. 깊은 측정 줄이 하나라도 있으면 false */
   shallow: boolean;
+  /** 최신 회차 목표 검색어 중 얕은 측정(integrated) 줄 수 */
+  shallowTargets: number;
+  /** 최신 회차 목표 검색어 중 깊은 측정(aside·openapi, 1페이지 판정 가능) 줄 수 */
+  deepTargets: number;
   products: RankProduct[];
   latestRows: number; targetRows: number;
 }
@@ -327,9 +331,14 @@ export function buildRankView(rows: ShoppingRankRow[], latest: string | null, pr
       ranked: lines.filter((l) => l.our_rank != null || l.catalog_rank != null).length,
     }));
   const methods = Array.from(new Set(cur.map((r) => r.method))).sort();
+  // 경고는 줄 단위로 판단한다. 한 회차에 깊은 측정(aside)과 얕은 측정(integrated)이 섞이므로
+  // 얕은 줄이 하나 있다고 회차 전체를 「얕은 측정」으로 부르면 깊게 잰 줄의 순위까지 판정 불가로 읽힌다.
+  const shallowTargets = target.filter((r) => r.method === "integrated").length;
+  const deepTargets = target.length - shallowTargets;
   return {
     latest, previous, methods,
-    shallow: cur.some((r) => r.method === "integrated"),
+    shallow: target.length > 0 && deepTargets === 0,
+    shallowTargets, deepTargets,
     products, latestRows: cur.length, targetRows: target.length,
   };
 }
