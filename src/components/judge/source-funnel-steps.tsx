@@ -15,6 +15,7 @@ import { daysBetween } from "@/lib/bucket";
 import { kstDate } from "@/lib/date";
 import { formatNumber } from "@/lib/utils";
 import { buildControlChart } from "@/lib/judge-charts";
+import { FunnelBars } from "@/components/charts/funnel-bars";
 
 interface SourceDay { date: string; sessions: number | null; orders: number; cartAdds?: number }
 /** salesLastDate = 이 원천의 판매 원장 마지막 날(원천의 판매 브랜드 범위). 없으면(옛 응답) 응답 최상위 값 */
@@ -129,6 +130,17 @@ export function SourceFunnelSteps({ brand, from, to }: { brand: string; from: st
                     : "유입과 판매가 둘 다 들어온 날이 없어 합계를 내지 않습니다"}
                 </span>
               </div>
+              {/* 퍼널 그림(2026-11-10): 같은 원천에서 단계가 셋 이상 이어질 때만(유입 → 장바구니 → 구매). 건수는 바로 아래 칸에 있어
+                  여기는 폭(첫 단계 = 100%)과 단계 사이 이탈률만 그린다. 두 단계(유입 → 구매)뿐이면 이탈률이 아래 「유입 대비 %」를 뒤집은 값이라 그리지 않는다. */}
+              {f.days > 0 && f.cartAdds != null && f.cartValid && (
+                <div data-tour="funnel-source-bars" className="mb-2">
+                  <FunnelBars color="var(--neutral-1)" stages={[
+                    { key: "sessions", label: "유입", value: f.sessions },
+                    { key: "cart", label: "장바구니", value: f.cartAdds },
+                    { key: "orders", label: "구매", value: f.orders },
+                  ]} />
+                </div>
+              )}
               {f.days > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   <Step name="유입" value={f.sessions} />
