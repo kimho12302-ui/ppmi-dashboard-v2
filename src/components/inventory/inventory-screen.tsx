@@ -90,9 +90,9 @@ export function InventoryScreen() {
 
           <section data-tour="inventory-cards" className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
             <CountCard status="soldout" n={cards.card.soldout}
-              sub={`재고 합 0${cards.counts.late ? " · 입고 지연 포함" : ""}`} held={cards.card.held_soldout} />
+              sub={`재고 합 0${cards.counts.late ? " · 입고 지연 포함" : ""}`} held={ready.scale ? cards.card.held_soldout : undefined} />
             <CountCard status="order" n={cards.card.order}
-              sub={`남은 날 ≤ 주의 일수${cards.card.late ? ` · 입고 지연 ${cards.card.late} 포함` : ""}`} held={cards.card.held_order} />
+              sub={`남은 날 ≤ 주의 일수${cards.card.late ? ` · 입고 지연 ${cards.card.late} 포함` : ""}`} held={ready.scale ? cards.card.held_order : undefined} />
             <CountCard status="soon" n={cards.card.soon} sub={`≤ 30일 · 입고 대기 ${cards.card.incoming}`} />
             <CountCard status="over" n={cards.card.over} sub="남은 날 > 60일" />
             <ValueCard cards={cards} />
