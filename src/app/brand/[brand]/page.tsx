@@ -6,6 +6,7 @@ import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { DateRangeSelector } from "@/components/ui/date-range-selector";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
+import { salesThroughLabel } from "@/lib/sales-through-label";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { BRAND_LABELS, AD_CHANNEL_COLORS } from "@/lib/types";
 import { bucketize, bucketAxis, bucketLabel, isAfterLastData, lastDataDate, GRAN_LABELS, type Gran } from "@/lib/bucket";
@@ -26,7 +27,7 @@ const AD_CH_KOR: Record<string, string> = {
 };
 
 interface DashboardResp {
-  kpi: { revenue: number; revenuePrev: number; adSpend: number; adSpendPrev: number; roas: number; roasPrev: number; orders: number; ordersPrev: number; profit: number; profitPrev: number; aov: number };
+  kpi: { revenue: number; revenuePrev: number; adSpend: number; adSpendPrev: number; roas: number; roasPrev: number; roasThrough?: string | null; adSpendToSales?: number; orders: number; ordersPrev: number; profit: number; profitPrev: number; aov: number };
   trend: { date: string; revenue: number; adSpend: number }[];
   channels: { channel: string; spend: number; roas: number }[];
 }
@@ -193,7 +194,10 @@ function BrandInner({ brand }: { brand: string }) {
         )}
         <KpiCard size="hero" className={hasGonggu ? "" : "col-span-2 sm:col-span-1"} title={hasGonggu ? "자체매출" : "매출"} value={formatCurrency(kpi?.revenue || 0)} change={pct(kpi?.revenue, kpi?.revenuePrev)} />
         <KpiCard size="hero" title="광고비" value={formatCurrency(kpi?.adSpend || 0)} change={pct(kpi?.adSpend, kpi?.adSpendPrev)} />
-        <KpiCard size="hero" title="ROAS" value={`${(kpi?.roas || 0).toFixed(2)}x`} change={pct(kpi?.roas, kpi?.roasPrev)} />
+        {/* ROAS 는 판매 원장 마지막 날까지의 매출 ÷ 그날까지의 광고비(서버 /api/dashboard, QA 3회차). 광고비 카드 금액은 기간 전체 */}
+        <KpiCard size="hero" title="ROAS" subtitle={salesThroughLabel(kpi?.roasThrough, to) ?? undefined}
+          value={kpi && (kpi.adSpendToSales ?? kpi.adSpend) > 0 && kpi.roasThrough !== null ? `${(kpi.roas || 0).toFixed(2)}x` : "-"}
+          change={kpi && kpi.roasThrough !== null ? pct(kpi.roas, kpi.roasPrev) : undefined} />
       </div>
       {/* 보조 지표는 폭을 묶는다. 전폭으로 늘리면 hero 와 무게가 같아져 계층이 무너진다. */}
       <div data-tour="brand-kpi-sub" className="grid grid-cols-2 gap-2.5 sm:max-w-lg">

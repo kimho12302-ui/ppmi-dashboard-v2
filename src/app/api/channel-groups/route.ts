@@ -7,7 +7,7 @@ import { fetchAll } from "@/lib/db";
 import { formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
 import { baseStoreAdSpend, isBalancelabMetaGoogle } from "@/lib/ad-store";
-import { fetchSalesThrough } from "@/lib/sales-through";
+import { fetchSalesThrough, compareCut } from "@/lib/sales-through";
 
 // 채널(판매처) 성과 — 판매처별 매출 vs 그 판매처를 끌어온 광고비.
 // ★ 브랜드 판매처 구조 반영(2026-06 수정):
@@ -75,9 +75,6 @@ function sumUntil(byDate: Record<string, DayAgg>, cut: string | null) {
   }
   return { revByCh, adByCh, blMG };
 }
-
-/** YYYY-MM-DD 에서 n 일 뺀 날짜 */
-const minusDays = (ymd: string, n: number) => new Date(new Date(`${ymd}T00:00:00Z`).getTime() - n * 86400000).toISOString().slice(0, 10);
 
 async function periodData(from: string, to: string, brand: string) {
   let salesQ = supabase.from("daily_sales").select("date,brand,channel,revenue")
@@ -150,9 +147,8 @@ async function getImpl(req: NextRequest) {
     //   ROAS·광고비 비중·ROAS 전기간 대비·매출 전기간 대비는 판매가 들어온 날까지로 자른다.
     //   직전 기간도 같은 길이로 자른다: 이번 기간의 각 날짜를 (기간 일수)만큼 앞으로 민 날까지.
     //   기간 전체 광고비 금액(adSpend)과 그 전기간 대비(adDelta)는 실제 돈이라 그대로 둔다.
-    const periodDays = Math.round(diff / 86400000) + 1;
-    const curCut = !salesThrough || salesThrough < from ? null : salesThrough < to ? salesThrough : to;
-    const prevCut = curCut ? minusDays(curCut, periodDays) : null;
+    //   자르는 날짜 규칙은 src/lib/sales-through.ts compareCut 하나(Overview·인사이트와 같은 규칙).
+    const { cut: curCut, prevCut } = compareCut(from, to, salesThrough);
     const curTo = sumUntil(cur.byDate, curCut);
     const prevToCut = sumUntil(prev.byDate, prevCut);
 

@@ -35,3 +35,21 @@ export function sumThrough<T extends { date: string }>(rows: readonly T[], throu
   for (const r of rows) if (r.date <= through) s += value(r);
   return s;
 }
+
+/** YYYY-MM-DD 에서 n 일 뺀 날짜 */
+export function minusDays(ymd: string, n: number): string {
+  return new Date(new Date(`${ymd}T00:00:00Z`).getTime() - n * 86400000).toISOString().slice(0, 10);
+}
+
+/**
+ * 비율(ROAS·MER·광고비 비중)을 낼 때 이번 기간·직전 기간을 어디까지 자를지(QA 3회차, 2026-11-10).
+ *   - cut: 이번 기간 [from, to] 안에서 판매 원장 마지막 날까지. 원장이 기간 시작 전에 끝났으면 null(비율을 내지 않는다).
+ *   - prevCut: 직전 같은 길이 기간을 같은 길이로 자른 끝 날(cut 을 기간 일수만큼 앞으로 민 날).
+ *   - 금액(광고비 합계)은 이 날짜로 자르지 않는다. 실제로 쓴 돈이라 기간 전체를 그대로 보여 준다.
+ * channel-groups(판매처 카드)·dashboard(Overview 카드)·insights(전체 ROAS) 가 같은 규칙을 쓴다.
+ */
+export function compareCut(from: string, to: string, through: string | null): { cut: string | null; prevCut: string | null; periodDays: number } {
+  const periodDays = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1;
+  const cut = !through || through < from ? null : through < to ? through : to;
+  return { cut, prevCut: cut ? minusDays(cut, periodDays) : null, periodDays };
+}

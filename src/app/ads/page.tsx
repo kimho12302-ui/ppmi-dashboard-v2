@@ -5,6 +5,7 @@ import { PageShell } from "@/components/page-shell";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
+import { salesThroughLabel } from "@/lib/sales-through-label";
 import { AD_ALERTS_URL, dashboardUrl } from "@/lib/api-urls";
 import { AdAlerts } from "@/components/ad-alerts";
 import { NaverCampaignMultiples } from "@/components/judge/naver-campaign-multiples";
@@ -92,10 +93,13 @@ function AdsPageInner() {
   // ★ 헤드라인 ROAS 는 Overview·월별과 같은 정의(판매 원장 실매출 ÷ 매체비)여야 한다(2026-11-03).
   //   매체가 신고한 전환매출을 더하면 같은 주문을 여러 매체가 자기 몫으로 신고해 실매출을 넘는다
   //   (2026-10 실측: 신고 합산 10.48x vs 실매출 6.17x). Overview 와 같은 주소라 받은 응답을 재사용한다.
-  const { data: dash } = useFetch<{ kpi?: { roas: number; roasPrev: number; revenue: number; adSpend: number } }>(
+  const { data: dash } = useFetch<{ kpi?: { roas: number; roasPrev: number; revenue: number; adSpend: number; roasThrough?: string | null; adSpendToSales?: number } }>(
     dashboardUrl(brand || "all", from, to)
   );
   const realKpi = dash?.kpi;
+  // 실매출 ROAS 는 판매 원장 마지막 날까지의 매출 ÷ 그날까지의 광고비(서버 /api/dashboard, QA 3회차).
+  const realRoasOk = !!realKpi && (realKpi.adSpendToSales ?? realKpi.adSpend) > 0 && realKpi.roasThrough !== null;
+  const realRoasLabel = salesThroughLabel(realKpi?.roasThrough, to);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const ads = useMemo(() => data?.ads || [], [data]);
@@ -255,9 +259,9 @@ function AdsPageInner() {
         <KpiCard
           size="hero"
           title="ROAS (실매출)"
-          value={realKpi ? (realKpi.adSpend > 0 ? `${realKpi.roas.toFixed(2)}x` : "-") : "…"}
-          change={realKpi && realKpi.adSpend > 0 ? pctChange(realKpi.roas, realKpi.roasPrev) : undefined}
-          subtitle={`판매 원장 매출 ÷ 광고비 · 신고 ROAS(매체 합산, 중복 포함) ${totals.spend > 0 ? `${totals.reportedRoas.toFixed(2)}x` : "-"}`}
+          value={realKpi ? (realRoasOk ? `${realKpi.roas.toFixed(2)}x` : "-") : "…"}
+          change={realRoasOk ? pctChange(realKpi.roas, realKpi.roasPrev) : undefined}
+          subtitle={`판매 원장 매출 ÷ 광고비${realRoasLabel ? ` (${realRoasLabel})` : ""} · 신고 ROAS(매체 합산, 중복 포함) ${totals.spend > 0 ? `${totals.reportedRoas.toFixed(2)}x` : "-"}`}
         />
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">

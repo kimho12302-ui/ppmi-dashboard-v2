@@ -7,6 +7,7 @@ import { SectionHeading } from "@/components/ui/section";
 import { AttributionGap } from "@/components/attribution-gap";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFilterParams, useFetch, usePrefetch } from "@/hooks/use-dashboard-data";
+import { salesThroughLabel } from "@/lib/sales-through-label";
 import { dashboardUrl, brandDetailUrl } from "@/lib/api-urls";
 import { useDataStatus } from "@/hooks/use-data-status";
 import { useConfig } from "@/hooks/use-config";
@@ -37,6 +38,8 @@ interface DashboardData {
     profit: number; profitPrev: number; mer: number; merPrev: number;
     aov: number; aovPrev: number; cogs: number; shippingCost: number;
     miscCost: number; matchedRate: number; profitPrevEstimated?: boolean;
+    /** ROAS·MER 가 쓴 끝 날(판매 원장 마지막 날, 기간 안으로 자름)과 그날까지의 매체비. 서버 /api/dashboard 주석 */
+    roasThrough?: string | null; adSpendToSales?: number;
   };
   trend: { date: string; revenue: number; adSpend: number; maRevenue: number; maAdSpend: number; roas: number; [k: string]: string | number }[];
   channels: { channel: string; spend: number; roas: number; reportedRevenue?: number }[];
@@ -213,15 +216,17 @@ function OverviewInner() {
       }
     : undefined;
 
-  // ROAS 는 분자(매출)와 분모(광고비)가 각각 다른 이유로 틀어질 수 있다. 둘 다 밝힌다.
+  // ROAS·MER 는 판매 원장 마지막 날까지의 매출 ÷ 같은 날까지의 광고비다(QA 3회차, 서버가 자른다).
+  // 그래서 판매 동기화 지연은 더 이상 ROAS 를 낮추지 않는다. 남는 위험은 분모 광고비가 빠진 경우뿐이다.
   const roasConfidence: KpiConfidence | undefined = useMemo(() => {
-    const notes: string[] = [];
-    if (brokenAd.length > 0) notes.push(`분모에 ${brokenAdNames} 광고비가 빠져 ROAS가 과대 계상됩니다`);
-    if (salesGapDays > 0) notes.push(`분자 매출이 ${salesLastDate}까지만 반영됐습니다`);
-    if (notes.length === 0) return undefined;
-    return { level: "partial", note: notes.join(" · ") };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brokenAdNames, brokenAd.length, salesGapDays, salesLastDate]);
+    if (brokenAd.length === 0) return undefined;
+    return { level: "partial", note: `분모에 ${brokenAdNames} 광고비가 빠져 ROAS가 과대 계상됩니다` };
+  }, [brokenAdNames, brokenAd.length]);
+  // 카드 부제에 붙일 「어디까지로 나눴는지」. 기간 끝까지 판매가 들어왔으면 붙이지 않는다.
+  //   undefined = 아직 응답 전(로딩 중 기본값). 그때는 라벨을 붙이지 않는다.
+  const roasThrough = kpi.roasThrough;
+  const roasThroughLabel = salesThroughLabel(roasThrough, to);
+  const roasMeasurable = (kpi.adSpendToSales ?? kpi.adSpend) > 0 && roasThrough !== null;
 
   // 이익: 원가 매칭이 안 된 품목은 원가 0으로 계산된다 → 이익이 과대.
   const matchedPct = Math.round((kpi.matchedRate || 0) * 100);
@@ -283,10 +288,10 @@ function OverviewInner() {
     rows.push("항목,값,전기간");
     rows.push(`매출,${kpi.revenue},${kpi.revenuePrev}`);
     rows.push(`광고비,${kpi.adSpend},${kpi.adSpendPrev}`);
-    rows.push(`ROAS,${kpi.roas.toFixed(2)},${kpi.roasPrev.toFixed(2)}`);
+    rows.push(`ROAS${roasThroughLabel ? ` (${roasThroughLabel})` : ""},${kpi.roas.toFixed(2)},${kpi.roasPrev.toFixed(2)}`);
     rows.push(`주문수,${kpi.orders},${kpi.ordersPrev}`);
     rows.push(`이익,${kpi.profit},${kpi.profitPrev}${kpi.profitPrevEstimated ? " (전기간은 원가율 가정 추정)" : ""}`);
-    rows.push(`MER,${kpi.mer.toFixed(2)},${kpi.merPrev.toFixed(2)}`);
+    rows.push(`MER${roasThroughLabel ? ` (${roasThroughLabel})` : ""},${kpi.mer.toFixed(2)},${kpi.merPrev.toFixed(2)}`);
     rows.push("");
     rows.push("=== 일별 트렌드 ===");
     rows.push("날짜,매출,광고비,이동평균매출,이동평균광고비");
@@ -367,7 +372,7 @@ function OverviewInner() {
       <div data-tour="overview-kpi" className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <KpiCard size="hero" className="col-span-2 sm:col-span-1" title="매출" value={formatCurrency(kpi.revenue)} change={pctChange(kpi.revenue, kpi.revenuePrev)} changeLabel={changeLabel} confidence={revenueConfidence} target={targetProp(kpi.revenue, targets?.revenue_target, "목표")} onClick={() => toggleKpi("revenue")} active={selectedKpi === "revenue"} />
         <KpiCard size="hero" title="광고비" value={formatCurrency(kpi.adSpend)} change={pctChange(kpi.adSpend, kpi.adSpendPrev)} changeLabel={changeLabel} confidence={adSpendConfidence} target={targetProp(kpi.adSpend, targets?.ad_budget_target, "예산")} onClick={() => toggleKpi("adSpend")} active={selectedKpi === "adSpend"} />
-        <KpiCard size="hero" title="ROAS" subtitle="판매 원장 매출 ÷ 매체비" value={`${(kpi.roas || 0).toFixed(2)}x`} change={pctChange(kpi.roas, kpi.roasPrev)} changeLabel={changeLabel} confidence={roasConfidence} />
+        <KpiCard size="hero" title="ROAS" subtitle={`판매 원장 매출 ÷ 매체비${roasThroughLabel ? ` (${roasThroughLabel})` : ""}`} value={roasMeasurable ? `${(kpi.roas || 0).toFixed(2)}x` : "-"} change={roasMeasurable ? pctChange(kpi.roas, kpi.roasPrev) : undefined} changeLabel={changeLabel} confidence={roasConfidence} />
       </div>
       {/* MER 은 잡비가 있을 때만 나온다. 열 수를 고정하면 없는 날 오른쪽에 빈 칸이 남는다. */}
       <div data-tour="overview-kpi-sub" className={`grid grid-cols-2 gap-2.5 ${(kpi.miscCost || 0) > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
@@ -379,7 +384,7 @@ function OverviewInner() {
           confidence={profitConfidence} onClick={() => toggleKpi("profit")} active={selectedKpi === "profit"} />
         {/* MER은 매출/(매체비+잡비). 잡비가 0인 달에는 ROAS 와 같은 숫자라 잡비가 있을 때만 낸다. */}
         {(kpi.miscCost || 0) > 0 && (
-          <KpiCard size="compact" title="MER" value={`${(kpi.mer || 0).toFixed(2)}x`} change={pctChange(kpi.mer, kpi.merPrev)} changeLabel={changeLabel} confidence={quiet(roasConfidence)} />
+          <KpiCard size="compact" title="MER" subtitle={roasThroughLabel ?? undefined} value={roasMeasurable ? `${(kpi.mer || 0).toFixed(2)}x` : "-"} change={roasMeasurable ? pctChange(kpi.mer, kpi.merPrev) : undefined} changeLabel={changeLabel} confidence={quiet(roasConfidence)} />
         )}
         <KpiCard size="compact" title="객단가" value={kpi.aov > 0 ? formatCurrency(Math.round(kpi.aov)) : "-"} change={pctChange(kpi.aov, kpi.aovPrev)} changeLabel={changeLabel} onClick={() => toggleKpi("aov")} active={selectedKpi === "aov"} />
       </div>

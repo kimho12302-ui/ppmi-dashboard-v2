@@ -7,7 +7,7 @@ import { fetchAll } from "@/lib/db";
 import { masterByProduct } from "@/lib/product-master";
 import { isGonggu, isGongguAggregate, isGongguInDailySales, formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
-import { fetchSalesThrough } from "@/lib/sales-through";
+import { fetchSalesThrough, compareCut } from "@/lib/sales-through";
 import { loadComponentRows } from "@/lib/product-components-server";
 import { buildComponentIndex, expandSales } from "@/lib/product-components";
 
@@ -58,7 +58,7 @@ async function getImpl(req: NextRequest) {
     if (brand !== "all") prevSalesQ = prevSalesQ.in("brand", expandBrands(brand));
     else prevSalesQ = prevSalesQ.neq("brand", "all");
 
-    let prevAdQ = supabase.from("daily_ad_spend").select("channel, spend, conversion_value").gte("date", prevFrom).lte("date", prevTo);
+    let prevAdQ = supabase.from("daily_ad_spend").select("date, channel, spend, conversion_value").gte("date", prevFrom).lte("date", prevTo);
     if (brand !== "all") prevAdQ = prevAdQ.in("brand", expandBrands(brand));
     else prevAdQ = prevAdQ.neq("brand", "all");
 
@@ -189,21 +189,37 @@ async function getImpl(req: NextRequest) {
     // ROAS = 실매출 ÷ 매체비. 목표(roas_target)가 목표매출/목표광고비로 잡히므로 같은 정의여야 한다.
     // 채널 conversion_value 합계를 쓰면 플랫폼별 기여 중복 계상으로 실매출을 넘어 과대 표시된다
     // (2026-07 실측: 합계 5,705만 vs 실매출 4,464만). 채널별 ROAS는 여전히 플랫폼 신고 기준.
-    const roas = totalMediaSpend > 0 ? totalRevenue / totalMediaSpend : 0;
+    //
+    // ★ 비율(ROAS·MER)은 판매 원장 마지막 날까지로 자른다(QA 3회차, 2026-11-10).
+    //   판매 동기화가 며칠 늦어 그 뒤 날짜는 광고비만 있고 매출이 아직 없다. 기간 전체 광고비로 나누면
+    //   ROAS 가 실제보다 낮게 나온다(판매처 카드 QA2 H2 와 같은 종류). 분자·분모 모두 같은 날까지.
+    //   직전 기간도 같은 길이로 자른다(compareCut). 광고비·이익 금액은 실제 돈이라 기간 전체 그대로.
+    //   원장이 기간 시작 전에 끝났으면(roasThrough=null) 비율을 내지 않는다(0, 화면은 "-").
+    const { cut: roasThrough, prevCut: prevRoasThrough } = compareCut(from, to, salesLastDate);
+    const upTo = (d: string, cut: string | null) => !!cut && d <= cut;
+    const revenueToSales = adjSales.reduce((s, r) => (upTo(r.date, roasThrough) ? s + Number(r.revenue) : s), 0);
+    const mediaToSales = nonGa4Ad.reduce((s, r) => (upTo(r.date, roasThrough) ? s + Number(r.spend) : s), 0);
+    const miscToSales = (miscData || []).filter(r => matchesBrand(r.brand, brand) && upTo(String(r.date), roasThrough))
+      .reduce((s, r) => s + Number(r.amount || 0), 0);
+    const roas = mediaToSales > 0 ? revenueToSales / mediaToSales : 0;
     const profit = totalRevenue - totalMarketingCost - totalCOGS - totalShippingCost;
-    const mer = totalMarketingCost > 0 ? totalRevenue / totalMarketingCost : 0; // MER = 매출/총마케팅비(매체+잡비)
+    // MER = 매출/총마케팅비(매체+잡비). ROAS 와 같은 날까지.
+    const mer = mediaToSales + miscToSales > 0 ? revenueToSales / (mediaToSales + miscToSales) : 0;
     const aov = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
     const prevRevenue = adjPrevSales.reduce((s, r) => s + Number(r.revenue), 0);
     const prevOrders = (prevSales || []).reduce((s, r) => s + Number(r.orders), 0);
     const prevNonGa4Ad = (prevAd || []).filter(r => !r.channel.startsWith("ga4_"));
     const prevAdSpendTotal = prevNonGa4Ad.reduce((s, r) => s + Number(r.spend), 0);
-    const prevRoas = prevAdSpendTotal > 0 ? prevRevenue / prevAdSpendTotal : 0;
+    // 직전 ROAS·MER 도 같은 길이(prevRoasThrough 까지)로. 직전 MER 은 예전부터 잡비를 넣지 않는다(직전 잡비 조회 없음).
+    const prevRevenueCut = adjPrevSales.reduce((s, r) => (upTo(r.date, prevRoasThrough) ? s + Number(r.revenue) : s), 0);
+    const prevAdCut = prevNonGa4Ad.reduce((s, r) => (upTo(r.date, prevRoasThrough) ? s + Number(r.spend) : s), 0);
+    const prevRoas = prevAdCut > 0 ? prevRevenueCut / prevAdCut : 0;
     const cogsRate = totalRevenue > 0 ? totalCOGS / totalRevenue : 0;
     // ★ 직전 기간 이익은 추정이다: 원가를 이번 기간 원가율로 가정하고 배송비·잡비를 넣지 않는다.
     //   그래서 화면은 이익 증감률을 내지 않는다(kpi.profitPrevEstimated). 값은 CSV 내보내기용으로만 남긴다.
     const prevProfit = prevRevenue - prevAdSpendTotal - (prevRevenue * cogsRate);
-    const prevMer = prevAdSpendTotal > 0 ? prevRevenue / prevAdSpendTotal : 0;
+    const prevMer = prevRoas;
     const prevAov = prevOrders > 0 ? prevRevenue / prevOrders : 0;
 
     // ── Trend (일별) ──
@@ -425,7 +441,8 @@ async function getImpl(req: NextRequest) {
       kpi: {
         revenue: totalRevenue, revenuePrev: prevRevenue,
         adSpend: totalMediaSpend, adSpendPrev: prevAdSpendTotal,
-        roas, roasPrev: prevRoas,
+        // roas·mer 는 판매 원장 마지막 날(roasThrough)까지의 매출 ÷ 같은 날까지의 광고비. adSpendToSales = 그 분모.
+        roas, roasPrev: prevRoas, roasThrough, adSpendToSales: mediaToSales,
         orders: totalOrders, ordersPrev: prevOrders,
         profit, profitPrev: prevProfit,
         mer, merPrev: prevMer,
