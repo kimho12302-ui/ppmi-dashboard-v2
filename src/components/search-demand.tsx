@@ -4,9 +4,9 @@ import { useMemo, useState, type ReactNode } from "react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
+import { xAxisProps, yAxisProps, gridProps, tooltipProps, activeDotProps, chartTheme, TIP_CARD } from "@/components/charts/chart-style";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
-import { chartTheme } from "@/components/charts/theme-colors";
 import { cn } from "@/lib/utils";
 import type { SearchDemand, SearchDemandResult, TermSeries } from "@/lib/search-demand";
 
@@ -197,19 +197,19 @@ function DemandChart({ data }: { data: SearchDemand }) {
               )}
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={rows} margin={MARGIN}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} vertical={false} />
-                  <XAxis dataKey="week" ticks={ticks} tickFormatter={weekTick} height={XAXIS_H}
-                    tick={{ fontSize: 11, fill: chartTheme.tick }} interval="preserveStartEnd" minTickGap={12} />
-                  <YAxis domain={[0, yMax]} allowDataOverflow width={YAXIS_W} tick={{ fontSize: 11, fill: chartTheme.tick }} />
+                  <CartesianGrid {...gridProps} />
+                  <XAxis {...xAxisProps} dataKey="week" ticks={ticks} tickFormatter={weekTick} height={XAXIS_H}
+                    interval="preserveStartEnd" minTickGap={12} />
+                  <YAxis {...yAxisProps} domain={[0, yMax]} allowDataOverflow width={YAXIS_W} />
                   <ReferenceLine y={100} stroke={chartTheme.tick} strokeDasharray="2 4" />
-                  <Tooltip content={<DemandTooltip lines={lines} compareLines={compareLines} />} />
+                  <Tooltip {...tooltipProps({ kind: "line", tickFormatter: weekTick as (v: never) => string })} content={<DemandTooltip lines={lines} compareLines={compareLines} />} />
                   {lines.filter((l) => l.faded).map((l) => (
                     <Line key={l.key} dataKey={`${l.key}m`} stroke={l.color} strokeWidth={2} strokeOpacity={FADED}
                       dot={false} activeDot={false} isAnimationActive={false} />
                   ))}
                   {compareLines.map((l) => (
                     <Line key={l.key} dataKey={`${l.key}m`} stroke={l.color} strokeWidth={2} strokeDasharray={l.dash}
-                      dot={false} isAnimationActive={false} />
+                      dot={false} isAnimationActive={false} {...activeDotProps} />
                   ))}
                   {focusLine && (
                     <Line key="focus-raw" dataKey="focusRaw" stroke={focusLine.color} strokeWidth={1} strokeOpacity={0.4}
@@ -217,7 +217,7 @@ function DemandChart({ data }: { data: SearchDemand }) {
                   )}
                   {focusLine && (
                     <Line key="focus-ma" dataKey={`${focusLine.key}m`} stroke={focusLine.color} strokeWidth={3}
-                      dot={false} isAnimationActive={false} />
+                      dot={false} isAnimationActive={false} {...activeDotProps} />
                   )}
                 </LineChart>
               </ResponsiveContainer>
@@ -284,8 +284,8 @@ function DemandTooltip({ active, label, payload, lines, compareLines }: TipProps
   if (!active || !row) return null;
   const fmt = (v: number | null | undefined) => (v === null || v === undefined ? "-" : Math.round(v).toString());
   return (
-    <div className="rounded-lg border bg-card px-3 py-2 shadow-md text-xs" style={{ borderColor: chartTheme.tooltipBorder }}>
-      <p className="font-medium text-muted-foreground mb-1">{label} 주</p>
+    <div className={TIP_CARD}>
+      <p className="font-semibold text-[11.5px] text-muted-foreground mb-1">{label} 주</p>
       {lines.map((l) => (
         <p key={l.key} className={cn("tabular-nums", l.faded && "text-muted-foreground")}>
           <span style={{ color: l.color, opacity: l.faded ? 0.6 : 1 }}>{l.name}</span> {fmt(row[`${l.key}m`])}

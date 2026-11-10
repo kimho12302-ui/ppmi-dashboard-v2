@@ -10,6 +10,7 @@ import { md } from "@/lib/sales-through-label";
 import { SALES_GROUP_COLORS } from "@/lib/types";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
+import { ActiveDot, LINE_DOT, TIP_CARD_SM } from "@/components/charts/chart-style";
 
 interface SubAd { channel: string; label: string; spend: number; }
 interface Group {
@@ -264,9 +265,10 @@ function ChannelInner() {
                           content={({ active, payload }) => {
                             if (!active || !payload?.length) return null;
                             const p = payload[0].payload as { week: string; v: number | null };
-                            return <div className="rounded border bg-card px-1.5 py-1 text-[10px] shadow-sm">{bucketLabel(p.week, "week")} 주 · {p.v == null ? "광고비 0 또는 미수집" : `${p.v.toFixed(2)}x`}</div>;
+                            return <div className={TIP_CARD_SM}>{bucketLabel(p.week, "week")} 주 · {p.v == null ? "광고비 0 또는 미수집" : `${p.v.toFixed(2)}x`}</div>;
                           }} />
-                        <Line type="linear" dataKey="v" stroke="var(--muted-foreground)" strokeWidth={1.5} dot={{ r: 1.5 }} connectNulls={false} isAnimationActive={false} />
+                        <Line type="linear" dataKey="v" stroke="var(--muted-foreground)" strokeWidth={1.5} dot={{ ...LINE_DOT, r: 1.8, strokeWidth: 1.1 }} connectNulls={false} isAnimationActive={false}
+                          activeDot={(p: { cx?: number; cy?: number }) => <ActiveDot cx={p.cx} cy={p.cy} fill="var(--muted-foreground)" />} />
                       </LineChart>
                     </DeferredResponsiveContainer>
                   </div>

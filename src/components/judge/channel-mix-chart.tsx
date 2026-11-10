@@ -20,6 +20,7 @@ import { periodAxis, periodKey, periodCalendarDays } from "@/lib/sales-period";
 import { biggestShareShift, SHARE_LOOKBACK, SHARE_MIN_SHIFT_PP } from "@/lib/judge-charts";
 import { BRAND_LABELS } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, BAR_RADIUS, NO_RADIUS, TIP_CARD } from "@/components/charts/chart-style";
 
 // ★ 색은 설정 「채널 관리」·「브랜드 관리」에 보이는 정본 색(useConfig, types.ts)을 쓴다(2026-11-10 김호 지시).
 //   처음엔 판단 그래프 문법대로 무채색 + 강조 하나로 그렸는데, 카페24·스마트스토어·기타가 다 회색이라
@@ -151,36 +152,36 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
 
         <DeferredResponsiveContainer width="100%" height={240}>
           <ComposedChart data={rows} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-            <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(Number(v) / 10000).toFixed(0)}만`} />
+            <CartesianGrid {...gridProps} />
+            <XAxis {...xAxisProps} dataKey="period" />
+            <YAxis {...yAxisProps} tickFormatter={(v) => `${(Number(v) / 10000).toFixed(0)}만`} />
             <Tooltip
-              cursor={{ fill: "var(--muted)", opacity: 0.4 }}
+              {...tooltipProps({ kind: "bar" })}
               content={({ active, payload }) => {
                 if (!active || !payload?.length) return null;
                 const r = payload[0].payload as Record<string, string | number | null>;
                 const tot = order.reduce((s, ch) => s + (Number(r[ch]) || 0), 0);
                 const note = r.state === "in_progress" ? " (진행 중)" : r.state === "partial_range" ? " (기간 일부)" : r.state === "pending" ? " (판매 미수집)" : "";
                 return (
-                  <div className="rounded-lg border bg-card px-2 py-1.5 text-[11px] shadow-sm">
-                    <div className="font-medium">{String(r.period)}{note}</div>
-                    <div className="flex justify-between gap-3 font-semibold border-b mb-1 pb-1"><span>합계</span><span>{formatCurrency(tot)}</span></div>
+                  <div className={TIP_CARD}>
+                    <div className="font-semibold text-[11.5px] text-muted-foreground mb-0.5">{String(r.period)}{note}</div>
+                    <div className="flex justify-between gap-3 font-semibold border-b mb-1 pb-1"><span>합계</span><span className="chart-num">{formatCurrency(tot)}</span></div>
                     {order.filter((ch) => Number(r[ch]) > 0).map((ch) => (
                       <div key={ch} className="flex justify-between gap-3">
                         <span>{labelOf(ch)}</span>
-                        <span>{formatCurrency(Number(r[ch]))} ({tot > 0 ? ((Number(r[ch]) / tot) * 100).toFixed(0) : 0}%)</span>
+                        <span className="chart-num">{formatCurrency(Number(r[ch]))} ({tot > 0 ? ((Number(r[ch]) / tot) * 100).toFixed(0) : 0}%)</span>
                       </div>
                     ))}
                   </div>
                 );
               }}
             />
-            <Legend wrapperStyle={{ fontSize: 11 }}
+            <Legend {...legendProps}
               formatter={(v) => <span style={{ color: "var(--foreground)" }}>{labelOf(String(v))}</span>} />
             {order.map((ch, i) => (
-              <Bar key={ch} dataKey={ch} name={ch} stackId="channel" fill={color(ch)} isAnimationActive={false}
+              <Bar {...barProps} key={ch} dataKey={ch} name={ch} stackId="channel" fill={color(ch)} isAnimationActive={false}
                 stroke={shift?.channel === ch ? "var(--foreground)" : undefined} strokeWidth={shift?.channel === ch ? 1.5 : 0}
-                radius={i === order.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}>
+                radius={i === order.length - 1 ? BAR_RADIUS : NO_RADIUS}>
                 {rows.map((r) => (
                   <Cell key={String(r.period)} fillOpacity={r.state === "complete" ? 1 : INCOMPLETE_OPACITY} />
                 ))}

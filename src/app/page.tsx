@@ -19,6 +19,7 @@ import {
   Area, ComposedChart, ReferenceLine, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, activeDotProps } from "@/components/charts/chart-style";
 import Link from "next/link";
 import { kstDate } from "@/lib/date";
 
@@ -57,7 +58,6 @@ interface DashboardData {
   gongguSalesTotal: number;
 }
 
-const TOOLTIP_STYLE = { backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 };
 
 export default function OverviewPage() {
   return (
@@ -545,13 +545,13 @@ function OverviewInner() {
           </div>
           <DeferredResponsiveContainer width="100%" height={260}>
             <ComposedChart data={dailyTrend} margin={{ top: 24, right: 8, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" />
-              <YAxis tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
-              <Legend />
-              <Area isAnimationActive={false} type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} connectNulls={false} />
-              <Area isAnimationActive={false} type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} />
+              <CartesianGrid {...gridProps} />
+              <XAxis {...xAxisProps} dataKey="date" />
+              <YAxis {...yAxisProps} tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+              <Tooltip {...tooltipProps({ kind: "line" })} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
+              <Legend {...legendProps} />
+              <Area isAnimationActive={false} type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} connectNulls={false} {...activeDotProps} />
+              <Area isAnimationActive={false} type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} {...activeDotProps} />
               {events.map(e => (
                 <ReferenceLine key={e.id} x={e.date.slice(5)} stroke={e.color} strokeDasharray="4 4" strokeWidth={2}
                   label={(props: { viewBox?: { x: number; y: number; width: number; height: number } }) => {

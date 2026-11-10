@@ -14,6 +14,7 @@ import { useMemo, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, activeDotProps, LINE_DOT } from "@/components/charts/chart-style";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { productSalesUrl } from "@/lib/api-urls";
@@ -144,15 +145,15 @@ export function ProductTrendChart({ brand, from, to }: { brand: string; from: st
             </p>
             <ResponsiveContainer width="100%" height={340}>
               <LineChart data={series} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={16} />
-                <YAxis tick={{ fontSize: 11 }} width={64}
+                <CartesianGrid {...gridProps} />
+                <XAxis {...xAxisProps} dataKey="label" minTickGap={16} />
+                <YAxis {...yAxisProps} width={64}
                   tickFormatter={(v) => (metric === "revenue" ? (v >= 10000 ? `${Math.round(v / 10000)}만` : String(v)) : String(v))} />
-                <Tooltip formatter={(v, k) => [fmt(Number(v ?? 0)), nameOf.get(String(k)) || String(k)]} />
-                <Legend formatter={(k: string) => nameOf.get(k) || k} wrapperStyle={{ fontSize: 12 }} />
+                <Tooltip {...tooltipProps({ kind: "line" })} formatter={(v, k) => [fmt(Number(v ?? 0)), nameOf.get(String(k)) || String(k)]} />
+                <Legend {...legendProps} formatter={(k: string) => nameOf.get(k) || k} />
                 {selected.map((k, i) => (
                   <Line key={k} type="monotone" dataKey={k} stroke={COLORS[i % COLORS.length]}
-                    strokeWidth={2} dot={series.length <= 31 ? { r: 2 } : false} isAnimationActive={false} />
+                    strokeWidth={2} dot={series.length <= 31 ? LINE_DOT : false} isAnimationActive={false} {...activeDotProps} />
                 ))}
               </LineChart>
             </ResponsiveContainer>

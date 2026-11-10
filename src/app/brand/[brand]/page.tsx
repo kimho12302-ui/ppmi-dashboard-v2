@@ -8,14 +8,18 @@ import { DateRangeSelector } from "@/components/ui/date-range-selector";
 import { useFilterParams, useFetch } from "@/hooks/use-dashboard-data";
 import { salesThroughLabel } from "@/lib/sales-through-label";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
-import { BRAND_LABELS, AD_CHANNEL_COLORS } from "@/lib/types";
+import { BRAND_LABELS, AD_CHANNEL_COLORS, CHANNEL_COLORS } from "@/lib/types";
+import { useConfig } from "@/hooks/use-config";
 import { bucketize, bucketAxis, bucketLabel, isAfterLastData, lastDataDate, GRAN_LABELS, type Gran } from "@/lib/bucket";
 import { StoreDetailChartView } from "@/components/store-detail-chart";
 import { SectionHeading } from "@/components/ui/section";
 import { ProductAdTable } from "@/components/product-ad-table";
 import { ProductTrendChart } from "@/components/product-trend-chart";
 import { AttributionGap } from "@/components/attribution-gap";
-import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
+import {
+  xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, useEnterAnim, BAR_RADIUS,
+} from "@/components/charts/chart-style";
 
 // 브랜드 종합 페이지 (2026-08): 사이드바 브랜드 클릭 시 진입.
 // 개요와 달리 브랜드 탭(전체/펫/밸런스랩)을 두지 않는다 — 브랜드는 경로로 고정, 기간만 선택.
@@ -88,6 +92,8 @@ function BrandInner({ brand }: { brand: string }) {
   const label = BRAND_LABELS[brand] || brand;
   const [gran, setGran] = useState<Gran>("day");
   const [dim, setDim] = useState<StackDim>("channel");
+  const { channelMap } = useConfig();
+  const enterAnim = useEnterAnim();
 
   const { data: dash, loading } = useFetch<DashboardResp>(`/api/dashboard?brand=${brand}&from=${from}&to=${to}`);
   const { data: cg } = useFetch<ChannelGroupsResp>(`/api/channel-groups?brand=${brand}&from=${from}&to=${to}`);
@@ -167,6 +173,9 @@ function BrandInner({ brand }: { brand: string }) {
 
   const dimLabel = [...STACK_DIMS, GONGGU_DIM].find(d => d.key === dim)?.label || "";
   const keyLabel = (k: string) => (dim === "channel" ? CH_KOR[k] || k : k);
+  // 판매처 차원은 설정 「채널 관리」 정본 색(매출 구성 그래프와 같은 규칙, 2026-11-10). 라인업·제품·자체/공구는 설정 색이 없어 팔레트.
+  const stackColor = (k: string, i: number) =>
+    (dim === "channel" ? channelMap[k]?.color || CHANNEL_COLORS[k] : undefined) || STACK_COLORS[i % STACK_COLORS.length];
 
   if (!VALID_BRANDS.includes(brand)) {
     return <PageShell title="브랜드 없음" description=""><p className="text-muted-foreground">알 수 없는 브랜드: {brand}</p></PageShell>;
@@ -246,19 +255,21 @@ function BrandInner({ brand }: { brand: string }) {
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData}>
-                  <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
+                  <CartesianGrid {...gridProps} />
+                  <XAxis {...xAxisProps} dataKey="label" />
+                  <YAxis {...yAxisProps} tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
                   <Tooltip
+                    {...tooltipProps({ kind: "bar" })}
                     formatter={(v, name) => [v == null ? "-" : formatCurrency(Number(v)), name === "__ad" ? "광고비" : keyLabel(String(name))]}
                     labelFormatter={(l) => `${l}`}
                     itemSorter={(i) => -(Number(i.value) || 0)} />
-                  <Legend formatter={(v) => (v === "__ad" ? "광고비" : keyLabel(String(v)))} wrapperStyle={{ fontSize: 11 }} />
+                  <Legend {...legendProps} formatter={(v) => (v === "__ad" ? "광고비" : keyLabel(String(v)))} />
                   {stackKeys.map((k, i) => (
-                    <Bar key={k} dataKey={k} stackId="rev" fill={STACK_COLORS[i % STACK_COLORS.length]}
-                      radius={i === stackKeys.length - 1 ? [3, 3, 0, 0] : undefined} />
+                    <Bar {...barProps} {...enterAnim} key={k} dataKey={k} stackId="rev" fill={stackColor(k, i)}
+                      radius={i === stackKeys.length - 1 ? BAR_RADIUS : undefined} />
                   ))}
                   {/* 광고비는 누적 막대 위에 선으로. 매출 구성과 투입을 한 그림에서 본다. */}
-                  <Line dataKey="__ad" stroke="#ef4444" strokeWidth={2} dot={false} name="__ad" />
+                  <Line {...enterAnim} {...activeDotProps} dataKey="__ad" stroke="#ef4444" strokeWidth={2} dot={false} name="__ad" />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>

@@ -24,6 +24,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
+import { xAxisProps, yAxisProps, gridProps, gridPropsH, legendProps, tooltipProps, barProps, BAR_RADIUS, BAR_RADIUS_H, NO_RADIUS } from "@/components/charts/chart-style";
 
 /* 브랜드별 카테고리 분류 (기획서 4.1) */
 function getCategory(brand: string, product: string, lineup?: string): string {
@@ -251,11 +252,12 @@ function SalesPageInner() {
             <p className="text-xs text-muted-foreground mt-0.5 mb-3">가로 = 원(상품 판매 원장), {BRAND_LABELS[brand] || brand} 분류 기준</p>
             <DeferredResponsiveContainer width="100%" height={Math.max(200, byCategory.length * 35)}>
               <BarChart data={byCategory} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis type="number" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-                <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} stroke="var(--muted-foreground)" width={100} />
-                <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
-                <Bar isAnimationActive={false} dataKey="revenue" name="매출" fill={BRAND_COLORS[brand] || "#6b7280"} radius={[0, 4, 4, 0]} />
+                <CartesianGrid {...gridPropsH} />
+                {/* 가로 막대: 값 축(가로)은 눈금 글자만, 항목 축(세로)에 0 기준선 */}
+                <XAxis {...yAxisProps} type="number" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+                <YAxis {...xAxisProps} type="category" dataKey="category" width={100} />
+                <Tooltip {...tooltipProps({ kind: "bar-h" })} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
+                <Bar {...barProps} isAnimationActive={false} dataKey="revenue" name="매출" fill={BRAND_COLORS[brand] || "#6b7280"} radius={BAR_RADIUS_H} />
               </BarChart>
             </DeferredResponsiveContainer>
           </CardContent>
@@ -381,20 +383,16 @@ function SalesPageInner() {
               {balanceTrendData.length > 0 ? (
                 <DeferredResponsiveContainer width="100%" height={260}>
                   <BarChart data={balanceTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                    <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                    <YAxis
-                      tick={{ fontSize: 10 }}
-                      stroke="var(--muted-foreground)"
-                      tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`}
-                    />
+                    <CartesianGrid {...gridProps} />
+                    <XAxis {...xAxisProps} dataKey="period" />
+                    <YAxis {...yAxisProps} tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                      {...tooltipProps({ kind: "bar" })}
                       formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))}
                     />
-                    <Legend />
-                    <Bar isAnimationActive={false} dataKey="self" name="자체매출" stackId="bal" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-                    <Bar isAnimationActive={false} dataKey="gonggu" name="공구매출" stackId="bal" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                    <Legend {...legendProps} />
+                    <Bar {...barProps} isAnimationActive={false} dataKey="self" name="자체매출" stackId="bal" fill="#3b82f6" radius={NO_RADIUS} />
+                    <Bar {...barProps} isAnimationActive={false} dataKey="gonggu" name="공구매출" stackId="bal" fill="#a855f7" radius={BAR_RADIUS} />
                   </BarChart>
                 </DeferredResponsiveContainer>
               ) : (

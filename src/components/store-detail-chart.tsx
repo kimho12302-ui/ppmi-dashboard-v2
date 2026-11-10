@@ -7,9 +7,12 @@ import { channelGroupsUrl } from "@/lib/api-urls";
 import { formatCurrency, cn } from "@/lib/utils";
 import { bucketize, isAfterLastData, lastDataDate, GRAN_LABELS, type Gran } from "@/lib/bucket";
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend,
+  ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid,
 } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
+import {
+  xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, BAR_RADIUS,
+} from "@/components/charts/chart-style";
 
 // 판매처 하나를 골라 매출·광고비·ROAS 를 함께 보는 차트.
 // 개요와 브랜드 페이지가 같은 구현을 쓴다 (한쪽만 고쳐져 갈라지는 것을 막는다).
@@ -102,14 +105,15 @@ export function StoreDetailChartView({ data, from, to }: { data: StoreDetailResp
           <div className="h-64">
             <DeferredResponsiveContainer width="100%" height="100%">
               <ComposedChart data={series}>
-                <XAxis dataKey="label" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="won" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
-                <YAxis yAxisId="roas" orientation="right" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}x`} />
-                <Tooltip formatter={(v, name) => [v == null ? "-" : name === "ROAS" ? `${v}x` : formatCurrency(Number(v)), String(name)]} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar isAnimationActive={false} yAxisId="won" dataKey="매출" fill="#2563eb" radius={[3, 3, 0, 0]} />
-                <Line isAnimationActive={false} yAxisId="won" dataKey="광고비" stroke="#ef4444" strokeWidth={2} dot={false} />
-                <Line isAnimationActive={false} yAxisId="roas" dataKey="ROAS" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="4 3" />
+                <CartesianGrid {...gridProps} yAxisId="won" />
+                <XAxis {...xAxisProps} dataKey="label" />
+                <YAxis {...yAxisProps} yAxisId="won" tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
+                <YAxis {...yAxisProps} yAxisId="roas" orientation="right" tickFormatter={(v) => `${v}x`} />
+                <Tooltip {...tooltipProps({ kind: "bar" })} formatter={(v, name) => [v == null ? "-" : name === "ROAS" ? `${v}x` : formatCurrency(Number(v)), String(name)]} />
+                <Legend {...legendProps} />
+                <Bar {...barProps} isAnimationActive={false} yAxisId="won" dataKey="매출" fill="#2563eb" radius={BAR_RADIUS} />
+                <Line isAnimationActive={false} yAxisId="won" dataKey="광고비" stroke="#ef4444" strokeWidth={2} dot={false} {...activeDotProps} />
+                <Line isAnimationActive={false} yAxisId="roas" dataKey="ROAS" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="4 3" {...activeDotProps} />
               </ComposedChart>
             </DeferredResponsiveContainer>
           </div>
