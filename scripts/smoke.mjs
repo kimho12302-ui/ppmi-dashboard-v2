@@ -5,8 +5,10 @@
 //   /api/pacing 은 Supabase select 만 한다(cachedGET).
 // - 화면 페이지(/settings 등)는 정적 프리렌더라 HTML 에는 로딩 문구만 있다. 그래서 설정 7개 탭은
 //   /settings 가 싣는 JS 묶음 안에 탭별 대표 제목이 들어 있는지로 확인한다(브라우저 렌더 시험은 아님).
-// - 로그인 게이트(middleware)는 /influencers 만 막으므로 여기 경로는 인증이 필요 없다.
+// - 2026-11-09 부터 대시보드 전체가 잠긴다(middleware). 시험 서버에 이번 실행용 접근 키(PPMI_API_KEY)를 넣고
+//   모든 요청에 x-ppmi-key 헤더로 보낸다. 환경에 키가 이미 있으면 그 값을 쓴다.
 import { spawn, execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
@@ -15,6 +17,7 @@ const require = createRequire(import.meta.url);
 const PORT = Number(process.env.SMOKE_PORT || 3111);
 const BASE = `http://127.0.0.1:${PORT}`;
 const READY_TIMEOUT_MS = 60_000;
+const API_KEY = process.env.PPMI_API_KEY || `smoke-${randomBytes(12).toString("hex")}`;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 const ROUTES = ["/", "/monthly", "/sales", "/settings", "/daily", "/channel", "/keywords", "/api/pacing", "/api/search-demand",
@@ -33,7 +36,7 @@ function startServer() {
   const nextBin = require.resolve("next/dist/bin/next");
   const child = spawn(process.execPath, [nextBin, "start", "-p", String(PORT)], {
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, PORT: String(PORT) },
+    env: { ...process.env, PORT: String(PORT), PPMI_API_KEY: API_KEY },
   });
   child.stdout.on("data", (d) => process.stdout.write(`[next] ${d}`));
   child.stderr.on("data", (d) => process.stderr.write(`[next] ${d}`));
@@ -54,7 +57,7 @@ async function get(url) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(url, { signal: ctrl.signal, redirect: "manual" });
+    return await fetch(url, { signal: ctrl.signal, redirect: "manual", headers: { "x-ppmi-key": API_KEY } });
   } finally {
     clearTimeout(timer);
   }
