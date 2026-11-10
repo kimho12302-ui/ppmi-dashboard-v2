@@ -17,6 +17,7 @@ import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, lineDot, endLabel, useEnterAnim, BAR_RADIUS } from "@/components/charts/chart-style";
 
 interface ContentByType {
   content_type: string;
@@ -117,6 +118,7 @@ function ContentInner() {
     `/api/content-v2?from=${from}&to=${to}&brand=${brand}`
   );
   const [tab, setTab] = useState<"overview" | "trend">("overview");
+  const enterAnim = useEnterAnim();
   const [view, setView] = useState<View>("work");
 
   const byType = data?.byType || [];
@@ -263,19 +265,18 @@ function ContentInner() {
                 <h3 className="font-semibold text-sm mb-3">콘텐츠 유형별 게시 수</h3>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={byType}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <CartesianGrid {...gridProps} />
                     <XAxis
+                      {...xAxisProps}
                       dataKey="content_type"
-                      tick={{ fontSize: 11 }}
-                      stroke="var(--muted-foreground)"
                       tickFormatter={(v) => TYPE_LABELS[v] || v}
                     />
-                    <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
+                    <YAxis {...yAxisProps} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                      {...tooltipProps({ kind: "bar", tickFormatter: (v: never) => TYPE_LABELS[v] || v })}
                       labelFormatter={(v) => TYPE_LABELS[v] || v}
                     />
-                    <Bar dataKey="posts" name="게시 수" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    <Bar {...barProps} {...enterAnim} dataKey="posts" name="게시 수" fill="#3b82f6" radius={BAR_RADIUS} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -286,22 +287,21 @@ function ContentInner() {
                 <h3 className="font-semibold text-sm mb-3">유형별 CTR & 인게이지먼트</h3>
                 <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={byType}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <CartesianGrid {...gridProps} />
                     <XAxis
+                      {...xAxisProps}
                       dataKey="content_type"
-                      tick={{ fontSize: 11 }}
-                      stroke="var(--muted-foreground)"
                       tickFormatter={(v) => TYPE_LABELS[v] || v}
                     />
-                    <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${v}%`} />
+                    <YAxis {...yAxisProps} tickFormatter={(v) => `${v}%`} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                      {...tooltipProps({ kind: "bar", tickFormatter: (v: never) => TYPE_LABELS[v] || v })}
                       labelFormatter={(v) => TYPE_LABELS[v] || v}
                       formatter={(val) => `${Number(val).toFixed(2)}%`}
                     />
-                    <Legend />
-                    <Bar dataKey="ctr" name="CTR" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="engagement" name="인게이지먼트" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                    <Legend {...legendProps} />
+                    <Bar {...barProps} {...enterAnim} dataKey="ctr" name="CTR" fill="#10b981" radius={BAR_RADIUS} />
+                    <Bar {...barProps} {...enterAnim} dataKey="engagement" name="인게이지먼트" fill="#8b5cf6" radius={BAR_RADIUS} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -351,15 +351,16 @@ function ContentInner() {
               <h3 className="font-semibold text-sm mb-3">주간별 게시 트렌드</h3>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={postsTrend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                  <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
-                  />
-                  <Legend />
-                  {contentTypes.map((ct) => (
+                  <CartesianGrid {...gridProps} />
+                  <XAxis {...xAxisProps} dataKey="date" />
+                  <YAxis {...yAxisProps} />
+                  <Tooltip {...tooltipProps({ kind: "bar" })} />
+                  <Legend {...legendProps} />
+                  {contentTypes.map((ct, i) => (
                     <Bar
+                      {...barProps}
+                      {...enterAnim}
+                      radius={i === contentTypes.length - 1 ? BAR_RADIUS : undefined}
                       key={ct}
                       dataKey={ct}
                       name={TYPE_LABELS[ct] || ct}
@@ -378,15 +379,18 @@ function ContentInner() {
               <CardContent className="p-4">
                 <h3 className="font-semibold text-sm mb-3">팔로워 추이</h3>
                 <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={followerTrend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                    <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                    <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => formatNumber(v)} />
+                  <LineChart data={followerTrend} margin={{ top: 8, right: 92, left: 0, bottom: 0 }}>
+                    <CartesianGrid {...gridProps} />
+                    <XAxis {...xAxisProps} dataKey="date" />
+                    <YAxis {...yAxisProps} tickFormatter={(v) => formatNumber(v)} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                      {...tooltipProps({ kind: "line" })}
                       formatter={(val) => formatNumber(Number(val))}
                     />
-                    <Line type="monotone" dataKey="followers" name="팔로워" stroke="#8b5cf6" strokeWidth={2} dot />
+                    {/* 선이 하나라 범례 대신 오른쪽 끝에 이름·마지막 값 */}
+                    <Line {...enterAnim} {...activeDotProps} type="monotone" dataKey="followers" name="팔로워" stroke="#8b5cf6" strokeWidth={2} dot={lineDot(followerTrend.length)}>
+                      {endLabel({ rows: followerTrend, dataKey: "followers", name: "팔로워", format: (v) => formatNumber(v) })}
+                    </Line>
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>

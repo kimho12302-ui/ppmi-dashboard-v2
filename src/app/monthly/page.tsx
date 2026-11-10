@@ -15,6 +15,7 @@ import {
   LineChart, Line, ReferenceLine, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ComposedChart, Bar,
 } from "recharts";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, useEnterAnim, tickOf, BAR_RADIUS } from "@/components/charts/chart-style";
 
 interface MonthlySummary {
   month: string;
@@ -76,7 +77,6 @@ const IN_PROGRESS_OPACITY = 0.35;
 /** 그 달 비율(ROAS·MER)을 낼 수 있는지: 판매 원장 조회가 실패한 진행 중인 달이거나 판매 집계일까지 광고비가 0 이면 "-" */
 const ratioOk = (m: { ratioUnknown?: boolean; adSpendToSales?: number; adSpend: number }) =>
   !m.ratioUnknown && (m.adSpendToSales ?? m.adSpend) > 0;
-const tooltipStyle = { backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 };
 /** 비율 미니 그래프 두 칸. 축 하나에 단위 하나 */
 const RATIO_CHARTS = [
   { key: "profitRate", title: "이익률", axis: (v: number) => `${v.toFixed(0)}%`, tip: (v: number) => `${v.toFixed(1)}%` },
@@ -200,6 +200,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
     `/api/monthly-summary?year=${year}&brand=${brandFilter}`
   );
 
+  const enterAnim = useEnterAnim();
   const summary = useMemo(() => data?.summary || [], [data]);
   const rawSummary = summary;
   const ytd = data?.ytd;
@@ -315,17 +316,17 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
           </p>
           <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={chartSummary} barGap={2}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-              <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(val) => formatCurrency(Number(val))} />
-              <Legend wrapperStyle={{ fontSize: 11 }} itemSorter={null} />
-              <Bar dataKey="revenue" name="매출" stackId="rev" fill={C_ACCENT} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+              <CartesianGrid {...gridProps} />
+              <XAxis {...xAxisProps} dataKey="month" />
+              <YAxis {...yAxisProps} tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+              <Tooltip {...tooltipProps({ kind: "bar" })} formatter={(val) => formatCurrency(Number(val))} />
+              <Legend {...legendProps} itemSorter={null} />
+              <Bar {...barProps} dataKey="revenue" name="매출" stackId="rev" fill={C_ACCENT} radius={BAR_RADIUS} isAnimationActive={false}>
                 {chartSummary.map((m) => <Cell key={m.month} fillOpacity={m.month === inProgress?.month ? IN_PROGRESS_OPACITY : 1} />)}
               </Bar>
               {(["adSpend", "cogs", "shippingCost"] as const).map((k, i) => (
-                <Bar key={k} dataKey={k} name={k === "adSpend" ? "광고비" : k === "cogs" ? "원가" : "배송비"} stackId="cost" fill={C_COST[k]}
-                  radius={i === 2 ? [3, 3, 0, 0] : undefined} isAnimationActive={false}>
+                <Bar {...barProps} key={k} dataKey={k} name={k === "adSpend" ? "광고비" : k === "cogs" ? "원가" : "배송비"} stackId="cost" fill={C_COST[k]}
+                  radius={i === 2 ? BAR_RADIUS : undefined} isAnimationActive={false}>
                   {chartSummary.map((m) => <Cell key={m.month} fillOpacity={m.month === inProgress?.month ? IN_PROGRESS_OPACITY : 1} />)}
                 </Bar>
               ))}
@@ -341,23 +342,26 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
             <CardContent className="p-4">
               <h3 className="font-semibold text-sm mb-2">
                 {g.title}{g.key === "profitRate" && profitNotes.length > 0 && <sup>*</sup>}
-                {inProgress && <span className="ml-1 text-xs font-normal text-muted-foreground">(빈 점: 진행 중인 달)</span>}
+                {inProgress && <span className="ml-1 text-xs font-normal text-muted-foreground">(점선 원: 진행 중인 달)</span>}
               </h3>
               <ResponsiveContainer width="100%" height={140}>
                 <LineChart data={chartSummary} margin={{ top: 4, right: 8, bottom: 0, left: -8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 9 }} stroke="var(--muted-foreground)" tickFormatter={(v: string) => v.slice(2)} />
-                  <YAxis tick={{ fontSize: 9 }} stroke="var(--muted-foreground)" tickFormatter={g.axis} width={44} />
+                  <CartesianGrid {...gridProps} />
+                  <XAxis {...xAxisProps} tick={tickOf(9)} dataKey="month" tickFormatter={(v: string) => v.slice(2)} />
+                  <YAxis {...yAxisProps} tick={tickOf(9)} tickFormatter={g.axis} width={44} />
                   {g.key === "profitRate" && <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeDasharray="4 4" />}
-                  <Tooltip contentStyle={tooltipStyle} formatter={(val) => [g.tip(Number(val)), g.title]} />
+                  <Tooltip {...tooltipProps({ kind: "line", tickFormatter: (v: never) => String(v).slice(2) })} formatter={(val) => [g.tip(Number(val)), g.title]} />
                   <Line
                     type="monotone" dataKey={g.key} stroke={C_LINE} strokeWidth={2} isAnimationActive={false}
                     dot={(props: { cx?: number; cy?: number; index?: number; payload?: { month: string } }) => {
                       const { cx, cy, index, payload } = props;
                       if (cx == null || cy == null) return <g key={`d-${index}`} />;
                       const live = payload?.month === inProgress?.month;
-                      return <circle key={`d-${index}`} cx={cx} cy={cy} r={3} fill={live ? "var(--card)" : C_LINE} stroke={C_LINE} />;
+                      // 점은 속이 흰 작은 원. 진행 중인 달은 점선 원으로 흐리게(며칠치만 든 값이라 다른 달과 같은 무게로 보이면 안 된다)
+                      return <circle key={`d-${index}`} cx={cx} cy={cy} r={live ? 3.2 : 2.6} fill="var(--card)" stroke={C_LINE}
+                        strokeWidth={1.4} strokeDasharray={live ? "1.6 1.4" : undefined} strokeOpacity={live ? 0.75 : 1} />;
                     }}
+                    {...activeDotProps}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -373,16 +377,17 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
             <h3 className="font-semibold text-sm mb-3">채널별 광고비 추이</h3>
             <ResponsiveContainer width="100%" height={240}>
               <ComposedChart data={channelData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" />
-                <YAxis tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
+                <CartesianGrid {...gridProps} />
+                <XAxis {...xAxisProps} dataKey="month" />
+                <YAxis {...yAxisProps} tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+                  {...tooltipProps({ kind: "bar" })}
                   formatter={(val, name) => [formatCurrency(Number(val)), CH_LABEL[name as string] || name]}
                 />
-                <Legend formatter={(v) => CH_LABEL[v] || v} />
-                {channelKeys.map((ch) => (
-                  <Bar key={ch} dataKey={ch} name={ch} stackId="ch" fill={CH_COLOR[ch] || "#9ca3af"} />
+                <Legend {...legendProps} formatter={(v) => CH_LABEL[v] || v} />
+                {channelKeys.map((ch, i) => (
+                  <Bar {...barProps} {...enterAnim} key={ch} dataKey={ch} name={ch} stackId="ch" fill={CH_COLOR[ch] || "#9ca3af"}
+                    radius={i === channelKeys.length - 1 ? BAR_RADIUS : undefined} />
                 ))}
               </ComposedChart>
             </ResponsiveContainer>
