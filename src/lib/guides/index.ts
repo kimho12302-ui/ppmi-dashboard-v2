@@ -24,6 +24,7 @@ import influencers from "./screens/influencers";
 import daily from "./screens/daily";
 import settings from "./screens/settings";
 import status from "./screens/status";
+import inventory from "./screens/inventory";
 
 export type { ScreenGuide, TourStep, ManualSection, Block } from "./types";
 export const COMMON = common;
@@ -44,6 +45,7 @@ const BY_PATH: Record<string, ScreenGuide> = {
   "/daily": daily,
   "/settings": settings,
   "/status": status,
+  "/inventory": inventory,
 };
 
 const BRANDS: Record<string, ScreenGuide> = {
