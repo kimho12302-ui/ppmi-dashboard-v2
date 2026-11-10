@@ -19,11 +19,13 @@ import { kstDate } from "@/lib/date";
 import { periodAxis, periodKey, periodCalendarDays } from "@/lib/sales-period";
 import { biggestShareShift, SHARE_LOOKBACK, SHARE_MIN_SHIFT_PP } from "@/lib/judge-charts";
 import { BRAND_LABELS } from "@/lib/types";
+import { useConfig } from "@/hooks/use-config";
 
-const ACCENT = "var(--sig-danger)";
-// 무채색 6단계(globals.css --neutral-1..6). 이웃 칸이 진함·옅음으로 번갈아 갈리게 둔다.
-// 라이트·다크가 각자 값을 가진다(다크 카드 위에서 6단계가 뭉개지던 것을 2026-11-04 고쳤다).
-const NEUTRALS = [1, 2, 3, 4, 5, 6].map((i) => "var(--neutral-" + i + ")");
+// ★ 색은 설정 「채널 관리」·「브랜드 관리」에 보이는 정본 색(useConfig, types.ts)을 쓴다(2026-11-10 김호 지시).
+//   처음엔 판단 그래프 문법대로 무채색 + 강조 하나로 그렸는데, 카페24·스마트스토어·기타가 다 회색이라
+//   누가 누군지 안 보였다. 쌓은 막대처럼 계열이 여럿인 그래프는 계열 색이 먼저다.
+//   가장 크게 움직인 하나는 색을 바꾸지 않고 테두리로 표시한다.
+const FALLBACK = "#6b7280";
 const INCOMPLETE_OPACITY = 0.45;
 
 interface SalesRow { date: string; channel?: string | null; brand?: string | null; revenue?: number | null }
@@ -92,7 +94,8 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
 
   const order = dim === "brand" ? brandKeys : channels.map((c) => c.channel);
   const shift = useMemo(() => biggestShareShift(buckets), [buckets]);
-  const color = (ch: string, i: number) => (shift?.channel === ch ? ACCENT : NEUTRALS[i % NEUTRALS.length]);
+  const { brandMap, channelMap } = useConfig();
+  const color = (ch: string) => (dim === "brand" ? brandMap[ch]?.color : channelMap[ch]?.color) || FALLBACK;
   const labelOf = (ch: string) => (dim === "brand" ? BRAND_LABELS[ch] || ch : channels.find((c) => c.channel === ch)?.label || ch);
 
   // 아직 안 들어온 구간은 막대를 그리지 않는다(0 이 아니라 미수집). 축 자리는 남긴다.
@@ -140,7 +143,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
           {order.length < 2 ? (
             <span className="text-muted-foreground">이 기간 {what}가 {order[0] ? labelOf(order[0]) : "없음"} 하나라 구성 비교는 없습니다. 막대는 {unit}별 매출 합계입니다.</span>
           ) : shift ? (
-            <><b style={{ color: ACCENT }}>{labelOf(shift.channel)}</b> 비중이 직전 {shift.priorCount}{unit} 합계 대비 마지막 완료 {unit}에 {shift.shiftPp > 0 ? "+" : ""}{shift.shiftPp.toFixed(1)}%p 움직였습니다.</>
+            <><b style={{ color: color(shift.channel) }}>{labelOf(shift.channel)}</b> 비중이 직전 {shift.priorCount}{unit} 합계 대비 마지막 완료 {unit}에 {shift.shiftPp > 0 ? "+" : ""}{shift.shiftPp.toFixed(1)}%p 움직였습니다.</>
           ) : (
             <span className="text-muted-foreground">비중이 {SHARE_MIN_SHIFT_PP}%p 이상 움직인 {what}가 없습니다{buckets.filter((b) => b.complete).length < 2 ? ` (완료된 ${unit}가 2개 미만)` : ""}.</span>
           )}
@@ -175,7 +178,8 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
             <Legend wrapperStyle={{ fontSize: 11 }}
               formatter={(v) => <span style={{ color: "var(--foreground)" }}>{labelOf(String(v))}</span>} />
             {order.map((ch, i) => (
-              <Bar key={ch} dataKey={ch} name={ch} stackId="channel" fill={color(ch, i)} isAnimationActive={false}
+              <Bar key={ch} dataKey={ch} name={ch} stackId="channel" fill={color(ch)} isAnimationActive={false}
+                stroke={shift?.channel === ch ? "var(--foreground)" : undefined} strokeWidth={shift?.channel === ch ? 1.5 : 0}
                 radius={i === order.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}>
                 {rows.map((r) => (
                   <Cell key={String(r.period)} fillOpacity={r.state === "complete" ? 1 : INCOMPLETE_OPACITY} />
@@ -196,7 +200,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
             {lastBucket && lastBucket.state === "in_progress" ? ` (마지막 ${lastBucket.period} 은 진행 중, 판매 동기화가 1~3일 늦게 들어옵니다)` : ""}. 비중 비교에서 뺍니다.
           </p>
           <p>
-            강조 규칙: 마지막 완료 {unit}의 {what} 비중을 직전 최대 {SHARE_LOOKBACK}{unit}(완료된 것만) 합계 비중과 비교해 가장 크게 움직인 {what} 하나만 칠합니다({SHARE_MIN_SHIFT_PP}%p 미만이면 칠하지 않음).
+            강조 규칙: 마지막 완료 {unit}의 {what} 비중을 직전 최대 {SHARE_LOOKBACK}{unit}(완료된 것만) 합계 비중과 비교해 가장 크게 움직인 {what} 하나에 테두리를 칩니다({SHARE_MIN_SHIFT_PP}%p 미만이면 표시하지 않음). 색은 설정 「채널 관리」·「브랜드 관리」 색과 같습니다.
             별도 공구 판매처 행은 빠져 있어 위 매출 KPI 와 같은 범위입니다.
           </p>
         </div>
