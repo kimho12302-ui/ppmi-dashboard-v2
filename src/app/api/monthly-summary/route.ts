@@ -66,7 +66,21 @@ async function getImpl(request: NextRequest) {
     //   (2026-10-14). 필터·묶는 칸은 아래 옛 경로와 같고 날짜는 그 달 1일로 바꿔 아래 계산을 그대로 탄다.
     //   함수가 없으면(SQL 실행 전) 옛 경로. 대조: scripts/verify-summary-rpc.mjs
     const brandsParam = brand !== "all" ? expandBrands(brand) : null;
-    const [parts, miscRes, shipRes, productCostsRes, salesLastRes] = await Promise.all([
+
+    // ★ 비율(ROAS·MER·광고비중·CAC)용 꼬리 광고비(QA 3회차, 2026-11-10).
+    //   판매 원장은 며칠 늦게 들어오는데 광고비는 그날그날 들어온다. 판매 원장 마지막 날 뒤의 광고비까지
+    //   그 달 광고비로 나누면 진행 중인 달 ROAS 가 낮게 나온다(페이싱·판매처 카드와 같은 종류).
+    //   DB 합산 함수 경로는 광고비가 달 합계라 날짜로 못 자르므로, 최근 날짜의 광고비만 일 단위로 따로 받아
+    //   판매 원장 마지막 날 뒤의 금액(꼬리)을 그 달 비율의 분모에서 뺀다. 조건은 위 adQ 와 같다(GA4 제외·브랜드 범위).
+    //   받는 범위 = 지난달 1일부터. 월초에 동기화가 지난달 말에 멈춰 있어도 지난달 꼬리까지 잡는다.
+    //   금액 칸(광고비·이익)은 실제로 쓴 돈이라 그대로 둔다.
+    const prevMonthStart = (() => { const [y, m] = todayStr.slice(0, 7).split("-").map(Number); const pm = m === 1 ? 12 : m - 1; return `${m === 1 ? y - 1 : y}-${String(pm).padStart(2, "0")}-01`; })();
+    const tailFrom = prevMonthStart > fromDate ? prevMonthStart : fromDate;
+    let tailAdQ = supabase.from("daily_ad_spend").select("date,spend").gte("date", tailFrom).lte("date", toDate).not("channel", "like", "ga4_%");
+    tailAdQ = brand !== "all" ? tailAdQ.in("brand", expandBrands(brand)) : tailAdQ.neq("brand", "all");
+    const tailAdPromise = tailFrom <= toDate ? fetchAll(tailAdQ) : Promise.resolve([] as { date: string; spend: number }[]);
+
+    const [parts, miscRes, shipRes, productCostsRes, salesLastRes, tailAdRows] = await Promise.all([
       tryRpc<MonthlyParts>("monthly_summary_parts", { p_from: fromDate, p_to: toDate, p_brands: brandsParam }),
       miscQ,
       shipQ,
@@ -78,6 +92,7 @@ async function getImpl(request: NextRequest) {
         (date) => ({ date, error: null as string | null }),
         (e: unknown) => ({ date: null as string | null, error: e instanceof Error ? e.message : String(e) }),
       ),
+      tailAdPromise,
     ]);
     if (salesLastRes.error) console.error("monthly-summary:", salesLastRes.error);
     const salesThrough: string | null = salesLastRes.date;
@@ -183,12 +198,41 @@ async function getImpl(request: NextRequest) {
       existing.cogs += unitCost * Number(ps.quantity || 0);
     }
 
+    // 판매 원장 마지막 날 뒤의 광고비·잡비(달별). 판매 원장 조회가 실패하면 자르지 않고 그 달 비율을 「모름」으로 둔다(아래).
+    const adTailByMonth = new Map<string, number>();
+    const miscTailByMonth = new Map<string, number>();
+    if (!salesThroughError) {
+      const after = (d: string) => d >= tailFrom && (!salesThrough || d > salesThrough);
+      for (const r of tailAdRows as { date: string; spend: number }[]) {
+        if (!after(r.date)) continue;
+        const m = r.date.slice(0, 7);
+        adTailByMonth.set(m, (adTailByMonth.get(m) || 0) + Number(r.spend || 0));
+      }
+      for (const r of miscData || []) {
+        const d = String(r.date || "");
+        if (!after(d)) continue;
+        const m = d.slice(0, 7);
+        if (!months.has(m)) continue; // 위 잡비 합산도 매출·광고비가 있는 달에만 더한다
+        miscTailByMonth.set(m, (miscTailByMonth.get(m) || 0) + Number(r.amount || 0));
+      }
+    }
+    const currentMonthKey = todayStr.slice(0, 7);
+    // 그 달 비율이 판매 원장 마지막 날에서 잘렸는지: 그 달 마지막 날이 원장 마지막 날보다 뒤이고, 꼬리를 받은 범위 안의 달.
+    const monthEndOf = (m: string) => { const [y, mo] = m.split("-").map(Number); return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10); };
+    const isCutMonth = (m: string) => !salesThroughError && `${m}-01` >= tailFrom.slice(0, 8) + "01" && (!salesThrough || monthEndOf(m) > salesThrough);
+
     const summary = Array.from(months.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, d]) => {
         const totalCost = d.adSpend + d.miscCost + d.shipCost + d.cogs;
+        // 비율의 분모(판매 원장 마지막 날까지). 잘리지 않는 달은 금액 칸과 같다.
+        const adToSales = Math.max(0, d.adSpend - (adTailByMonth.get(month) || 0));
+        const miscToSales = Math.max(0, d.miscCost - (miscTailByMonth.get(month) || 0));
+        const cut = isCutMonth(month);
+        // 판매 원장 조회가 실패했고 이번 달이면 어디까지 나눌지 모른다 → 비율을 내지 않는다(화면 "-").
+        const ratioUnknown = !!salesThroughError && month === currentMonthKey;
         const profit = d.revenue - totalCost;
-        const marketingCost = d.adSpend + d.miscCost; // 총 마케팅비 (매체+잡비) — 이익·MER용
+        // (MER 분모 = 판매 집계일까지 매체비+잡비, 아래 mer. 이익은 위 totalCost 로 그 달 전체 금액)
         const channelCosts = Object.fromEntries(monthChannels.get(month) || []);
         return {
           month,
@@ -211,13 +255,18 @@ async function getImpl(request: NextRequest) {
           //   그래서 2026-09 월별 ROAS 가 10.31x 로 찍혔다(실제 4.98x, 2.1배).
           //   더 나쁜 건 방향이 일정하지 않다는 것이다 — 2월·5월은 오히려 낮게 나와서
           //   추세 판단에도 못 쓴다. 신고값은 reportedRoas 로 따로 둔다.
-          roas: d.adSpend > 0 ? d.revenue / d.adSpend : 0,
+          //   ★ 분모는 판매 원장 마지막 날까지의 매체비(adSpendToSales). 끝난 달은 adSpend 와 같다(QA 3회차).
+          roas: adToSales > 0 ? d.revenue / adToSales : 0,
           reportedRevenue: d.cv,
           reportedRoas: d.adSpend > 0 ? d.cv / d.adSpend : 0,
-          mer: marketingCost > 0 ? d.revenue / marketingCost : 0,
+          mer: adToSales + miscToSales > 0 ? d.revenue / (adToSales + miscToSales) : 0,
           aov: d.orders > 0 ? d.revenue / d.orders : 0,
-          adRatio: d.revenue > 0 ? (d.adSpend / d.revenue) * 100 : 0, // 광고비 비중% (매체비/매출)
-          cac: d.orders > 0 ? d.adSpend / d.orders : 0, // 고객획득비용(주문당 매체비)
+          adRatio: d.revenue > 0 ? (adToSales / d.revenue) * 100 : 0, // 광고비 비중% (판매 집계일까지 매체비/매출)
+          cac: d.orders > 0 ? adToSales / d.orders : 0, // 고객획득비용(주문당 매체비, 판매 집계일까지)
+          adSpendToSales: adToSales,
+          // 비율을 판매 원장 마지막 날에서 잘랐으면 그 날(화면 「~M/D」). 안 잘랐으면 null.
+          ratioThrough: cut ? salesThrough : null,
+          ratioUnknown,
           channelCosts, // 채널별 광고비 분해
         };
       });
@@ -251,6 +300,7 @@ async function getImpl(request: NextRequest) {
       shippingCost: summary.reduce((s, m) => s + m.shippingCost, 0),
       profit: summary.reduce((s, m) => s + m.profit, 0),
       cv: summary.reduce((s, m) => s + (m.cv || 0), 0),
+      adSpendToSales: summary.reduce((s, m) => s + m.adSpendToSales, 0), // 비율용(판매 집계일까지)
       roas: 0 as number,
       reportedRoas: 0 as number,
       mer: 0 as number,
@@ -258,9 +308,11 @@ async function getImpl(request: NextRequest) {
       profitRate: 0 as number,
     };
     // 월별과 같은 정의(실매출/매체비). 신고값은 reportedRoas 로 분리.
-    ytd.roas = ytd.adSpend > 0 ? ytd.revenue / ytd.adSpend : 0;
+    // 비율은 판매 원장 마지막 날까지의 매체비로(월별과 같은 규칙, QA 3회차). 금액(adSpend)은 그대로.
+    ytd.roas = ytd.adSpendToSales > 0 ? ytd.revenue / ytd.adSpendToSales : 0;
     ytd.reportedRoas = ytd.adSpend > 0 ? ytd.cv / ytd.adSpend : 0;
-    ytd.mer = (ytd.adSpend + ytd.miscCost) > 0 ? ytd.revenue / (ytd.adSpend + ytd.miscCost) : 0; // MER = 매출/총마케팅비
+    const ytdMiscToSales = ytd.miscCost - Array.from(miscTailByMonth.values()).reduce((a, b) => a + b, 0);
+    ytd.mer = (ytd.adSpendToSales + ytdMiscToSales) > 0 ? ytd.revenue / (ytd.adSpendToSales + ytdMiscToSales) : 0; // MER = 매출/총마케팅비
     ytd.aov = ytd.orders > 0 ? ytd.revenue / ytd.orders : 0;
     ytd.profitRate = ytd.revenue > 0 ? (ytd.profit / ytd.revenue) * 100 : 0;
 
@@ -272,6 +324,8 @@ async function getImpl(request: NextRequest) {
       // salesDays 가 null 이면 판매 원장 마지막 날 조회가 실패한 것(salesThroughError). 화면은 「(N일)」을 지운다.
       inProgress: summary.some((m) => m.month === currentMonth) ? { month: currentMonth, salesDays: inProgressDays, salesThrough } : null,
       salesThroughError,
+      // 비율(ROAS·MER·광고비중·CAC)이 잘린 끝 날. ratioThrough 가 있는 달만 해당(월 행에도 같은 값).
+      ratioThrough: salesThroughError ? null : salesThrough,
     });
     // 일부 조회가 실패한 응답은 5분 캐시에 넣지 않는다(다음 조회에서 다시 읽게).
     if (salesThroughError) res.headers.set(NO_CACHE_HEADER, "1");

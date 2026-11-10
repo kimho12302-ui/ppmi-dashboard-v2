@@ -10,6 +10,7 @@ import { useConfig } from "@/hooks/use-config";
 import { formatCurrency, formatNumber, formatPercent, cn } from "@/lib/utils";
 import { kstDate } from "@/lib/date";
 import { BlPnlView, PNL_DEFAULT_PICK, isPnlPick, type PnlPick } from "@/components/bl-pnl-view";
+import { md } from "@/lib/sales-through-label";
 import {
   LineChart, Line, ReferenceLine, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ComposedChart, Bar,
@@ -31,6 +32,12 @@ interface MonthlySummary {
   adRatio: number;
   cac: number;
   channelCosts: Record<string, number>;
+  /** 비율(ROAS·MER·광고비중·CAC)의 분모 = 판매 원장 마지막 날까지의 매체비(QA 3회차). 끝난 달은 adSpend 와 같다 */
+  adSpendToSales?: number;
+  /** 비율을 판매 원장 마지막 날에서 잘랐으면 그 날(「~M/D」 표시). 안 잘랐으면 null */
+  ratioThrough?: string | null;
+  /** 판매 원장 마지막 날 조회가 실패한 진행 중인 달: 비율을 어디까지로 나눌지 몰라 "-" */
+  ratioUnknown?: boolean;
   revGrowth?: number;
   orderGrowth?: number;
 }
@@ -66,6 +73,9 @@ const C_COST = { adSpend: "#64748b", cogs: "#a3afc0", shippingCost: "#d5dce6" } 
 const C_LINE = "#475569";
 /** 진행 중인 달 막대·점은 흐리게. 며칠치만 들어 있어 다른 달과 같은 무게로 보이면 안 된다 */
 const IN_PROGRESS_OPACITY = 0.35;
+/** 그 달 비율(ROAS·MER)을 낼 수 있는지: 판매 원장 조회가 실패한 진행 중인 달이거나 판매 집계일까지 광고비가 0 이면 "-" */
+const ratioOk = (m: { ratioUnknown?: boolean; adSpendToSales?: number; adSpend: number }) =>
+  !m.ratioUnknown && (m.adSpendToSales ?? m.adSpend) > 0;
 const tooltipStyle = { backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 };
 /** 비율 미니 그래프 두 칸. 축 하나에 단위 하나 */
 const RATIO_CHARTS = [
@@ -190,7 +200,8 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
     `/api/monthly-summary?year=${year}&brand=${brandFilter}`
   );
 
-  const summary = data?.summary || [];
+  const summary = useMemo(() => data?.summary || [], [data]);
+  const rawSummary = summary;
   const ytd = data?.ytd;
   const reversed = [...summary].reverse(); // desc for table
   const inProgress = data?.inProgress ?? null;
@@ -205,6 +216,8 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
   // 금액은 0, 비율(이익률·ROAS)은 0 이 아니라 빈칸(null). 첫 데이터 달 이전은 수집 전이라 넣지 않는다.
   // 표는 서버가 계산한 전월비가 있어 행을 끼워 넣지 않는다.
   const chartSummary = useMemo(() => {
+    // 비율을 낼 수 없는 달(판매 집계일까지 광고비 0, 또는 판매 원장 조회 실패)은 ROAS 를 0 이 아니라 빈칸으로.
+    const summary = rawSummary.map((m) => (ratioOk(m) ? m : { ...m, roas: null as unknown as number }));
     if (summary.length < 2) return summary as (Omit<MonthlySummary, "profitRate" | "roas"> & { profitRate: number | null; roas: number | null })[];
     const byMonth = new Map(summary.map((m) => [m.month, m]));
     const out: (Omit<MonthlySummary, "profitRate" | "roas"> & { profitRate: number | null; roas: number | null })[] = [];
@@ -220,7 +233,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
       mo += 1; if (mo > 12) { mo = 1; y += 1; }
     }
     return out;
-  }, [summary]);
+  }, [rawSummary]);
   const channelData = chartSummary.map((m) => ({ month: m.month, ...m.channelCosts }));
 
   // 이익 각주 (2026-11-04). 이익은 매출에서 광고비·잡비·원가·배송비를 뺀 값인데
@@ -423,15 +436,18 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
                   <td className="py-2 pr-3 text-right">{formatCurrency(r.aov)}</td>
                   <td className="py-2 pr-3 text-right">{formatCurrency(r.adSpend)}</td>
                   <td className={cn("py-2 pr-3 text-right", r.adRatio > 35 ? "text-red-500" : r.adRatio > 25 ? "text-yellow-600" : "text-foreground")}>
-                    {r.adRatio.toFixed(1)}%
+                    {r.ratioUnknown ? "-" : `${r.adRatio.toFixed(1)}%`}
                   </td>
-                  <td className="py-2 pr-3 text-right">{r.cac > 0 ? formatCurrency(Math.round(r.cac)) : "-"}</td>
+                  <td className="py-2 pr-3 text-right">{!r.ratioUnknown && r.cac > 0 ? formatCurrency(Math.round(r.cac)) : "-"}</td>
                   <td className="py-2 pr-3 text-right">{formatCurrency(r.cogs)}</td>
                   <td className="py-2 pr-3 text-right">{formatCurrency(r.shippingCost)}</td>
-                  <td className={cn("py-2 pr-3 text-right", r.roas >= 3 ? "text-emerald-600" : r.roas >= 1 ? "text-yellow-600" : "text-red-500")}>
-                    {r.roas.toFixed(2)}x
+                  {/* 진행 중인 달 등 판매가 덜 들어온 달의 비율은 판매 원장 마지막 날까지의 광고비로 나눈다(「~M/D」, QA 3회차) */}
+                  <td className={cn("py-2 pr-3 text-right whitespace-nowrap", !ratioOk(r) ? "text-muted-foreground" : r.roas >= 3 ? "text-emerald-600" : r.roas >= 1 ? "text-yellow-600" : "text-red-500")}
+                    title={r.ratioThrough ? `판매 집계일 ${md(r.ratioThrough)}까지의 매출 ÷ 같은 날까지의 광고비. 광고비 칸은 그 달 전체 금액입니다` : undefined}>
+                    {ratioOk(r) ? `${r.roas.toFixed(2)}x` : "-"}
+                    {r.ratioThrough && <span className="ml-1 text-[10px] text-muted-foreground">~{md(r.ratioThrough)}</span>}
                   </td>
-                  <td className="py-2 pr-3 text-right text-muted-foreground">{(r.mer || 0).toFixed(2)}x</td>
+                  <td className="py-2 pr-3 text-right text-muted-foreground">{ratioOk(r) ? `${(r.mer || 0).toFixed(2)}x` : "-"}</td>
                   <td className={cn("py-2 pr-3 text-right font-medium", r.profit >= 0 ? "text-emerald-600" : "text-red-500")}>
                     {formatCurrency(r.profit)}
                   </td>
