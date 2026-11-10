@@ -19,7 +19,8 @@ const ACCENT = "var(--sig-danger)";
 const NEUTRAL = "var(--muted-foreground)";
 
 interface SourceDay { date: string; sessions: number | null; orders: number }
-interface Source { key: string; label: string; note: string | null; totalSessions: number; days: SourceDay[] }
+/** salesLastDate = 이 원천의 판매 원장 마지막 날(원천의 판매 브랜드 범위). 없으면(옛 응답) 응답 최상위 값 */
+interface Source { key: string; label: string; note: string | null; totalSessions: number; days: SourceDay[]; salesLastDate?: string | null }
 interface ControlResponse { sources: Source[]; salesLastDate: string | null; error?: string }
 
 const REASON_LABEL: Record<NonNullable<ControlPoint["reason"]>, string> = {
@@ -44,10 +45,12 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
   }, [sources, picked]);
 
   const today = kstDate();
+  // 판정에서 빼는 「판매 동기화 대기」 기준일 = 고른 원천의 판매 원장 마지막 날(서버 /api/funnel-control).
+  const activeSalesLast = active ? (active.salesLastDate !== undefined ? active.salesLastDate : data?.salesLastDate ?? null) : null;
   const chart = useMemo(() => {
     if (!active) return null;
-    return buildControlChart(daysBetween(from, to), active.days, { salesLastDate: data?.salesLastDate ?? null, today });
-  }, [active, from, to, data?.salesLastDate, today]);
+    return buildControlChart(daysBetween(from, to), active.days, { salesLastDate: activeSalesLast, today });
+  }, [active, from, to, activeSalesLast, today]);
 
   const header = (
     <div className="mb-3">
@@ -181,7 +184,7 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
         {(pendingDays > 0 || missingDays > 0) && (
           <p className="mt-2 text-[11px] text-muted-foreground">
             점을 그리지 않은 날: {[
-              pendingDays > 0 ? `판매 동기화 대기 ${pendingDays}일${data?.salesLastDate ? `(${md(data.salesLastDate)} 이후)` : ""}` : null,
+              pendingDays > 0 ? `판매 동기화 대기 ${pendingDays}일${activeSalesLast ? `(${md(activeSalesLast)} 이후)` : ""}` : null,
               missingDays > 0 ? `유입 미수집 ${missingDays}일` : null,
             ].filter(Boolean).join(" · ")}. 0 으로 그리면 하락 이탈로 잘못 뜹니다.
           </p>

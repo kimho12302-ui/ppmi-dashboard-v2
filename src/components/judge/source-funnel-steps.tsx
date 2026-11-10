@@ -17,7 +17,8 @@ import { formatNumber } from "@/lib/utils";
 import { buildControlChart } from "@/lib/judge-charts";
 
 interface SourceDay { date: string; sessions: number | null; orders: number; cartAdds?: number }
-interface Source { key: string; label: string; note: string | null; totalSessions: number; days: SourceDay[] }
+/** salesLastDate = 이 원천의 판매 원장 마지막 날(원천의 판매 브랜드 범위). 없으면(옛 응답) 응답 최상위 값 */
+interface Source { key: string; label: string; note: string | null; totalSessions: number; days: SourceDay[]; salesLastDate?: string | null }
 interface ControlResponse { sources: Source[]; salesLastDate: string | null; error?: string }
 
 /** 브랜드 단독 전환율을 낼 수 없을 때의 문구. 관리도 카드와 같은 문장을 쓴다. */
@@ -53,7 +54,7 @@ export function useSourceFunnels(brand: string, from: string, to: string) {
     return (data?.sources || [])
       .filter((s) => s.totalSessions > 0)
       .map((s) => {
-        const chart = buildControlChart(axis, s.days, { salesLastDate: data?.salesLastDate ?? null, today });
+        const chart = buildControlChart(axis, s.days, { salesLastDate: s.salesLastDate !== undefined ? s.salesLastDate : data?.salesLastDate ?? null, today });
         const used = chart.points.filter((p) => p.rate != null);
         const usedDates = new Set(used.map((p) => p.date));
         const cartAdds = s.days.filter((d) => usedDates.has(d.date)).reduce((acc, d) => acc + (d.cartAdds || 0), 0);

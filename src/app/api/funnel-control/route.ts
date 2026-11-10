@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchAll } from "@/lib/db";
 import { cachedGET } from "@/lib/api-cache";
 import { PET_BRANDS } from "@/lib/brand-groups";
+import { fetchSalesThrough } from "@/lib/sales-through";
 
 // 퍼널 관리도(일별 구매 전환율) 원천 (2026-11-03).
 //
@@ -21,6 +22,8 @@ interface SourceDef {
   filters: string[];
   funnel: { brand: string; channel: string };
   sales: { brands: string[]; channel: string };
+  /** 이 원천의 「판매 원장 마지막 날」을 잴 브랜드 범위(src/lib/sales-through.ts 의 brand 인자). sales.brands 와 같은 범위 */
+  throughBrand: string;
   note?: string;
 }
 
@@ -28,13 +31,13 @@ const SOURCES: SourceDef[] = [
   {
     key: "bl_smartstore", label: "밸런스랩 스마트스토어", filters: ["balancelab"],
     funnel: { brand: "balancelab", channel: "smartstore" },
-    sales: { brands: ["balancelab"], channel: "smartstore" },
+    sales: { brands: ["balancelab"], channel: "smartstore" }, throughBrand: "balancelab",
     note: "형식-A 공구 주문이 스마트스토어 구매에 섞여 있어, 공구 날은 전환율이 튀어 보일 수 있습니다",
   },
   {
     key: "pet_smartstore", label: "펫 스마트스토어 (너티·아이언펫·사입 통합)", filters: ["pet"],
     funnel: { brand: "all", channel: "smartstore" },
-    sales: { brands: PET_BRANDS, channel: "smartstore" },
+    sales: { brands: PET_BRANDS, channel: "smartstore" }, throughBrand: "pet",
     note: "펫 스마트스토어 유입이 3개 브랜드 합산으로만 기록돼 브랜드 단독 전환율은 낼 수 없습니다",
   },
   {
@@ -42,13 +45,13 @@ const SOURCES: SourceDef[] = [
     // brand='all'|cafe24 행은 수기 장바구니·회원가입 칸이라 세션이 늘 0 이다. 합치면 나중에 이중집계가 되므로 쓰지 않는다.
     key: "pet_cafe24", label: "펫 카페24 (통합)", filters: ["pet"],
     funnel: { brand: "nutty", channel: "cafe24" },
-    sales: { brands: PET_BRANDS, channel: "cafe24" },
+    sales: { brands: PET_BRANDS, channel: "cafe24" }, throughBrand: "pet",
     note: "카페24 유입은 GA4 세션(자사몰 전체), 구매는 펫 3개 브랜드 카페24 주문 합계입니다",
   },
   {
     key: "nutty_coupang", label: "쿠팡 (너티)", filters: ["pet", "nutty"],
     funnel: { brand: "all", channel: "coupang" },
-    sales: { brands: ["nutty"], channel: "coupang" },
+    sales: { brands: ["nutty"], channel: "coupang" }, throughBrand: "nutty",
     note: "쿠팡 유입은 수기 업로드라 빠진 날이 있습니다",
   },
 ];
@@ -75,17 +78,20 @@ async function getImpl(req: NextRequest) {
     const salesBrands = Array.from(new Set(sources.flatMap((s) => s.sales.brands)));
     const salesChannels = Array.from(new Set(sources.map((s) => s.sales.channel)));
 
-    const [funnelRows, salesRows, lastRow] = await Promise.all([
+    const throughBrands = Array.from(new Set(sources.map((s) => s.throughBrand)));
+    const [funnelRows, salesRows, salesLastDate, throughList] = await Promise.all([
       fetchAll(supabase.from("daily_funnel").select("id,date,brand,channel,sessions,cart_adds")
         .gte("date", from).lte("date", to).in("brand", funnelBrands).in("channel", funnelChannels).order("date")),
       fetchAll(supabase.from("daily_sales").select("id,date,brand,channel,orders")
         .gte("date", from).lte("date", to).in("brand", salesBrands).in("channel", salesChannels).order("date")),
-      // 판매 동기화가 어디까지 들어왔는지. 하루치가 한 번에 써지므로(created_at 동일) 전 브랜드 최대 날짜로 본다.
-      // 이 날짜 이후의 "구매 0" 은 판매가 없었던 게 아니라 아직 안 들어온 것이다.
-      supabase.from("daily_sales").select("date").neq("channel", "total").order("date", { ascending: false }).limit(1),
+      // 판매 동기화가 어디까지 들어왔는지. 이 날짜 이후의 "구매 0" 은 판매가 없었던 게 아니라 아직 안 들어온 것이다.
+      // ★ 정의는 src/lib/sales-through.ts 하나(QA 3회차, 2026-11-10). 예전엔 여기서 따로 「전 브랜드·오늘 포함·공구 포함」
+      //   최대 날짜를 구해, 브랜드마다 동기화가 다른 날(11-10 실측: 아이언펫 11-06, 나머지 11-08)이나 오늘 장중 행이 있을 때
+      //   다른 화면과 기준일이 어긋났다. 고른 브랜드 범위(응답 salesLastDate)와 원천별 범위(sources[].salesLastDate)를 함께 준다.
+      fetchSalesThrough(brand),
+      Promise.all(throughBrands.map((b) => fetchSalesThrough(b))),
     ]);
-    if (lastRow.error) throw lastRow.error;
-    const salesLastDate: string | null = lastRow.data?.[0]?.date ?? null;
+    const throughByBrand = new Map(throughBrands.map((b, i) => [b, throughList[i]]));
 
     const out = sources.map((s) => {
       const sessions = new Map<string, number>();
@@ -112,7 +118,8 @@ async function getImpl(req: NextRequest) {
         cartAdds: carts.get(date) || 0,
       }));
       const totalSessions = days.reduce((a, d) => a + (d.sessions || 0), 0);
-      return { key: s.key, label: s.label, note: s.note || null, totalSessions, days };
+      // 이 원천의 판매 원장 마지막 날(그 원천의 판매 브랜드 범위). 관리도 판정은 이 날까지만 한다.
+      return { key: s.key, label: s.label, note: s.note || null, totalSessions, days, salesLastDate: throughByBrand.get(s.throughBrand) ?? null };
     });
 
     return NextResponse.json({ sources: out, salesLastDate });
