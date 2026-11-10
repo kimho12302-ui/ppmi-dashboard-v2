@@ -8,6 +8,7 @@ import { isGonggu, isGongguAggregate, formAByDateChannel, subtractFormAGonggu } 
 import { cachedGET } from "@/lib/api-cache";
 import { loadComponentIndex } from "@/lib/product-components-server";
 import { expandSales } from "@/lib/product-components";
+import { isPurchaseConversionMeasured, META_PURCHASE_UNTRACKED_BRANDS } from "@/lib/conversion-tracking";
 
 // Channel name mapping (English → Korean)
 const CHANNEL_LABELS: Record<string, string> = {
@@ -118,12 +119,38 @@ async function getImpl(request: NextRequest) {
     }
 
     // ===== CHANNEL ANALYSIS =====
+    // ★ 구매 전환이 측정되지 않는 행(src/lib/conversion-tracking.ts: 밸런스랩 네이버 검색·쇼핑, 메타×밸런스랩)은
+    //   플랫폼 ROAS 합산에서 뺀다(QA2 M4, 2026-11-10). 예전엔 brand=all 에서 밸런스랩 네이버(장바구니 전환이
+    //   섞여 부풀려진 값)가 네이버 합계에 섞이고, 밸런스랩 메타(구매 이벤트 막힘)는 「전환 추적 미연동」 경고로 떴다.
+    //   빠진 행은 매체별로 모아 「판단 불가」 참고 카드로만 알린다.
     const channelSpend = new Map<string, { spend: number; convValue: number }>();
+    const unmeasured = new Map<string, { spend: number; brands: Set<string> }>();
     for (const r of adRows) {
+      if (!isPurchaseConversionMeasured(r.channel, r.brand)) {
+        const u = unmeasured.get(r.channel) || { spend: 0, brands: new Set<string>() };
+        u.spend += Number(r.spend || 0);
+        u.brands.add(r.brand);
+        unmeasured.set(r.channel, u);
+        continue;
+      }
       const existing = channelSpend.get(r.channel) || { spend: 0, convValue: 0 };
       existing.spend += Number(r.spend);
       existing.convValue += Number(r.conversion_value);
       channelSpend.set(r.channel, existing);
+    }
+    const brandKo: Record<string, string> = { nutty: "너티", ironpet: "아이언펫", saip: "사입", balancelab: "밸런스랩" };
+    for (const [channel, u] of Array.from(unmeasured.entries())) {
+      if (u.spend <= 100000) continue;
+      const who = Array.from(u.brands).map((b) => brandKo[b] || b).join("·");
+      const chLabel = CHANNEL_LABELS[channel] || channel;
+      const why = channel === "meta" && Array.from(u.brands).some((b) => META_PURCHASE_UNTRACKED_BRANDS.has(b))
+        ? "픽셀이 건강 분류로 구매 이벤트가 막혀 있어 플랫폼 전환이 구매를 뜻하지 않습니다"
+        : "검색광고 계정의 장바구니 전환에 상품가가 붙어 전환·전환매출이 부풀려집니다";
+      insights.push({
+        type: "info",
+        text: `${who} ${chLabel} 플랫폼 ROAS 판단 불가 (구매 전환 측정 안 됨)`,
+        detail: `${who} ${chLabel} 광고비 ${man(u.spend)}. ${why}. 이 광고비는 매체별 플랫폼 ROAS 판정에서 뺐고, 성과는 판매 원장 매출로 봅니다`,
+      });
     }
 
     for (const [channel, d] of Array.from(channelSpend.entries())) {
