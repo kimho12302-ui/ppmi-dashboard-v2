@@ -60,7 +60,7 @@ function InsightsInner() {
 
       {/* 일간 이상치 카드는 2026-11-03 뺐다. 마지막 이틀 ±30% 를 이상치로 불러 하루 1~2건인 브랜드가 -100% 로 떴다.
           "우연한 흔들림인지" 는 표본 크기를 감안하는 퍼널 관리도가 판정한다. */}
-      <p className="text-xs text-muted-foreground">
+      <p data-tour="insights-control-link" className="text-xs text-muted-foreground">
         어제·그제 변화가 우연인지는{" "}
         <Link href={qs ? `/funnel?${qs}` : "/funnel"} className="underline underline-offset-2 hover:text-foreground">퍼널 화면의 일별 구매 전환율 관리도</Link>
         에서 봅니다(원천별, 유입이 적은 날은 한계선이 넓어집니다).

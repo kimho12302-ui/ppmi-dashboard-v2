@@ -164,7 +164,7 @@ function ChannelInner() {
           // 날의 광고비만 분모에 더해져 ROAS 가 낮게 나온다(QA2 H2, 2026-11-10).
           <Card key={g.key} className="border-t-4" style={{ borderTopColor: g.adSpendToSales > 0 ? roasColor(g.roasToSales) : "var(--border)" }}>
             <CardContent className="p-5 space-y-4">
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start justify-between gap-2" data-tour={gi === 0 ? "channel-store-head" : undefined}>
                 <h3 className="font-semibold text-sm">{g.label}</h3>
                 {g.adSpendToSales > 0
                   ? (
@@ -175,7 +175,7 @@ function ChannelInner() {
                   )
                   : <span className="text-lg font-bold text-muted-foreground" title="판매 집계일까지 광고비가 없어 ROAS 를 계산하지 않습니다">-</span>}
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3" data-tour={gi === 0 ? "channel-store-amounts" : undefined}>
                 <div>
                   <p className="text-[11px] text-muted-foreground">매출</p>
                   <p className="text-base font-bold">{formatWon(g.revenue)}</p>

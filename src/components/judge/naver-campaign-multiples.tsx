@@ -64,7 +64,7 @@ export function NaverCampaignMultiples({ brand, to }: { brand: string; to: strin
         <p className="text-xs text-muted-foreground mt-0.5">가로 = 주(월요일 시작), 세로 = {metric === "roas" ? "주간 ROAS(네이버 신고 전환매출 ÷ 비용)" : "주간 비용(원)"}, 캠페인마다 축이 따로. 점선 = {MULTIPLE_WEEKS}주 평균</p>
         <p className="text-xs text-muted-foreground">판단: 캠페인이 많을 때 요즘 눈에 띄게 {metric === "roas" ? "효율이 나빠진" : "집행이 줄어든"} 캠페인만 골라내기</p>
       </div>
-      <div className="flex gap-1 bg-muted rounded-md p-0.5">
+      <div data-tour="ads-naver-metric" className="flex gap-1 bg-muted rounded-md p-0.5">
         {(["roas", "cost"] as const).map((m) => (
           <button key={m} onClick={() => setMetricPick(m)} disabled={m === "roas" && !anyRoasUsable}
             className={cn("px-2 py-1 text-xs rounded disabled:opacity-40", metric === m ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>
@@ -137,7 +137,7 @@ export function NaverCampaignMultiples({ brand, to }: { brand: string; to: strin
             );
           })}
         </div>
-        <div className="mt-3 space-y-0.5 text-[11px] text-muted-foreground">
+        <div data-tour="ads-naver-rule" className="mt-3 space-y-0.5 text-[11px] text-muted-foreground">
           <p>
             강조 규칙: 최근 {MULTIPLE_RECENT_WEEKS}주 평균이 {MULTIPLE_WEEKS}주 평균보다 {MULTIPLE_DROP_PCT}% 이상 낮고, 마지막 주가 그 앞주보다 낮은 캠페인
             {metric === "roas" ? " (ROAS 는 비용 가중 평균)" : " (주 평균 비용)"}. 점선 = {MULTIPLE_WEEKS}주 평균.

@@ -91,7 +91,7 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
       <CardContent className="p-4">
         {header}
         {sources.length > 1 && (
-          <div className="flex flex-wrap gap-1 mb-3">
+          <div data-tour="funnel-control-sources" className="flex flex-wrap gap-1 mb-3">
             {sources.map((s) => (
               <button key={s.key} onClick={() => setPicked(s.key)}
                 className={cn("px-2 py-1 text-xs rounded", s.key === active.key ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>
@@ -102,7 +102,7 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
         )}
 
         {/* 결론 한 줄. 표본이 짧으면 판단하지 않는다. */}
-        <p className="text-sm mb-2">
+        <p data-tour="funnel-control-verdict" className="text-sm mb-2">
           {!chart.enough ? (
             <span className="text-muted-foreground">기간이 짧아 판단 보류 (판정 가능한 날 {chart.n}일, {CONTROL_MIN_DAYS}일 이상 필요)</span>
           ) : outs.length === 0 && chart.runs.length === 0 ? (
@@ -186,7 +186,7 @@ export function ConversionControlChart({ brand, from, to }: { brand: string; fro
             ].filter(Boolean).join(" · ")}. 0 으로 그리면 하락 이탈로 잘못 뜹니다.
           </p>
         )}
-        <details className="mt-1 text-[11px] text-muted-foreground">
+        <details data-tour="funnel-control-method" className="mt-1 text-[11px] text-muted-foreground">
           <summary className="cursor-pointer select-none hover:text-foreground">계산 방식 보기</summary>
           <div className="mt-1 space-y-0.5">
           <p>방식: Laney p′ 관리도. 유입이 적은 날일수록 한계선이 넓어지고, 실제 흔들림 폭(σz)으로 보정합니다.</p>

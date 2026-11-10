@@ -260,7 +260,7 @@ function AdsPageInner() {
           subtitle={`판매 원장 매출 ÷ 광고비 · 신고 ROAS(매체 합산, 중복 포함) ${totals.spend > 0 ? `${totals.reportedRoas.toFixed(2)}x` : "-"}`}
         />
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+      <div data-tour="ads-kpi-sub" className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         <KpiCard size="compact" title="총 클릭" value={formatNumber(totals.clicks)} change={pctChange(totals.clicks, prevTotals.clicks)} />
         <KpiCard size="compact" title="평균 CTR" value={formatPercent(totals.ctr)} change={pctChange(totals.ctr, prevTotals.ctr)} />
         <KpiCard
@@ -638,7 +638,7 @@ function CreativesSection({ brand, from, to }: { brand: string; from: string; to
 
   return (
     <>
-      <div className="flex items-center gap-2">
+      <div data-tour="ads-creatives-sort" className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">정렬:</span>
         {(["spend", "roas", "purchases"] as const).map(s => (
           <button key={s} onClick={() => setSort(s)}

@@ -159,7 +159,7 @@ export function DataStatusRail() {
   const quiet = broken.length === 0 && inputNeeded.length === 0;
 
   return (
-    <section className="rounded-xl border border-border/70 bg-card overflow-hidden" aria-label="데이터 상태">
+    <section data-tour="data-status-rail" className="rounded-xl border border-border/70 bg-card overflow-hidden" aria-label="데이터 상태">
       {/* 헤더: 접혀 있어도 세 분류가 각각 몇 건인지 읽힌다 */}
       <div className="flex items-center gap-2 flex-wrap px-3 py-2 border-b border-border/60 bg-muted/20">
         <span className="text-xs font-semibold">데이터 상태</span>

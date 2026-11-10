@@ -182,7 +182,7 @@ function FunnelInner() {
                   {trendMetric === "purchases" && salesLastDate ? `. 구매는 판매 원장 ${salesLastDate.slice(5)}까지` : ""}
                 </p>
               </div>
-              <div className="flex gap-1 bg-muted rounded-md p-0.5">
+              <div data-tour="funnel-trend-tabs" className="flex gap-1 bg-muted rounded-md p-0.5">
                 {TREND_METRICS.map((m) => (
                   <button key={m.key} onClick={() => setTrendMetric(m.key)}
                     className={cn("px-2 py-1 text-xs rounded", trendMetric === m.key ? "bg-card shadow-sm font-medium" : "text-muted-foreground")}>

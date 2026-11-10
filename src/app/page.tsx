@@ -357,7 +357,7 @@ function OverviewInner() {
         title="선택 기간 실적"
         note={`${from} ~ ${to}${gongguSalesTotal > 0 ? ` · 매출은 자체매출 기준 (공구 ${formatCurrency(gongguSalesTotal)} 별도)` : ""}`}
         action={
-          <button onClick={exportCSV}
+          <button onClick={exportCSV} data-tour="overview-export"
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted hover:bg-muted/80 rounded-md text-muted-foreground transition-colors">
             ⬇ CSV 내보내기
           </button>
@@ -386,7 +386,7 @@ function OverviewInner() {
 
       {/* 드릴다운 */}
       {drilldownData && (
-        <Card>
+        <Card data-tour="overview-drilldown">
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-sm">{drilldownData.title}</h3>
@@ -653,7 +653,7 @@ function OverviewInner() {
         </Card>
       </div>
       {/* 퍼널: 단계별 모집단(세션은 일부 채널, 구매는 전 판매처)이 달라 합산 숫자를 여기 두지 않는다. */}
-      <p className="text-xs text-muted-foreground">
+      <p data-tour="overview-funnel-link" className="text-xs text-muted-foreground">
         유입 → 장바구니 → 구매 전환은 판매처마다 유입을 재는 방법이 달라 합치지 않습니다.{" "}
         <Link href="/funnel" className="text-primary hover:underline">퍼널 화면에서 판매처별 단계와 전환율 보기 →</Link>
       </p>
