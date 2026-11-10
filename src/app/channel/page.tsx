@@ -11,6 +11,8 @@ import { SALES_GROUP_COLORS } from "@/lib/types";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
 import { ActiveDot, LINE_DOT, TIP_CARD_SM } from "@/components/charts/chart-style";
+import { DumbbellChart, type DumbbellRow } from "@/components/charts/dumbbell-chart";
+import { MULTIPLE_MIN_COST } from "@/lib/judge-charts";
 
 interface SubAd { channel: string; label: string; spend: number; }
 interface Group {
@@ -19,13 +21,15 @@ interface Group {
   key: string; label: string; revenue: number; adSpend: number; roas: number; adSpendToSales: number; roasToSales: number; adRatio: number;
   subAds: SubAd[];
   revDelta: number | null; adDelta: number | null; roasDelta: number | null;
+  /** 증감률을 만든 두 점(판매 집계일까지·같은 길이). 옛 응답에는 없다 */
+  cmp?: { revenue: number; adSpend: number; roas: number | null; prevRevenue: number; prevAdSpend: number; prevRoas: number | null };
 }
 interface GroupCell { revenue: number; adSpend: number; }
 interface SeriesRow { date: string; naver: GroupCell; jasamol: GroupCell; coupang: GroupCell; other?: GroupCell; }
 interface ChannelGroupsData {
   from: string; to: string;
   /** 판매 원장 마지막 날(고른 브랜드 범위, 오늘 미만). compareThrough = 카드 비교가 쓴 이번 기간 끝 날짜. */
-  salesThrough?: string | null; compareThrough?: string | null;
+  salesThrough?: string | null; compareThrough?: string | null; prevFrom?: string; prevCompareThrough?: string | null;
   groups: Group[];
   total: { revenue: number; adSpend: number; roas: number; adRatio: number };
   series: SeriesRow[];
@@ -173,6 +177,22 @@ function ChannelInner() {
   }
 
   const groups = data?.groups || [];
+  // 덤벨 두 칸. 서버가 카드 증감률에 쓴 두 점(cmp)을 그대로 쓴다. 옛 응답(cmp 없음)이면 그리지 않는다.
+  const dumbbell = (() => {
+    const withCmp = groups.filter((g) => g.cmp && (g.cmp.revenue > 0 || g.cmp.prevRevenue > 0));
+    if (!withCmp.length || !data?.compareThrough || !data?.prevFrom || !data?.prevCompareThrough) return null;
+    const color = (k: string) => SALES_GROUP_COLORS[k] || "#6b7280";
+    const short = (l: string) => l.split(" (")[0];
+    const rev: DumbbellRow[] = withCmp.map((g) => ({ key: g.key, label: short(g.label), color: color(g.key), prev: g.cmp!.prevRevenue, cur: g.cmp!.revenue }));
+    const roas: DumbbellRow[] = withCmp.map((g) => {
+      const c = g.cmp!;
+      const small = c.adSpend < MULTIPLE_MIN_COST || c.prevAdSpend < MULTIPLE_MIN_COST;
+      const note = c.adSpend <= 0 && c.prevAdSpend <= 0 ? "광고비 0 (ROAS 없음)" : small ? "광고비가 작아 빈칸" : undefined;
+      return { key: g.key, label: short(g.label), color: color(g.key), prev: small ? null : c.prevRoas, cur: small ? null : c.roas, missingNote: note };
+    });
+    const md2 = (d: string) => `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}`;
+    return { rev, roas, prevRange: `${md2(data.prevFrom)}~${md2(data.prevCompareThrough)}`, curRange: `${md2(from)}~${md2(data.compareThrough)}` };
+  })();
   // 카드·점선이 쓰는 「판매 집계일」 라벨. 기간 끝까지 다 들어왔으면 「기간 전체」.
   const cmp = data?.compareThrough ?? null;
   const throughLabel = !cmp ? "판매 집계 없음" : cmp >= to ? "기간 전체" : `판매 집계일 ${Number(cmp.slice(5, 7))}/${Number(cmp.slice(8, 10))}까지`;
@@ -241,6 +261,25 @@ function ChannelInner() {
           <p className="text-xs text-muted-foreground mt-0.5 mb-3">
             가로 = 주(월요일 시작), 세로 = 그 판매처 매출 ÷ 그 판매처를 끌어온 광고비(배). 점선 = 선택 기간 ROAS({throughLabel}). 판매처마다 축이 따로입니다
           </p>
+          {/* 덤벨(2026-11-10): 직전 같은 길이 기간 ○ → 이번 기간 ●. 위 카드의 ▲▼ 증감률을 만든 두 점 그대로다. */}
+          {dumbbell && (
+            <div data-tour="channel-dumbbell" className="mb-4 pb-3 border-b border-[var(--chart-grid-soft)]">
+              <p className="text-xs text-muted-foreground mb-2">
+                누가 좋아지고 나빠졌나: 직전 같은 길이 기간({dumbbell.prevRange}) ○ → 이번({dumbbell.curRange}) ●. 판매가 들어온 날까지 같은 날 수로 자른 값이라 위 카드 ▲▼ 와 같은 비교입니다.
+                ROAS 는 두 기간 모두 광고비 {MULTIPLE_MIN_COST.toLocaleString("ko-KR")}원 이상인 판매처만 그립니다.
+              </p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+                <div>
+                  <p className="text-xs font-medium mb-1">매출</p>
+                  <DumbbellChart rows={dumbbell.rev} format={formatWon} prevLabel="직전" curLabel="이번" axisLabel="최대" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium mb-1">ROAS (매출 ÷ 그 판매처를 끌어온 광고비)</p>
+                  <DumbbellChart rows={dumbbell.roas} format={(v) => `${v.toFixed(2)}x`} prevLabel="직전" curLabel="이번" axisLabel="최대" />
+                </div>
+              </div>
+            </div>
+          )}
           {groups.filter((g) => g.adSpendToSales > 0).length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">선택한 기간에 광고비가 쓰인 판매처가 없습니다.</p>
           ) : (

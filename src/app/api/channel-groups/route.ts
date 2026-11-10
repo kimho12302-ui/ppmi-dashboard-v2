@@ -186,6 +186,11 @@ async function getImpl(req: NextRequest) {
         revDelta: prevRevCut > 0 ? ((revenueToSales / prevRevCut) - 1) * 100 : null,
         adDelta: prevAd > 0 ? ((adSpend / prevAd) - 1) * 100 : null,
         roasDelta: prevRoasCut > 0 && adSpendToSales > 0 ? ((roasToSales / prevRoasCut) - 1) * 100 : null,
+        // 덤벨 그래프(2026-11-10)용: 위 증감률을 만든 두 점 그대로(판매 집계일까지·같은 길이). 새 계산 아님.
+        cmp: {
+          revenue: revenueToSales, adSpend: adSpendToSales, roas: adSpendToSales > 0 ? roasToSales : null,
+          prevRevenue: prevRevCut, prevAdSpend: prevAdCut, prevRoas: prevAdCut > 0 ? prevRoasCut : null,
+        },
       };
     });
 
