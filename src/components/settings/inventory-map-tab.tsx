@@ -79,7 +79,7 @@ export function InventoryMapReview({ data, onSaved }: { data: InventorySettingsD
       <div className="overflow-x-auto border rounded-md max-h-[520px]">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-muted text-muted-foreground"><tr>
-            {["위킵 상품명", "가용", "기본 품목(component)", "상품 코드", "브랜드·공급처", "짝짓기", "메모", ""].map((h) => <th key={h} className="py-1.5 px-2 text-left font-medium">{h}</th>)}
+            {["위킵 상품명", "가용", "기본 품목(component)", "상품 코드", "브랜드·공급처", "짝짓기", "메모", ""].map((h) => <th key={h} className="py-1.5 px-2 text-left font-medium whitespace-nowrap">{h}</th>)}
           </tr></thead>
           <tbody>
             {rows.map((r) => edit?.sku_no === r.sku_no ? (
