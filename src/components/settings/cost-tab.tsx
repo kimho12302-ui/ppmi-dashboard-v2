@@ -121,9 +121,9 @@ export function CostTab() {
                     <tr key={`${c.product}|${c.brand}`} className={cn("border-b hover:bg-muted/50", editKey === `${c.product}|${c.brand}` && "bg-primary/5")}>
                       <td className="py-1.5 px-2 text-xs">{BRAND_LABEL[c.brand] || c.brand}</td>
                       <td className="py-1.5 px-2 text-xs">{c.product}</td>
-                      <td className="py-1.5 px-2 text-xs text-muted-foreground">{c.category || "—"}</td>
+                      <td className="py-1.5 px-2 text-xs text-muted-foreground">{c.category || "-"}</td>
                       <td className="py-1.5 px-2 text-right">{c.cost_price?.toLocaleString()}원</td>
-                      <td className="py-1.5 px-2 text-right text-muted-foreground">{c.manufacturing_cost ? `${c.manufacturing_cost.toLocaleString()}원` : "—"}</td>
+                      <td className="py-1.5 px-2 text-right text-muted-foreground">{c.manufacturing_cost ? `${c.manufacturing_cost.toLocaleString()}원` : "-"}</td>
                       <td className="py-1.5 px-2 text-right">{c.shipping_cost?.toLocaleString()}원</td>
                       <td className="py-1.5 px-2 space-x-2 whitespace-nowrap">
                         <button onClick={() => startEdit(c)} className="text-xs text-primary hover:underline">수정</button>
@@ -181,8 +181,8 @@ export function CostTab() {
                       <td className="py-1.5 px-2">{BRAND_LABEL[s.brand] || s.brand}</td>
                       <td className="py-1.5 px-2 text-right">{s.total_cost?.toLocaleString()}원</td>
                       <td className="py-1.5 px-2 text-right">{s.total_orders?.toLocaleString()}건</td>
-                      <td className="py-1.5 px-2 text-right">{s.total_orders ? Math.round(s.total_cost / s.total_orders).toLocaleString() : "—"}원</td>
-                      <td className="py-1.5 px-2 text-xs text-muted-foreground">{s.note || "—"}</td>
+                      <td className="py-1.5 px-2 text-right">{s.total_orders ? `${Math.round(s.total_cost / s.total_orders).toLocaleString()}원` : "-"}</td>
+                      <td className="py-1.5 px-2 text-xs text-muted-foreground">{s.note || "-"}</td>
                       <td className="py-1.5 px-2">
                         <button onClick={() => delShipping(s.id)} className="text-xs text-red-500 hover:underline">삭제</button>
                       </td>

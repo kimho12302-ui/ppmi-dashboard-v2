@@ -167,7 +167,7 @@ export function UploadTab() {
         if (hasName) return `  · ${p.name}  (코드 ${p.code}, ${p.count}건)`;
         // 파일에 상품명 컬럼이 정말 없을 때만 행 내용을 보여 식별을 돕는다 (행번호 X)
         const rowContent = p.rowSample && p.rowSample.filter(Boolean).length > 0
-          ? ` — 행 내용: ${p.rowSample.filter(Boolean).join(" | ")}`
+          ? `, 행 내용: ${p.rowSample.filter(Boolean).join(" | ")}`
           : "";
         return `  · 코드 ${p.code}  (${p.count}건)${rowContent}`;
       }).join("\n");
@@ -215,7 +215,7 @@ export function UploadTab() {
       return { ok: true, message: msg };
     }
     let err = data.error || "업로드 실패";
-    if (data.hint) err += ` — ${data.hint}`;
+    if (data.hint) err += `. ${data.hint}`;
     if (Array.isArray(data.detectedHeaders)) err += ` | 헤더 ${data.detectedHeaders.length}개: [${data.detectedHeaders.slice(0, 20).join(", ")}]`;
     return { ok: false, error: err };
   };

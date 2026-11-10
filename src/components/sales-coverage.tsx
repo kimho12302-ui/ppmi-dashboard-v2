@@ -103,7 +103,7 @@ export function SalesCoverage() {
                         style={{ backgroundColor: v.bg, color: v.color }}
                         title={`${c.date} ${BRAND_LABEL[row.brand]}: ${
                           c.state === "not_uploaded" ? "그 날 판매 파일 미업로드"
-                          : c.state === "brand_missing" ? "이 브랜드 행만 없음 — 0매출인지 미입력인지 확인 필요"
+                          : c.state === "brand_missing" ? "이 브랜드 행만 없음: 0매출인지 미입력인지 확인 필요"
                           : `${(c.revenue ?? 0).toLocaleString()}원`}`}>
                         {v.text(c.revenue)}
                       </td>

@@ -145,7 +145,7 @@ async function postImpl(req: NextRequest) {
 
     const totalSum = perDate.reduce((s, x) => s + x.sessions + x.impressions + x.cart_adds + x.purchases, 0);
     const warnings: string[] = [];
-    if (totalSum === 0) warnings.push("⚠️ 모든 지표 합계가 0입니다 — 엑셀 헤더가 잡혔어도 값 셀이 비었거나 다른 컬럼일 수 있습니다");
+    if (totalSum === 0) warnings.push("⚠️ 모든 지표 합계가 0입니다. 엑셀 헤더가 잡혔어도 값 셀이 비었거나 다른 컬럼일 수 있습니다");
     if (nanRows > 0) warnings.push(`숫자 인식 실패 ${nanRows}행 스킵`);
     if (errors.length > 0) warnings.push(...errors);
 

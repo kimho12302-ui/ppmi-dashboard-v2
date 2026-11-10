@@ -59,5 +59,5 @@ export async function fetchAll<T = any>(baseQuery: any, tieBreak: string | null 
       if (rows.length < PAGE) return all; // 이 페이지가 끝. 뒤 페이지는 비어 있다
     }
   }
-  throw new Error(`fetchAll: ${MAX_PAGES}페이지(${MAX_PAGES * PAGE}행) 초과 — 쿼리 필터를 확인하세요`);
+  throw new Error(`fetchAll: ${MAX_PAGES}페이지(${MAX_PAGES * PAGE}행) 초과. 쿼리 필터를 확인하세요`);
 }

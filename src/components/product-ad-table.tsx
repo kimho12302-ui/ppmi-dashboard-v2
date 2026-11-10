@@ -145,7 +145,7 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
                 <td className="py-2 text-right num">{formatNumber(p.conversions)}</td>
                 <td className="py-2 text-right num">{formatCurrency(p.conversion_value)}</td>
                 <td className="py-2 text-right num text-muted-foreground">
-                  {p.spend > 0 ? `${p.roas.toFixed(2)}x` : "—"}
+                  {p.spend > 0 ? `${p.roas.toFixed(2)}x` : "-"}
                 </td>
                 {/* 상품번호가 시트에 없으면 '연결 안 됨'(—). 연결됐는데 0이면 진짜 안 팔린 것. */}
                 <td className="py-2 text-right num" title={p.actualRevenue !== null && p.salesStores?.length ? `${storeText(p.salesStores)} 판매만` : undefined}>
@@ -158,8 +158,8 @@ export function ProductAdTable({ from, to, brand }: { from: string; to: string; 
                 <td className="py-2 text-right num font-medium"
                     style={p.actualRoas === null ? undefined
                       : { color: p.actualRoas >= 1 ? "var(--sig-ok)" : p.actualRevenue === 0 ? "var(--sig-danger)" : "var(--sig-warn)" }}>
-                  {p.actualRoas === null ? <span className="text-muted-foreground">—</span>
-                    : p.spend > 0 ? `${p.actualRoas.toFixed(2)}x` : "—"}
+                  {p.actualRoas === null ? <span className="text-muted-foreground">-</span>
+                    : p.spend > 0 ? `${p.actualRoas.toFixed(2)}x` : "-"}
                 </td>
               </tr>
             ))}

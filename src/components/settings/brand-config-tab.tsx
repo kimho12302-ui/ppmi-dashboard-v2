@@ -57,7 +57,7 @@ export function BrandConfigTab() {
                   <td className="py-2 px-2"><div className="w-4 h-4 rounded" style={{ backgroundColor: BRAND_COLORS[b.key] || b.color }} title={BRAND_COLORS[b.key] ? "고정 색(화면에 쓰이는 색)" : "설정 색"} /></td>
                   <td className="py-2 px-2 font-mono text-xs">{b.key}</td>
                   <td className="py-2 px-2">{b.label}</td>
-                  <td className="py-2 px-2 text-muted-foreground">{b.category || "—"}</td>
+                  <td className="py-2 px-2 text-muted-foreground">{b.category || "-"}</td>
                   <td className="py-2 px-2">{b.order}</td>
                   <td className="py-2 px-2">{b.active ? "✅" : "❌"}</td>
                   <td className="py-2 px-2 space-x-2">
