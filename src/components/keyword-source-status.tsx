@@ -13,9 +13,12 @@ export function useStalled(sources: SourceLatest[] | undefined, today: string) {
   return useMemo(() => stalledSources(sources || [], today), [sources, today]);
 }
 
-/** 플랫폼 칩 옆에 붙일 말. 그 플랫폼에서 멈춘 브랜드가 있으면 "수집 멈춤" */
-export function stalledChipNote(platform: string, stalled: SourceLatest[]): string {
-  return stalled.some((s) => s.platform === platform) ? " · 수집 멈춤" : "";
+/** 플랫폼 칩 옆에 붙일 말. 그 플랫폼 브랜드가 전부 멈췄으면 "수집 멈춤", 일부만이면 "일부 멈춤"(예: 펫 네이버 검색은 아이언펫만 멈춤) */
+export function stalledChipNote(platform: string, stalled: SourceLatest[], sources: SourceLatest[] | undefined): string {
+  const n = stalled.filter((s) => s.platform === platform).length;
+  if (n === 0) return "";
+  const all = (sources || []).filter((s) => s.platform === platform).length;
+  return n >= all ? " · 수집 멈춤" : " · 일부 멈춤";
 }
 
 export function KeywordSourceStatus({ stalled, labels, from, to, latestCollected }: {

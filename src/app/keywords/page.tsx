@@ -279,7 +279,7 @@ function KeywordsInner() {
                 platformFilter === p ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {PLATFORM_LABELS[p] || p}{stalledChipNote(p, stalled)}
+              {PLATFORM_LABELS[p] || p}{stalledChipNote(p, stalled, data?.sources)}
             </button>
           ))}
         </div>
