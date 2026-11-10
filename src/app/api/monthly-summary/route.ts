@@ -15,7 +15,8 @@ interface MonthlyParts {
 }
 import { isGongguInDailySales, formAByDateChannel } from "@/lib/gonggu";
 import { kstDate, kstNow } from "@/lib/date";
-import { cachedGET } from "@/lib/api-cache";
+import { cachedGET, NO_CACHE_HEADER } from "@/lib/api-cache";
+import { fetchSalesThrough } from "@/lib/sales-through";
 
 // Supabase anon key has max-rows=1000 per request. Use pagination to fetch all rows.
 async function getImpl(request: NextRequest) {
@@ -72,10 +73,15 @@ async function getImpl(request: NextRequest) {
       // Fetch product costs for COGS
       supabase.from("product_costs").select("product,brand,cost_price,manufacturing_cost,shipping_cost"),
       // 판매 원장이 어디까지 들어왔는지(진행 중인 달 「(N일)」 표시용, 2026-11-03). 오늘 장중 행은 세지 않는다.
-      supabase.from("daily_sales").select("date").neq("channel", "total").lt("date", todayStr)
-        .order("date", { ascending: false }).limit(1),
+      // 정의는 src/lib/sales-through.ts 하나(고른 브랜드 범위, QA2 M3). 실패는 0일로 덮지 않고 따로 알린다(L5).
+      fetchSalesThrough(brand, todayStr).then(
+        (date) => ({ date, error: null as string | null }),
+        (e: unknown) => ({ date: null as string | null, error: e instanceof Error ? e.message : String(e) }),
+      ),
     ]);
-    const salesThrough: string | null = salesLastRes.data?.[0]?.date ?? null;
+    if (salesLastRes.error) console.error("monthly-summary:", salesLastRes.error);
+    const salesThrough: string | null = salesLastRes.date;
+    const salesThroughError = salesLastRes.error;
     const asRows = <T extends { month: string }>(rows: T[]) => rows.map((r) => ({ ...r, date: `${r.month}-01` }));
     const [sales, ads, ps, cogsProdData] = parts
       ? [asRows(parts.sales), asRows(parts.ads), needGonggu ? asRows(parts.gonggu) : [], asRows(parts.cogs)]
@@ -219,7 +225,10 @@ async function getImpl(request: NextRequest) {
     // ★ 진행 중인 달(오늘이 속한 달)은 며칠치만 들어 있어 전월(한 달 전체)과 비교하면 늘 크게 떨어져 보인다
     //   (11-03 실측: 2026-11 행 전월비 ▼92%). 그 달은 전월비를 비우고 판매가 들어온 날 수만 알린다.
     const currentMonth = todayStr.slice(0, 7);
-    const inProgressDays = salesThrough && salesThrough.slice(0, 7) === currentMonth ? Number(salesThrough.slice(8, 10)) : 0;
+    // 조회가 실패하면 null(모름). 0 이면 이 달에 판매가 아직 하나도 안 들어왔다는 뜻이라 섞지 않는다.
+    const inProgressDays: number | null = salesThroughError
+      ? null
+      : salesThrough && salesThrough.slice(0, 7) === currentMonth ? Number(salesThrough.slice(8, 10)) : 0;
 
     // Add MoM growth
     for (let i = 1; i < summary.length; i++) {
@@ -255,13 +264,18 @@ async function getImpl(request: NextRequest) {
     ytd.aov = ytd.orders > 0 ? ytd.revenue / ytd.orders : 0;
     ytd.profitRate = ytd.revenue > 0 ? (ytd.profit / ytd.revenue) * 100 : 0;
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       summary, ytd, year,
       // 원가 매칭률(0~1, 행 단위). 판매 행이 없으면 null
       cogsMatchRate: cogsRows > 0 ? cogsMatchedRows / cogsRows : null,
       // 진행 중인 달과 그 달에 판매가 들어온 날 수(0 = 아직 없음). 지난해를 보면 null.
+      // salesDays 가 null 이면 판매 원장 마지막 날 조회가 실패한 것(salesThroughError). 화면은 「(N일)」을 지운다.
       inProgress: summary.some((m) => m.month === currentMonth) ? { month: currentMonth, salesDays: inProgressDays, salesThrough } : null,
+      salesThroughError,
     });
+    // 일부 조회가 실패한 응답은 5분 캐시에 넣지 않는다(다음 조회에서 다시 읽게).
+    if (salesThroughError) res.headers.set(NO_CACHE_HEADER, "1");
+    return res;
   } catch {
     return NextResponse.json({ error: "Failed to fetch monthly summary" }, { status: 500 });
   }

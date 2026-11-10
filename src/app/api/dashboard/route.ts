@@ -7,6 +7,7 @@ import { fetchAll } from "@/lib/db";
 import { masterByProduct } from "@/lib/product-master";
 import { isGonggu, isGongguAggregate, isGongguInDailySales, formAByDateChannel, subtractFormAGonggu } from "@/lib/gonggu";
 import { cachedGET } from "@/lib/api-cache";
+import { fetchSalesThrough } from "@/lib/sales-through";
 import { loadComponentRows } from "@/lib/product-components-server";
 import { buildComponentIndex, expandSales } from "@/lib/product-components";
 
@@ -83,7 +84,7 @@ async function getImpl(req: NextRequest) {
     // ── 모든 DB 호출을 1회 병렬 배치로 실행 (이전: 순차 12회 왕복) ──
     const [
       sales, adSpend, prevSales, prevAd, cogsProdData, prodData, gongguData,
-      productCostsRes, shippingRes, miscRes, prevGongguData, componentRows,
+      productCostsRes, shippingRes, miscRes, prevGongguData, componentRows, salesLastDate,
     ] = await Promise.all([
       fetchAll(salesQuery),
       fetchAll(adQuery),
@@ -99,6 +100,8 @@ async function getImpl(req: NextRequest) {
       //  Overview 목표 막대는 /api/targets, 퍼널은 /api/funnel·/api/funnel-control 이 맡는다.)
       prevGongguPromise,
       loadComponentRows(),
+      // 판매 원장(고른 브랜드 범위)이 들어온 마지막 날, 오늘 미만. 정의는 src/lib/sales-through.ts 하나(QA2 M3).
+      fetchSalesThrough(brand),
     ]);
     // ★ 제품 단위 칸(검사 라인별 매출·TOP 제품·제품 비중)은 판매 상품을 구성표로 기본 품목까지 푼 행으로 센다
     //   (2026-11-09, src/lib/product-components.ts). 매출은 정가 비율로 나눠 합은 그대로다.
@@ -170,8 +173,8 @@ async function getImpl(req: NextRequest) {
     //   공구가 많던 달 기준으로 부풀려 비교됐다. 같은 함수·같은 날짜·판매처 매칭.
     const adjPrevSales = subtractFormAGonggu(prevSales || [], formAByDateChannel(prevGongguData || []));
 
-    // 판매 원장(이 필터 범위)이 들어온 마지막 날. 그 뒤 날짜는 판매 0 이 아니라 동기화 대기다.
-    const salesLastDate = (sales || []).reduce((m: string, r: { date: string }) => (r.date > m ? r.date : m), "") || null;
+    // 판매 원장 마지막 날(salesLastDate)은 위 병렬 조회에서 받는다. 그 뒤 날짜는 판매 0 이 아니라 동기화 대기다.
+    // 예전엔 조회 기간 안의 최대 날짜를 썼고, 화면은 전사 기준(data-status)을 먼저 써서 Overview 차트와 경고의 기준일이 달랐다.
 
     // ── KPI 계산 ──
     // gongguSalesTotal은 더하지 않음: lineup 기반 공구 매출은 daily_sales smartstore에 이미 포함

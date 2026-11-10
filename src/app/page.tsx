@@ -86,9 +86,9 @@ function OverviewInner() {
   };
 
   // 판매 원장이 들어온 마지막 날. 판매 동기화는 며칠 늦게 들어와 그 뒤 날짜의 매출 0 은 "판매 0" 이 아니다.
-  // 전사 기준(data-status)을 먼저 쓴다. 필터 범위의 마지막 판매일은 그 브랜드가 실제로 안 팔린 날과 구분이 안 된다.
-  const salesSource = status?.sources.find((s) => s.id === "sales");
-  const salesLastDate = salesSource?.latestDate || data?.salesLastDate || null;
+  // ★ 서버가 고른 브랜드 범위로 정한 값 하나만 쓴다(src/lib/sales-through.ts, QA2 M3 2026-11-10).
+  //   예전엔 차트는 전사 기준(data-status), ROAS 경고는 서버의 브랜드 범위 값을 써서 같은 화면의 기준일이 갈렸다.
+  const salesLastDate = data?.salesLastDate || null;
 
   const brandBreakdown = useMemo(() => {
     return (data?.brandProfit || []).map((b) => ({
@@ -190,13 +190,14 @@ function OverviewInner() {
   );
 
   // 판매실적은 수기 업로드다. 선택 기간의 끝보다 업로드가 뒤처지면 매출·주문·이익이 과소 집계된다.
+  // 기준일은 차트·경고와 같은 salesLastDate(고른 브랜드 범위)다.
   const salesGapDays = useMemo(() => {
-    const latest = salesSource?.latestDate;
+    const latest = salesLastDate;
     if (!latest || !to || latest >= to) return 0;
     return Math.round((Date.parse(to) - Date.parse(latest)) / 86400000);
-  }, [salesSource, to]);
+  }, [salesLastDate, to]);
   const salesGapNote = salesGapDays > 0
-    ? `판매 업로드가 ${salesSource?.latestDate}까지입니다. 선택 기간 마지막 ${salesGapDays}일이 비어 매출이 실제보다 낮습니다`
+    ? `판매 업로드가 ${salesLastDate}까지입니다. 선택 기간 마지막 ${salesGapDays}일이 비어 매출이 실제보다 낮습니다`
     : null;
 
   const revenueConfidence: KpiConfidence | undefined = salesGapNote
@@ -216,11 +217,11 @@ function OverviewInner() {
   const roasConfidence: KpiConfidence | undefined = useMemo(() => {
     const notes: string[] = [];
     if (brokenAd.length > 0) notes.push(`분모에 ${brokenAdNames} 광고비가 빠져 ROAS가 과대 계상됩니다`);
-    if (salesGapDays > 0) notes.push(`분자 매출이 ${salesSource?.latestDate}까지만 반영됐습니다`);
+    if (salesGapDays > 0) notes.push(`분자 매출이 ${salesLastDate}까지만 반영됐습니다`);
     if (notes.length === 0) return undefined;
     return { level: "partial", note: notes.join(" · ") };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brokenAdNames, brokenAd.length, salesGapDays, salesSource?.latestDate]);
+  }, [brokenAdNames, brokenAd.length, salesGapDays, salesLastDate]);
 
   // 이익: 원가 매칭이 안 된 품목은 원가 0으로 계산된다 → 이익이 과대.
   const matchedPct = Math.round((kpi.matchedRate || 0) * 100);
@@ -229,11 +230,11 @@ function OverviewInner() {
     if (kpi.matchedRate > 0 && kpi.matchedRate < 0.95) {
       notes.push(`원가 매칭 ${matchedPct}%. 미매칭 품목은 원가 0으로 계산돼 이익이 과대 표시됩니다`);
     }
-    if (salesGapDays > 0) notes.push(`매출이 ${salesSource?.latestDate}까지만 반영됐습니다`);
+    if (salesGapDays > 0) notes.push(`매출이 ${salesLastDate}까지만 반영됐습니다`);
     if (notes.length === 0) return undefined;
     return { level: "partial", note: notes.join(" · ") };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kpi.matchedRate, matchedPct, salesGapDays, salesSource?.latestDate]);
+  }, [kpi.matchedRate, matchedPct, salesGapDays, salesLastDate]);
 
   // 목표는 "달" 단위로 등록된다.
   //  (a) 선택 기간의 from 이 속한 달의 목표를 쓴다

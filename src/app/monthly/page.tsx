@@ -51,8 +51,10 @@ interface MonthlyData {
   summary: MonthlySummary[];
   ytd: YTD;
   year: string;
-  /** 진행 중인 달. salesDays = 그 달에 판매 원장이 들어온 날 수(오늘 제외). */
-  inProgress?: { month: string; salesDays: number; salesThrough: string | null } | null;
+  /** 진행 중인 달. salesDays = 그 달에 판매 원장이 들어온 날 수(오늘 제외). null = 판매 원장 마지막 날 조회 실패. */
+  inProgress?: { month: string; salesDays: number | null; salesThrough: string | null } | null;
+  /** 판매 원장 마지막 날 조회가 실패했을 때의 사유. 있으면 「(N일)」 대신 표시를 생략한다. */
+  salesThroughError?: string | null;
   /** 원가 매칭률(0~1, 행 단위, Overview 와 같은 방식). 판매 행이 없으면 null */
   cogsMatchRate?: number | null;
 }
@@ -294,7 +296,9 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
           <h3 className="font-semibold text-sm mb-1">매출 vs 총비용</h3>
           <p className="text-xs text-muted-foreground mb-3">
             왼쪽 막대는 매출, 오른쪽 막대는 광고비·원가·배송비를 쌓은 값입니다. 잡비는 이익에만 반영하고 막대에는 넣지 않았습니다.
-            {inProgress && ` 흐린 막대(${inProgress.month})는 진행 중인 달이라 ${inProgress.salesDays}일치만 들어 있습니다.`}
+            {inProgress && (inProgress.salesDays != null
+              ? ` 흐린 막대(${inProgress.month})는 진행 중인 달이라 ${inProgress.salesDays}일치만 들어 있습니다.`
+              : ` 흐린 막대(${inProgress.month})는 진행 중인 달입니다(판매가 며칠치 들어왔는지는 조회 실패로 확인하지 못했습니다).`)}
           </p>
           <ResponsiveContainer width="100%" height={240}>
             <ComposedChart data={chartSummary} barGap={2}>
@@ -401,7 +405,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
                   {/* 진행 중인 달은 며칠치만 들어 있어 전월비를 비운다(서버도 revGrowth 를 주지 않는다). */}
                   <td className="py-2 pr-3 font-medium whitespace-nowrap">
                     {r.month}
-                    {inProgress?.month === r.month && (
+                    {inProgress?.month === r.month && inProgress.salesDays != null && (
                       <span className="ml-1 text-[11px] font-normal text-muted-foreground" title="판매 원장이 들어온 날 수(오늘 제외). 달이 끝나지 않아 전월비를 내지 않습니다">
                         ({inProgress.salesDays}일)
                       </span>
