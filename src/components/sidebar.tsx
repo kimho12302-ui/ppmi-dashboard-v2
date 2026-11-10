@@ -59,6 +59,8 @@ const NAV_ITEMS: NavItem[] = [
   // ── 계획·기록 ──
   { href: "/budget", label: "예산 페이싱", icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z", separator: true, section: "계획·기록" },
   { href: "/media-budget", label: "매체별 집행", icon: "M3 6h18M3 12h18M3 18h18 M7 4v4 M13 10v4 M17 16v4" },
+  // 재고 (2026-11-10). 위킵 재고 기준 품절·발주 필요·과재고·예상 소진일
+  { href: "/inventory", label: "재고", icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
   { href: "/monthly", label: "월별 요약", icon: "M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" },
   { href: "/raw", label: "Raw Data", icon: "M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" },
 

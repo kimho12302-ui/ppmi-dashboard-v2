@@ -17,6 +17,7 @@ import { isMissingTable } from "@/lib/bl-pnl";
 import { kstDate } from "@/lib/date";
 import { loadComponentIndex } from "@/lib/product-components-server";
 import { expandSales } from "@/lib/product-components";
+import productMaster from "@/lib/product-master.json";
 import {
   addDays, mergeDailyRows, COUPANG_WINDOW_DAYS, parseWekeepName,
   type ComputeInput, type CostRow, type DailyRow, type ManualStockRow, type NoteRow, type OrderRow, type RuleRow,
@@ -28,6 +29,11 @@ export const INVENTORY_TABLES = [
   "inventory_manual_stock", "inventory_orders", "inventory_notes", "inventory_rules",
 ] as const;
 export type InventoryTable = (typeof INVENTORY_TABLES)[number];
+
+/** 대시보드 상품 코드 → 이름. 원가(product_costs) 를 이 이름으로도 찾는다 */
+const CODE_NAMES: Record<string, string> = Object.fromEntries(
+  (productMaster as { items: { code: string; product: string }[] }).items.filter((p) => p.code).map((p) => [p.code, p.product]),
+);
 
 /** 하루 출고 기간 최대(28일) + 여유. 이만큼만 날짜별을 읽는다 */
 const SPEED_LOOKBACK_DAYS = 40;
@@ -192,7 +198,7 @@ export async function loadInventoryInputs(window: number): Promise<LoadedInputs>
     mode: dev ? "dev-files" : "db",
     missing: [...missing] as InventoryTable[],
     setupNeeded,
-    input: { snapshot, daily, map, stocks, orders, notes, rules, costs, coupangSales: coupang.sales, coupangWindow: coupang.window, window },
+    input: { snapshot, daily, map, stocks, orders, notes, rules, costs, coupangSales: coupang.sales, coupangWindow: coupang.window, window, codeNames: CODE_NAMES },
   };
 }
 

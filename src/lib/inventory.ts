@@ -334,6 +334,8 @@ export interface ComputeInput {
   coupangSales?: readonly { component: string; qty: number }[];
   coupangWindow?: { from: string; to: string; days: number } | null;
   window?: number;
+  /** 대시보드 상품 코드 → 상품 이름(src/lib/product-master.json). 원가를 이 이름으로도 찾는다 */
+  codeNames?: Readonly<Record<string, string>>;
 }
 
 export interface InventoryCards {
@@ -366,7 +368,7 @@ function latestBy<T>(rows: readonly T[], key: (r: T) => string, date: (r: T) => 
   return m;
 }
 
-/** 원가 찾기: 기본 품목 이름 → 위킵 상품명(머리표 뗀 것) 순. 0 원은 원가 없음으로 본다(묶음 원가를 낱개에 붙이지 않음) */
+/** 원가 찾기: 기본 품목 이름 → 대시보드 상품 코드의 이름 → 위킵 상품명(머리표 뗀 것) 순. 0 원은 원가 없음으로 본다(묶음 원가를 낱개에 붙이지 않음) */
 function makeCostLookup(costs: readonly CostRow[]) {
   const m = new Map<string, number>();
   for (const c of costs) {
@@ -499,7 +501,8 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     let sheetStatus: InvStatus = excludedBy ? "excluded" : sheetStock <= 0 ? "soldout" : sheetRunway === null ? "nomove" : statusFromRunway(sheetRunway, t);
     if (incoming && (sheetStatus === "soldout" || sheetStatus === "order" || sheetStatus === "soon")) sheetStatus = "incoming";
 
-    const cost = costOf(brand, [m?.component, parsed.bare, s.product_name]);
+    const codeName = m?.product_code ? input.codeNames?.[m.product_code] : undefined;
+    const cost = costOf(brand, [m?.component, codeName, parsed.bare, s.product_name]);
     const value = cost ? Math.round(cost.cost * Math.max(0, total)) : null;
 
     return {
@@ -567,6 +570,8 @@ export function compareRows(a: InventoryRow, b: InventoryRow): number {
   const gb = ["act", "ok", "over", "nomove", "excluded"].indexOf(b.group);
   if (ga !== gb) return ga - gb;
   if (a.group === "act" && a.status !== b.status) return ACT_ORDER[a.status] - ACT_ORDER[b.status];
+  // 품절끼리는 잘 나가던 것(최근 하루 출고 큰 것)이 위
+  if (a.status === "soldout" && b.status === "soldout" && a.speed.perDay !== b.speed.perDay) return b.speed.perDay - a.speed.perDay;
   if (a.group === "over" || a.group === "nomove" || a.group === "excluded") {
     const v = (b.value ?? -1) - (a.value ?? -1);
     if (v !== 0) return v;
