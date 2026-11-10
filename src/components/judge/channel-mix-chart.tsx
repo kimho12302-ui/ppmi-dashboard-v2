@@ -114,7 +114,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
             <p className="text-xs text-muted-foreground mt-0.5">가로 = {unit}, 세로 = 원(판매 원장 자체매출), 칸 = {what}</p>
             <p className="text-xs text-muted-foreground">판단: 매출이 어느 {what}에서 늘고 줄었는지 (광고 귀속 아님)</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div data-tour="sales-mix-toggle" className="flex flex-wrap gap-2">
           {brandKeys.length > 1 && (
             <div className="flex gap-1 bg-muted rounded-md p-0.5">
               {(["channel", "brand"] as const).map((d) => (
@@ -136,7 +136,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
           </div>
         </div>
 
-        <p className="text-sm mb-2">
+        <p data-tour="sales-mix-verdict" className="text-sm mb-2">
           {order.length < 2 ? (
             <span className="text-muted-foreground">이 기간 {what}가 {order[0] ? labelOf(order[0]) : "없음"} 하나라 구성 비교는 없습니다. 막대는 {unit}별 매출 합계입니다.</span>
           ) : shift ? (
@@ -190,7 +190,7 @@ export function ChannelMixChart({ sales, channels, from, to }: { sales: SalesRow
           </ComposedChart>
         </DeferredResponsiveContainer>
 
-        <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
+        <div data-tour="sales-mix-rule" className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
           <p>
             막대 위 숫자 = 그 {unit} 매출 합계(만원, 마우스를 올리면 원 단위). 흐린 막대 = 다 안 찬 {unit}
             {lastBucket && lastBucket.state === "in_progress" ? ` (마지막 ${lastBucket.period} 은 진행 중, 판매 동기화가 1~3일 늦게 들어옵니다)` : ""}. 비중 비교에서 뺍니다.

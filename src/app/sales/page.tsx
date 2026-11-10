@@ -363,7 +363,7 @@ function SalesPageInner() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold">밸런스랩 자체 vs 공구 추이</h3>
-                <div className="flex gap-1 bg-muted rounded-md p-0.5">
+                <div data-tour="sales-bl-gran" className="flex gap-1 bg-muted rounded-md p-0.5">
                   {(["daily", "weekly", "monthly"] as const).map((m) => (
                     <button
                       key={m}

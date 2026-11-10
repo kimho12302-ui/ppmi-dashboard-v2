@@ -298,7 +298,7 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
           </div>
           {/* 이익 각주: YTD 카드와 아래 표의 월별 이익·이익률에 같이 걸린다 */}
           {profitNotes.length > 0 && (
-            <p className="text-xs text-muted-foreground">* 이익·이익률(월별 표 포함): {profitNotes.join(" · ")}</p>
+            <p data-tour="monthly-profit-note" className="text-xs text-muted-foreground">* 이익·이익률(월별 표 포함): {profitNotes.join(" · ")}</p>
           )}
         </div>
       )}

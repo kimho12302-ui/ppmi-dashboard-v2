@@ -154,7 +154,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
   return (
     <Card className="border-l-4" style={{ borderLeftColor: pace.dot }}>
       <CardContent className="p-5 space-y-4">
-        <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between flex-wrap gap-2 text-left">
+        <button data-tour="insights-pacing-head" onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between flex-wrap gap-2 text-left">
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground text-xs">{open ? "▾" : "▸"}</span>
             <h3 className="font-semibold">목표 대비 페이싱 · {monthLabel} 누적</h3>
@@ -170,7 +170,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
         {/* ★ 판정 한 줄. 대시보드는 이미 "필요 일매출 vs 현재 일평균"을 계산해 놓고도
             중간 크기 타일 하나로 다른 20개 숫자와 나란히 두어 결론이 묻혔다(2026-07 사용성 리뷰).
             열었을 때 가장 먼저 읽히는 자리에 문장으로 올린다. */}
-        <div className={`rounded-lg px-3 py-2.5 text-sm font-medium border-l-4 ${verdict.cls}`}>
+        <div data-tour="insights-pacing-verdict" className={`rounded-lg px-3 py-2.5 text-sm font-medium border-l-4 ${verdict.cls}`}>
           {verdict.text}
         </div>
 
@@ -198,7 +198,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
         <ProgressBar value={salesProgress} color="#94a3b8" />
 
         {/* 지표별 목표 vs 현황 vs 달성률 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+        <div data-tour="insights-pacing-rows" className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
           {rows.map((r) => {
             const behind = !early && r.marker !== undefined && !r.invert && r.ach < r.marker * 0.9;
             return (
@@ -218,7 +218,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
         </div>
 
         {/* 잔여 + 필요 일런레이트 */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-1 border-t">
+        <div data-tour="insights-pacing-remaining" className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-1 border-t">
           <div>
             <p className="text-[11px] text-muted-foreground">목표까지 잔여 매출</p>
             <p className="text-sm font-bold">{formatCurrency(remaining.revenue)}</p>
@@ -243,7 +243,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
 
         {/* 주차별 목표 대비 실적 */}
         {data.weekly && data.weekly.length > 0 && (
-          <div className="pt-2 border-t">
+          <div data-tour="insights-pacing-weekly" className="pt-2 border-t">
             <p className="text-xs text-muted-foreground mb-2">주차별 매출 (목표 대비)</p>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -277,7 +277,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
 
         {/* 묶음 보기(전체·펫)일 때 브랜드별 미니 페이싱 */}
         {(b === "all" || b === "pet") && data.perBrand.length > 0 && (
-          <div className="pt-2 border-t space-y-2">
+          <div data-tour="insights-pacing-brands" className="pt-2 border-t space-y-2">
             <p className="text-xs text-muted-foreground">
               브랜드별 매출 달성률 (마커=판매 집계 진행률 {pct(salesProgress)}) · 목표는 <b>공구 포함</b> 기준 · ROAS 는 브랜드마다 판매가 들어온 날까지의 광고비로 나눔{early ? " · 초반이라 색 판정 보류" : ""}
             </p>
