@@ -57,7 +57,7 @@ if (costMatch) {
 }
 console.log(`원가 없는 재고 상품(재고 > 0, 판정 제외 아님):`);
 for (const r of res.rows.filter((x) => x.status !== "excluded" && x.total_stock > 0 && x.value === null)) console.log(`  - ${r.name} (위킵 ${r.available})`);
-console.log(`품절 중 오래 품절(최근 28일 출고도 0, 화면에서 접어 둠) ${res.rows.filter((r) => r.status === "soldout" && r.speed.total === 0).length}개`);
+console.log(`품절 중 최근 28일 출고도 0 인 것 ${res.rows.filter((r) => r.status === "soldout" && r.speed.total === 0).length}개 (판매 규모 등급·보류 묶음은 판매 원장이 있어야 해서 화면 /api/inventory 에서만 계산)`);
 
 console.log(`\n## 28일 방식 vs 시트 방식(너티 월평균÷30.4 · 사입 위킵 일평균, 같은 기준 일수, 손 입력 재고 없음)`);
 const diff = res.rows.filter((r) => r.status !== r.sheet_status);

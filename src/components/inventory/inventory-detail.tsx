@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { forecastLine, RUNWAY_AXIS_DAYS, type DayPoint, type InventoryRow } from "@/lib/inventory";
-import { fmt1, fmtInt, fmtWon, md } from "./inventory-ui";
+import { fmt1, fmtInt, fmtWon, md, scaleTitle } from "./inventory-ui";
 
 const DAYS = [
   { key: "30", label: "30일" }, { key: "90", label: "90일" }, { key: "180", label: "180일" }, { key: "all", label: "1월부터" },
@@ -80,6 +80,7 @@ export function InventoryDetail({ row, asOf, windowDays }: { row: InventoryRow; 
             재고 가치 {fmtWon(row.value)}{row.unit_cost ? ` (원가 ${fmtInt(row.unit_cost)}원 · ${row.cost_basis ?? "출처 없음"})` : " (원가 표에 없음: 설정 > 재고 > 원가)"}
             {row.runway_with_incoming !== null && <> · 입고 포함 {fmt1(row.runway_with_incoming)}일</>}
           </span>
+          <span className="block text-muted-foreground">판매 규모 {scaleTitle(row)}{row.held ? " · 보류 묶음(① 아래 접힘)" : ""}</span>
         </Fact>
       </div>
 

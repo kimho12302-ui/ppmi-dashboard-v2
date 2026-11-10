@@ -33,7 +33,7 @@ async function getImpl(req: NextRequest) {
       return NextResponse.json({ setupNeeded: true, mode: loaded.mode, missing: loaded.missing });
     }
     const result = computeInventory(loaded.input);
-    return NextResponse.json({ ...result, mode: loaded.mode, missing: loaded.missing, today: kstDate() });
+    return NextResponse.json({ ...result, mode: loaded.mode, missing: loaded.missing, scale_error: loaded.scaleError, today: kstDate() });
   } catch (error) {
     console.error("inventory API error:", error);
     // 못 읽은 것을 빈 재고로 내보내지 않는다

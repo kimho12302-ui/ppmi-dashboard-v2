@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   parseWekeepName, thresholdsFor, mergeDailyRows, shipoutSpeed, fillDailySeries, runwayDays, statusFromRunway,
   computeInventory, forecastLine, dailyThrough, DEFAULT_THRESHOLDS, coupangWindowFor, isRealDate, extractSheetCosts, matchSheetCosts,
+  gradeByCumulative, buildBrandTabs, inBrandTab, ownSaipTabs, supplierFromName,
 } from "../../src/lib/inventory.ts";
 
 const day = (ymd, sku, o = {}) => ({
@@ -259,4 +260,151 @@ test("시트 원가: 탭별 원가 열, 배송비 줄 빼기, 상품명·바코�
   const { matched, unmatched } = matchSheetCosts(rows, snapRows);
   assert.deepEqual(matched.map((m) => [m.sku_no, m.how, m.source]), [["1", "상품명", "sheet:파미나(독)!R4"], ["2", "바코드", "sheet:파미나(독)!R5"], ["3", "상품명", "sheet:너티!P4"]]);
   assert.deepEqual(unmatched.map((u) => u.name), ["CANOPTIC(카놉틱)"]);
+});
+
+// ── 2026-11-10 사입 브랜드 탭 · 판매 규모 등급(ABC) ──
+test("깨진 머리표: 앞 탭 문자, 여는 대괄호 빠짐, 머리표 없는 사입 이름", () => {
+  const a = parseWekeepName("\t[사입][벳라이프]벳라이프 인테스티널 로우팻 50g");
+  assert.equal(a.brand, "saip");
+  assert.equal(a.supplier, "벳라이프");
+  const b = parseWekeepName("사입][고네이티브]스몰브리드 독 청어 4kg");
+  assert.equal(b.brand, "saip");
+  assert.equal(b.supplier, "고네이티브");
+  assert.equal(b.bare, "스몰브리드 독 청어 4kg");
+  assert.equal(parseWekeepName("[사입][테라카니스]퍼피 치킨과 호박 200g\t").bare, "퍼피 치킨과 호박 200g");
+  assert.equal(supplierFromName("파미나 N&D 펌킨 멧돼지&사과 12Kg"), "파미나");
+  assert.equal(supplierFromName("스몰브리드 독 청어"), null);
+  // 매칭표가 사입·공급처 빈칸이면 이름 앞 단어로 브랜드 탭을 정한다
+  const res = computeInventory({
+    snapshot: [snap("P", "파미나 N&D 펌킨 독 닭고기&석류 미니 100g", 3), snap("G", "사입][고네이티브]스몰브리드 독 청어 4kg", 3)],
+    daily: [], map: [{ sku_no: "P", brand: "saip", supplier: null }, { sku_no: "G", brand: "saip", supplier: null }],
+  });
+  assert.deepEqual(Object.fromEntries(res.rows.map((r) => [r.sku_no, r.supplier])), { P: "파미나", G: "고네이티브" });
+});
+
+test("브랜드 탭: 시트 네 브랜드 + SKU 3개 이상 브랜드는 따로, 나머지는 사입 기타", () => {
+  const rows = [
+    ...["파미나", "파미나", "벳라이프", "고네이티브", "오리젠"].map((s) => ({ brand: "saip", supplier: s })),
+    ...["테라카니스", "테라카니스", "테라카니스", "게더", "게더", "나우"].map((s) => ({ brand: "saip", supplier: s })),
+    { brand: "nutty", supplier: "너티" }, { brand: "ironpet", supplier: null }, { brand: "other", supplier: null },
+  ];
+  const tabs = buildBrandTabs(rows);
+  assert.deepEqual(tabs.map((t) => [t.label, t.count]), [
+    ["전체", 14], ["너티", 1], ["파미나", 2], ["벳라이프", 1], ["고네이티브", 1], ["오리젠", 1], ["테라카니스", 3], ["사입 기타", 3], ["아이언펫·기타", 2],
+  ]);
+  const own = ownSaipTabs(tabs);
+  assert.equal(rows.filter((r) => inBrandTab(r, "saip:*", own)).length, 3);
+  // 탭마다 개수 합 = 전체
+  assert.equal(tabs.slice(1).reduce((a, t) => a + t.count, 0), 14);
+});
+
+test("ABC 경계: 자기 앞 누적 80% 미만 A, 95% 미만 B, 나머지 C, 0 은 판매 없음", () => {
+  const g = gradeByCumulative([
+    { key: "a", value: 50 }, { key: "b", value: 30 }, { key: "c", value: 15 }, { key: "d", value: 5 }, { key: "z", value: 0 },
+  ]);
+  // a 앞 0% → A, b 앞 50% → A, c 앞 80%(정확히 경계) → B, d 앞 95%(정확히 경계) → C
+  assert.deepEqual(["a", "b", "c", "d", "z"].map((k) => g.get(k).grade), ["A", "A", "B", "C", "none"]);
+  // 1등이 혼자 80% 를 넘어도 A(80% 선을 넘기는 그 상품까지 A)
+  const solo = gradeByCumulative([{ key: "x", value: 90 }, { key: "y", value: 6 }, { key: "w", value: 4 }]);
+  assert.deepEqual(["x", "y", "w"].map((k) => solo.get(k).grade), ["A", "B", "C"]);
+  // 80% 를 살짝 못 미치는 앞 누적은 A
+  const near = gradeByCumulative([{ key: "p", value: 79 }, { key: "q", value: 16 }, { key: "r", value: 5 }]);
+  assert.deepEqual(["p", "q", "r"].map((k) => near.get(k).grade), ["A", "A", "C"]);
+  // 같은 값은 같은 등급
+  const tie = gradeByCumulative([{ key: "m", value: 40 }, { key: "n", value: 40 }, { key: "o", value: 20 }]);
+  assert.equal(tie.get("m").grade, tie.get("n").grade);
+});
+
+const W90 = { from: "2026-08-08", to: "2026-11-05", days: 90 };
+const scaleCase = (extra = {}) => {
+  // 사입: A 큰 매출, B 중간, C 작은 매출(품절), D 판매 0·출고 0(품절), E 매출 없음 → 출고 × 원가(품절)
+  const daily = [...d28("A", 1), ...d28("B", 1), day("2026-09-01", "E", { shipout_qty: 10 }), day("2026-09-02", "C", { shipout_qty: 1 })];
+  return computeInventory({
+    snapshot: [snap("A", "[사입][파미나]a", 5), snap("B", "[사입][파미나]b", 3), snap("C", "[사입][파미나]c", 0), snap("D", "[사입][오리젠]d", 0),
+      snap("E", "[사입][파미나]e", 0)],
+    daily,
+    map: [
+      { sku_no: "A", component: "a", brand: "saip" }, { sku_no: "B", component: "b", brand: "saip" },
+      { sku_no: "C", component: "c", brand: "saip" }, { sku_no: "D", component: "d", brand: "saip" }, { sku_no: "E", component: "e", brand: "saip" },
+    ],
+    skuCosts: [{ cost_key: "E", sku_no: "E", product_name: "e", cost: 500, source: null }],
+    salesScale: { window: W90, byComponent: [{ component: "a", revenue: 800000, qty: 80 }, { component: "b", revenue: 145000, qty: 10 }, { component: "c", revenue: 50000, qty: 1 }] },
+    today: "2026-11-10",
+    ...extra,
+  });
+};
+
+test("판매 규모: 매출 등급, 출고 기준 대체, 판매 없음, C·판매 없음 품절은 보류", () => {
+  const res = scaleCase();
+  const by = Object.fromEntries(res.rows.map((r) => [r.sku_no, r]));
+  assert.equal(by.A.scale.grade, "A");
+  assert.equal(by.A.scale.basis, "sales");
+  // 출고 기준: 10개 × 원가 500 = 5,000
+  assert.equal(by.E.scale.basis, "shipout");
+  assert.equal(by.E.scale.value, 5000);
+  assert.equal(by.D.scale.grade, "none");
+  assert.equal(by.D.scale.basis, "none");
+  // 합계 1,000,000: A 앞 0 → A, B 앞 80% → B, C 앞 94.5% → B, E 앞 99.5% → C
+  assert.equal(res.scale.pools.saip.total, 1000000);
+  assert.equal(by.B.scale.grade, "B");
+  assert.equal(by.C.scale.grade, "B");
+  assert.equal(by.E.scale.grade, "C");
+  // E(C 품절)·D(판매 없음 품절)는 보류, C(B 품절)는 ① 에 남는다
+  assert.equal(by.E.group, "hold");
+  assert.equal(by.D.group, "hold");
+  assert.equal(by.C.group, "act");
+  assert.equal(res.cards.card.soldout, 1);
+  assert.equal(res.cards.card.held_soldout, 2);
+  assert.equal(res.scale.pools.saip.shipout_basis, 1);
+  assert.equal(by.E.last_shipout, "2026-09-01");
+});
+
+test("판매 규모: A 품절이 C 발주 필요보다 위, 입고 지연은 맨 위, 입고 대기는 맨 아래", () => {
+  const daily = [...d28("A", 1), ...d28("B", 1), ...d28("C", 1), ...d28("D", 1)];
+  const res = computeInventory({
+    snapshot: [snap("A", "[사입][파미나]a", 0), snap("B", "[사입][파미나]b", 10), snap("C", "[사입][파미나]c", 3), snap("D", "[사입][파미나]d", 5)],
+    daily,
+    map: ["A", "B", "C", "D"].map((k) => ({ sku_no: k, component: k, brand: "saip" })),
+    orders: [
+      { sku_no: "C", qty: 10, ordered_at: "2026-11-01", expected_at: "2026-11-05", status: "ordered" },
+      { sku_no: "D", qty: 10, ordered_at: "2026-11-08", expected_at: "2026-11-20", status: "ordered" },
+    ],
+    salesScale: { window: W90, byComponent: [{ component: "A", revenue: 900, qty: 9 }, { component: "B", revenue: 10, qty: 1 }, { component: "C", revenue: 50, qty: 1 }, { component: "D", revenue: 40, qty: 1 }] },
+    today: "2026-11-10",
+  });
+  // B 는 C 등급 발주 필요 → 보류. 순서: 입고 지연 C → A 품절 → 입고 대기 D → (보류) B
+  assert.deepEqual(res.rows.map((r) => [r.sku_no, r.status, r.scale.grade, r.group]), [
+    ["C", "late", "B", "act"], ["A", "soldout", "A", "act"], ["D", "incoming", "C", "act"], ["B", "order", "C", "hold"],
+  ]);
+  assert.equal(res.cards.card.order, 1);
+  assert.equal(res.cards.card.held_order, 1);
+});
+
+test("판매 규모: 판매 원장을 못 읽으면 등급·보류 없음(판매 없음으로 보지 않음)", () => {
+  const res = scaleCase({ salesScale: null });
+  assert.equal(res.scale, null);
+  assert.ok(res.rows.every((r) => r.scale.grade === null && !r.held));
+  assert.equal(res.cards.card.held_soldout, 0);
+});
+
+test("판매 규모: 같은 기본 품목 SKU 는 머리표 없는 것끼리 출고 비율로 나눠 합계가 품목 매출과 같다", () => {
+  const res = computeInventory({
+    snapshot: [snap("N", "너티사운드_냠", 10), snap("M", "[마케팅용]너티사운드_냠 1본입", 10), snap("X", "[사입][파미나]x 12kg", 1), snap("Y", "파미나 N&D x 12Kg", 1)],
+    daily: [day("2026-10-01", "N", { shipout_qty: 5 }), day("2026-10-01", "M", { shipout_qty: 50 }), day("2026-10-01", "X", { shipout_qty: 3 }), day("2026-10-01", "Y", { shipout_qty: 1 })],
+    map: [{ sku_no: "N", component: "냠 단호박", brand: "nutty" }, { sku_no: "M", component: "냠 단호박", brand: "nutty" },
+      { sku_no: "X", component: "x", brand: "saip" }, { sku_no: "Y", component: "x", brand: "saip" }],
+    salesScale: { window: W90, byComponent: [{ component: "냠 단호박", revenue: 100000, qty: 50 }, { component: "x", revenue: 40000, qty: 4 }] },
+  });
+  const by = Object.fromEntries(res.rows.map((r) => [r.sku_no, r.scale]));
+  // 마케팅용은 판매 매출을 안 받는다(출고 × 원가 대체, 원가 없으면 등급 없음)
+  assert.equal(by.N.revenue, 100000);
+  assert.equal(by.M.revenue, 0);
+  assert.equal(by.M.basis, "unknown");
+  assert.equal(by.M.grade, null);
+  // 중복 SKU 는 출고 3:1
+  assert.equal(by.X.revenue, 30000);
+  assert.equal(by.Y.revenue, 10000);
+  assert.equal(by.X.shared_with, 2);
+  assert.equal(res.scale.pools.saip.total, 40000);
+  assert.equal(res.scale.pools.nutty.total, 100000);
 });

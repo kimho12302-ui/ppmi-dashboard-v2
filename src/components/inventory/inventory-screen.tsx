@@ -2,42 +2,35 @@
 
 // 재고 화면 (/inventory) 2026-11-10. 기획: 볼트 Work/PPMI/projects/마케팅-대시보드/재고-화면-기획-2026-11-10.md 「시각화 확정안 v2」.
 //   표 한 장 + 행마다 같은 축(0~120일)의 남은 날 막대 + 행을 누르면 그 상품 하나의 상세 그래프.
-//   묶음: ① 지금 손댈 것(펼침) ② 정상(접힘) ③ 과재고(재고 가치 순) ④ 출고 0(재고 가치 순) ⑤ 판정 제외(접힘)
+//   묶음: ① 지금 손댈 것(펼침, 안에 보류 접힘) ② 정상(접힘) ③ 과재고(재고 가치 순) ④ 출고 0(재고 가치 순) ⑤ 판정 제외(접힘)
+//   2026-11-10 김호: 사입을 브랜드별 탭으로, 판매 규모 등급(ABC)으로 급한 순서를 가르고 안 팔리는 품절·발주 필요는 보류로.
 // 계산은 전부 src/lib/inventory.ts. 이 파일은 고르고 그리기만 한다. 문구를 바꾸면 src/lib/guides/screens/inventory.ts 도 고친다.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { freshFetch } from "@/lib/fresh-fetch";
 import { kstDate } from "@/lib/date";
 import {
-  BRAND_LABEL, SPEED_WINDOWS, STATUS_LABEL, buildCards, addDays,
+  BRAND_LABEL, SPEED_WINDOWS, STATUS_LABEL, buildCards, addDays, buildBrandTabs, inBrandTab, ownSaipTabs,
+  ABC_A_SHARE, ABC_B_SHARE, SCALE_LABEL, SCALE_POOL_LABEL,
   type InvBrand, type InvGroup, type InventoryRow, type InvStatus, type SpeedWindow,
 } from "@/lib/inventory";
 import { RunwayAxis, RunwayBar } from "./runway-bar";
 import { InventoryDetail } from "./inventory-detail";
-import { GROUPS, STATUS_TONE, fmtInt, fmtManWon, fmtSpeed, fmtWon, md, type InventoryResponse } from "./inventory-ui";
-
-type BrandTab = "all" | "nutty" | "saip" | "other";
-const BRAND_TABS: { key: BrandTab; label: string }[] = [
-  { key: "all", label: "전체" }, { key: "nutty", label: "너티" }, { key: "saip", label: "사입" }, { key: "other", label: "아이언펫·기타" },
-];
-/** 오래 품절: 재고 0 이고 기간 안 출고도 0. 단종·장기 결품일 가능성이 커 ① 안에서 접어 둔다 */
-const isDormant = (r: InventoryRow) => r.status === "soldout" && r.speed.total === 0 && (r.coupang_per_day ?? 0) === 0;
-const inTab = (r: InventoryRow, tab: BrandTab) => tab === "all" || (tab === "other" ? r.brand === "ironpet" || r.brand === "other" : r.brand === tab);
+import { GROUPS, SCALE_TONE, STATUS_TONE, fmtInt, fmtManWon, fmtSpeed, fmtWon, md, scaleTitle, type InventoryResponse } from "./inventory-ui";
 
 /** 데스크톱 표 칸 너비 (머리줄과 행이 같은 값을 쓴다) */
-const COLS = "md:grid-cols-[minmax(0,1.5fr)_56px_56px_64px_84px_72px_minmax(220px,2.3fr)_46px_74px_88px]";
+const COLS = "md:grid-cols-[minmax(0,1.5fr)_56px_56px_60px_80px_68px_minmax(200px,2.1fr)_44px_74px_92px_84px]";
 
 export function InventoryScreen() {
   const [windowDays, setWindowDays] = useState<SpeedWindow>(28);
   const [data, setData] = useState<InventoryResponse | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState<BrandTab>("all");
-  const [supplier, setSupplier] = useState<string | null>(null);
+  const [tab, setTab] = useState<string>("all");
   const [open, setOpen] = useState<Record<InvGroup, boolean>>(() => Object.fromEntries(GROUPS.map((g) => [g.key, g.open])) as Record<InvGroup, boolean>);
   const [selected, setSelected] = useState<string | null>(null);
-  // 품절 중 최근 기간 출고도 0 인 것(오래 품절)은 ① 안에서 접어 둔다. 판정은 그대로 품절
-  const [showDormant, setShowDormant] = useState(false);
+  // 품절·발주 필요인데 판매 규모 C·판매 없음(보류)은 ① 안에서 접어 둔다. 판정은 그대로
+  const [showHold, setShowHold] = useState(false);
 
   // 7·14·28 을 빨리 바꾸면 늦게 온 앞 요청이 뒤 결과를 덮지 않게 앞 요청을 취소한다
   const inflight = useRef<AbortController | null>(null);
@@ -49,8 +42,13 @@ export function InventoryScreen() {
     setFailed(null);
     try {
       const url = `/api/inventory?window=${windowDays}`;
-      const res = await (fresh ? freshFetch(url, { signal: ctrl.signal }) : fetch(url, { signal: ctrl.signal }));
-      const json = await res.json();
+      let res = await (fresh ? freshFetch(url, { signal: ctrl.signal }) : fetch(url, { signal: ctrl.signal }));
+      let json = await res.json();
+      // 배포 직후 5분 캐시에 판매 규모(scale)가 없는 옛 응답이 남아 있으면 캐시를 건너뛰고 다시 읽는다
+      if (res.ok && !json.setupNeeded && !("scale" in json)) {
+        res = await freshFetch(url, { signal: ctrl.signal });
+        json = await res.json();
+      }
       if (!res.ok) throw new Error(json.message || json.error || String(res.status));
       if (!ctrl.signal.aborted) setData(json as InventoryResponse);
     } catch (e) {
@@ -63,13 +61,12 @@ export function InventoryScreen() {
   useEffect(() => { load(false); return () => inflight.current?.abort(); }, [load]);
 
   const ready = data && !data.setupNeeded ? data : null;
-  const rows = useMemo(() => (ready ? ready.rows.filter((r) => inTab(r, tab) && (!supplier || r.supplier === supplier)) : []), [ready, tab, supplier]);
+  const tabs = useMemo(() => buildBrandTabs(ready?.rows ?? []), [ready]);
+  const own = useMemo(() => ownSaipTabs(tabs), [tabs]);
+  // 다시 읽어 탭이 사라졌으면(그 브랜드 SKU 가 0 이 됨) 전체로
+  const activeTab = tabs.some((t) => t.key === tab) ? tab : "all";
+  const rows = useMemo(() => (ready ? ready.rows.filter((r) => inBrandTab(r, activeTab, own)) : []), [ready, activeTab, own]);
   const cards = useMemo(() => buildCards(rows), [rows]);
-  const suppliers = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of ready?.rows ?? []) if (r.brand === "saip" && r.supplier) m.set(r.supplier, (m.get(r.supplier) ?? 0) + 1);
-    return [...m].sort((a, b) => b[1] - a[1]);
-  }, [ready]);
 
   return (
     <div className="space-y-4">
@@ -93,9 +90,9 @@ export function InventoryScreen() {
 
           <section data-tour="inventory-cards" className="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
             <CountCard status="soldout" n={cards.card.soldout}
-              sub={`재고 합 0${cards.counts.late ? " · 입고 지연 포함" : ""}`} />
+              sub={`재고 합 0${cards.counts.late ? " · 입고 지연 포함" : ""}`} held={cards.card.held_soldout} />
             <CountCard status="order" n={cards.card.order}
-              sub={`남은 날 ≤ 주의 일수${cards.card.late ? ` · 입고 지연 ${cards.card.late} 포함` : ""}`} />
+              sub={`남은 날 ≤ 주의 일수${cards.card.late ? ` · 입고 지연 ${cards.card.late} 포함` : ""}`} held={cards.card.held_order} />
             <CountCard status="soon" n={cards.card.soon} sub={`≤ 30일 · 입고 대기 ${cards.card.incoming}`} />
             <CountCard status="over" n={cards.card.over} sub="남은 날 > 60일" />
             <ValueCard cards={cards} />
@@ -103,15 +100,12 @@ export function InventoryScreen() {
 
           <div className="flex flex-wrap items-center gap-2 justify-between">
             <div data-tour="inventory-tabs" className="flex flex-wrap items-center gap-1 rounded-lg bg-muted p-1">
-              {BRAND_TABS.map((b) => {
-                const n = ready.rows.filter((r) => inTab(r, b.key)).length;
-                return (
-                  <button key={b.key} type="button" onClick={() => { setTab(b.key); setSupplier(null); }} aria-pressed={tab === b.key}
-                    className={`px-3 py-1 rounded-md text-xs sm:text-sm ${tab === b.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-                    {b.label} <span className="num text-muted-foreground">{n}</span>
-                  </button>
-                );
-              })}
+              {tabs.map((b) => (
+                <button key={b.key} type="button" onClick={() => setTab(b.key)} aria-pressed={activeTab === b.key}
+                  className={`px-2.5 sm:px-3 py-1 rounded-md text-xs sm:text-sm ${activeTab === b.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                  {b.label} <span className="num text-muted-foreground">{b.count}</span>
+                </button>
+              ))}
             </div>
             <div data-tour="inventory-window" className="flex items-center gap-1 text-xs">
               <span className="text-muted-foreground">하루 출고 기간</span>
@@ -123,40 +117,31 @@ export function InventoryScreen() {
               </div>
             </div>
           </div>
-          {tab === "saip" && suppliers.length > 0 && (
-            <div data-tour="inventory-suppliers" className="flex flex-wrap gap-1.5">
-              {[["", 0] as [string, number], ...suppliers].map(([s, n]) => (
-                <button key={s || "all"} type="button" onClick={() => setSupplier(s || null)} aria-pressed={(supplier ?? "") === s}
-                  className={`px-2.5 py-0.5 rounded-full border text-xs ${(supplier ?? "") === s ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground"}`}>
-                  {s || "공급처 전체"}{s && <span className="num ml-1 opacity-70">{n}</span>}
-                </button>
-              ))}
-            </div>
-          )}
-
           <p data-tour="inventory-rule" className="text-[11px] sm:text-xs text-muted-foreground leading-relaxed">
             하루 출고 = 최근 {ready.window}일({md(ready.window_from)} ~ {md(ready.daily_through)}) 위킵 출고 합 ÷ {ready.window} · 남은 날 = (위킵 가용 + 이동 + 내부) ÷ 하루 출고.
             너티는 쿠팡 재고 ÷ 쿠팡 하루 판매{ready.coupang_window ? `(${md(ready.coupang_window.from)} ~ ${md(ready.coupang_window.to)} 판매, 묶음은 낱개로 풀어 셈)` : ""}도 따로 계산해 짧은 쪽으로 판정
             {ready.coupang_unmapped ? <span title={ready.coupang_unmapped.products.join(" / ")}> (판매 구성표에 없는 쿠팡 판매 상품 {ready.coupang_unmapped.products.length}개 · {fmtInt(ready.coupang_unmapped.qty)}개는 낱개로 못 풀어 빠짐)</span> : null}.
             발주 필요 ≤ 주의 일수(사입 15 · 너티 20) · 곧 발주 ≤ 30 · 과재고 &gt; 60일. 발주를 넣으면 입고 대기.
+            <ScaleRule data={ready} />
             <Link href="/settings?tab=inventory" data-tour="inventory-settings-link" className="ml-1 underline underline-offset-2 text-foreground">쿠팡 재고·발주·기준 일수 입력 →</Link>
           </p>
 
           <div className="space-y-3">
             {GROUPS.map((g) => {
-              const all = rows.filter((r) => r.group === g.key);
-              const dormant = g.key === "act" ? all.filter(isDormant) : [];
-              const list = g.key === "act" && !showDormant ? all.filter((r) => !isDormant(r)) : all;
+              const list = rows.filter((r) => r.group === g.key);
+              // 보류(판매 규모 C·판매 없음인 품절·발주 필요)는 ① 안 맨 아래에 접어 둔다
+              const hold = g.key === "act" ? rows.filter((r) => r.group === "hold") : [];
               return (
                 <section key={g.key} data-tour={`inventory-group-${g.key}`} className="rounded-xl border bg-card overflow-hidden">
                   <button type="button" onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))} aria-expanded={open[g.key]}
                     className="w-full flex items-center gap-2 px-3 sm:px-4 py-2.5 text-left hover:bg-muted/40">
                     <span className="text-sm font-semibold">{g.no} {g.title}</span>
-                    <span className="num text-sm text-muted-foreground">{all.length}</span>
+                    <span className="num text-sm text-muted-foreground">{list.length}</span>
+                    {hold.length > 0 && <span className="num text-xs text-muted-foreground">+ 보류 {hold.length}</span>}
                     <span className="hidden sm:inline text-xs text-muted-foreground truncate">{g.hint}</span>
                     <span className="ml-auto text-xs text-muted-foreground">{open[g.key] ? "접기" : "펼치기"}</span>
                   </button>
-                  {open[g.key] && list.length > 0 && (
+                  {open[g.key] && (list.length > 0 || hold.length > 0) && (
                     <div className="border-t">
                       <HeaderRow />
                       {list.map((r, i) => (
@@ -166,15 +151,26 @@ export function InventoryScreen() {
                           {selected === r.sku_no && <InventoryDetail row={r} asOf={ready.as_of} windowDays={ready.window} />}
                         </Fragment>
                       ))}
-                      {dormant.length > 0 && (
-                        <button type="button" data-tour="inventory-dormant" onClick={() => setShowDormant((v) => !v)}
-                          className="w-full border-t px-4 py-2 text-left text-xs text-muted-foreground hover:bg-muted/40">
-                          {showDormant ? "오래 품절 접기" : `오래 품절 ${dormant.length}개 더 보기`} · 재고 0 이고 최근 {ready.window}일 위킵 출고도 0 (판정은 품절 그대로, 개수에도 들어감)
-                        </button>
+                      {list.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">A·B 등급 손댈 것 없음</p>}
+                      {hold.length > 0 && (
+                        <div data-tour="inventory-hold" className="border-t bg-muted/20">
+                          <button type="button" onClick={() => setShowHold((v) => !v)} aria-expanded={showHold}
+                            className="w-full px-4 py-2 text-left text-xs hover:bg-muted/40">
+                            <span className="font-medium text-foreground">안 팔려서 보류 중일 수 있음 {hold.length}개</span>
+                            <span className="text-muted-foreground"> · {showHold ? "접기" : "펼치기"} · 품절·발주 필요인데 최근 90일 판매 규모가 C 또는 판매 없음. 일부러 발주를 끊었을 수 있어 위에서 뺐습니다(판정은 그대로)</span>
+                          </button>
+                          {showHold && hold.map((r) => (
+                            <Fragment key={r.sku_no}>
+                              <Row row={r} asOf={ready.as_of} first={false} active={selected === r.sku_no}
+                                onClick={() => setSelected((s) => (s === r.sku_no ? null : r.sku_no))} />
+                              {selected === r.sku_no && <InventoryDetail row={r} asOf={ready.as_of} windowDays={ready.window} />}
+                            </Fragment>
+                          ))}
+                        </div>
                       )}
                     </div>
                   )}
-                  {open[g.key] && list.length === 0 && <p className="border-t px-4 py-3 text-xs text-muted-foreground">해당 상품 없음</p>}
+                  {open[g.key] && list.length === 0 && hold.length === 0 && <p className="border-t px-4 py-3 text-xs text-muted-foreground">해당 상품 없음</p>}
                 </section>
               );
             })}
@@ -229,14 +225,67 @@ function Freshness({ data, loading, onRefresh }: { data: Exclude<InventoryRespon
   );
 }
 
-function CountCard({ status, n, sub }: { status: InvStatus; n: number; sub: string }) {
+function CountCard({ status, n, sub, held }: { status: InvStatus; n: number; sub: string; held?: number }) {
   const t = STATUS_TONE[status];
   return (
     <div className="rounded-xl border bg-card p-3" style={n > 0 ? { borderColor: t.border, background: t.surface } : undefined}>
-      <p className="text-xs font-medium" style={{ color: n > 0 ? t.color : "var(--muted-foreground)" }}>{STATUS_LABEL[status]}</p>
-      <p className="num text-2xl font-bold leading-tight mt-0.5">{n}<span className="text-sm font-normal text-muted-foreground ml-0.5">개</span></p>
+      <p className="text-xs font-medium" style={{ color: n > 0 ? t.color : "var(--muted-foreground)" }}>
+        {STATUS_LABEL[status]}{held !== undefined && <span className="ml-1 font-normal text-muted-foreground">A·B 등급</span>}
+      </p>
+      <p className="num text-2xl font-bold leading-tight mt-0.5">
+        {n}<span className="text-sm font-normal text-muted-foreground ml-0.5">개</span>
+      </p>
+      {held ? <p className="text-[11px] text-muted-foreground" title="판매 규모 C·판매 없음은 보류 묶음으로 보내 이 개수에서 뺐습니다">C·판매 없음 {held}개 제외</p> : null}
       <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
     </div>
+  );
+}
+
+/** 계산 규칙 한 줄 끝의 판매 규모 설명 */
+function ScaleRule({ data }: { data: Exclude<InventoryResponse, { setupNeeded: true }> }) {
+  if (!data.scale) {
+    return <span className="block mt-0.5" style={{ color: "var(--sig-warn)" }}>판매 규모 등급을 계산하지 못해 등급 없이 보입니다(보류 묶음 없음){data.scale_error ? `: ${data.scale_error}` : ""}.</span>;
+  }
+  const s = data.scale;
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  return (
+    <span className="block mt-0.5">
+      판매 규모 = {md(s.window.from)} ~ {md(s.window.to)}({s.window.days}일, 판매 동기화 지연 5일 앞) 판매 매출을 기본 품목으로 풀어 SKU 에 붙인 값(공구 채널 제외
+      {s.gonggu_excluded.rows ? ` ${fmtInt(s.gonggu_excluded.rows)}행` : " 0행"}). 매출이 안 붙는 SKU 는 같은 기간 위킵 출고 × 원가(「출고 기준」).
+      {" "}{SCALE_POOL_LABEL.saip}·{SCALE_POOL_LABEL.nutty} 각각 큰 순 누적 {pct(ABC_A_SHARE)}까지 A · {pct(ABC_B_SHARE)}까지 B · 나머지 C.
+      {" "}C·판매 없음인 품절·발주 필요는 ① 아래 보류로 접음.
+      {s.unattached.components > 0 && (
+        <span title={s.unattached.top.map((t) => `${t.name} ${fmtManWon(t.revenue)}`).join(" / ")}>
+          {" "}위킵 SKU 가 없는 판매 {s.unattached.components}개 품목 {fmtManWon(s.unattached.revenue)}(닥터레이 영양제 등)은 등급 계산 밖.
+        </span>
+      )}
+    </span>
+  );
+}
+
+export function ScaleBadge({ row }: { row: InventoryRow }) {
+  const g = row.scale.grade;
+  if (!row.scale.pool && g === null) return <span className="text-muted-foreground">-</span>;
+  const key = g ?? "unknown";
+  const t = SCALE_TONE[key];
+  return (
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold whitespace-nowrap border"
+      style={{ color: t.color, background: t.surface, borderColor: t.border, borderStyle: key === "none" || key === "unknown" ? "dashed" : "solid" }}>
+      {g ? SCALE_LABEL[g] : "미상"}
+    </span>
+  );
+}
+
+/** 판매 규모 칸: 등급 배지 + 90일 판매 금액(또는 출고 기준 값) */
+function ScaleCell({ row }: { row: InventoryRow }) {
+  const s = row.scale;
+  return (
+    <span className="text-right" title={scaleTitle(row)}>
+      <ScaleBadge row={row} />
+      <span className="block text-[10px] text-muted-foreground">
+        {s.basis === "sales" ? fmtManWon(s.value ?? 0) : s.basis === "shipout" ? `출고 기준 ${fmtManWon(s.value ?? 0)}` : s.basis === "unknown" && s.pool ? "원가 없음" : ""}
+      </span>
+    </span>
   );
 }
 
@@ -269,7 +318,7 @@ function HeaderRow() {
     <div className={`hidden md:grid ${COLS} gap-2 items-end px-4 py-1.5 bg-muted/40 text-[11px] text-muted-foreground`}>
       <span>상품</span><span className="text-right">위킵</span><span className="text-right">쿠팡</span><span className="text-right">이동·내부</span>
       <span className="text-right">입고 예정</span><span className="text-right">하루 출고</span><RunwayAxis /><span className="text-right">소진일</span>
-      <span>상태</span><span className="text-right">재고 가치</span>
+      <span>상태</span><span className="text-right" title="최근 90일 판매 매출 기준 ABC 등급">판매 규모</span><span className="text-right">재고 가치</span>
     </div>
   );
 }
@@ -297,7 +346,8 @@ function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: s
       <span className="block truncate text-sm">{row.bare_name}</span>
       <span className="block truncate text-[11px] text-muted-foreground">
         {[row.supplier, ...row.tags.filter((t) => t === "파손" || t === "마케팅용"), row.note ? `메모: ${row.note}` : null,
-          row.confidence !== "확실" && !row.confirmed ? `매칭 ${row.confidence}` : null].filter(Boolean).join(" · ") || BRAND_LABEL[row.brand]}
+          row.confidence !== "확실" && !row.confirmed ? `매칭 ${row.confidence}` : null,
+          row.held ? (row.last_shipout ? `마지막 출고 ${md(row.last_shipout)}` : "읽은 기간 출고 없음") : null].filter(Boolean).join(" · ") || BRAND_LABEL[row.brand]}
       </span>
     </span>
   );
@@ -320,16 +370,18 @@ function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: s
         <span data-tour={first ? "inventory-bar" : undefined}><RunwayBar row={row} asOf={asOf} /></span>
         <span className="text-right">{md(row.stockout_date)}</span>
         <span><Badge status={row.status} coupangMissing={row.coupang_missing} /></span>
+        <ScaleCell row={row} />
         <span className="text-right">{row.total_stock <= 0 ? <span className="text-muted-foreground">-</span> : row.value === null ? <span className="text-muted-foreground">원가 없음</span> : fmtWon(row.value)}</span>
       </div>
       {/* 휴대폰: 세 줄 */}
       <div className="md:hidden space-y-1.5">
-        <div className="flex items-start gap-2">{name}<span className="ml-auto shrink-0"><Badge status={row.status} coupangMissing={row.coupang_missing} /></span></div>
+        <div className="flex items-start gap-2">{name}<span className="ml-auto shrink-0 flex items-center gap-1"><ScaleBadge row={row} /><Badge status={row.status} coupangMissing={row.coupang_missing} /></span></div>
         <RunwayBar row={row} asOf={asOf} />
         <p className="num text-[11px] text-muted-foreground">
           위킵 {fmtInt(row.available)}{both ? `(${fmtDays(row.runway_wekeep)})` : ""}{row.brand === "nutty" ? ` · 쿠팡 ${missingText(row.coupang)}${both ? `(${fmtDays(row.runway_coupang)})` : ""}` : ""} · 하루 {fmtSpeed(row.speed.perDay)}(시트 {fmtSpeed(row.sheet_per_day)})
           · 소진 {md(row.stockout_date)} · {row.total_stock <= 0 ? "재고 0" : row.value === null ? "원가 없음" : fmtManWon(row.value)}
           {row.incoming ? ` · 입고 ${fmtInt(row.incoming.qty)}(${md(row.incoming.expected_at)})` : ""}
+          {row.scale.basis === "sales" ? ` · 90일 판매 ${fmtManWon(row.scale.value ?? 0)}` : row.scale.basis === "shipout" ? ` · 출고 기준 ${fmtManWon(row.scale.value ?? 0)}` : ""}
         </p>
       </div>
     </button>
