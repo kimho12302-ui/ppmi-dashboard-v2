@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { cachedGET, revalidateAfter, type DataTag } from "@/lib/api-cache";
 import { isMissingTable } from "@/lib/bl-pnl";
 import { loadComponentRows } from "@/lib/product-components-server";
-import { loadSkuList, INVENTORY_TABLES, type InventoryTable } from "@/lib/inventory-server";
+import { loadSkuList, devManualCosts, INVENTORY_TABLES, type InventoryTable } from "@/lib/inventory-server";
 import { DEFAULT_THRESHOLDS, isRealDate } from "@/lib/inventory";
 import { fetchAll } from "@/lib/db";
 import { kstDate } from "@/lib/date";
@@ -63,7 +63,9 @@ async function getImpl() {
       missing: INVENTORY_TABLES.filter((t) => missing.has(t)),
       skus: skus.snapshot.map((s) => ({ sku_no: s.sku_no, name: s.product_name, available: s.available_qty, date: s.date })),
       map: skus.map,
-      stocks, orders, notes, rules, costs,
+      stocks, orders, notes, rules,
+      // 개발용: 원가 표가 없으면 목업(시트에서 만든 원가 줄)을 보인다. 운영에서는 devManualCosts 가 null
+      costs: missing.has("inventory_costs") ? devManualCosts() ?? costs : costs,
       defaults: DEFAULT_THRESHOLDS,
       components: componentNames,
     });

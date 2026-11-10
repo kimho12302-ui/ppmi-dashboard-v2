@@ -52,6 +52,11 @@ function devManual(): { stocks?: ManualStockRow[]; orders?: OrderRow[]; notes?: 
   return p && existsSync(p) ? readJson(p) : {};
 }
 
+/** 개발용 원가 목업(설정 화면 원가 탭 미리보기). 운영에서는 null */
+export function devManualCosts(): SkuCostRow[] | null {
+  return devManual().costs ?? null;
+}
+
 /* ── 개발용: 볼트 원천 json → DB 행 모양 ── */
 interface RawSnap { date: string; skuNo: string; productName: string; variation?: string; productManageCode?: string; supplierName?: string;
   availableQty: number; safeQty?: number; reserveQty?: number; faultyQty?: number; damageQty?: number; inCustomsQty?: number;
