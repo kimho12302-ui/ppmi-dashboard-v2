@@ -8,6 +8,8 @@ import {
   calendarWeeks, calendarPendingFrom, weekdayMon,
   funnelModel, FUNNEL_MIN_W,
   storeCompare, dumbbellRoas,
+  seriesTotal, TOTAL_LABEL, VISIBLE_TOTAL_LABEL, finiteOrNull,
+  toggleHidden, pruneHidden, isLastVisible, visibleKeys, topVisibleKey,
 } from "../../src/lib/chart-math.ts";
 
 // ── 파레토 ───────────────────────────────────────────────────────────────────
@@ -159,4 +161,98 @@ test("덤벨 ROAS: 광고비 0·5만 원 미만은 어느 쪽인지 사실대로
   assert.equal(dumbbellRoas({ ...base, adSpend: 90000, prevAdSpend: 10000 }, 50000).missingNote, "광고비 5만 원 미만 (직전)");
   const ok = dumbbellRoas({ ...base, adSpend: 90000, prevAdSpend: 60000 }, 50000);
   assert.deepEqual([ok.prev, ok.cur, ok.missingNote], [3, 2, undefined]);
+});
+
+// ── 툴팁 합계 (2026-11-12) ───────────────────────────────────────────────────
+const KEYS = ["smartstore", "cafe24", "coupang"];
+
+test("합계: 보이는 합산 계열을 다 더하고 라벨은 「합계」", () => {
+  const t = seriesTotal({ smartstore: 100, cafe24: 50, coupang: 25 }, KEYS);
+  assert.deepEqual(t, { value: 175, label: TOTAL_LABEL, hiddenCount: 0, counted: 3 });
+});
+
+test("합계: 계열이 전부 null 이면 0 이 아니라 null(「-」), 판매 동기화 대기 칸", () => {
+  const t = seriesTotal({ smartstore: null, cafe24: null, coupang: undefined, __ad: 30000 }, KEYS);
+  assert.equal(t.value, null);
+  assert.equal(t.counted, 0);
+  assert.equal(t.label, TOTAL_LABEL);
+});
+
+test("합계: 일부 null 이면 있는 값만 더한다(0 은 값이다)", () => {
+  const t = seriesTotal({ smartstore: 0, cafe24: null, coupang: 40 }, KEYS);
+  assert.equal(t.value, 40);
+  assert.equal(t.counted, 2);
+});
+
+test("합계: 숨긴 계열은 빼고 라벨이 「보이는 항목 합계」", () => {
+  const t = seriesTotal({ smartstore: 100, cafe24: 50, coupang: 25 }, KEYS, ["cafe24"]);
+  assert.equal(t.value, 125);
+  assert.equal(t.label, VISIBLE_TOTAL_LABEL);
+  assert.equal(t.hiddenCount, 1);
+});
+
+test("합계: 합산 대상 밖 계열(광고비 선)을 숨겨도 라벨은 「합계」 그대로", () => {
+  const t = seriesTotal({ smartstore: 100, cafe24: 50, coupang: 25, __ad: 999 }, KEYS, ["__ad"]);
+  assert.equal(t.value, 175);
+  assert.equal(t.label, TOTAL_LABEL);
+});
+
+test("합계: 비율 계열(ROAS)은 sumKeys 에 없으면 더하지 않는다", () => {
+  const row = { 매출: 500000, 광고비: 100000, ROAS: 5 };
+  assert.equal(seriesTotal(row, ["매출"]).value, 500000);
+  // 합산 대상이 없는 그래프(비율·다른 단위만)는 합계 줄 자체가 없다
+  assert.equal(seriesTotal(row, []), null);
+});
+
+test("합계: 합산 대상이 전부 숨겨지면 합계 줄을 그리지 않는다(null)", () => {
+  assert.equal(seriesTotal({ smartstore: 1, cafe24: 2, coupang: 3 }, KEYS, KEYS), null);
+});
+
+test("합계: 라벨을 화면이 바꿀 수 있다(매출 + 광고비 그래프의 「매출 합계」)", () => {
+  const t = seriesTotal({ a: 1, b: 2 }, ["a", "b"], ["b"], "매출 합계", "보이는 매출 합계");
+  assert.equal(t.label, "보이는 매출 합계");
+  assert.equal(seriesTotal({ a: 1, b: 2 }, ["a", "b"], [], "매출 합계", "보이는 매출 합계").label, "매출 합계");
+});
+
+test("합계: 숫자 아닌 값·NaN·Infinity 는 null 취급", () => {
+  assert.equal(finiteOrNull("12"), null);
+  assert.equal(finiteOrNull(NaN), null);
+  assert.equal(finiteOrNull(Infinity), null);
+  assert.equal(finiteOrNull(-3), -3);
+  assert.equal(seriesTotal({ smartstore: "12", cafe24: NaN, coupang: 5 }, KEYS).value, 5);
+});
+
+// ── 범례로 골라 보기 ─────────────────────────────────────────────────────────
+test("범례: 누르면 숨기고 다시 누르면 보인다(원래 배열 불변)", () => {
+  const h0 = [];
+  const h1 = toggleHidden(h0, "cafe24", KEYS);
+  assert.deepEqual(h1, ["cafe24"]);
+  assert.deepEqual(h0, []);
+  assert.deepEqual(toggleHidden(h1, "cafe24", KEYS), []);
+});
+
+test("범례: 보이는 마지막 하나는 숨기지 않는다", () => {
+  const h = ["smartstore", "cafe24"];
+  assert.equal(toggleHidden(h, "coupang", KEYS), h);
+  assert.equal(isLastVisible(h, "coupang", KEYS), true);
+  assert.equal(isLastVisible(h, "cafe24", KEYS), false);
+  assert.equal(isLastVisible([], "cafe24", KEYS), false);
+});
+
+test("범례: 목록에 없는 키는 무시", () => {
+  const h = [];
+  assert.equal(toggleHidden(h, "nope", KEYS), h);
+});
+
+test("범례: 계열이 바뀌면 없는 키는 정리하고, 남은 게 전부 숨김이면 모두 보이게", () => {
+  assert.deepEqual(pruneHidden(["cafe24", "gone"], KEYS), ["cafe24"]);
+  assert.deepEqual(pruneHidden(["coupang"], ["coupang"]), []);
+  const same = ["cafe24"];
+  assert.equal(pruneHidden(same, KEYS), same);
+});
+
+test("범례: 보이는 계열 순서와 쌓은 막대 맨 위(둥근 모서리) 계열", () => {
+  assert.deepEqual(visibleKeys(KEYS, ["cafe24"]), ["smartstore", "coupang"]);
+  assert.equal(topVisibleKey(KEYS, ["coupang"]), "cafe24");
+  assert.equal(topVisibleKey(KEYS, []), "coupang");
 });

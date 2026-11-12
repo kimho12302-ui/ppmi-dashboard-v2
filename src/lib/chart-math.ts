@@ -166,3 +166,99 @@ export function dumbbellRoas(c: StoreCmp, minCost: number): { prev: number | nul
   }
   return { prev: c.prevRoas, cur: c.roas };
 }
+
+// ── 툴팁 합계 · 범례로 골라 보기 (2026-11-12) ─────────────────────────────────
+// 김호: "합산 그래프는 마우스오버했을 때 총합도 보이게", "범례 클릭하면 선택해서 보게".
+// 그리기는 chart-style.tsx(TotalTooltip · ToggleLegend · useSeriesToggle), 숫자 판단은 여기서 한다.
+
+export const TOTAL_LABEL = "합계";
+export const VISIBLE_TOTAL_LABEL = "보이는 항목 합계";
+
+/** 합계에 넣을 수 있는 값만 숫자로. null·undefined·NaN·숫자 아닌 값은 null(0 으로 바꾸지 않는다) */
+export function finiteOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+export interface SeriesTotal {
+  /** 보이는 합산 계열 값의 합. 보이는 계열 값이 전부 null 이면 null(「-」로 찍는다) */
+  value: number | null;
+  /** 「합계」 또는 「보이는 항목 합계」 */
+  label: string;
+  /** 합산 대상 가운데 범례로 숨긴 계열 수 */
+  hiddenCount: number;
+  /** 합에 실제로 들어간(값이 있는) 계열 수 */
+  counted: number;
+}
+
+/**
+ * 한 칸(행)의 툴팁 합계.
+ *  - sumKeys: 더해서 뜻이 있는 계열만(화면이 정한다). 비율·다른 단위 계열은 넣지 않는다
+ *  - hidden: 범례로 숨긴 계열. sumKeys 밖 계열(예: 매출 막대 위 광고비 선)을 숨겨도 라벨은 「합계」 그대로
+ *  - 일부 null 이면 있는 값만 더한다. 전부 null 이면 value=null
+ *  - 합산 대상이 없거나 전부 숨겨졌으면 null(합계 줄을 그리지 않는다)
+ */
+export function seriesTotal(
+  row: Readonly<Record<string, unknown>> | null | undefined,
+  sumKeys: readonly string[],
+  hidden: readonly string[] = [],
+  base: string = TOTAL_LABEL,
+  visibleBase: string = VISIBLE_TOTAL_LABEL,
+): SeriesTotal | null {
+  if (!sumKeys.length) return null;
+  const hide = new Set(hidden);
+  const shown = sumKeys.filter((k) => !hide.has(k));
+  if (!shown.length) return null;
+  const hiddenCount = sumKeys.length - shown.length;
+  let sum = 0;
+  let counted = 0;
+  for (const k of shown) {
+    const v = finiteOrNull(row?.[k]);
+    if (v == null) continue;
+    sum += v;
+    counted += 1;
+  }
+  return { value: counted > 0 ? sum : null, label: hiddenCount > 0 ? visibleBase : base, hiddenCount, counted };
+}
+
+/** 보이는 계열(원래 순서 그대로) */
+export function visibleKeys(keys: readonly string[], hidden: readonly string[]): string[] {
+  const hide = new Set(hidden);
+  return keys.filter((k) => !hide.has(k));
+}
+
+/** 쌓은 막대에서 위쪽 모서리를 둥글게 할 계열 = 보이는 것 가운데 맨 위(마지막) */
+export function topVisibleKey(keys: readonly string[], hidden: readonly string[]): string | null {
+  const v = visibleKeys(keys, hidden);
+  return v.length ? v[v.length - 1] : null;
+}
+
+/**
+ * 범례 한 항목을 눌렀을 때의 새 숨김 목록(원래 배열은 건드리지 않는다).
+ *  - 숨긴 것을 누르면 다시 보인다
+ *  - 보이는 계열이 그것 하나뿐이면 숨기지 않는다(빈 그래프 방지) → 같은 배열을 그대로 돌려준다
+ *  - keys 에 없는 키는 무시한다
+ */
+export function toggleHidden(hidden: readonly string[], key: string, keys: readonly string[]): readonly string[] {
+  if (!keys.includes(key)) return hidden;
+  if (hidden.includes(key)) return hidden.filter((k) => k !== key);
+  if (visibleKeys(keys, hidden).length <= 1) return hidden;
+  return [...hidden, key];
+}
+
+/** 이 항목을 눌러도 숨길 수 없나(보이는 마지막 하나) */
+export function isLastVisible(hidden: readonly string[], key: string, keys: readonly string[]): boolean {
+  const v = visibleKeys(keys, hidden);
+  return v.length === 1 && v[0] === key;
+}
+
+/**
+ * 계열 목록이 바뀌었을 때(브랜드·기간·차원 필터) 숨김 목록 정리: 없는 키는 빼고,
+ * 남은 계열이 전부 숨김이면 모두 보이게 되돌린다. 바뀐 게 없으면 같은 배열을 돌려준다(리렌더 방지).
+ */
+export function pruneHidden(hidden: readonly string[], keys: readonly string[]): readonly string[] {
+  if (!hidden.length) return hidden;
+  const present = new Set(keys);
+  const kept = hidden.filter((k) => present.has(k));
+  const next = keys.length > 0 && kept.length >= keys.length ? [] : kept;
+  return next.length === hidden.length ? hidden : next;
+}
