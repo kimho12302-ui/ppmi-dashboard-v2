@@ -13,11 +13,14 @@
 //   x축 말풍선: 높이 18 · 모서리 9 · 굵게 · 잉크색 바탕 · 카드색 3px 테두리
 // 색은 전부 CSS 변수(globals.css --chart-*)라 다크 모드에서 따로 맞는다.
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from "react";
 import {
-  LabelList, ZIndexLayer, useActiveTooltipCoordinate, useActiveTooltipLabel, useChartWidth, usePlotArea,
-  type ActiveDotProps, type BarShapeProps,
+  DefaultTooltipContent, LabelList, ZIndexLayer, useActiveTooltipCoordinate, useActiveTooltipLabel, useChartWidth, usePlotArea,
+  type ActiveDotProps, type BarShapeProps, type DefaultTooltipContentProps, type LegendPayload,
 } from "recharts";
+import {
+  isLastVisible, pruneHidden, seriesTotal, toggleHidden, TOTAL_LABEL, VISIBLE_TOTAL_LABEL,
+} from "@/lib/chart-math";
 
 // ── 토큰 ─────────────────────────────────────────────────────────────────────
 export const AXIS_FONT = 10.5;
@@ -288,3 +291,170 @@ export const chartTheme = {
   tooltipBorder: "var(--chart-tooltip-border)",
   tooltipText: "var(--chart-tooltip-text)",
 };
+
+// ── 범례 눌러 골라 보기 (2026-11-12) ──────────────────────────────────────────
+// 김호: "그래프에서 범례 클릭하면 선택해서 보게 해줘".
+// 숨김은 각 Bar·Line·Area 의 hide 로 한다(dataKey 를 지우지 않는다: 지우면 색 순서가 바뀐다).
+// hide 한 계열은 recharts 가 y축 범위·쌓기·툴팁에서 뺀다. 상태는 그래프 컴포넌트 안(새로고침하면 처음으로).
+
+const NO_HIDDEN: readonly string[] = [];
+
+export interface SeriesToggle {
+  /** 범례로 고를 수 있는 계열 dataKey(그리는 순서) */
+  keys: readonly string[];
+  /** 숨긴 계열 */
+  hidden: readonly string[];
+  isHidden: (key: string) => boolean;
+  toggle: (key: string) => void;
+  /** 「전체 보기」 */
+  reset: () => void;
+}
+
+/**
+ * 범례 토글 상태. keys = 고를 수 있는 계열 전부(합계 대상이 아니어도 된다, 예: 매출 막대 위 광고비 선).
+ * scope = 계열 이름이 겹칠 수 있는 차원 전환(판매처 ↔ 브랜드의 「other」, 라인업 ↔ 제품의 「기타」)이 일어나면 바꾸는 값.
+ *         scope 가 바뀌면 숨김을 비운다. 같은 scope 안에서 없어진 키는 정리한다(pruneHidden).
+ */
+export function useSeriesToggle(keys: readonly string[], scope: string = ""): SeriesToggle {
+  const sig = keys.join("\u0000");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const stableKeys = useMemo(() => [...keys], [sig]);
+  const [state, setState] = useState<{ scope: string; hidden: readonly string[] }>({ scope, hidden: NO_HIDDEN });
+  const raw = state.scope === scope ? state.hidden : NO_HIDDEN;
+  const hidden = useMemo(() => pruneHidden(raw, stableKeys), [raw, stableKeys]);
+  // 계열 목록·차원이 바뀌어 정리된 결과를 상태에도 반영한다(같은 이름이 나중에 돌아와도 숨긴 채로 남지 않게)
+  useEffect(() => {
+    if (state.scope !== scope || state.hidden !== hidden) setState({ scope, hidden });
+  }, [scope, hidden, state.scope, state.hidden]);
+  const toggle = useCallback((key: string) => {
+    setState((s) => {
+      const cur = pruneHidden(s.scope === scope ? s.hidden : NO_HIDDEN, stableKeys);
+      const next = toggleHidden(cur, key, stableKeys);
+      return next === s.hidden && s.scope === scope ? s : { scope, hidden: next };
+    });
+  }, [scope, stableKeys]);
+  const reset = useCallback(() => setState({ scope, hidden: NO_HIDDEN }), [scope]);
+  const isHidden = useCallback((key: string) => hidden.includes(key), [hidden]);
+  return useMemo(() => ({ keys: stableKeys, hidden, isHidden, toggle, reset }), [stableKeys, hidden, isHidden, toggle, reset]);
+}
+
+type LegendFormatter = (value: string | undefined, entry: LegendPayload, index: number) => ReactNode;
+
+interface ToggleLegendProps {
+  toggle: SeriesToggle;
+  /** recharts Legend 가 넣어 준다 */
+  payload?: readonly LegendPayload[];
+  /** <Legend formatter> 를 그대로 받는다(이름 바꾸기) */
+  formatter?: LegendFormatter;
+}
+
+function legendKey(e: LegendPayload): string | null {
+  const k = (e as { dataKey?: unknown }).dataKey;
+  return typeof k === "string" || typeof k === "number" ? String(k) : null;
+}
+
+/**
+ * <Legend content> 자리에 들어가는 눌러 고르는 범례. 항목마다 button(aria-pressed = 보이는 중, Enter·Space 동작).
+ * 숨긴 항목은 흐리고 취소선. 보이는 마지막 하나는 눌러도 숨지 않는다. 하나라도 숨겼으면 「전체 보기」.
+ * legendType="none" 계열(매출 구성의 합계 라벨용 투명 선 등)은 그리지 않는다.
+ */
+export function ToggleLegend({ toggle, payload, formatter }: ToggleLegendProps) {
+  const items = (payload || []).filter((e) => e.type !== "none");
+  if (!items.length) return null;
+  const anyHidden = toggle.hidden.length > 0;
+  return (
+    <div className="chart-legend" role="group" aria-label="범례: 누르면 그 계열을 숨기거나 다시 보입니다">
+      {items.map((e, i) => {
+        const key = legendKey(e);
+        const name = e.value ?? key ?? "";
+        const label = formatter ? formatter(e.value, e, i) : name;
+        const color = e.color || "var(--muted-foreground)";
+        const icon = <LegendIcon type={e.type} color={color} />;
+        if (key == null || !toggle.keys.includes(key)) {
+          return <span key={`s${i}`} className="chart-legend-item chart-legend-item--static">{icon}<span className="chart-legend-text">{label}</span></span>;
+        }
+        const hidden = toggle.isHidden(key);
+        const locked = !hidden && isLastVisible(toggle.hidden, key, toggle.keys);
+        return (
+          <button key={key} type="button"
+            className={"chart-legend-item" + (hidden ? " is-hidden" : "") + (locked ? " is-locked" : "")}
+            aria-pressed={!hidden}
+            aria-disabled={locked || undefined}
+            title={locked ? "마지막 하나는 숨길 수 없습니다" : hidden ? "눌러서 다시 보기" : "눌러서 숨기기"}
+            onClick={() => toggle.toggle(key)}>
+            {icon}<span className="chart-legend-text">{label}</span>
+          </button>
+        );
+      })}
+      {anyHidden && (
+        <button type="button" className="chart-legend-reset" onClick={toggle.reset}>전체 보기</button>
+      )}
+    </div>
+  );
+}
+
+function LegendIcon({ type, color }: { type?: string; color: string }) {
+  const line = type === "line" || type === "plainline";
+  return <span aria-hidden className={line ? "chart-legend-icon chart-legend-icon--line" : "chart-legend-icon"} style={{ ["--c" as string]: color }} />;
+}
+
+/** <Legend {...legendProps} {...legendToggleProps(t)} formatter={...} /> */
+export function legendToggleProps(toggle: SeriesToggle) {
+  return { content: <ToggleLegend toggle={toggle} /> };
+}
+
+// ── 툴팁 합계 (2026-11-12) ────────────────────────────────────────────────────
+// 김호: "합산 그래프는 마우스오버했을 때 총합도 보이게 해줘".
+// 더해서 뜻이 있는 계열(sumKeys)만 화면이 고른다. 비율(ROAS·CTR·전환율)·다른 단위·상위 N개만 그린 선은 넣지 않는다.
+// 값은 툴팁 줄(payload)이 아니라 그 칸의 행에서 읽는다(recharts 는 null·숨긴 줄을 툴팁에서 이미 빼서, 줄로는 전부 null 을 알 수 없다).
+
+/** 툴팁 맨 아래 구분선 + 「합계 1,234,567원」 한 줄. 직접 그린 툴팁도 이걸 쓴다. */
+export function TooltipTotalRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="chart-tip-total">
+      <span>{label}</span><span className="chart-num">{value}</span>
+    </div>
+  );
+}
+
+export interface TotalTooltipOpts {
+  sumKeys: readonly string[];
+  hiddenKeys?: readonly string[];
+  formatTotal: (v: number) => string;
+  /** 기본 「합계」. 매출 막대 + 광고비 선처럼 다른 금액 계열이 같이 있으면 「매출 합계」처럼 무엇의 합인지 */
+  totalLabel?: string;
+  /** 숨긴 계열이 있을 때. 기본 「보이는 항목 합계」(totalLabel 을 주면 「보이는 매출 합계」) */
+  visibleTotalLabel?: string;
+}
+
+/** 합계 라벨 한 벌(툴팁·직접 그린 툴팁 공용) */
+export function totalLabels(opts: Pick<TotalTooltipOpts, "totalLabel" | "visibleTotalLabel">): [string, string] {
+  return [opts.totalLabel || TOTAL_LABEL, opts.visibleTotalLabel || (opts.totalLabel ? `보이는 ${opts.totalLabel}` : VISIBLE_TOTAL_LABEL)];
+}
+
+const INNER_TIP_STYLE = {
+  margin: 0, padding: 0, border: "none", background: "transparent", backgroundColor: "transparent",
+  boxShadow: "none", borderRadius: 0, minWidth: 0, maxWidth: "none", whiteSpace: "normal", overflowWrap: "anywhere",
+} as const;
+
+type TotalTooltipProps = DefaultTooltipContentProps & TotalTooltipOpts & { active?: boolean };
+
+/** recharts 기본 툴팁 내용(formatter·labelFormatter·itemSorter 그대로) 아래에 합계 줄을 붙인다 */
+export function TotalTooltip(props: TotalTooltipProps) {
+  const { sumKeys, hiddenKeys, formatTotal, contentStyle, active, payload } = props;
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload as Record<string, unknown> | undefined;
+  const [base, visible] = totalLabels(props);
+  const t = seriesTotal(row, sumKeys, hiddenKeys || NO_HIDDEN, base, visible);
+  return (
+    <div className="chart-tip-box" style={contentStyle}>
+      <DefaultTooltipContent {...props} contentStyle={INNER_TIP_STYLE} />
+      {t && <TooltipTotalRow label={t.label} value={t.value == null ? "-" : formatTotal(t.value)} />}
+    </div>
+  );
+}
+
+/** <Tooltip {...tooltipProps(...)} formatter={...} {...totalTooltipProps({ sumKeys, hiddenKeys: t.hidden, formatTotal })} /> */
+export function totalTooltipProps(opts: TotalTooltipOpts) {
+  return { content: <TotalTooltip {...(opts as TotalTooltipProps)} /> };
+}

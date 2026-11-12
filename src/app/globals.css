@@ -254,6 +254,8 @@
   font-family: var(--chart-mono); font-variant-numeric: tabular-nums;
 }
 .chart-tip .recharts-tooltip-item-unit { color: var(--muted-foreground); }
+/* 빈 단위 칸이 줄 끝에 gap 만큼 여백을 남겨 아래 합계 줄과 값 끝이 어긋났다(2026-11-12) */
+.chart-tip .recharts-tooltip-item-unit:empty { display: none; }
 /* 직접 그린 툴팁의 바깥 상자(내용은 화면마다 그대로) */
 .chart-tip-card {
   background: var(--card); color: var(--foreground);
@@ -263,6 +265,39 @@
   max-width: min(320px, calc(100vw - 140px)); white-space: normal; overflow-wrap: anywhere;
 }
 .chart-tip-card--sm { border-radius: 8px; padding: 3px 7px; font-size: 10.5px; line-height: 15px; }
+/* 툴팁 맨 아래 합계 줄(2026-11-12). 구분선 + 이름 + 굵은 mono 값 */
+.chart-tip-total {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--chart-tooltip-border);
+  font-weight: 600; color: var(--foreground);
+}
+.chart-tip-total .chart-num { font-weight: 700; white-space: nowrap; }
+/* 눌러 고르는 범례(2026-11-12). 숨긴 항목은 흐리고 취소선, 아이콘은 속이 빈 테두리 */
+.chart-legend {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px 4px;
+  font-size: 11px; line-height: 16px;
+}
+.chart-legend-item {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 6px; border-radius: 6px;
+  color: var(--muted-foreground); background: transparent; border: 0; cursor: pointer;
+  transition: opacity .15s ease, background-color .15s ease;
+}
+.chart-legend-item:hover { background: var(--muted); color: var(--foreground); }
+.chart-legend-item:focus-visible, .chart-legend-reset:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.chart-legend-item--static { cursor: default; }
+.chart-legend-item--static:hover { background: transparent; color: var(--muted-foreground); }
+.chart-legend-item.is-locked { cursor: not-allowed; }
+.chart-legend-item.is-hidden { opacity: .45; }
+.chart-legend-item.is-hidden .chart-legend-text { text-decoration: line-through; }
+.chart-legend-icon { flex: none; width: 9px; height: 9px; border-radius: 2px; background: var(--c); border: 1.5px solid var(--c); }
+.chart-legend-icon--line { height: 3px; width: 12px; border-width: 0; border-radius: 2px; }
+.chart-legend-item.is-hidden .chart-legend-icon { background: transparent; }
+.chart-legend-item.is-hidden .chart-legend-icon--line { background: transparent; border-top: 1.5px dashed var(--c); height: 0; }
+.chart-legend-reset {
+  margin-left: 4px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border);
+  font-size: 10.5px; color: var(--foreground); background: var(--card); cursor: pointer;
+}
+.chart-legend-reset:hover { background: var(--muted); }
 .chart-num { font-family: var(--chart-mono); font-variant-numeric: tabular-nums; }
 /* 달력 히트맵 */
 .cal-l0 { background: var(--cal-0); }
