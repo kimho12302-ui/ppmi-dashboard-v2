@@ -21,10 +21,11 @@ import {
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, activeDotProps, useSeriesToggle, legendToggleProps } from "@/components/charts/chart-style";
 
-/** 「일별 매출 · 광고비」 두 영역. 매출과 비용이라 더하지 않는다(툴팁 합계 없음), 범례로 하나만 볼 수 있다 */
-const TREND_KEYS = ["revenue", "adSpend"];
 import Link from "next/link";
 import { kstDate } from "@/lib/date";
+
+/** 「일별 매출 · 광고비」 두 영역. 매출과 비용이라 더하지 않는다(툴팁 합계 없음), 범례로 하나만 볼 수 있다 */
+const TREND_KEYS = ["revenue", "adSpend"];
 
 // 2026-11-04 정리: 같은 숫자를 두 번 보여 주거나 다른 화면이 맡는 카드를 뺐다.
 //  - 누적 매출·광고비 → 목표 페이싱은 인사이트, 일별 흐름은 아래 트렌드

@@ -387,7 +387,12 @@ export function ToggleLegend({ toggle, payload, formatter }: ToggleLegendProps) 
         );
       })}
       {anyHidden && (
-        <button type="button" className="chart-legend-reset" onClick={toggle.reset}>전체 보기</button>
+        <button type="button" className="chart-legend-reset" onClick={(e) => {
+          // 누르면 이 버튼이 사라지므로 키보드 포커스를 첫 범례 항목으로 옮긴다
+          const group = e.currentTarget.parentElement;
+          toggle.reset();
+          requestAnimationFrame(() => group?.querySelector<HTMLButtonElement>(".chart-legend-item")?.focus());
+        }}>전체 보기</button>
       )}
     </div>
   );
@@ -447,7 +452,7 @@ export function TotalTooltip(props: TotalTooltipProps) {
   const [base, visible] = totalLabels(props);
   const t = seriesTotal(row, sumKeys, hiddenKeys || NO_HIDDEN, base, visible);
   return (
-    <div className="chart-tip-box" style={contentStyle}>
+    <div style={contentStyle}>
       <DefaultTooltipContent {...props} contentStyle={INNER_TIP_STYLE} />
       {t && <TooltipTotalRow label={t.label} value={t.value == null ? "-" : formatTotal(t.value)} />}
     </div>
