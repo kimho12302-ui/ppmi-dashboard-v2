@@ -12,7 +12,11 @@ import {
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
 import {
   xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, BAR_RADIUS,
+  useSeriesToggle, legendToggleProps,
 } from "@/components/charts/chart-style";
+
+/** 매출 막대 · 광고비 선 · ROAS 선. 매출과 비용·비율이라 툴팁 합계는 넣지 않고 범례로 골라 보기만 한다 */
+const DETAIL_KEYS = ["매출", "광고비", "ROAS"];
 
 // 판매처 하나를 골라 매출·광고비·ROAS 를 함께 보는 차트.
 // 개요와 브랜드 페이지가 같은 구현을 쓴다 (한쪽만 고쳐져 갈라지는 것을 막는다).
@@ -69,6 +73,8 @@ export function StoreDetailChartView({ data, from, to }: { data: StoreDetailResp
     });
   }, [data, active, gran, from, to]);
 
+  const detailToggle = useSeriesToggle(DETAIL_KEYS);
+
   if (!options.length) return null;
   const activeLabel = options.find((g) => g.key === active)?.label || "";
 
@@ -110,10 +116,10 @@ export function StoreDetailChartView({ data, from, to }: { data: StoreDetailResp
                 <YAxis {...yAxisProps} yAxisId="won" tickFormatter={(v) => `${Math.round(v / 10000)}만`} />
                 <YAxis {...yAxisProps} yAxisId="roas" orientation="right" tickFormatter={(v) => `${v}x`} />
                 <Tooltip {...tooltipProps({ kind: "bar" })} formatter={(v, name) => [v == null ? "-" : name === "ROAS" ? `${v}x` : formatCurrency(Number(v)), String(name)]} />
-                <Legend {...legendProps} />
-                <Bar {...barProps} isAnimationActive={false} yAxisId="won" dataKey="매출" fill="#2563eb" radius={BAR_RADIUS} />
-                <Line isAnimationActive={false} yAxisId="won" dataKey="광고비" stroke="#ef4444" strokeWidth={2} dot={false} {...activeDotProps} />
-                <Line isAnimationActive={false} yAxisId="roas" dataKey="ROAS" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="4 3" {...activeDotProps} />
+                <Legend {...legendProps} {...legendToggleProps(detailToggle)} />
+                <Bar {...barProps} isAnimationActive={false} yAxisId="won" dataKey="매출" fill="#2563eb" radius={BAR_RADIUS} hide={detailToggle.isHidden("매출")} />
+                <Line isAnimationActive={false} yAxisId="won" dataKey="광고비" stroke="#ef4444" strokeWidth={2} dot={false} hide={detailToggle.isHidden("광고비")} {...activeDotProps} />
+                <Line isAnimationActive={false} yAxisId="roas" dataKey="ROAS" stroke="#10b981" strokeWidth={2} dot={false} strokeDasharray="4 3" hide={detailToggle.isHidden("ROAS")} {...activeDotProps} />
               </ComposedChart>
             </DeferredResponsiveContainer>
           </div>

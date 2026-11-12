@@ -14,7 +14,7 @@ import { useMemo, useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
-import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, activeDotProps, LINE_DOT } from "@/components/charts/chart-style";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, activeDotProps, LINE_DOT, useSeriesToggle, legendToggleProps } from "@/components/charts/chart-style";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { productSalesUrl } from "@/lib/api-urls";
@@ -102,6 +102,10 @@ export function ProductTrendChart({ brand, from, to }: { brand: string; from: st
     return m;
   }, [totals]);
 
+  // 범례로 잠깐 숨겨 보기(2026-11-12). 아래 목록의 선택(최대 10개)과 따로다: 숨겨도 선택에서 빠지지 않고 색도 그대로.
+  // 고른 상품 일부만 그린 선이라 더해도 전체 매출이 아니므로 툴팁 합계는 넣지 않는다. 매출·수량을 바꾸면 숨김을 비운다.
+  const lineToggle = useSeriesToggle(selected, metric);
+
   const toggle = (k: string) => {
     const cur = selected;
     if (cur.includes(k)) setPicked(cur.filter((x) => x !== k));
@@ -150,9 +154,9 @@ export function ProductTrendChart({ brand, from, to }: { brand: string; from: st
                 <YAxis {...yAxisProps} width={64}
                   tickFormatter={(v) => (metric === "revenue" ? (v >= 10000 ? `${Math.round(v / 10000)}만` : String(v)) : String(v))} />
                 <Tooltip {...tooltipProps({ kind: "line" })} formatter={(v, k) => [fmt(Number(v ?? 0)), nameOf.get(String(k)) || String(k)]} />
-                <Legend {...legendProps} formatter={(k: string) => nameOf.get(k) || k} />
+                <Legend {...legendProps} {...legendToggleProps(lineToggle)} formatter={(k: string | undefined) => nameOf.get(String(k)) || k} />
                 {selected.map((k, i) => (
-                  <Line key={k} type="monotone" dataKey={k} stroke={COLORS[i % COLORS.length]}
+                  <Line key={k} type="monotone" dataKey={k} stroke={COLORS[i % COLORS.length]} hide={lineToggle.isHidden(k)}
                     strokeWidth={2} dot={series.length <= 31 ? LINE_DOT : false} isAnimationActive={false} {...activeDotProps} />
                 ))}
               </LineChart>

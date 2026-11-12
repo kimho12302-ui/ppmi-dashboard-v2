@@ -21,8 +21,11 @@ import { biggestShareShift, SHARE_LOOKBACK, SHARE_MIN_SHIFT_PP } from "@/lib/jud
 import { BRAND_LABELS } from "@/lib/types";
 import { useConfig } from "@/hooks/use-config";
 import { CalendarHeatmap } from "@/components/charts/calendar-heatmap";
-import { calendarPendingFrom } from "@/lib/chart-math";
-import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, BAR_RADIUS, NO_RADIUS, TIP_CARD } from "@/components/charts/chart-style";
+import { calendarPendingFrom, seriesTotal, topVisibleKey, TOTAL_LABEL, VISIBLE_TOTAL_LABEL } from "@/lib/chart-math";
+import {
+  xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, BAR_RADIUS, NO_RADIUS, TIP_CARD,
+  useSeriesToggle, legendToggleProps, TooltipTotalRow,
+} from "@/components/charts/chart-style";
 
 // ★ 색은 설정 「채널 관리」·「브랜드 관리」에 보이는 정본 색(useConfig, types.ts)을 쓴다(2026-11-10 김호 지시).
 //   처음엔 판단 그래프 문법대로 무채색 + 강조 하나로 그렸는데, 카페24·스마트스토어·기타가 다 회색이라
@@ -108,13 +111,18 @@ export function ChannelMixChart({ sales, channels, from, to, salesThrough }: { s
   const { brandMap, channelMap } = useConfig();
   const color = (ch: string) => (dim === "brand" ? brandMap[ch]?.color : channelMap[ch]?.color) || FALLBACK;
   const labelOf = (ch: string) => (dim === "brand" ? BRAND_LABELS[ch] || ch : channels.find((c) => c.channel === ch)?.label || ch);
+  // 범례로 판매처(브랜드) 골라 보기(2026-11-12). 「other」가 판매처·브랜드 양쪽에 있어 쌓기 기준을 바꾸면 숨김을 비운다.
+  // 숨긴 칸은 막대에서 빠지고 남은 칸이 다시 쌓이며, 막대 위 숫자·툴팁 합계·비중(%)도 보이는 칸 기준으로 바뀐다.
+  // 판정 문장과 테두리(가장 크게 움직인 하나)는 숨김과 무관하게 전체로 계산한다.
+  const mixToggle = useSeriesToggle(order, dim);
+  const mixTop = topVisibleKey(order, mixToggle.hidden);
 
   // 아직 안 들어온 구간은 막대를 그리지 않는다(0 이 아니라 미수집). 축 자리는 남긴다.
   const rows = buckets.map((b) => {
     const row: Record<string, string | number | boolean | null> = { period: b.period, state: b.state };
     for (const ch of order) row[ch] = b.state === "pending" ? null : (b.byChannel[ch] || 0);
-    // 막대 위 합계 라벨. 예전 '주별/월별 매출' 카드가 보여 주던 그 주·월 합계와 같은 값이다.
-    row.__total = b.state === "pending" ? null : order.reduce((a, ch) => a + (b.byChannel[ch] || 0), 0);
+    // 막대 위 합계 라벨. 예전 '주별/월별 매출' 카드가 보여 주던 그 주·월 합계와 같은 값이다(숨긴 칸이 없을 때).
+    row.__total = seriesTotal(row, order, mixToggle.hidden)?.value ?? null;
     return row;
   });
   const lastBucket = buckets[buckets.length - 1];
@@ -197,28 +205,31 @@ export function ChannelMixChart({ sales, channels, from, to, salesThrough }: { s
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
                   const r = payload[0].payload as Record<string, string | number | null>;
-                  const tot = order.reduce((s, ch) => s + (Number(r[ch]) || 0), 0);
+                  // 합계·비중 분모 = 보이는 칸 합(공용 seriesTotal, 다른 그래프 툴팁 합계와 같은 규칙)
+                  const t = seriesTotal(r, order, mixToggle.hidden, TOTAL_LABEL, VISIBLE_TOTAL_LABEL);
+                  const tot = t?.value ?? 0;
                   const note = r.state === "in_progress" ? " (진행 중)" : r.state === "partial_range" ? " (기간 일부)" : r.state === "pending" ? " (판매 미수집)" : "";
                   return (
                     <div className={TIP_CARD}>
                       <div className="font-semibold text-[11.5px] text-muted-foreground mb-0.5">{String(r.period)}{note}</div>
-                      <div className="flex justify-between gap-3 font-semibold border-b mb-1 pb-1"><span>합계</span><span className="chart-num">{formatCurrency(tot)}</span></div>
-                      {order.filter((ch) => Number(r[ch]) > 0).map((ch) => (
+                      {order.filter((ch) => !mixToggle.isHidden(ch) && Number(r[ch]) > 0).map((ch) => (
                         <div key={ch} className="flex justify-between gap-3">
                           <span>{labelOf(ch)}</span>
                           <span className="chart-num">{formatCurrency(Number(r[ch]))} ({tot > 0 ? ((Number(r[ch]) / tot) * 100).toFixed(0) : 0}%)</span>
                         </div>
                       ))}
+                      {t && <TooltipTotalRow label={t.label} value={t.value == null ? "-" : formatCurrency(t.value)} />}
                     </div>
                   );
                 }}
               />
-              <Legend {...legendProps}
+              <Legend {...legendProps} {...legendToggleProps(mixToggle)}
                 formatter={(v) => <span style={{ color: "var(--foreground)" }}>{labelOf(String(v))}</span>} />
-              {order.map((ch, i) => (
+              {order.map((ch) => (
                 <Bar {...barProps} key={ch} dataKey={ch} name={ch} stackId="channel" fill={color(ch)} isAnimationActive={false}
+                  hide={mixToggle.isHidden(ch)}
                   stroke={shift?.channel === ch ? "var(--foreground)" : undefined} strokeWidth={shift?.channel === ch ? 1.5 : 0}
-                  radius={i === order.length - 1 ? BAR_RADIUS : NO_RADIUS}>
+                  radius={ch === mixTop ? BAR_RADIUS : NO_RADIUS}>
                   {rows.map((r) => (
                     <Cell key={String(r.period)} fillOpacity={r.state === "complete" ? 1 : INCOMPLETE_OPACITY} />
                   ))}
@@ -244,7 +255,7 @@ export function ChannelMixChart({ sales, channels, from, to, salesThrough }: { s
           </p>
           </>) : (<>
           <p>
-            막대 위 숫자 = 그 {unit} 매출 합계(만원, 마우스를 올리면 원 단위). 흐린 막대 = 다 안 찬 {unit}
+            막대 위 숫자 = 그 {unit} 매출 합계(만원, 마우스를 올리면 원 단위{mixToggle.hidden.length > 0 ? `, 지금은 범례로 숨긴 ${what}를 뺀 보이는 칸의 합` : ""}). 흐린 막대 = 다 안 찬 {unit}
             {lastBucket && lastBucket.state === "in_progress" ? ` (마지막 ${lastBucket.period} 은 진행 중, 판매 동기화가 1~3일 늦게 들어옵니다)` : ""}. 비중 비교에서 뺍니다.
           </p>
           <p>

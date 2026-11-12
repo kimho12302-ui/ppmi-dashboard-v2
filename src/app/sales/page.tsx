@@ -24,7 +24,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
-import { xAxisProps, yAxisProps, gridProps, gridPropsH, legendProps, tooltipProps, barProps, BAR_RADIUS, BAR_RADIUS_H, NO_RADIUS } from "@/components/charts/chart-style";
+import { xAxisProps, yAxisProps, gridProps, gridPropsH, legendProps, tooltipProps, barProps, BAR_RADIUS, BAR_RADIUS_H, NO_RADIUS, useSeriesToggle, legendToggleProps, totalTooltipProps } from "@/components/charts/chart-style";
+import { topVisibleKey } from "@/lib/chart-math";
 
 /* 브랜드별 카테고리 분류 (기획서 4.1) */
 function getCategory(brand: string, product: string, lineup?: string): string {
@@ -46,6 +47,9 @@ function getCategory(brand: string, product: string, lineup?: string): string {
   }
   return lineup || "기타";
 }
+
+/** 「밸런스랩 자체 vs 공구 추이」 쌓는 순서(아래 → 위). 둘 다 원이라 더하면 밸런스랩 전체 */
+const BAL_KEYS = ["self", "gonggu"];
 
 export default function SalesPage() {
   return (
@@ -173,6 +177,9 @@ function SalesPageInner() {
       return { period, self: pending ? null : v.self, gonggu: pending ? null : v.gonggu };
     });
   }, [data?.blDaily, products, balanceTrendMode, from, to]);
+  // 범례로 자체·공구 하나만 골라 보기. 합계 = 밸런스랩 전체(자체 + 공구)
+  const balToggle = useSeriesToggle(BAL_KEYS);
+  const balTop = topVisibleKey(BAL_KEYS, balToggle.hidden);
 
   /* 공구별 (밸런스랩) */
   const gongguData = useMemo(() => {
@@ -391,10 +398,11 @@ function SalesPageInner() {
                     <Tooltip
                       {...tooltipProps({ kind: "bar" })}
                       formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))}
+                      {...totalTooltipProps({ sumKeys: BAL_KEYS, hiddenKeys: balToggle.hidden, formatTotal: formatCurrency })}
                     />
-                    <Legend {...legendProps} />
-                    <Bar {...barProps} isAnimationActive={false} dataKey="self" name="자체매출" stackId="bal" fill="#3b82f6" radius={NO_RADIUS} />
-                    <Bar {...barProps} isAnimationActive={false} dataKey="gonggu" name="공구매출" stackId="bal" fill="#a855f7" radius={BAR_RADIUS} />
+                    <Legend {...legendProps} {...legendToggleProps(balToggle)} />
+                    <Bar {...barProps} isAnimationActive={false} dataKey="self" name="자체매출" stackId="bal" fill="#3b82f6" hide={balToggle.isHidden("self")} radius={balTop === "self" ? BAR_RADIUS : NO_RADIUS} />
+                    <Bar {...barProps} isAnimationActive={false} dataKey="gonggu" name="공구매출" stackId="bal" fill="#a855f7" hide={balToggle.isHidden("gonggu")} radius={balTop === "gonggu" ? BAR_RADIUS : NO_RADIUS} />
                   </BarChart>
                 </DeferredResponsiveContainer>
               ) : (

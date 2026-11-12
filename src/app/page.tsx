@@ -19,7 +19,10 @@ import {
   Area, ComposedChart, ReferenceLine, XAxis, YAxis, Tooltip, CartesianGrid, Legend,
 } from "recharts";
 import { DeferredResponsiveContainer } from "@/components/deferred-chart";
-import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, activeDotProps } from "@/components/charts/chart-style";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, activeDotProps, useSeriesToggle, legendToggleProps } from "@/components/charts/chart-style";
+
+/** 「일별 매출 · 광고비」 두 영역. 매출과 비용이라 더하지 않는다(툴팁 합계 없음), 범례로 하나만 볼 수 있다 */
+const TREND_KEYS = ["revenue", "adSpend"];
 import Link from "next/link";
 import { kstDate } from "@/lib/date";
 
@@ -139,6 +142,7 @@ function OverviewInner() {
       adSpend: t.adSpend,
     }));
   }, [data, salesLastDate]);
+  const trendToggle = useSeriesToggle(TREND_KEYS);
   const pendingTrendDays = useMemo(
     () => (salesLastDate ? (data?.trend || []).filter((t) => t.date > salesLastDate && t.date <= kstDate()).length : 0),
     [data, salesLastDate]
@@ -549,9 +553,9 @@ function OverviewInner() {
               <XAxis {...xAxisProps} dataKey="date" />
               <YAxis {...yAxisProps} tickFormatter={(v) => `${(v / 10000).toFixed(0)}만`} />
               <Tooltip {...tooltipProps({ kind: "line" })} formatter={(val) => (val == null ? "-" : formatCurrency(Number(val)))} />
-              <Legend {...legendProps} />
-              <Area isAnimationActive={false} type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} connectNulls={false} {...activeDotProps} />
-              <Area isAnimationActive={false} type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} {...activeDotProps} />
+              <Legend {...legendProps} {...legendToggleProps(trendToggle)} />
+              <Area isAnimationActive={false} type="monotone" dataKey="revenue" name="매출" stroke="#2563eb" fill="#2563eb" fillOpacity={0.1} strokeWidth={2} connectNulls={false} hide={trendToggle.isHidden("revenue")} {...activeDotProps} />
+              <Area isAnimationActive={false} type="monotone" dataKey="adSpend" name="광고비" stroke="#dc2626" fill="#dc2626" fillOpacity={0.1} strokeWidth={2} hide={trendToggle.isHidden("adSpend")} {...activeDotProps} />
               {events.map(e => (
                 <ReferenceLine key={e.id} x={e.date.slice(5)} stroke={e.color} strokeDasharray="4 4" strokeWidth={2}
                   label={(props: { viewBox?: { x: number; y: number; width: number; height: number } }) => {

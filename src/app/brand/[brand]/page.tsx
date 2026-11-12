@@ -19,7 +19,9 @@ import { AttributionGap } from "@/components/attribution-gap";
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from "recharts";
 import {
   xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, useEnterAnim, BAR_RADIUS,
+  useSeriesToggle, legendToggleProps, totalTooltipProps,
 } from "@/components/charts/chart-style";
+import { topVisibleKey } from "@/lib/chart-math";
 
 // 브랜드 종합 페이지 (2026-08): 사이드바 브랜드 클릭 시 진입.
 // 개요와 달리 브랜드 탭(전체/펫/밸런스랩)을 두지 않는다 — 브랜드는 경로로 고정, 기간만 선택.
@@ -176,6 +178,11 @@ function BrandInner({ brand }: { brand: string }) {
   // 판매처 차원은 설정 「채널 관리」 정본 색(매출 구성 그래프와 같은 규칙, 2026-11-10). 라인업·제품·자체/공구는 설정 색이 없어 팔레트.
   const stackColor = (k: string, i: number) =>
     (dim === "channel" ? channelMap[k]?.color || CHANNEL_COLORS[k] : undefined) || STACK_COLORS[i % STACK_COLORS.length];
+  // 범례로 골라 보기: 매출 칸들 + 광고비 선. 「기타」는 라인업·제품 양쪽에 있어 차원을 바꾸면 숨김을 비운다(scope = dim).
+  // 툴팁 합계는 매출 칸만 더한다(광고비는 매출이 아니라 「매출 합계」에 넣지 않는다).
+  const toggleKeys = useMemo(() => [...stackKeys, "__ad"], [stackKeys]);
+  const stackToggle = useSeriesToggle(toggleKeys, dim);
+  const stackTop = topVisibleKey(stackKeys, stackToggle.hidden);
 
   if (!VALID_BRANDS.includes(brand)) {
     return <PageShell title="브랜드 없음" description=""><p className="text-muted-foreground">알 수 없는 브랜드: {brand}</p></PageShell>;
@@ -262,14 +269,15 @@ function BrandInner({ brand }: { brand: string }) {
                     {...tooltipProps({ kind: "bar" })}
                     formatter={(v, name) => [v == null ? "-" : formatCurrency(Number(v)), name === "__ad" ? "광고비" : keyLabel(String(name))]}
                     labelFormatter={(l) => `${l}`}
-                    itemSorter={(i) => -(Number(i.value) || 0)} />
-                  <Legend {...legendProps} formatter={(v) => (v === "__ad" ? "광고비" : keyLabel(String(v)))} />
+                    itemSorter={(i) => -(Number(i.value) || 0)}
+                    {...totalTooltipProps({ sumKeys: stackKeys, hiddenKeys: stackToggle.hidden, formatTotal: formatCurrency, totalLabel: "매출 합계" })} />
+                  <Legend {...legendProps} {...legendToggleProps(stackToggle)} formatter={(v) => (v === "__ad" ? "광고비" : keyLabel(String(v)))} />
                   {stackKeys.map((k, i) => (
-                    <Bar {...barProps} {...enterAnim} key={k} dataKey={k} stackId="rev" fill={stackColor(k, i)}
-                      radius={i === stackKeys.length - 1 ? BAR_RADIUS : undefined} />
+                    <Bar {...barProps} {...enterAnim} key={k} dataKey={k} stackId="rev" fill={stackColor(k, i)} hide={stackToggle.isHidden(k)}
+                      radius={k === stackTop ? BAR_RADIUS : undefined} />
                   ))}
                   {/* 광고비는 누적 막대 위에 선으로. 매출 구성과 투입을 한 그림에서 본다. */}
-                  <Line {...enterAnim} {...activeDotProps} dataKey="__ad" stroke="#ef4444" strokeWidth={2} dot={false} name="__ad" />
+                  <Line {...enterAnim} {...activeDotProps} dataKey="__ad" stroke="#ef4444" strokeWidth={2} dot={false} name="__ad" hide={stackToggle.isHidden("__ad")} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>

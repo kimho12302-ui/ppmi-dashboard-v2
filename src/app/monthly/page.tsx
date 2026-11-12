@@ -16,7 +16,8 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ComposedChart, Bar,
 } from "recharts";
 import { WaterfallChart } from "@/components/charts/waterfall-chart";
-import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, useEnterAnim, tickOf, BAR_RADIUS } from "@/components/charts/chart-style";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, useEnterAnim, tickOf, BAR_RADIUS, useSeriesToggle, legendToggleProps, totalTooltipProps } from "@/components/charts/chart-style";
+import { topVisibleKey } from "@/lib/chart-math";
 
 interface MonthlySummary {
   month: string;
@@ -212,6 +213,9 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
   // 정본에 없는 옛 원장 키(google_ads·gdn·influencer)만 여기서 따로 칠한다.
   const CH_COLOR: Record<string, string> = { google_ads: "#fbbf24", gdn: "#a78bfa", influencer: "#ec4899", ...AD_CHANNEL_COLORS };
   const channelKeys = Array.from(new Set(summary.flatMap((m) => Object.keys(m.channelCosts || {})))).filter(Boolean);
+  // 범례로 매체 골라 보기. 툴팁 합계 = 보이는 매체 광고비 합
+  const channelToggle = useSeriesToggle(channelKeys);
+  const channelTop = topVisibleKey(channelKeys, channelToggle.hidden);
   // 차트 축: 데이터가 있는 첫 달~마지막 달 사이의 빈 달도 빠지지 않게 채운다(2026-10-28).
   // 금액은 0, 비율(이익률·ROAS)은 0 이 아니라 빈칸(null). 첫 데이터 달 이전은 수집 전이라 넣지 않는다.
   // 표는 서버가 계산한 전월비가 있어 행을 끼워 넣지 않는다.
@@ -399,11 +403,12 @@ function SummaryView({ year, brandFilter }: { year: number; brandFilter: string 
                 <Tooltip
                   {...tooltipProps({ kind: "bar" })}
                   formatter={(val, name) => [formatCurrency(Number(val)), CH_LABEL[name as string] || name]}
+                  {...totalTooltipProps({ sumKeys: channelKeys, hiddenKeys: channelToggle.hidden, formatTotal: formatCurrency })}
                 />
-                <Legend {...legendProps} formatter={(v) => CH_LABEL[v] || v} />
-                {channelKeys.map((ch, i) => (
-                  <Bar {...barProps} {...enterAnim} key={ch} dataKey={ch} name={ch} stackId="ch" fill={CH_COLOR[ch] || "#9ca3af"}
-                    radius={i === channelKeys.length - 1 ? BAR_RADIUS : undefined} />
+                <Legend {...legendProps} {...legendToggleProps(channelToggle)} formatter={(v) => CH_LABEL[v] || v} />
+                {channelKeys.map((ch) => (
+                  <Bar {...barProps} {...enterAnim} key={ch} dataKey={ch} name={ch} stackId="ch" fill={CH_COLOR[ch] || "#9ca3af"} hide={channelToggle.isHidden(ch)}
+                    radius={ch === channelTop ? BAR_RADIUS : undefined} />
                 ))}
               </ComposedChart>
             </ResponsiveContainer>

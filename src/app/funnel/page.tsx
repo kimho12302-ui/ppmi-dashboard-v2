@@ -17,7 +17,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
   BarChart, Bar, Legend,
 } from "recharts";
-import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, BAR_RADIUS } from "@/components/charts/chart-style";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, BAR_RADIUS, useSeriesToggle, legendToggleProps, totalTooltipProps } from "@/components/charts/chart-style";
 
 interface FunnelStep { name: string; value: number; rate?: number | null; channels?: Record<string, number>; rateNote?: string | null; rateBase?: number; rateNum?: number; }
 interface TrendPoint { date: string; sessions: number; cart_adds: number; purchases: number; impressions: number; [key: string]: string | number; }
@@ -31,12 +31,14 @@ const CH_LABELS: Record<string, string> = { smartstore: "스마트스토어", ca
 
 // 일별 추이 한 장 + 지표 탭(2026-11-04). 예전에는 노출·유입·구매 영역 차트 3장이 세로로 쌓여 관리도가 첫 화면 밖으로 밀렸다.
 type TrendMetric = "imp" | "sessions" | "purchases";
-const TREND_METRICS: { key: TrendMetric; label: string; axis: string; series: { key: string; label: string; color: string }[] }[] = [
-  { key: "imp", label: "노출", axis: "광고 노출 수(매체별로 쌓음)",
+// summable: 툴팁 맨 아래 합계를 넣나(2026-11-12). 노출(매체마다 센 광고 노출)과 구매(판매 원장 주문)는 더하면 그날 전체라 넣고,
+//   유입은 판매처마다 재는 방법이 달라(카페24 = GA4 세션 등, 「채널별 퍼널 비교」 문구와 같은 이유) 더한 값이 한 기준의 방문 수가 아니라 넣지 않는다.
+const TREND_METRICS: { key: TrendMetric; label: string; axis: string; summable: boolean; series: { key: string; label: string; color: string }[] }[] = [
+  { key: "imp", label: "노출", axis: "광고 노출 수(매체별로 쌓음)", summable: true,
     series: ["meta", "naver", "google", "coupang"].map((k) => ({ key: `imp_${k}`, label: IMP_LABELS[k], color: IMPRESSION_SOURCE_COLORS[k] })) },
-  { key: "sessions", label: "유입", axis: "유입(세션) 수(판매처별로 쌓음)",
+  { key: "sessions", label: "유입", axis: "유입(세션) 수(판매처별로 쌓음)", summable: false,
     series: ["smartstore", "cafe24", "coupang"].map((k) => ({ key: `sessions_${k}`, label: CH_LABELS[k], color: SALES_CHANNEL_COLORS[k] })) },
-  { key: "purchases", label: "구매", axis: "구매 수(판매처별로 쌓음)",
+  { key: "purchases", label: "구매", axis: "구매 수(판매처별로 쌓음)", summable: true,
     series: ["smartstore", "cafe24", "coupang"].map((k) => ({ key: `purchases_${k}`, label: CH_LABELS[k], color: SALES_CHANNEL_COLORS[k] })) },
 ];
 
@@ -79,6 +81,9 @@ function FunnelInner() {
     }
     return row;
   }), [trend, metricDef, trendMetric, salesLastDate]);
+  // 범례로 골라 보기. 지표 탭을 바꾸면 계열이 통째로 바뀌므로 숨김을 비운다(scope = 지표)
+  const trendKeys = metricDef.series.map((sr) => sr.key);
+  const trendToggle = useSeriesToggle(trendKeys, trendMetric);
 
   // 너티/아이언펫/사입은 cafe24·스마트스토어 퍼널이 시트에서 3개 합산으로만 기록됨 → 브랜드별 분리 불가.
   // 숫자를 쪼개 보여주면 과대귀속(왜곡)이므로, 합산 수치임을 정직하게 라벨한다.
@@ -198,10 +203,11 @@ function FunnelInner() {
                 <XAxis {...xAxisProps} dataKey="date" />
                 <YAxis {...yAxisProps} tickFormatter={(v: number) => formatNumber(v)} />
                 <Tooltip {...tooltipProps({ kind: "line" })}
-                  formatter={(v: unknown) => (v == null ? "-" : formatNumber(Number(v)))} />
-                <Legend {...legendProps} />
+                  formatter={(v: unknown) => (v == null ? "-" : formatNumber(Number(v)))}
+                  {...totalTooltipProps({ sumKeys: metricDef.summable ? trendKeys : [], hiddenKeys: trendToggle.hidden, formatTotal: formatNumber })} />
+                <Legend {...legendProps} {...legendToggleProps(trendToggle)} />
                 {metricDef.series.map((sr) => (
-                  <Area key={sr.key} type="monotone" dataKey={sr.key} name={sr.label} stackId="m" isAnimationActive={false}
+                  <Area key={sr.key} type="monotone" dataKey={sr.key} name={sr.label} stackId="m" isAnimationActive={false} hide={trendToggle.isHidden(sr.key)}
                     stroke={sr.color} fill={sr.color} fillOpacity={0.5} connectNulls={false} {...activeDotProps} />
                 ))}
               </AreaChart>

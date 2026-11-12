@@ -17,7 +17,11 @@ import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from "recharts";
-import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, lineDot, endLabel, useEnterAnim, BAR_RADIUS } from "@/components/charts/chart-style";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, barProps, activeDotProps, lineDot, endLabel, useEnterAnim, BAR_RADIUS, useSeriesToggle, legendToggleProps, totalTooltipProps } from "@/components/charts/chart-style";
+import { topVisibleKey } from "@/lib/chart-math";
+
+/** 「유형별 CTR & 인게이지먼트」 막대 두 개(비율이라 더하지 않는다) */
+const RATE_KEYS = ["ctr", "engagement"];
 
 interface ContentByType {
   content_type: string;
@@ -152,6 +156,10 @@ function ContentInner() {
       for (const ct of contentTypes) row[ct] = wk > lastPostWeek ? null : Number(r?.[ct] || 0);
       return row;
     });
+  // 범례로 골라 보기. 게시 트렌드는 유형별 게시 수(더하면 그 주 전체 게시 수), CTR·인게이지먼트는 비율이라 합계 없음
+  const postsToggle = useSeriesToggle(contentTypes);
+  const rateToggle = useSeriesToggle(RATE_KEYS);
+  const postsTop = topVisibleKey(contentTypes, postsToggle.hidden);
 
   // 사진 찾기는 기간·브랜드와 무관하므로 성과 데이터를 기다리지 않는다.
   // 로딩 분기보다 앞에 둬야 데이터가 느린 날에도 바로 쓸 수 있다.
@@ -299,9 +307,9 @@ function ContentInner() {
                       labelFormatter={(v) => TYPE_LABELS[v] || v}
                       formatter={(val) => `${Number(val).toFixed(2)}%`}
                     />
-                    <Legend {...legendProps} />
-                    <Bar {...barProps} {...enterAnim} dataKey="ctr" name="CTR" fill="#10b981" radius={BAR_RADIUS} />
-                    <Bar {...barProps} {...enterAnim} dataKey="engagement" name="인게이지먼트" fill="#8b5cf6" radius={BAR_RADIUS} />
+                    <Legend {...legendProps} {...legendToggleProps(rateToggle)} />
+                    <Bar {...barProps} {...enterAnim} dataKey="ctr" name="CTR" fill="#10b981" radius={BAR_RADIUS} hide={rateToggle.isHidden("ctr")} />
+                    <Bar {...barProps} {...enterAnim} dataKey="engagement" name="인게이지먼트" fill="#8b5cf6" radius={BAR_RADIUS} hide={rateToggle.isHidden("engagement")} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -354,13 +362,15 @@ function ContentInner() {
                   <CartesianGrid {...gridProps} />
                   <XAxis {...xAxisProps} dataKey="date" />
                   <YAxis {...yAxisProps} />
-                  <Tooltip {...tooltipProps({ kind: "bar" })} />
-                  <Legend {...legendProps} />
-                  {contentTypes.map((ct, i) => (
+                  <Tooltip {...tooltipProps({ kind: "bar" })}
+                    {...totalTooltipProps({ sumKeys: contentTypes, hiddenKeys: postsToggle.hidden, formatTotal: (v) => v.toLocaleString("ko-KR") })} />
+                  <Legend {...legendProps} {...legendToggleProps(postsToggle)} />
+                  {contentTypes.map((ct) => (
                     <Bar
                       {...barProps}
                       {...enterAnim}
-                      radius={i === contentTypes.length - 1 ? BAR_RADIUS : undefined}
+                      hide={postsToggle.isHidden(ct)}
+                      radius={ct === postsTop ? BAR_RADIUS : undefined}
                       key={ct}
                       dataKey={ct}
                       name={TYPE_LABELS[ct] || ct}

@@ -30,7 +30,7 @@ import {
   Legend,
   CartesianGrid,
 } from "recharts";
-import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, activeDotProps } from "@/components/charts/chart-style";
+import { xAxisProps, yAxisProps, gridProps, legendProps, tooltipProps, activeDotProps, useSeriesToggle, legendToggleProps, totalTooltipProps } from "@/components/charts/chart-style";
 
 type ViewTab = "overview" | "channels" | "ga4" | "creatives" | "naver";
 const VIEW_TABS: { key: ViewTab; label: string }[] = [
@@ -210,6 +210,10 @@ function AdsPageInner() {
     });
   }, [ads, adDays, activeChannels]);
 
+  // 범례로 매체 골라 보기. 두 그래프는 따로 고른다(ROAS 는 합계 없음, 광고비는 보이는 매체 합계)
+  const roasToggle = useSeriesToggle(activeChannels);
+  const spendToggle = useSeriesToggle(activeChannels);
+
   if (loading) {
     return (
       <PageShell title="광고 분석" description="매체별 광고 효율 및 ROAS">
@@ -381,9 +385,9 @@ function AdsPageInner() {
                     {...tooltipProps({ kind: "line" })}
                     formatter={(val) => (val == null ? "-" : `${Number(val).toFixed(2)}x`)}
                   />
-                  <Legend {...legendProps} />
+                  <Legend {...legendProps} {...legendToggleProps(roasToggle)} />
                   {activeChannels.map((ch) => (
-                    <Line key={ch} type="monotone" dataKey={ch} name={channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch} stroke={CHANNEL_COLORS[ch] || "#6b7280"} strokeWidth={1.5} dot={false} isAnimationActive={false} {...activeDotProps} />
+                    <Line key={ch} type="monotone" dataKey={ch} name={channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch} stroke={CHANNEL_COLORS[ch] || "#6b7280"} strokeWidth={1.5} dot={false} isAnimationActive={false} hide={roasToggle.isHidden(ch)} {...activeDotProps} />
                   ))}
                 </LineChart>
               </DeferredResponsiveContainer>
@@ -403,8 +407,9 @@ function AdsPageInner() {
                   <Tooltip
                     {...tooltipProps({ kind: "line" })}
                     formatter={(val) => formatCurrency(Number(val))}
+                    {...totalTooltipProps({ sumKeys: activeChannels, hiddenKeys: spendToggle.hidden, formatTotal: formatCurrency })}
                   />
-                  <Legend {...legendProps} />
+                  <Legend {...legendProps} {...legendToggleProps(spendToggle)} />
                   {activeChannels.map((ch) => (
                     <Area
                       key={ch}
@@ -412,6 +417,7 @@ function AdsPageInner() {
                       dataKey={ch}
                       name={channelMap[ch]?.label || CHANNEL_LABELS[ch] || ch}
                       stackId="1"
+                      hide={spendToggle.isHidden(ch)}
                       isAnimationActive={false}
                       stroke={CHANNEL_COLORS[ch] || "#6b7280"}
                       fill={CHANNEL_COLORS[ch] || "#6b7280"}
