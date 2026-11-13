@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-dashboard-data";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
 import { CoupangAddKeywordCard } from "@/components/add-keyword-candidates";
+import { shortRange, shorterRanges } from "@/lib/coupang-keyword-range";
 
 // 키워드 탭 > 쿠팡 광고 키워드. 원천 raw_coupang_keyword(쿠팡 예약 일간 보고서, 매일 07:36 수집).
 // 쿠팡은 1일·14일 두 기준으로 전환을 준다. 1일은 광고 직후 산 것, 14일은 2주 안에 산 것까지다.
@@ -47,8 +48,13 @@ const METRIC_COLS: Col[] = [
 // "돈만 쓰는 키워드" 기준. 14일 전환이 0 인데 이만큼 넘게 썼으면 올린다. 작은 금액까지 올리면 목록이 소음이 된다.
 const WASTE_MIN_SPEND = 3000;
 
-export function CoupangKeywordSection({ brand, from, to }: { brand: string; from: string; to: string }) {
-  const { data, loading } = useFetch<Resp>(`/api/coupang-keywords?from=${from}&to=${to}`);
+export function CoupangKeywordSection({ brand, from: pageFrom, to: pageTo }: { brand: string; from: string; to: string }) {
+  // 2026-11-13: 긴 기간이 DB 시간 제한에 걸리면 이 탭만 짧게 다시 보는 단추를 준다(위 기간 필터는 그대로).
+  //   기본 기간을 몰래 줄이지 않는다. 위 기간이 바뀌면 줄여 보기는 풀린다.
+  const [short, setShort] = useState<number | null>(null);
+  useEffect(() => { setShort(null); }, [pageFrom, pageTo]);
+  const { from, to } = short ? shortRange(pageTo, short) : { from: pageFrom, to: pageTo };
+  const { data, loading, error, refetch } = useFetch<Resp>(`/api/coupang-keywords?from=${from}&to=${to}`);
   const [picked, setPicked] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const kwRef = useRef<HTMLDivElement>(null);
@@ -103,12 +109,36 @@ export function CoupangKeywordSection({ brand, from, to }: { brand: string; from
   };
 
   if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">쿠팡 키워드 불러오는 중...</CardContent></Card>;
-  if (data?.error) return <Card><CardContent className="p-4 text-sm" style={{ color: "var(--sig-danger)" }}>쿠팡 키워드 오류: {data.error}</CardContent></Card>;
+  // ★ 2026-11-13: 예전엔 useFetch 의 error 를 안 봐서, 500(DB 시간 초과)이면 data 가 비어 「아직 수집된 쿠팡 키워드가 없습니다」가 떴다.
+  //   실패는 실패로 적고, 줄여 보기·다시 시도를 준다. 직전 값이 있으면(data) 그대로 그리고 화면 위 「갱신 실패」에 맡긴다.
+  const loadError = data?.error || (!data ? error : null);
+  if (loadError) {
+    const shorter = shorterRanges(from, to);
+    return (
+      <Card><CardContent className="p-4 space-y-2.5 text-sm">
+        <p style={{ color: "var(--sig-danger)" }}>쿠팡 키워드를 불러오지 못했습니다. {loadError}</p>
+        <p className="text-xs text-muted-foreground">데이터가 없는 것이 아니라 불러오기가 실패한 것입니다. 이 탭만 짧은 기간으로 다시 볼 수 있습니다(위 기간 필터는 그대로).</p>
+        <div className="flex flex-wrap gap-2">
+          {shorter.map((d) => (
+            <button key={d} type="button" onClick={() => setShort(d)}
+              className="text-xs rounded-md bg-primary text-primary-foreground px-2.5 py-1.5">최근 {d}일로 보기</button>
+          ))}
+          <button type="button" onClick={refetch} className="text-xs rounded-md border px-2.5 py-1.5 hover:bg-muted">다시 시도</button>
+        </div>
+      </CardContent></Card>
+    );
+  }
 
   const notNutty = brand !== "all" && brand !== "nutty";
 
   return (
     <div className="space-y-4">
+      {short && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border-l-4 border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+          <span>이 탭은 지금 <b>최근 {short}일({from} ~ {to})</b>만 봅니다. 위 기간({pageFrom} ~ {pageTo})으로 불러오다 실패해 줄였습니다.</span>
+          <button type="button" onClick={() => setShort(null)} className="underline underline-offset-2 hover:text-foreground">원래 기간으로 다시 시도</button>
+        </div>
+      )}
       {notNutty && (
         <div className="rounded-lg border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-500">
           쿠팡 광고는 너티만 집행합니다. 아래는 브랜드 필터와 관계없이 너티 쿠팡 광고입니다.
@@ -158,7 +188,8 @@ export function CoupangKeywordSection({ brand, from, to }: { brand: string; from
           )}
 
           {/* 추가할 키워드(2026-10-20). 위 상품 선택과 무관하게 검색 영역 전체를 본다. */}
-          <CoupangAddKeywordCard from={from} to={to} />
+          {/* 위 기간 필터를 그대로 쓴다(줄여 보기와 무관, 자체 함수·기준 30일 안내가 있다) */}
+          <CoupangAddKeywordCard from={pageFrom} to={pageTo} />
 
           <div ref={kwRef} className="scroll-mt-4">
             <Card><CardContent className="p-4 space-y-3">

@@ -7,6 +7,17 @@
 -- ============================================================
 
 -- ============================================================
+--  ★ 2026-11-13 추가: 키워드 화면 → 별도 파일 둘, 순서 상관없음, 각각 한 번에 붙여넣기
+--    docs/sql/2026-11-13-coupang-keyword-daily.sql  (표 2개 coupang_keyword_daily · _meta + 원본 인덱스 2개 + 갱신 함수 +
+--      백필 + 요약 함수 coupang_keyword_summary 교체, 옛 본문은 coupang_keyword_summary_raw 로 남김. 원본 표 트리거 없음)
+--      수집(원본 적재)은 이 SQL 때문에 실패하지 않는다. 묶음은 대시보드 /api/raw-ingest 가 적재 성공 뒤 따로 갱신한다.
+--      파일 머리의 「실행 전 측정」 두 줄을 먼저 돌려 시간을 적어 두면 전후 비교가 된다.
+--      끝의 대조 select 두 줄(new(daily)·old(raw))의 rows·spend·conv_sales_14d·entries 가 같으면 정상
+--    docs/sql/2026-11-13-keyword-legacy-campaign-rows.sql  (선택. keyword_performance 옛 캠페인 이름 행 468행 백업 뒤 삭제)
+--      안 돌려도 화면은 같다(이미 표·KPI 에서 뺌). 끝의 한 줄이 legacy_left 0, backed_up 468 안팎이면 정상
+-- ============================================================
+
+-- ============================================================
 --  ★ 2026-11-26 추가: 판매입력 원본 엑셀 암호화 보관 → 별도 파일 하나만 붙여넣으면 된다
 --    docs/sql/2026-11-26-sales-entry-files.sql  (Storage 비공개 버킷 sales-entry-files + 그 버킷 한정 정책 4개,
 --    sales_entry_runs 에 original_file_path·original_file_size·original_uploaded_at 칸)

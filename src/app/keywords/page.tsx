@@ -16,9 +16,9 @@ import { AD_CHANNEL_COLORS, type KeywordPerformance } from "@/lib/types";
 import { CoupangKeywordSection } from "@/components/coupang-keywords";
 import { NaverSearchTermSection } from "@/components/naver-search-terms";
 import { SearchDemandSection } from "@/components/search-demand";
-import { KeywordSourceStatus, useStalled, stalledChipNote } from "@/components/keyword-source-status";
+import { KeywordSourceStatus, useSourceStatus, stalledChipNote, type LegacyRow } from "@/components/keyword-source-status";
 import { kstDate } from "@/lib/date";
-import type { SourceLatest } from "@/lib/sa-balancelab";
+import type { SourceLatest, SpendLatest } from "@/lib/sa-balancelab";
 
 const PLATFORM_LABELS: Record<string, string> = {
   naver_search: "네이버 검색",
@@ -57,7 +57,10 @@ function KeywordsInner() {
   //   다른 화면의 「전체」는 그대로다(사이드바 이동은 브랜드를 안 들고 간다).
   const brand = rawBrand === "all" ? "balancelab" : rawBrand;
   useEffect(() => { if (rawBrand === "all") setBrand("balancelab"); }, [rawBrand, setBrand]);
-  const { data, loading } = useFetch<{ keywords: KeywordPerformance[]; latestCollected?: string | null; sources?: SourceLatest[]; sourcesError?: boolean }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
+  const { data, loading } = useFetch<{
+    keywords: KeywordPerformance[]; legacy?: LegacyRow[]; latestCollected?: string | null;
+    sources?: SourceLatest[]; spend?: SpendLatest[]; shoppingBrands?: string[]; sourcesError?: boolean;
+  }>(`/api/keywords?from=${from}&to=${to}&brand=${brand}`);
   const [sortBy, setSortBy] = useState<"cost" | "clicks" | "conversions" | "ctr" | "roas" | "waste">("cost");
   const [platformFilter, setPlatformFilter] = useState<string>("all");
   const [tab, setTab] = useState<KeywordTab>("keywords");
@@ -66,7 +69,7 @@ function KeywordsInner() {
   // SA 조정 이력 칸은 키워드 응답이 올 때까지 마운트되지 않는다. 기다리지 않게 같이 부른다.
   // 2026-11-10 부터 조정 이력은 네이버 검색어 탭(밸런스랩)에만 있다. 칸이 부르는 주소와 글자까지 같아야 미리 부른 응답을 쓴다.
   usePrefetch([tab === "naver" && brand === "balancelab" ? saChangesUrl("balancelab") : null]);
-  const stalled = useStalled(data?.sources, kstDate());
+  const sourceStatus = useSourceStatus(data?.sources, data?.spend, kstDate());
 
   const keywords = useMemo(() => data?.keywords || [], [data]);
 
@@ -242,9 +245,13 @@ function KeywordsInner() {
       {/* 밸런스랩 검색광고 직접 조정 이력은 2026-11-10 네이버 검색어 탭으로 옮겼다(두 탭에 같은 칸이 있었다). */}
 
       {/* 수집 중단을 빈 화면으로 오독하지 않도록 마지막 수집일을 명시한다(2026-08 리뷰, 2026-11-10 플랫폼·브랜드별로).
-          멈춘 원천은 지우지 않고 「수집 멈춤(마지막 YYYY-MM-DD)」으로 남긴다. */}
+          2026-11-13: 「수집 멈춤」은 키워드 단위 원천(파워링크)인데 광고비가 이어질 때만. 광고를 끈 원천·쇼핑검색·옛 캠페인 단위 기록은 회색 안내. */}
       {tab === "keywords" && !loading && (
-        <KeywordSourceStatus stalled={stalled} labels={PLATFORM_LABELS} from={from} to={to} latestCollected={data?.latestCollected} sourcesError={data?.sourcesError} />
+        <KeywordSourceStatus
+          status={sourceStatus} labels={PLATFORM_LABELS} from={from} to={to} latestCollected={data?.latestCollected}
+          sourcesError={data?.sourcesError} shoppingBrands={data?.shoppingBrands} legacy={data?.legacy}
+          onOpenNaverTab={() => setTab("naver")}
+        />
       )}
 
       {tab === "keywords" && <>
@@ -299,7 +306,7 @@ function KeywordsInner() {
                 platformFilter === p ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              {PLATFORM_LABELS[p] || p}{stalledChipNote(p, stalled, data?.sources)}
+              {PLATFORM_LABELS[p] || p}{stalledChipNote(p, sourceStatus, data?.sources)}
             </button>
           ))}
         </div>

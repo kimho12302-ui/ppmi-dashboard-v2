@@ -56,6 +56,96 @@ export function stalledByPlatform(stalled: SourceLatest[]): Record<string, Sourc
   return out;
 }
 
+// ── 키워드 원천 판정(2026-11-13) ───────────────────────────────
+// 2026-11-10 띠는 keyword_performance 의 모든 플랫폼을 "마지막 날이 3일 넘게 앞이면 멈춤"으로 봤다.
+// 그런데 그 표의 05-04 이전 네이버 쇼핑·메타·GFA·구글 행은 키워드가 아니라 **캠페인 이름**이었고
+// (marketing-dashboard scripts/sync_naver_keywords.py 머리 주석: "애초에 키워드 단위였던 적이 없다"),
+// 9월 새 수집기는 파워링크(naver_search)만 키워드 단위로 넣는다. 쇼핑검색은 상품 단위라 설계상 없다.
+// 또 아이언펫처럼 광고를 끈 원천도 "멈춤"으로 불렀다. 그래서:
+//   - 「수집 멈춤」은 키워드 단위 원천인데 그 브랜드·채널 광고비가 마지막 키워드 기록 뒤로도 이어질 때만
+//   - 광고비도 끊겼으면 「광고 집행 없음」(회색 안내)
+//   - 쇼핑검색은 그 브랜드에 쇼핑 광고비가 있을 때만 "상품 단위라 이 표에 없음" 한 줄
+//   - 메타·GFA·구글은 키워드 원천이 아니라 띠에서 뺀다(구글은 일부러 끈 것, 2026-05)
+
+/** 키워드 단위로 모으는 플랫폼(keyword_performance.platform). 지금은 네이버 파워링크 하나. */
+export const KEYWORD_PLATFORMS = ["naver_search"];
+
+/** keyword_performance 플랫폼 → daily_ad_spend.channel. 광고비로 "광고가 돌고 있나"를 본다. */
+export const KEYWORD_SPEND_CHANNEL: Record<string, string> = {
+  naver_search: "naver_search",
+  naver_shopping: "naver_shopping",
+};
+
+/** 키워드 표에 없는 광고 중 안내를 붙이는 채널. 쇼핑검색은 상품 단위라 실제 검색어가 「네이버 검색어」 탭에 있다. */
+export const SHOPPING_SPEND_CHANNEL = "naver_shopping";
+
+/** 마지막 광고비가 오늘보다 이 일수 안이면 "광고가 돌고 있다"로 본다(광고비 동기화 지연 여유). */
+export const ACTIVE_SPEND_DAYS = 7;
+
+/** (플랫폼, 브랜드)의 마지막 광고비(>0) 날짜. platform 은 keyword_performance 쪽 이름이다. */
+export interface SpendLatest { platform: string; brand: string; lastSpend: string }
+
+export interface SourceVerdict extends SourceLatest { lastSpend: string | null }
+
+export interface KeywordSourceStatus {
+  /** 광고비는 이어지는데 키워드 기록이 끊김(진짜 수집 멈춤) */
+  stalled: SourceVerdict[];
+  /** 키워드 기록도 광고비도 끊김 = 광고를 끈 것. 경고 아님 */
+  adsOff: SourceVerdict[];
+}
+
+/**
+ * 키워드 원천마다 「수집 멈춤」·「광고 집행 없음」을 가른다.
+ * 멈춤 = 키워드 원천이고, 마지막 키워드가 today-STALL_DAYS 보다 앞이고,
+ *        광고비가 ACTIVE_SPEND_DAYS 안에 있고, 마지막 광고비가 마지막 키워드 + STALL_DAYS 보다 뒤.
+ *   (아이언펫 파워링크: 키워드 05-04, 광고비 05-06 77원 → 이틀 꼬리라 멈춤 아님 → 광고 집행 없음)
+ * 광고비를 못 읽었으면(spend=null) 판정하지 않는다. 호출부가 「수집 상태 모름」으로 띄운다.
+ */
+export function classifyKeywordSources(
+  sources: SourceLatest[], spend: SpendLatest[], today: string,
+  opts: { stallDays?: number; activeDays?: number } = {},
+): KeywordSourceStatus {
+  const stallDays = opts.stallDays ?? STALL_DAYS;
+  const activeDays = opts.activeDays ?? ACTIVE_SPEND_DAYS;
+  const activeCut = addDays(today, -activeDays);
+  const spendOf = new Map(spend.map((s) => [`${s.platform}|${s.brand}`, s.lastSpend]));
+  const out: KeywordSourceStatus = { stalled: [], adsOff: [] };
+  const old = stalledSources(sources.filter((s) => KEYWORD_PLATFORMS.includes(s.platform)), today, stallDays);
+  for (const s of old) {
+    const lastSpend = spendOf.get(`${s.platform}|${s.brand}`) ?? null;
+    const running = !!lastSpend && lastSpend >= activeCut && lastSpend > addDays(s.latest, stallDays);
+    (running ? out.stalled : out.adsOff).push({ ...s, lastSpend });
+  }
+  return out;
+}
+
+/** 쇼핑 안내를 붙일 브랜드: 고른 기간에 쇼핑검색 광고비가 있는 브랜드(정렬). */
+export function shoppingNoteBrands(spendRows: { brand: string; spend: number | string | null }[]): string[] {
+  return Array.from(new Set(spendRows.filter((r) => (Number(r.spend) || 0) > 0).map((r) => r.brand))).sort();
+}
+
+/** 05-04 이전 파워링크 자리에 들어간 캠페인 이름(실측 3건, 2026-04-16 ~ 05-04). 키워드가 아니다. */
+export const LEGACY_NAVER_SEARCH_CAMPAIGNS = ["01.아이언펫_파워링크", "02.너티_파워링크", "05. 사입_파미나/닥터레이"];
+const LEGACY_CAMPAIGN_RE = /^\d{2}\.\s?[^\s_]+_/;
+
+/**
+ * 옛 캠페인 단위 기록인가. 키워드 단위 플랫폼이 아니면 전부(05-04 이전 쇼핑·메타·GFA·구글 행),
+ * 파워링크면 캠페인 이름 꼴("01.아이언펫_파워링크")만. 넓은 정규식은 쓰지 않는다(「강아지수제간식쇼핑몰」은 진짜 키워드).
+ */
+export function isLegacyCampaignRow(platform: string, keyword: string | null | undefined): boolean {
+  if (!KEYWORD_PLATFORMS.includes(platform)) return true;
+  const k = (keyword || "").trim();
+  return LEGACY_NAVER_SEARCH_CAMPAIGNS.includes(k) || LEGACY_CAMPAIGN_RE.test(k);
+}
+
+/** 키워드 행과 옛 캠페인 단위 행을 나눈다(원본 배열은 바꾸지 않는다). */
+export function splitLegacyRows<T extends { platform: string; keyword: string | null }>(rows: T[]): { keywords: T[]; legacy: T[] } {
+  const keywords: T[] = [];
+  const legacy: T[] = [];
+  for (const r of rows) (isLegacyCampaignRow(r.platform, r.keyword) ? legacy : keywords).push(r);
+  return { keywords, legacy };
+}
+
 // ── 루틴이 본 후보 ─────────────────────────────────────────────
 
 export interface RoutineCandidate {

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   stalledSources, stalledByPlatform, groupRoutine, routineProducts, keywordState, buildMedinexTest,
   rankLabel, rankDelta, buildRankView, LOCK_LINE_WON,
+  classifyKeywordSources, shoppingNoteBrands, isLegacyCampaignRow, splitLegacyRows,
 } from "../../src/lib/sa-balancelab.ts";
 
 test("수집 멈춤: 오늘보다 3일 넘게 앞인 조합만", () => {
@@ -18,6 +19,97 @@ test("수집 멈춤: 오늘보다 3일 넘게 앞인 조합만", () => {
   const s = stalledSources(list, "2026-11-10");
   assert.deepEqual(s.map((x) => `${x.platform}/${x.brand}`), ["naver_search/ironpet", "naver_search/saip", "naver_shopping/balancelab"]);
   assert.deepEqual(Object.keys(stalledByPlatform(s)).sort(), ["naver_search", "naver_shopping"]);
+});
+
+// ── 키워드 원천 판정(2026-11-13): 「수집 멈춤」은 키워드 원천 + 광고비가 이어질 때만 ──
+// 2026-11-13 실측: 파워링크 마지막 키워드 밸런스랩·너티·사입 11-13, 아이언펫 05-04. 광고비 마지막 아이언펫 05-06(77원).
+const SRC = [
+  { platform: "naver_search", brand: "balancelab", latest: "2026-11-13" },
+  { platform: "naver_search", brand: "nutty", latest: "2026-11-13" },
+  { platform: "naver_search", brand: "ironpet", latest: "2026-05-04" },
+  { platform: "naver_search", brand: "saip", latest: "2026-11-13" },
+];
+const SPEND = [
+  { platform: "naver_search", brand: "balancelab", lastSpend: "2026-11-13" },
+  { platform: "naver_search", brand: "nutty", lastSpend: "2026-11-12" },
+  { platform: "naver_search", brand: "ironpet", lastSpend: "2026-05-06" },
+  { platform: "naver_search", brand: "saip", lastSpend: "2026-11-12" },
+];
+
+test("원천 판정: 지금 상태(11-13)는 멈춤 0, 아이언펫은 광고 집행 없음(05-06 77원 꼬리는 멈춤 아님)", () => {
+  const s = classifyKeywordSources(SRC, SPEND, "2026-11-13");
+  assert.deepEqual(s.stalled, []);
+  assert.deepEqual(s.adsOff, [{ platform: "naver_search", brand: "ironpet", latest: "2026-05-04", lastSpend: "2026-05-06" }]);
+});
+
+test("원천 판정: 키워드 원천인데 광고비가 이어지면 수집 멈춤", () => {
+  const src = SRC.map((x) => (x.brand === "nutty" ? { ...x, latest: "2026-11-05" } : x));
+  const s = classifyKeywordSources(src, SPEND, "2026-11-13");
+  assert.deepEqual(s.stalled, [{ platform: "naver_search", brand: "nutty", latest: "2026-11-05", lastSpend: "2026-11-12" }]);
+  assert.deepEqual(s.adsOff.map((x) => x.brand), ["ironpet"]);
+});
+
+test("원천 판정: 광고비 기록이 아예 없거나 지금(7일 안)은 끊겼으면 광고 집행 없음", () => {
+  const src = [{ platform: "naver_search", brand: "nutty", latest: "2026-10-01" }];
+  assert.deepEqual(classifyKeywordSources(src, [], "2026-11-13").adsOff.map((x) => x.lastSpend), [null]);
+  // 광고비가 키워드 뒤로 한참 이어졌어도 지금은 끊겼으면 멈춤이 아니라 광고 끔
+  const old = [{ platform: "naver_search", brand: "nutty", lastSpend: "2026-10-20" }];
+  const s = classifyKeywordSources(src, old, "2026-11-13");
+  assert.equal(s.stalled.length, 0);
+  assert.equal(s.adsOff.length, 1);
+});
+
+test("원천 판정: 경계, 키워드가 3일 안이면 판정 안 함 · 광고비가 키워드+3일과 같으면 멈춤 아님", () => {
+  const recent = [{ platform: "naver_search", brand: "nutty", latest: "2026-11-10" }];
+  assert.deepEqual(classifyKeywordSources(recent, SPEND, "2026-11-13"), { stalled: [], adsOff: [] });
+  const src = [{ platform: "naver_search", brand: "nutty", latest: "2026-11-06" }];
+  const edge = [{ platform: "naver_search", brand: "nutty", lastSpend: "2026-11-09" }];
+  assert.equal(classifyKeywordSources(src, edge, "2026-11-13").stalled.length, 0);
+  const over = [{ platform: "naver_search", brand: "nutty", lastSpend: "2026-11-10" }];
+  assert.equal(classifyKeywordSources(src, over, "2026-11-13").stalled.length, 1);
+});
+
+test("원천 판정: 구글·메타·GFA·네이버 쇼핑은 키워드 원천이 아니라 멈춤·광고 끔 어디에도 안 나온다", () => {
+  const src = [
+    { platform: "google_search", brand: "nutty", latest: "2026-03-12" },
+    { platform: "google_display", brand: "nutty", latest: "2026-03-12" },
+    { platform: "meta", brand: "nutty", latest: "2026-03-12" },
+    { platform: "naver_gfa", brand: "nutty", latest: "2026-03-12" },
+    { platform: "naver_shopping", brand: "saip", latest: "2026-05-04" },
+  ];
+  const spend = [{ platform: "naver_shopping", brand: "saip", lastSpend: "2026-11-12" }, { platform: "meta", brand: "nutty", lastSpend: "2026-11-12" }];
+  assert.deepEqual(classifyKeywordSources(src, spend, "2026-11-13"), { stalled: [], adsOff: [] });
+});
+
+test("쇼핑 안내: 기간 안 쇼핑 광고비가 0보다 큰 브랜드만, 중복 없이 정렬", () => {
+  const rows = [
+    { brand: "saip", spend: 31890 }, { brand: "nutty", spend: "6943" }, { brand: "saip", spend: 100 },
+    { brand: "ironpet", spend: 0 }, { brand: "balancelab", spend: null },
+  ];
+  assert.deepEqual(shoppingNoteBrands(rows), ["nutty", "saip"]);
+  assert.deepEqual(shoppingNoteBrands([]), []);
+});
+
+test("옛 캠페인 단위 기록: 파워링크가 아닌 행 전부 + 파워링크의 캠페인 이름 꼴만", () => {
+  assert.equal(isLegacyCampaignRow("naver_shopping", "사입_벌크"), true);
+  assert.equal(isLegacyCampaignRow("meta", "Meta 광고"), true);
+  assert.equal(isLegacyCampaignRow("naver_gfa", "GFA"), true);
+  assert.equal(isLegacyCampaignRow("google_search", "Google 검색"), true);
+  assert.equal(isLegacyCampaignRow("naver_search", "01.아이언펫_파워링크"), true);
+  assert.equal(isLegacyCampaignRow("naver_search", "05. 사입_파미나/닥터레이"), true);
+  // 진짜 키워드는 남긴다(넓은 정규식이면 "쇼핑"·밑줄에 걸린다)
+  assert.equal(isLegacyCampaignRow("naver_search", "강아지수제간식쇼핑몰"), false);
+  assert.equal(isLegacyCampaignRow("naver_search", "10kg_개껌"), false);
+  assert.equal(isLegacyCampaignRow("naver_search", "모발검사"), false);
+  const rows = [
+    { platform: "naver_search", keyword: "모발검사", cost: 1 },
+    { platform: "naver_shopping", keyword: "04.너티_쇼핑검색", cost: 2 },
+    { platform: "naver_search", keyword: "02.너티_파워링크", cost: 3 },
+  ];
+  const { keywords, legacy } = splitLegacyRows(rows);
+  assert.deepEqual(keywords.map((r) => r.keyword), ["모발검사"]);
+  assert.deepEqual(legacy.map((r) => r.keyword), ["04.너티_쇼핑검색", "02.너티_파워링크"]);
+  assert.equal(rows.length, 3); // 원본은 그대로
 });
 
 test("루틴 후보: 결과 순서, 등록·확인 필요만 펼침, 제품 칩 거르기", () => {
