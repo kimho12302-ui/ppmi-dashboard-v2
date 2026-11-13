@@ -131,6 +131,8 @@ function KeywordsInner() {
       ctr: impressions > 0 ? (clicks / impressions) * 100 : 0,
       convValue,
       hasConvValue,
+      // 고른 기간에 키워드 행이 하나도 없으면(옛 캠페인 단위 기록만 있던 기간 등) 「측정 불가」가 아니라 그냥 비어 있음
+      empty: filtered.length === 0,
       roas: cost > 0 ? convValue / cost : 0,
       // 낭비 광고비는 **원본 행(하루)마다** 전환매출 0 인 날의 광고비. DB 합산 응답은 묶기 전에 더한 wasted_cost 를 준다.
       wasted: filtered.reduce((s, k) => s + (k.wasted_cost ?? ((k.conversion_value || 0) === 0 ? (k.cost || 0) : 0)), 0),
@@ -268,20 +270,20 @@ function KeywordsInner() {
           size="compact"
           title="전환매출"
           value={totals.hasConvValue ? formatCurrency(totals.convValue) : "-"}
-          confidence={totals.hasConvValue ? undefined : { level: "unmeasurable", note: "전환매출 미수집: keyword_performance.conversion_value 컬럼 추가 필요" }}
+          confidence={totals.hasConvValue || totals.empty ? undefined : { level: "unmeasurable", note: "전환매출 미수집: keyword_performance.conversion_value 컬럼 추가 필요" }}
         />
         <KpiCard
           size="compact"
           title="ROAS"
           value={totals.hasConvValue ? `${totals.roas.toFixed(2)}x` : "-"}
-          confidence={totals.hasConvValue ? undefined : { level: "unmeasurable", note: "전환매출이 없어 계산 불가" }}
+          confidence={totals.hasConvValue || totals.empty ? undefined : { level: "unmeasurable", note: "전환매출이 없어 계산 불가" }}
         />
         <KpiCard
           size="compact"
           title="매출 0 키워드 비용"
           value={totals.hasConvValue ? formatCurrency(totals.wasted) : "-"}
           subtitle={totals.hasConvValue ? "자를 후보" : undefined}
-          confidence={totals.hasConvValue ? undefined : { level: "unmeasurable", note: "전환매출이 없어 판별 불가" }}
+          confidence={totals.hasConvValue || totals.empty ? undefined : { level: "unmeasurable", note: "전환매출이 없어 판별 불가" }}
         />
       </div>
 
