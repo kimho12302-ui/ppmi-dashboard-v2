@@ -50,7 +50,7 @@ export function KeywordSourceStatus({ status, sources, labels, from, to, latestC
   // 기간 전체가 마지막 키워드 기록보다 뒤: 멈춘 원천이 있으면 주황 목록, 전부 광고를 껐으면 "쉬는 기간",
   // 그 밖(동기화 전 「어제」 등)은 "아직 수집 전일 수 있음". 광고비가 나가는데 쉰다고 단정하지 않는다.
   const notice = periodNotice(sources || [], status, from);
-  const allBefore = notice === "adsOff" || notice === "pending";
+  const allBefore = notice === "adsOff" || notice === "ended" || notice === "pending";
   const shopping = shoppingBrands || [];
   const legacyRows = legacy || [];
   const legacyCost = legacyRows.reduce((s, r) => s + (Number(r.cost) || 0), 0);
@@ -82,6 +82,11 @@ export function KeywordSourceStatus({ status, sources, labels, from, to, latestC
       {notice === "adsOff" && (
         <p className="text-muted-foreground">
           고른 기간({from} ~ {to})에는 이 브랜드의 키워드 기록이 없습니다. 마지막 키워드 기록은 <b>{latestCollected}</b>이고, 그 뒤로 파워링크 광고비 기록도 없습니다(광고를 껐거나 네이버 수집 전체가 멈춤).
+        </p>
+      )}
+      {notice === "ended" && (
+        <p className="text-muted-foreground">
+          고른 기간({from} ~ {to})에는 이 브랜드의 키워드 기록이 없습니다. 마지막 키워드 기록은 <b>{latestCollected}</b>이고, 그 뒤로는 키워드 없이 광고비만 나간 기간(아래 「과거 수집 공백」)이 있었고 지금은 파워링크 광고비도 끊겨 있습니다. 성과 0으로 읽지 마세요.
         </p>
       )}
       {notice === "pending" && (

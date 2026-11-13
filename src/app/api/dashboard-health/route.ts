@@ -11,12 +11,25 @@ import { kstDate } from "@/lib/date";
 // 새로 수집하지 않는다. data-status 와 같은 판정(@/lib/data-sources) + 하트비트 사유 + 관제판 collector 섹션을
 // 합쳐서 @/lib/dashboard-health 가 '고장 / 주의 / 정상 / 의도 중단'으로 가른다.
 
+/** 쿠팡 키워드 묶음이 원본보다 늦은 날짜(최근 30일). 함수가 없거나(SQL 실행 전) 실패하면 null = 점검 안 함. 2026-11-13 */
+async function coupangDailyLag(today: string): Promise<string[] | null> {
+  const from = new Date(Date.parse(today) - 30 * 86400000).toISOString().slice(0, 10);
+  const { data, error } = await supabase.rpc("coupang_keyword_daily_lag", { p_from: from, p_to: today });
+  if (error) {
+    if (error.code !== "PGRST202") console.error("dashboard-health coupang_keyword_daily_lag:", error.message);
+    return null;
+  }
+  return ((data || []) as { date: string }[]).map((r) => r.date);
+}
+
 async function getImpl() {
   try {
-    const [{ sources, collectors, referenceDate }, hbRes, opsRes] = await Promise.all([
+    const today = kstDate();
+    const [{ sources, collectors, referenceDate }, hbRes, opsRes, lag] = await Promise.all([
       getSourceStatuses(),
       supabase.from("sync_heartbeat").select("source,note,last_run"),
       supabase.from("ops_status").select("item_key,label,signal,summary,last_at,reported_at").eq("section", "collector"),
+      coupangDailyLag(today).catch(() => null),
     ]);
     if (hbRes.error) throw new Error(`sync_heartbeat: ${hbRes.error.message}`);
     // 관제판 표를 못 읽어도 화면은 띄운다. 대신 '관제판 보고가 멈춤'이 주의로 뜬다(빈 목록 = 보고 없음).
@@ -26,10 +39,11 @@ async function getImpl() {
       sources: sources.map((s) => ({ ...s, entry: sourceEntryLink(s.id) })),
       collectors,
       referenceDate,
-      today: kstDate(),
+      today,
       heartbeatNotes: (hbRes.data || []) as HeartbeatNote[],
       ops: (opsRes.data || []) as OpsCollectorItem[],
       nowMs: Date.now(),
+      coupangDailyLag: lag,
     });
     return NextResponse.json(health);
   } catch (error) {

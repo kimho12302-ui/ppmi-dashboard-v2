@@ -5,7 +5,7 @@ import { fetchAll } from "@/lib/db";
 import { groupKeywordSummary, tryRpc } from "@/lib/summary-rpc";
 import { cachedGET, NO_CACHE_HEADER } from "@/lib/api-cache";
 import {
-  KEYWORD_PLATFORMS, KEYWORD_SPEND_CAMPAIGN_TYPE, SHOPPING_SPEND_CHANNEL, mergeKeywordSummaries, shoppingNoteBrands,
+  KEYWORD_PLATFORMS, KEYWORD_SPEND_CAMPAIGN_TYPE, SHOPPING_SPEND_CHANNEL, legacyExclusionOrFilter, mergeKeywordSummaries, shoppingNoteBrands,
   splitLegacyRows, splitPeriodAtLegacy, type KeywordSummaryRow, type SourceLatest, type SpendLatest,
 } from "@/lib/sa-balancelab";
 
@@ -16,12 +16,15 @@ const ALL_BRANDS = ["balancelab", "nutty", "ironpet", "saip"];
  * 조합마다 정렬 + limit 1 로 한 번씩 부른다(GROUP BY 는 PostgREST 기본 질의로 안 된다).
  * ★ 2026-11-13: 예전엔 네이버 쇼핑·GFA·구글·메타까지 봤다. 그 플랫폼 행은 05-04 이전 캠페인 이름이라 키워드 원천이 아니다
  *   (src/lib/sa-balancelab.ts 「키워드 원천 판정」). 그래서 키워드 단위 플랫폼만 본다.
+ * ★ 화면에서 빼는 옛 캠페인 행(05-04 까지 + 정확한 이름 3건)은 여기서도 뺀다. 그래야 정리 SQL 을 돌리든 안 돌리든
+ *   판정이 같다(예: 아이언펫 마지막 키워드는 캠페인 이름 행 05-04 가 아니라 진짜 키워드 03-22).
  */
 async function latestBySource(brands: string[]): Promise<SourceLatest[]> {
   const pairs = KEYWORD_PLATFORMS.flatMap((platform) => brands.map((brand) => ({ platform, brand })));
   const found = await Promise.all(pairs.map(async ({ platform, brand }) => {
     const { data, error } = await supabase.from("keyword_performance").select("date")
-      .eq("platform", platform).eq("brand", brand).order("date", { ascending: false }).limit(1);
+      .eq("platform", platform).eq("brand", brand).or(legacyExclusionOrFilter())
+      .order("date", { ascending: false }).limit(1);
     if (error) throw error;
     const latest = data?.[0]?.date as string | undefined;
     return latest ? { platform, brand, latest } : null;

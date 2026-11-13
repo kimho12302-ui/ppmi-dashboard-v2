@@ -79,6 +79,28 @@ export interface DashboardHealth {
   opsReportedAt: string | null;
 }
 
+/**
+ * 쿠팡 키워드 일별 묶음(coupang_keyword_daily) 점검. 2026-11-13(QA 재검수 LOW-3).
+ * 묶음 갱신은 /api/raw-ingest 가 원본 적재 뒤 따로 부르고, 실패해도 수집은 성공으로 둔다. 그래서 실패는 여기서 드러낸다.
+ * dates = DB 함수 coupang_keyword_daily_lag 가 돌려준 「묶음 판이 원본 판과 다른 날짜」. null = 점검 못 함(SQL 실행 전 등) → 이슈 없음.
+ * 숫자는 틀리지 않는다(요약 함수가 그날을 원본에서 바로 합침). 그날 「쿠팡 광고 키워드」 탭이 느릴 뿐이라 「주의」다.
+ */
+export function coupangDailyLagIssue(dates: string[] | null | undefined): Issue | null {
+  if (!dates || dates.length === 0) return null;
+  const sorted = [...dates].sort();
+  const shown = sorted.length > 5 ? `${sorted.slice(0, 5).join(", ")} 외 ${sorted.length - 5}일` : sorted.join(", ");
+  return {
+    key: "coupang-keyword-daily-lag",
+    level: "warn",
+    title: `쿠팡 키워드 묶음이 원본보다 늦은 날 ${sorted.length}일`,
+    since: sorted[0],
+    impact: "키워드 > 쿠팡 광고 키워드 탭이 그 날을 원본에서 바로 합쳐 느려짐(숫자는 맞음). 긴 기간은 「기간이 길어」 안내가 뜰 수 있음",
+    cause: `묶음 갱신이 안 된 날짜: ${shown}`,
+    action: `Supabase SQL Editor 에서 select coupang_keyword_daily_refresh(array['${sorted.slice(0, 62).join("','")}']::date[]);`,
+    link: "/keywords",
+  };
+}
+
 const DAY_MS = 86400000;
 const nextDay = (d: string) => new Date(Date.parse(d) + DAY_MS).toISOString().slice(0, 10);
 const day = (iso: string | null) => (iso ? String(iso).slice(0, 10) : null);
@@ -261,6 +283,8 @@ export function buildDashboardHealth(input: {
   heartbeatNotes: HeartbeatNote[];
   ops: OpsCollectorItem[];
   nowMs: number;
+  /** 쿠팡 키워드 묶음이 원본보다 늦은 날짜(2026-11-13). 없거나 null 이면 점검하지 않음 */
+  coupangDailyLag?: string[] | null;
 }): DashboardHealth {
   const { sources, collectors, referenceDate, today, heartbeatNotes, ops, nowMs } = input;
   const noteOf = new Map(heartbeatNotes.map((h) => [h.source, h]));
@@ -316,6 +340,9 @@ export function buildDashboardHealth(input: {
       link: null,
     });
   }
+
+  const lagIssue = coupangDailyLagIssue(input.coupangDailyLag);
+  if (lagIssue) issues.push(lagIssue);
 
   const opsReportedAt = ops.map((o) => o.reported_at).filter(Boolean).sort().pop() || null;
   if (!opsReportedAt || (nowMs - Date.parse(opsReportedAt)) / 3_600_000 > OPS_STALE_HOURS) {

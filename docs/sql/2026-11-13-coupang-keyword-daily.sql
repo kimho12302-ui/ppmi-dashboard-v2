@@ -12,15 +12,21 @@
 --      「저장 실패」가 되기 때문이다(QA 2026-11-13 M-1). 이 파일은 2026-11-13 초판의 트리거가 있으면 지운다.
 --    - 묶음 갱신은 원본 적재가 **성공한 뒤** /api/raw-ingest 가 따로 부른다(coupang_keyword_daily_refresh).
 --      그 호출이 실패해도 수집 응답은 성공 그대로이고, 응답에 daily_refresh 실패만 적힌다.
---    - 요약 함수는 날짜마다 "묶음이 원본과 같은 판(가장 늦게 읽은 시각 read_at 이 같음)"인지 보고,
---      같으면 묶음 표, 다르거나 없으면 원본에서 그날을 직접 합친다. 그래서 묶음이 늦거나 빠져도 숫자는 항상 원본과 같다
---      (갱신이 안 된 날만 느릴 뿐). 원본에서 날짜가 통째로 지워지거나 비워져도(truncate) 그 날짜는 결과에서 빠진다.
+--    - 「판」 = 그 날짜 원본의 (max(read_at), 전체 행 수) 두 값. 수집기는 파일 하나를 500행씩 여러 번 보내고 모든 조각에
+--      같은 read_at 을 붙이므로 read_at 만으로는 "조각 1·2 만 묶인 판"과 "다 들어온 판"을 가를 수 없다(QA 재검수 HIGH).
+--      행 수를 같이 기록해 조각이 더 들어오거나 일부 행이 지워져도 판이 달라진다.
+--    - 요약 함수는 날짜마다 묶음 판이 원본 판과 같으면 묶음 표, 다르거나 없으면 그날을 원본에서 직접 합친다.
+--      그래서 묶음이 늦거나 빠져도 숫자는 항상 원본과 같다(갱신이 안 된 날만 느릴 뿐).
+--      원본에서 날짜가 통째로 지워지거나 비워져도(truncate) 그 날짜는 결과에서 빠진다.
+--    - 갱신 함수는 이미 같은 판인 날짜는 건너뛴다(반복 호출 비용·잠금 대기를 줄임).
+--    - 늦은 날짜는 대시보드 「대시보드 상태」(/status)가 coupang_keyword_daily_lag 로 「주의」를 띄운다.
 --
 --  무엇을:
 --    1) coupang_keyword_daily       : (날짜, 상품, 키워드, 지면)별 합계. 날짜마다 가장 늦게 읽은 파일 하나만(옛 규칙 그대로)
---       coupang_keyword_daily_meta  : 날짜마다 묶은 판(원본 max(read_at)·파일·원본 행 수)
+--       coupang_keyword_daily_meta  : 날짜마다 묶은 판(원본 max(read_at) · 원본 전체 행 수 date_rows · 쓴 파일 · 그 파일 행 수)
 --    2) 원본 인덱스 (date, read_at), (date, file)
---    3) coupang_keyword_daily_refresh(날짜 배열, 최대 62일) : 그 날짜들을 지우고 다시 묶는다(anon 도 부를 수 있음, 결과는 같음)
+--    3) coupang_keyword_daily_refresh(날짜 배열, 최대 62일) : 판이 다른 날짜만 지우고 다시 묶는다(anon 도 부를 수 있음)
+--       coupang_keyword_daily_lag(기간) : 묶음 판이 원본 판과 다른 날짜 목록(상태 화면용, 읽기만)
 --    4) 백필 : 원본에 있는 모든 날짜를 31일씩 묶는다
 --    5) 요약 함수 교체 : 이름·인자·돌려주는 모양(entries · placements · rows)은 그대로. 옛 본문은 coupang_keyword_summary_raw 로 남김
 --    6) 대조 select : 최근 30일 새 함수와 옛 함수의 행 수·광고비·14일 전환매출·묶음 수가 같아야 한다
@@ -28,7 +34,10 @@
 --  규칙(옛 함수·/api/coupang-keywords 대체 경로와 같음):
 --    - 날짜마다 가장 늦게 읽은(read_at) 파일 하나만 쓴다(맞춤 보고서·예약 보고서 겹침 이중집계 방지)
 --    - 상품 = 캠페인 이름에서 앞 "로켓배송_"·"YYMMDD_", 뒤 "_YYMMDD" 를 뗀 것
---    - 키워드 '-' 또는 빈 값(비검색·외부 지면)은 '(키워드 없음: 비검색·외부 지면)' 한 줄, 지면이 비면 '(지면 없음)'
+--    - 키워드가 null 이거나, 앞뒤 공백·탭·줄바꿈을 뗀 값이 '' 또는 '-' 이면(비검색·외부 지면, 원본 빈 문자열 1,307행 포함)
+--      '(키워드 없음: 비검색·외부 지면)' 한 줄. 그 밖의 키워드는 원본 글자 그대로. 지면이 비면 '(지면 없음)'
+--    ★ 빈 문자열 키워드를 「키워드 없음」으로 묶는 규칙은 2026-11-13 에 바뀌었다. 지금 DB 의 옛 함수(2026-09-18 판)는
+--      빈 문자열을 따로 한 줄로 두므로, 이 SQL 실행 전후 「키워드 없음」 줄 숫자가 그만큼 달라질 수 있다(합계는 같다).
 --
 -- ------------------------------------------------------------
 --  실행 순서(SQL Editor, 김호):
@@ -42,6 +51,7 @@
 --    1) 이 파일 전체를 붙여넣고 한 번 실행. 여러 번 실행해도 안전하다(if not exists / create or replace / 백필은 다시 묶기).
 --       맨 아래 대조 결과 두 줄(new(daily)·old(raw))의 rows · spend · conv_sales_14d · entries 가 같으면 정상.
 --    2) [실행 뒤 측정] 0) 의 두 줄을 다시 돌려 시간을 비교한다.
+--    3) [확인, 선택] select * from coupang_keyword_daily_lag(current_date - 30, current_date);  → 아무 줄도 안 나오면 정상.
 --  대시보드 배포 전에 돌려도, 뒤에 돌려도 된다. 배포 전이면 묶음은 새 원본이 들어올 때 갱신되지 않지만
 --  요약 함수가 그날을 원본에서 합치므로 숫자는 맞다(느릴 뿐). 배포 뒤에는 수집 직후 갱신된다.
 --  되돌리기: 맨 아래 주석.
@@ -76,11 +86,13 @@ create table if not exists coupang_keyword_daily (
 
 create table if not exists coupang_keyword_daily_meta (
   date          date        primary key,
-  read_at       timestamptz,                       -- 묶을 때 그 날짜 원본의 max(read_at). 요약 함수가 원본과 비교한다
+  read_at       timestamptz,                       -- 판 ①: 묶을 때 그 날짜 원본의 max(read_at)
+  date_rows     integer     not null default 0,    -- 판 ②: 묶을 때 그 날짜 원본 전체 행 수(모든 파일)
   file          text,                              -- 묶을 때 쓴 파일(가장 늦게 읽은 것)
-  raw_rows      integer     not null default 0,
+  raw_rows      integer     not null default 0,    -- 그 파일 행 수
   refreshed_at  timestamptz not null default now()
 );
+alter table coupang_keyword_daily_meta add column if not exists date_rows integer not null default 0;
 
 -- 읽기는 anon 도 된다. 쓰기는 아래 갱신 함수(security definer)만 한다.
 alter table coupang_keyword_daily enable row level security;
@@ -95,12 +107,40 @@ revoke insert, update, delete, truncate on coupang_keyword_daily, coupang_keywor
 
 -- ── 2) 원본 인덱스 ──────────────────────────────────────────────
 -- 날짜 인덱스(raw_coupang_keyword_date_idx)는 이미 있다.
--- (date, read_at): 요약 함수가 날짜마다 max(read_at) 를 원본과 비교할 때. (date, file): 그날 고른 파일 행만 읽을 때.
+-- (date, read_at): 날짜마다 판(max(read_at)·행 수)을 셀 때. (date, file): 그날 고른 파일 행만 읽을 때.
 create index if not exists raw_coupang_keyword_date_read_idx on raw_coupang_keyword (date, read_at);
 create index if not exists raw_coupang_keyword_date_file_idx on raw_coupang_keyword (date, file);
 
 
--- ── 3) 갱신 함수: 날짜들을 지우고 다시 묶는다 ─────────────────────
+-- ── 3) 판이 다른 날짜(읽기 전용) ──────────────────────────────────
+-- 원본에 있는데 묶음 판이 없거나 다른 날짜 + 원본에서 사라졌는데 묶음이 남은 날짜.
+create or replace function coupang_keyword_daily_lag(p_from date, p_to date)
+returns table (date date, reason text)
+language sql
+stable
+set search_path = public, pg_temp
+as $$
+  select d.date,
+         case when m.date is null then 'not_built' else 'outdated' end
+  from (
+    select r.date, max(r.read_at) as read_at, count(*)::int as n
+    from raw_coupang_keyword r
+    where r.date between p_from and p_to
+    group by r.date
+  ) d
+  left join coupang_keyword_daily_meta m on m.date = d.date
+  where m.date is null or m.read_at is distinct from d.read_at or m.date_rows <> d.n
+  union all
+  select m.date, 'raw_gone'
+  from coupang_keyword_daily_meta m
+  where m.date between p_from and p_to
+    and not exists (select 1 from raw_coupang_keyword r where r.date = m.date)
+  order by 1;
+$$;
+grant execute on function coupang_keyword_daily_lag(date, date) to anon, authenticated;
+
+
+-- ── 4) 갱신 함수: 판이 다른 날짜만 지우고 다시 묶는다 ─────────────────
 -- /api/raw-ingest 가 원본 적재에 성공한 뒤 그 날짜들로 부른다(anon). 실패해도 수집은 성공 그대로다.
 -- 한 번에 62일까지만 받는다(anon 이 큰 기간을 통째로 다시 묶어 DB 를 붙잡지 못하게).
 create or replace function coupang_keyword_daily_refresh(p_dates date[])
@@ -112,6 +152,7 @@ as $$
 declare
   n integer;
   ds date[];
+  todo date[];
 begin
   select array_agg(distinct d) into ds from unnest(p_dates) d where d is not null;
   if ds is null or cardinality(ds) = 0 then
@@ -120,16 +161,44 @@ begin
   if cardinality(ds) > 62 then
     raise exception 'coupang_keyword_daily_refresh: 한 번에 62일까지 (받은 날짜 %개)', cardinality(ds);
   end if;
+
+  -- 이미 같은 판인 날짜는 건너뛴다. 잠그기 전에 한 번 보고(다 같으면 잠금 대기 없이 끝), 잠근 뒤 다시 본다.
+  select array_agg(x.date) into todo from (
+    select d.date
+    from (select r.date, max(r.read_at) as read_at, count(*)::int as n
+          from raw_coupang_keyword r where r.date = any(ds) group by r.date) d
+    left join coupang_keyword_daily_meta m on m.date = d.date
+    where m.date is null or m.read_at is distinct from d.read_at or m.date_rows <> d.n
+    union all
+    select m.date from coupang_keyword_daily_meta m
+    where m.date = any(ds) and not exists (select 1 from raw_coupang_keyword r where r.date = m.date)
+  ) x;
+  if todo is null then
+    return 0;
+  end if;
   -- 같은 날짜를 두 호출이 동시에 다시 묶으면 기본키가 부딪친다. 이 표 갱신은 한 줄로 세운다.
   perform pg_advisory_xact_lock(hashtext('coupang_keyword_daily'));
+  select array_agg(x.date) into todo from (
+    select d.date
+    from (select r.date, max(r.read_at) as read_at, count(*)::int as n
+          from raw_coupang_keyword r where r.date = any(ds) group by r.date) d
+    left join coupang_keyword_daily_meta m on m.date = d.date
+    where m.date is null or m.read_at is distinct from d.read_at or m.date_rows <> d.n
+    union all
+    select m.date from coupang_keyword_daily_meta m
+    where m.date = any(ds) and not exists (select 1 from raw_coupang_keyword r where r.date = m.date)
+  ) x;
+  if todo is null then
+    return 0;
+  end if;
 
-  delete from coupang_keyword_daily where date = any(ds);
-  delete from coupang_keyword_daily_meta where date = any(ds);
+  delete from coupang_keyword_daily where date = any(todo);
+  delete from coupang_keyword_daily_meta where date = any(todo);
 
   with latest as (
-    select k.date, (array_agg(k.file order by k.read_at desc nulls last))[1] as file, max(k.read_at) as read_at
+    select k.date, (array_agg(k.file order by k.read_at desc nulls last))[1] as file
     from raw_coupang_keyword k
-    where k.date = any(ds)
+    where k.date = any(todo)
     group by k.date
   ),
   r as (
@@ -137,12 +206,12 @@ begin
       coalesce(nullif(trim(regexp_replace(regexp_replace(regexp_replace(
         coalesce(k.campaign, '(캠페인 없음)'), '^로켓배송_', ''), '^[0-9]{6}_', ''), '_[0-9]{6}$', '')), ''),
         coalesce(k.campaign, '(캠페인 없음)')) as product,
-      case when k.keyword is null or k.keyword = '-' then '(키워드 없음: 비검색·외부 지면)' else k.keyword end as keyword,
+      case when btrim(coalesce(k.keyword, ''), E' \t\r\n') in ('', '-') then '(키워드 없음: 비검색·외부 지면)' else k.keyword end as keyword,
       coalesce(k.placement, '(지면 없음)') as placement,
       k.impressions, k.clicks, k.spend, k.orders_1d, k.conv_sales_1d, k.orders_14d, k.conv_sales_14d
     from raw_coupang_keyword k
     join latest l on l.date = k.date and l.file is not distinct from k.file
-    where k.date = any(ds)
+    where k.date = any(todo)
   )
   insert into coupang_keyword_daily (date, product, keyword, placement,
     impressions, clicks, spend, orders_1d, conv_sales_1d, orders_14d, conv_sales_14d, raw_rows)
@@ -155,14 +224,15 @@ begin
   group by date, product, keyword, placement;
   get diagnostics n = row_count;
 
-  insert into coupang_keyword_daily_meta (date, read_at, file, raw_rows, refreshed_at)
-  select l.date, l.read_at, l.file,
-    (select count(*) from raw_coupang_keyword k where k.date = l.date and k.file is not distinct from l.file),
+  insert into coupang_keyword_daily_meta (date, read_at, date_rows, file, raw_rows, refreshed_at)
+  select v.date, v.read_at, v.date_rows, v.file,
+    (select count(*) from raw_coupang_keyword k where k.date = v.date and k.file is not distinct from v.file),
     now()
   from (
-    select k.date, (array_agg(k.file order by k.read_at desc nulls last))[1] as file, max(k.read_at) as read_at
-    from raw_coupang_keyword k where k.date = any(ds) group by k.date
-  ) l;
+    select k.date, max(k.read_at) as read_at, count(*)::int as date_rows,
+           (array_agg(k.file order by k.read_at desc nulls last))[1] as file
+    from raw_coupang_keyword k where k.date = any(todo) group by k.date
+  ) v;
 
   return n;
 end;
@@ -172,7 +242,7 @@ revoke execute on function coupang_keyword_daily_refresh(date[]) from public;
 grant execute on function coupang_keyword_daily_refresh(date[]) to anon, authenticated;
 
 
--- ── 4) 백필: 원본에 있는 모든 날짜를 31일씩 묶는다(다시 돌려도 같은 결과) ─────
+-- ── 5) 백필: 원본에 있는 모든 날짜를 31일씩 묶는다(다시 돌려도 같은 결과, 같은 판은 건너뜀) ─────
 do $$
 declare
   all_dates date[];
@@ -187,8 +257,8 @@ begin
 end $$;
 
 
--- ── 5) 요약 함수 ───────────────────────────────────────────────
--- 옛 본문(원본을 매번 합침)은 대조용으로 이름만 바꿔 남긴다. 화면은 부르지 않는다.
+-- ── 6) 요약 함수 ───────────────────────────────────────────────
+-- 옛 본문(원본을 매번 합침)은 대조용으로 이름만 바꿔 남긴다(키워드 없음 규칙만 2026-11-13 판으로). 화면은 부르지 않는다.
 create or replace function coupang_keyword_summary_raw(p_from date, p_to date)
 returns json
 language sql
@@ -214,7 +284,7 @@ select json_build_object(
   'entries', (
     select coalesce(json_agg(e), '[]'::json) from (
       select product,
-        case when keyword is null or keyword = '-' then '(키워드 없음: 비검색·외부 지면)' else keyword end as keyword,
+        case when btrim(coalesce(keyword, ''), E' \t\r\n') in ('', '-') then '(키워드 없음: 비검색·외부 지면)' else keyword end as keyword,
         sum(impressions)::float8 as impressions, sum(clicks)::float8 as clicks, sum(spend)::float8 as spend,
         sum(orders_1d)::float8 as orders_1d, sum(conv_sales_1d)::float8 as conv_sales_1d,
         sum(orders_14d)::float8 as orders_14d, sum(conv_sales_14d)::float8 as conv_sales_14d
@@ -234,7 +304,8 @@ $$;
 revoke execute on function coupang_keyword_summary_raw(date, date) from public, anon, authenticated;
 
 -- 화면이 부르는 함수. 이름·인자·모양은 2026-09-18 판과 같다.
--- 날짜마다: 묶음 판(meta.read_at)이 원본 max(read_at) 와 같으면 묶음 표, 아니면(갱신 전·원본이 더 새것) 원본에서 직접.
+-- 날짜마다: 묶음 판(meta.read_at · meta.date_rows)이 원본 판(max(read_at) · count(*))과 같으면 묶음 표,
+-- 아니면(갱신 전·조각이 더 들어옴·일부 삭제·원본이 더 새것) 원본에서 직접.
 create or replace function coupang_keyword_summary(p_from date, p_to date)
 returns json
 language sql
@@ -242,14 +313,15 @@ stable
 set search_path = public, pg_temp
 as $$
 with raw_dates as (
-  select date, max(read_at) as read_at
+  select date, max(read_at) as read_at, count(*)::int as n
   from raw_coupang_keyword
   where date between p_from and p_to
   group by date
 ),
 fresh as (
   select d.date from raw_dates d
-  join coupang_keyword_daily_meta m on m.date = d.date and m.read_at is not distinct from d.read_at
+  join coupang_keyword_daily_meta m
+    on m.date = d.date and m.read_at is not distinct from d.read_at and m.date_rows = d.n
 ),
 stale as (
   select date from raw_dates
@@ -272,7 +344,7 @@ r as (
     coalesce(nullif(trim(regexp_replace(regexp_replace(regexp_replace(
       coalesce(k.campaign, '(캠페인 없음)'), '^로켓배송_', ''), '^[0-9]{6}_', ''), '_[0-9]{6}$', '')), ''),
       coalesce(k.campaign, '(캠페인 없음)')),
-    case when k.keyword is null or k.keyword = '-' then '(키워드 없음: 비검색·외부 지면)' else k.keyword end,
+    case when btrim(coalesce(k.keyword, ''), E' \t\r\n') in ('', '-') then '(키워드 없음: 비검색·외부 지면)' else k.keyword end,
     coalesce(k.placement, '(지면 없음)'),
     k.impressions, k.clicks, k.spend, k.orders_1d, k.conv_sales_1d, k.orders_14d, k.conv_sales_14d, 1
   from raw_coupang_keyword k
@@ -302,7 +374,7 @@ $$;
 grant execute on function coupang_keyword_summary(date, date) to anon, authenticated;
 
 
--- ── 6) 대조: 아래 두 줄이 같으면 정상(행 수 · 광고비 · 14일 전환매출 · 키워드 묶음 수) ─────
+-- ── 7) 대조: 아래 두 줄이 같으면 정상(행 수 · 광고비 · 14일 전환매출 · 키워드 묶음 수) ─────
 with a as (select coupang_keyword_summary(current_date - 30, current_date) j),
      b as (select coupang_keyword_summary_raw(current_date - 30, current_date) j)
 select 'new(daily)' as via, (j->>'rows')::bigint as rows,
@@ -319,10 +391,11 @@ from b;
 
 
 -- ── 되돌리기(필요할 때만, 주석을 풀어 실행) ─────────────────────────
--- docs/sql/coupang-keyword-summary.sql 을 다시 실행하면 요약 함수가 원본만 읽는 옛 판으로 돌아간다.
+-- docs/sql/coupang-keyword-summary.sql 을 다시 실행하면 요약 함수가 원본만 읽는 판으로 돌아간다.
 -- 묶음 표·판 기록 표·갱신 함수는 남겨도 화면·수집에 영향이 없다(대시보드가 갱신 함수를 부르지만 실패해도 수집은 성공).
 -- 완전히 지우려면:
 -- drop function if exists coupang_keyword_daily_refresh(date[]);
+-- drop function if exists coupang_keyword_daily_lag(date, date);
 -- drop function if exists coupang_keyword_summary_raw(date, date);
 -- drop table if exists coupang_keyword_daily_meta;
 -- drop table if exists coupang_keyword_daily;

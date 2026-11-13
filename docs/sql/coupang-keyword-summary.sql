@@ -5,7 +5,7 @@
 -- 규칙은 /api/coupang-keywords 의 JS 판(대체 경로)과 같아야 한다.
 --   - 날짜마다 가장 늦게 읽은(read_at) 파일 하나만 쓴다(맞춤 보고서·예약 보고서 겹침 이중집계 방지)
 --   - 상품 = 캠페인 이름에서 앞 "로켓배송_"·"YYMMDD_", 뒤 "_YYMMDD" 를 뗀 것
---   - 키워드 '-'(비검색·외부 지면)는 한 줄로 묶는다
+--   - 키워드가 null 이거나 앞뒤 공백을 뗀 값이 '' 또는 '-'(비검색·외부 지면)면 한 줄로 묶는다(빈 문자열 포함은 2026-11-13 부터)
 --
 -- 실행: Supabase 대시보드 > SQL Editor. 여러 번 실행해도 안전하다(create or replace).
 
@@ -33,7 +33,7 @@ select json_build_object(
   'entries', (
     select coalesce(json_agg(e), '[]'::json) from (
       select product,
-        case when keyword is null or keyword = '-' then '(키워드 없음: 비검색·외부 지면)' else keyword end as keyword,
+        case when btrim(coalesce(keyword, ''), E' \t\r\n') in ('', '-') then '(키워드 없음: 비검색·외부 지면)' else keyword end as keyword,
         sum(impressions)::float8 as impressions, sum(clicks)::float8 as clicks, sum(spend)::float8 as spend,
         sum(orders_1d)::float8 as orders_1d, sum(conv_sales_1d)::float8 as conv_sales_1d,
         sum(orders_14d)::float8 as orders_14d, sum(conv_sales_14d)::float8 as conv_sales_14d

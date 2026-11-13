@@ -94,3 +94,14 @@ export function refreshDateBatches(rows: unknown[], max = COUPANG_REFRESH_MAX_DA
   for (let i = 0; i < all.length; i += max) out.push(all.slice(i, i + max));
   return out;
 }
+
+// ── 키워드 없음 판정(2026-11-13) ────────────────────────────────
+/**
+ * 비검색·외부 지면 행인가: 키워드가 null 이거나 앞뒤 공백·탭·줄바꿈을 뗀 값이 '' 또는 '-'.
+ * SQL 쪽(coupang_keyword_summary · _raw · coupang_keyword_daily_refresh)의
+ * btrim(coalesce(keyword, ''), E' \t\r\n') in ('', '-') 와 같은 기준이다. 원본 빈 문자열 1,307행(2026-11-13)이 여기 든다.
+ */
+export function isNoKeyword(keyword: string | null | undefined): boolean {
+  const t = (keyword ?? "").replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "");
+  return t === "" || t === "-";
+}

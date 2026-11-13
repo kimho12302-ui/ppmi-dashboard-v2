@@ -140,16 +140,23 @@ export function classifyKeywordSources(
 /**
  * 고른 기간 전체가 마지막 키워드 기록일보다 뒤일 때 띠에 무엇을 쓸지.
  *   "stalled" : 멈춘 원천이 있음(주황 목록이 이미 설명한다)
- *   "adsOff"  : 범위 안 키워드 원천이 전부 「광고비 기록도 끊김」 → "광고 기록이 없는 기간"
+ *   "adsOff"  : 범위 안 키워드 원천이 전부 「광고비 기록도 끊김」 → "광고비 기록도 없는 기간"
+ *   "ended"   : 범위 안 키워드 원천이 전부 「과거 수집 공백」 또는 「광고비 기록도 끊김」이고 공백이 하나 이상
+ *               → "키워드 기록이 끊긴 뒤 광고비만 나갔고 지금은 그것도 끊김"(QA 재검수 LOW-1, 「아직 수집 전」이 아님)
  *   "pending" : 그 밖(아침 동기화 전에 「어제」를 고름, 키워드가 하루이틀 늦음 등) → "아직 수집 전일 수 있음"
  *   "none"    : 기간 안에 키워드 기록이 있음(띠 문장 없음)
  */
-export function periodNotice(sources: SourceLatest[], status: KeywordSourceStatus, from: string): "none" | "stalled" | "adsOff" | "pending" {
+export function periodNotice(sources: SourceLatest[], status: KeywordSourceStatus, from: string): "none" | "stalled" | "adsOff" | "ended" | "pending" {
   const kw = sources.filter((s) => KEYWORD_PLATFORMS.includes(s.platform));
   const latest = kw.reduce<string | null>((m, s) => (!m || s.latest > m ? s.latest : m), null);
   if (!latest || latest >= from) return "none";
   if (status.stalled.length > 0) return "stalled";
-  return kw.length > 0 && status.adsOff.length === kw.length ? "adsOff" : "pending";
+  const key = (s: { platform: string; brand: string }) => `${s.platform}|${s.brand}`;
+  const off = new Set(status.adsOff.map(key));
+  const gap = new Set(status.gap.map(key));
+  if (kw.length > 0 && kw.every((s) => off.has(key(s)))) return "adsOff";
+  if (kw.length > 0 && kw.every((s) => off.has(key(s)) || gap.has(key(s))) && kw.some((s) => gap.has(key(s)))) return "ended";
+  return "pending";
 }
 
 /** 쇼핑 안내를 붙일 브랜드: 고른 기간에 쇼핑검색 광고비가 있는 브랜드(정렬). */
@@ -162,6 +169,17 @@ export function shoppingNoteBrands(spendRows: { brand: string; spend: number | s
 export const LEGACY_LAST_DATE = "2026-05-04";
 /** 05-04 이전 파워링크 자리에 들어간 캠페인 이름(실측 3건, 2026-04-16 ~ 05-04). 정확히 이 이름만 본다. */
 export const LEGACY_NAVER_SEARCH_CAMPAIGNS = ["01.아이언펫_파워링크", "02.너티_파워링크", "05. 사입_파미나/닥터레이"];
+
+/**
+ * 「키워드 마지막 날」 조회에서 옛 캠페인 행을 빼는 PostgREST or 필터(naver_search 조회에 붙인다).
+ * 날짜가 LEGACY_LAST_DATE 뒤이거나, 이름이 위 3건이 아닌 행만 남긴다. 화면에서 빼는 행과 같은 기준이라
+ * 정리 SQL(docs/sql/2026-11-13-keyword-legacy-campaign-rows.sql) 실행 여부와 무관하게 판정이 같다(QA 재검수 MEDIUM-1).
+ * DB 값은 앞뒤 공백 없이 정확한 이름이라(2026-11-13 실측) 여기서는 정확히 같은 값만 뺀다.
+ */
+export function legacyExclusionOrFilter(last = LEGACY_LAST_DATE, names = LEGACY_NAVER_SEARCH_CAMPAIGNS): string {
+  const list = names.map((n) => `"${n.replace(/["\\]/g, "")}"`).join(",");
+  return `date.gt.${last},keyword.not.in.(${list})`;
+}
 
 /** 앞뒤 공백·탭·줄바꿈만 뗀다. SQL 정리 파일의 btrim(keyword, E' \t\r\n') 과 같은 기준. */
 export function trimLegacyName(s: string | null | undefined): string {
@@ -215,7 +233,9 @@ export function mergeKeywordSummaries(...parts: KeywordSummaryRow[][]): KeywordS
       conversion_value: cv, wasted_cost: num(g.wasted_cost) + num(r.wasted_cost), n: num(g.n) + num(r.n),
     });
   }
-  return Array.from(m.values()).sort((a, b) => b.clicks - a.clicks);
+  // keyword_summary RPC 와 같은 순서: 클릭 수 내림차순 → 플랫폼 → 키워드(QA 재검수 LOW-5). 글자 비교는 코드값 순.
+  const cmp = (x: string | null, y: string | null) => ((x ?? "") < (y ?? "") ? -1 : (x ?? "") > (y ?? "") ? 1 : 0);
+  return Array.from(m.values()).sort((a, b) => (b.clicks - a.clicks) || cmp(a.platform, b.platform) || cmp(a.keyword, b.keyword));
 }
 // ── 루틴이 본 후보 ─────────────────────────────────────────────
 

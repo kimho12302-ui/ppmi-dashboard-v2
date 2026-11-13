@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   coupangRpcFailure, daysInclusive, shortRange, shorterRanges, fallbackAllowed, coupangLoadErrorMessage,
-  COUPANG_FALLBACK_MAX_ROWS, COUPANG_LOAD_FAIL_STATUS, COUPANG_REFRESH_MAX_DATES, refreshDateBatches,
+  COUPANG_FALLBACK_MAX_ROWS, COUPANG_LOAD_FAIL_STATUS, COUPANG_REFRESH_MAX_DATES, refreshDateBatches, isNoKeyword,
 } from "../../src/lib/coupang-keyword-range.ts";
 
 test("요약 함수 오류 가르기: 함수 없음 · 시간 초과(코드 또는 문구) · 그 밖", () => {
@@ -58,4 +58,9 @@ test("묶음 갱신 날짜: 중복·형식 틀린 값 빼고 정렬, 62일씩 �
   const b = refreshDateBatches(many);
   assert.deepEqual(b.map((x) => x.length), [62, 8]);
   assert.equal(COUPANG_REFRESH_MAX_DATES, 62);
+});
+
+test("키워드 없음 판정: null·빈 문자열·공백·'-' 는 묶고 진짜 키워드는 그대로(SQL btrim 기준과 같음)", () => {
+  for (const k of [null, undefined, "", "  ", "-", " - ", "\t-\r\n"]) assert.equal(isNoKeyword(k), true, JSON.stringify(k));
+  for (const k of ["개껌", "--", "-개껌", " 우유껌 "]) assert.equal(isNoKeyword(k), false, k);
 });

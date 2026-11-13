@@ -6,7 +6,7 @@ import {
   stalledSources, stalledByPlatform, groupRoutine, routineProducts, keywordState, buildMedinexTest,
   rankLabel, rankDelta, buildRankView, LOCK_LINE_WON,
   classifyKeywordSources, shoppingNoteBrands, isLegacyCampaignRow, splitLegacyRows, periodNotice,
-  trimLegacyName, splitPeriodAtLegacy, mergeKeywordSummaries,
+  trimLegacyName, splitPeriodAtLegacy, mergeKeywordSummaries, legacyExclusionOrFilter, judgeSource,
 } from "../../src/lib/sa-balancelab.ts";
 
 test("수집 멈춤: 오늘보다 3일 넘게 앞인 조합만", () => {
@@ -67,7 +67,8 @@ test("원천 판정: 광고비가 키워드 뒤로 한참 이어졌다가 지금
   const s = classifyKeywordSources(nut("2026-10-01"), nutSpend("2026-11-01"), "2026-11-13");
   assert.deepEqual(s.gap, [{ platform: "naver_search", brand: "nutty", latest: "2026-10-01", lastSpend: "2026-11-01" }]);
   assert.equal(s.adsOff.length + s.stalled.length + s.pending.length, 0);
-  assert.equal(periodNotice(nut("2026-10-01"), s, "2026-10-05"), "pending"); // 광고 끔으로 단정하지 않음
+  // 광고 끔으로 단정하지도, 「아직 수집 전(매일 아침)」이라 하지도 않음(QA 재검수 LOW-1)
+  assert.equal(periodNotice(nut("2026-10-01"), s, "2026-10-05"), "ended");
 });
 
 test("원천 판정: 광고비가 키워드 뒤로 이어진 적 없고 3일 넘게 끊겼거나 아예 없으면 광고비 기록도 끊김", () => {
@@ -146,6 +147,25 @@ test("옛 캠페인 단위 기록: 파워링크가 아닌 행 전부 + 파워링
   assert.equal(rows.length, 3); // 원본은 그대로
 });
 
+test("아이언펫 판정은 정리 SQL 실행 여부와 무관: 옛 캠페인 행을 빼면 키워드 03-22 → 과거 수집 공백", () => {
+  // 화면·latestBySource 가 옛 캠페인 행(05-04 「01.아이언펫_파워링크」)을 빼므로 마지막 키워드는 03-22
+  assert.equal(judgeSource("2026-03-22", "2026-05-06", "2026-11-13"), "gap");
+  const src = [{ platform: "naver_search", brand: "ironpet", latest: "2026-03-22" }];
+  const st = classifyKeywordSources(src, [{ platform: "naver_search", brand: "ironpet", lastSpend: "2026-05-06" }], "2026-11-13");
+  assert.deepEqual(st.gap.map((x) => [x.latest, x.lastSpend]), [["2026-03-22", "2026-05-06"]]);
+  assert.equal(periodNotice(src, st, "2026-10-14"), "ended");
+  // 공백과 광고비 끊김이 섞여도 ended, 끊김만이면 adsOff
+  const mix = [...src, { platform: "naver_search", brand: "nutty", latest: "2026-10-01" }];
+  const st2 = classifyKeywordSources(mix, [{ platform: "naver_search", brand: "ironpet", lastSpend: "2026-05-06" }, { platform: "naver_search", brand: "nutty", lastSpend: "2026-10-02" }], "2026-11-13");
+  assert.equal(periodNotice(mix, st2, "2026-10-14"), "ended");
+});
+
+test("옛 캠페인 행 제외 필터: 05-04 뒤이거나 이름 3건이 아닌 행", () => {
+  assert.equal(legacyExclusionOrFilter(),
+    'date.gt.2026-05-04,keyword.not.in.("01.아이언펫_파워링크","02.너티_파워링크","05. 사입_파미나/닥터레이")');
+  assert.equal(legacyExclusionOrFilter("2026-01-01", ['a"b']), 'date.gt.2026-01-01,keyword.not.in.("ab")');
+});
+
 test("옛 기록 기간 나누기: 05-04 까지와 그 뒤", () => {
   assert.deepEqual(splitPeriodAtLegacy("2026-04-01", "2026-05-31"), { early: ["2026-04-01", "2026-05-04"], late: ["2026-05-05", "2026-05-31"] });
   assert.deepEqual(splitPeriodAtLegacy("2026-10-14", "2026-11-12"), { early: null, late: ["2026-10-14", "2026-11-12"] });
@@ -163,6 +183,10 @@ test("묶음 합치기: (플랫폼, 키워드)로 더하고 전환매출은 둘 
   const m = mergeKeywordSummaries(a, b);
   assert.deepEqual(m[0], { platform: "naver_search", keyword: "x", impressions: 15, clicks: 4, cost: 150, conversions: 1, conversion_value: 9000, wasted_cost: 100, n: 3 });
   assert.equal(m[1].conversion_value, null);
+  // RPC 와 같은 순서: 클릭 내림차순 → 플랫폼 → 키워드
+  const t = (platform, keyword, clicks) => ({ platform, keyword, impressions: 0, clicks, cost: 0, conversions: 0, conversion_value: null, wasted_cost: 0, n: 1 });
+  const o = mergeKeywordSummaries([t("naver_search", "나", 5), t("meta", "가", 5), t("naver_search", "가", 5)], [t("naver_search", "다", 9)]);
+  assert.deepEqual(o.map((r) => `${r.platform}/${r.keyword}`), ["naver_search/다", "meta/가", "naver_search/가", "naver_search/나"]);
   assert.equal(mergeKeywordSummaries(a, []).length, 1);
 });
 
