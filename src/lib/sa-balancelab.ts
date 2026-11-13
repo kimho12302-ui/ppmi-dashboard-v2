@@ -61,60 +61,78 @@ export function stalledByPlatform(stalled: SourceLatest[]): Record<string, Sourc
 // 그런데 그 표의 05-04 이전 네이버 쇼핑·메타·GFA·구글 행은 키워드가 아니라 **캠페인 이름**이었고
 // (marketing-dashboard scripts/sync_naver_keywords.py 머리 주석: "애초에 키워드 단위였던 적이 없다"),
 // 9월 새 수집기는 파워링크(naver_search)만 키워드 단위로 넣는다. 쇼핑검색은 상품 단위라 설계상 없다.
-// 또 아이언펫처럼 광고를 끈 원천도 "멈춤"으로 불렀다. 그래서:
-//   - 「수집 멈춤」은 키워드 단위 원천인데 그 브랜드·채널 광고비가 마지막 키워드 기록 뒤로도 이어질 때만
-//   - 광고비도 끊겼으면 「광고 집행 없음」(회색 안내)
-//   - 쇼핑검색은 그 브랜드에 쇼핑 광고비가 있을 때만 "상품 단위라 이 표에 없음" 한 줄
-//   - 메타·GFA·구글은 키워드 원천이 아니라 띠에서 뺀다(구글은 일부러 끈 것, 2026-05)
+// 또 아이언펫처럼 광고를 끈 원천도 "멈춤"으로 불렀다. 그래서 키워드 원천마다 광고비와 맞대어 넷으로 가른다:
+//   stalled  광고비가 키워드 뒤로 이어지고 지금도 나감        → 주황 「수집 멈춤」
+//   gap      광고비가 키워드 뒤로 이어졌지만 지금은 끊김       → 회색 「과거 수집 공백」
+//   adsOff   광고비가 키워드 뒤로 이어진 적 없고 지금도 끊김   → 회색 「광고비 기록도 끊김」(단정하지 않음)
+//   pending  그 밖(광고비는 최근인데 키워드 뒤 꼬리가 3일 안)  → 회색 「확인 중」(멈춤 초기·동기화 지연을 가르지 않음)
+// 광고비 원천은 키워드 원천과 같은 범위여야 한다. 파워링크 키워드에는 naver_campaign_daily 의 WEB_SITE 캠페인 비용을 댄다
+// (daily_ad_spend.naver_search 는 브랜드검색·파워컨텐츠까지 섞여, 파워링크만 끈 브랜드가 거짓 「멈춤」이 된다).
 
 /** 키워드 단위로 모으는 플랫폼(keyword_performance.platform). 지금은 네이버 파워링크 하나. */
 export const KEYWORD_PLATFORMS = ["naver_search"];
 
-/** keyword_performance 플랫폼 → daily_ad_spend.channel. 광고비로 "광고가 돌고 있나"를 본다. */
-export const KEYWORD_SPEND_CHANNEL: Record<string, string> = {
-  naver_search: "naver_search",
-  naver_shopping: "naver_shopping",
-};
+/** 키워드 플랫폼 → naver_campaign_daily.campaign_type. 같은 범위의 광고비로 "광고가 돌고 있나"를 본다. */
+export const KEYWORD_SPEND_CAMPAIGN_TYPE: Record<string, string> = { naver_search: "WEB_SITE" };
 
-/** 키워드 표에 없는 광고 중 안내를 붙이는 채널. 쇼핑검색은 상품 단위라 실제 검색어가 「네이버 검색어」 탭에 있다. */
+/** 키워드 표에 없는 광고 중 안내를 붙이는 채널(daily_ad_spend.channel). 쇼핑검색은 상품 단위라 실제 검색어가 「네이버 검색어」 탭에 있다. */
 export const SHOPPING_SPEND_CHANNEL = "naver_shopping";
 
-/** 마지막 광고비가 오늘보다 이 일수 안이면 "광고가 돌고 있다"로 본다(광고비 동기화 지연 여유). */
+/** 광고비가 키워드 뒤로 이어진 원천을 「지금도 나가는 중」(멈춤)으로 볼 최근 일수. 넘으면 「과거 수집 공백」. */
 export const ACTIVE_SPEND_DAYS = 7;
 
 /** (플랫폼, 브랜드)의 마지막 광고비(>0) 날짜. platform 은 keyword_performance 쪽 이름이다. */
 export interface SpendLatest { platform: string; brand: string; lastSpend: string }
 
-export interface SourceVerdict extends SourceLatest { lastSpend: string | null }
+/** latest = null 은 광고비는 있는데 키워드 기록이 한 번도 없는 브랜드 */
+export interface SourceVerdict { platform: string; brand: string; latest: string | null; lastSpend: string | null }
 
 export interface KeywordSourceStatus {
-  /** 광고비는 이어지는데 키워드 기록이 끊김(진짜 수집 멈춤) */
   stalled: SourceVerdict[];
-  /** 키워드 기록도 광고비도 끊김 = 광고를 끈 것. 경고 아님 */
+  gap: SourceVerdict[];
   adsOff: SourceVerdict[];
+  pending: SourceVerdict[];
+}
+
+export type SourceKind = keyof KeywordSourceStatus | "ok";
+
+/**
+ * 원천 하나 판정. cut = today - STALL_DAYS.
+ *   키워드가 cut 이상(3일 안)이면 ok.
+ *   광고비가 키워드 + STALL_DAYS 보다 뒤까지 이어졌으면(spendAfter): 광고비가 최근 ACTIVE_SPEND_DAYS 안이면 stalled, 아니면 gap.
+ *   이어진 적 없으면: 광고비도 cut 보다 앞(또는 없음)이면 adsOff, 아니면 pending.
+ *   키워드 기록이 아예 없으면(latest=null) 광고비가 있는 것 자체가 spendAfter 다.
+ */
+export function judgeSource(latest: string | null, lastSpend: string | null, today: string,
+  opts: { stallDays?: number; activeDays?: number } = {}): SourceKind {
+  const stallDays = opts.stallDays ?? STALL_DAYS;
+  const activeDays = opts.activeDays ?? ACTIVE_SPEND_DAYS;
+  const cut = addDays(today, -stallDays);
+  if (latest && latest >= cut) return "ok";
+  const spendAfter = !!lastSpend && (!latest || lastSpend > addDays(latest, stallDays));
+  if (spendAfter) return lastSpend! >= addDays(today, -activeDays) ? "stalled" : "gap";
+  if (!lastSpend || lastSpend < cut) return latest ? "adsOff" : "ok";
+  return "pending";
 }
 
 /**
- * 키워드 원천마다 「수집 멈춤」·「광고 집행 없음」을 가른다.
- * 멈춤 = 키워드 원천이고, 마지막 키워드가 today-STALL_DAYS 보다 앞이고,
- *        광고비가 ACTIVE_SPEND_DAYS 안에 있고, 마지막 광고비가 마지막 키워드 + STALL_DAYS 보다 뒤.
- *   (아이언펫 파워링크: 키워드 05-04, 광고비 05-06 77원 → 이틀 꼬리라 멈춤 아님 → 광고 집행 없음)
- * 광고비를 못 읽었으면(spend=null) 판정하지 않는다. 호출부가 「수집 상태 모름」으로 띄운다.
+ * 키워드 원천을 넷으로 가른다. 키워드 기록이 있는 원천과, 광고비만 있고 키워드 기록이 한 번도 없는 원천을 둘 다 본다.
+ * 광고비를 못 읽었으면 판정하지 않는다(호출부가 「수집 상태 모름」으로 띄운다).
  */
 export function classifyKeywordSources(
   sources: SourceLatest[], spend: SpendLatest[], today: string,
   opts: { stallDays?: number; activeDays?: number } = {},
 ): KeywordSourceStatus {
-  const stallDays = opts.stallDays ?? STALL_DAYS;
-  const activeDays = opts.activeDays ?? ACTIVE_SPEND_DAYS;
-  const activeCut = addDays(today, -activeDays);
-  const spendOf = new Map(spend.map((s) => [`${s.platform}|${s.brand}`, s.lastSpend]));
-  const out: KeywordSourceStatus = { stalled: [], adsOff: [] };
-  const old = stalledSources(sources.filter((s) => KEYWORD_PLATFORMS.includes(s.platform)), today, stallDays);
-  for (const s of old) {
-    const lastSpend = spendOf.get(`${s.platform}|${s.brand}`) ?? null;
-    const running = !!lastSpend && lastSpend >= activeCut && lastSpend > addDays(s.latest, stallDays);
-    (running ? out.stalled : out.adsOff).push({ ...s, lastSpend });
+  const out: KeywordSourceStatus = { stalled: [], gap: [], adsOff: [], pending: [] };
+  const latestOf = new Map(sources.filter((s) => KEYWORD_PLATFORMS.includes(s.platform)).map((s) => [`${s.platform}|${s.brand}`, s.latest]));
+  const spendOf = new Map(spend.filter((s) => KEYWORD_PLATFORMS.includes(s.platform)).map((s) => [`${s.platform}|${s.brand}`, s.lastSpend]));
+  const keys = Array.from(new Set([...latestOf.keys(), ...spendOf.keys()])).sort();
+  for (const key of keys) {
+    const [platform, brand] = key.split("|");
+    const latest = latestOf.get(key) ?? null;
+    const lastSpend = spendOf.get(key) ?? null;
+    const kind = judgeSource(latest, lastSpend, today, opts);
+    if (kind !== "ok") out[kind].push({ platform, brand, latest, lastSpend });
   }
   return out;
 }
@@ -122,10 +140,9 @@ export function classifyKeywordSources(
 /**
  * 고른 기간 전체가 마지막 키워드 기록일보다 뒤일 때 띠에 무엇을 쓸지.
  *   "stalled" : 멈춘 원천이 있음(주황 목록이 이미 설명한다)
- *   "adsOff"  : 범위 안 원천이 전부 광고를 끈 상태 → "광고를 쉬는 기간"
- *   "pending" : 그 밖(예: 아침 동기화 전에 「어제」를 고름, 키워드가 1~3일 늦음) → "아직 수집 전일 수 있음"
+ *   "adsOff"  : 범위 안 키워드 원천이 전부 「광고비 기록도 끊김」 → "광고 기록이 없는 기간"
+ *   "pending" : 그 밖(아침 동기화 전에 「어제」를 고름, 키워드가 하루이틀 늦음 등) → "아직 수집 전일 수 있음"
  *   "none"    : 기간 안에 키워드 기록이 있음(띠 문장 없음)
- * 광고비가 이어지는데 "광고를 쉰다"고 단정하지 않는 것이 요점이다.
  */
 export function periodNotice(sources: SourceLatest[], status: KeywordSourceStatus, from: string): "none" | "stalled" | "adsOff" | "pending" {
   const kw = sources.filter((s) => KEYWORD_PLATFORMS.includes(s.platform));
@@ -140,21 +157,27 @@ export function shoppingNoteBrands(spendRows: { brand: string; spend: number | s
   return Array.from(new Set(spendRows.filter((r) => (Number(r.spend) || 0) > 0).map((r) => r.brand))).sort();
 }
 
-/** 05-04 이전 파워링크 자리에 들어간 캠페인 이름(실측 3건, 2026-04-16 ~ 05-04). 키워드가 아니다. */
+// ── 옛 캠페인 단위 기록 ────────────────────────────────────────
+/** 캠페인 이름 행이 들어간 마지막 날(2026-11-13 실측). 이 날 이후 행은 판정하지 않는다. */
+export const LEGACY_LAST_DATE = "2026-05-04";
+/** 05-04 이전 파워링크 자리에 들어간 캠페인 이름(실측 3건, 2026-04-16 ~ 05-04). 정확히 이 이름만 본다. */
 export const LEGACY_NAVER_SEARCH_CAMPAIGNS = ["01.아이언펫_파워링크", "02.너티_파워링크", "05. 사입_파미나/닥터레이"];
-const LEGACY_CAMPAIGN_RE = /^\d{2}\.\s?[^\s_]+_/;
+
+/** 앞뒤 공백·탭·줄바꿈만 뗀다. SQL 정리 파일의 btrim(keyword, E' \t\r\n') 과 같은 기준. */
+export function trimLegacyName(s: string | null | undefined): string {
+  return (s || "").replace(/^[ \t\r\n]+|[ \t\r\n]+$/g, "");
+}
 
 /**
- * 옛 캠페인 단위 기록인가. 키워드 단위 플랫폼이 아니면 전부(05-04 이전 쇼핑·메타·GFA·구글 행),
- * 파워링크면 캠페인 이름 꼴("01.아이언펫_파워링크")만. 넓은 정규식은 쓰지 않는다(「강아지수제간식쇼핑몰」은 진짜 키워드).
+ * 옛 캠페인 단위 기록인가. **LEGACY_LAST_DATE 이전 기간의 행에만** 쓴다(호출부가 기간을 나눈다, splitPeriodAtLegacy).
+ * 키워드 단위 플랫폼이 아니면 전부(쇼핑·메타·GFA·구글), 파워링크면 LEGACY_NAVER_SEARCH_CAMPAIGNS 의 정확한 이름만.
  */
 export function isLegacyCampaignRow(platform: string, keyword: string | null | undefined): boolean {
   if (!KEYWORD_PLATFORMS.includes(platform)) return true;
-  const k = (keyword || "").trim();
-  return LEGACY_NAVER_SEARCH_CAMPAIGNS.includes(k) || LEGACY_CAMPAIGN_RE.test(k);
+  return LEGACY_NAVER_SEARCH_CAMPAIGNS.includes(trimLegacyName(keyword));
 }
 
-/** 키워드 행과 옛 캠페인 단위 행을 나눈다(원본 배열은 바꾸지 않는다). */
+/** 키워드 행과 옛 캠페인 단위 행을 나눈다(원본 배열은 바꾸지 않는다). LEGACY_LAST_DATE 이전 기간의 묶음에만 쓴다. */
 export function splitLegacyRows<T extends { platform: string; keyword: string | null }>(rows: T[]): { keywords: T[]; legacy: T[] } {
   const keywords: T[] = [];
   const legacy: T[] = [];
@@ -162,6 +185,38 @@ export function splitLegacyRows<T extends { platform: string; keyword: string | 
   return { keywords, legacy };
 }
 
+/** 기간을 LEGACY_LAST_DATE 까지(early)와 그 뒤(late)로 나눈다. 없는 쪽은 null. */
+export function splitPeriodAtLegacy(from: string, to: string, last = LEGACY_LAST_DATE): { early: [string, string] | null; late: [string, string] | null } {
+  if (!from || !to || to < from) return { early: null, late: null };
+  const early: [string, string] | null = from <= last ? [from, to < last ? to : last] : null;
+  const lateFrom = addDays(last, 1);
+  const late: [string, string] | null = to >= lateFrom ? [from > lateFrom ? from : lateFrom, to] : null;
+  return { early, late };
+}
+
+/** keyword_summary 묶음 행(같은 모양) 두 덩어리를 (플랫폼, 키워드)로 더한다. conversion_value 는 둘 다 null 이면 null. */
+export interface KeywordSummaryRow {
+  platform: string; keyword: string; impressions: number; clicks: number; cost: number; conversions: number;
+  conversion_value: number | null; wasted_cost: number; n: number;
+}
+export function mergeKeywordSummaries(...parts: KeywordSummaryRow[][]): KeywordSummaryRow[] {
+  const m = new Map<string, KeywordSummaryRow>();
+  const num = (v: unknown) => Number(v) || 0;
+  for (const part of parts) for (const r of part) {
+    const k = JSON.stringify([r.platform, r.keyword]);
+    const g = m.get(k);
+    if (!g) { m.set(k, { ...r }); continue; }
+    const cv = g.conversion_value === null && (r.conversion_value === null || r.conversion_value === undefined)
+      ? null : num(g.conversion_value) + num(r.conversion_value);
+    m.set(k, {
+      ...g,
+      impressions: num(g.impressions) + num(r.impressions), clicks: num(g.clicks) + num(r.clicks),
+      cost: num(g.cost) + num(r.cost), conversions: num(g.conversions) + num(r.conversions),
+      conversion_value: cv, wasted_cost: num(g.wasted_cost) + num(r.wasted_cost), n: num(g.n) + num(r.n),
+    });
+  }
+  return Array.from(m.values()).sort((a, b) => b.clicks - a.clicks);
+}
 // ── 루틴이 본 후보 ─────────────────────────────────────────────
 
 export interface RoutineCandidate {

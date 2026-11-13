@@ -1,9 +1,9 @@
 "use client";
 
 // 키워드 분석 탭 원천 상태 띠. 2026-11-10 신설, 2026-11-13 판정 교체.
-// 판정은 src/lib/sa-balancelab.ts classifyKeywordSources (키워드 단위 원천 × 광고비).
-//   - 주황: 키워드 원천인데 광고비가 이어지는 동안 키워드 기록이 끊김 = 「수집 멈춤」
-//   - 회색: 광고를 끈 원천(「광고 집행 없음」), 쇼핑검색 안내, 옛 캠페인 단위 기록을 뺐다는 안내
+// 판정은 src/lib/sa-balancelab.ts classifyKeywordSources (키워드 단위 원천 × 같은 범위 광고비).
+//   - 주황: 광고비가 키워드 뒤로 이어지고 지금도 나가는데 키워드 기록이 끊김 = 「수집 멈춤」
+//   - 회색: 확인 중(하루이틀 늦음일 수 있음) · 과거 수집 공백 · 광고비 기록도 끊김 · 쇼핑검색 안내 · 옛 캠페인 단위 기록
 // 메타·GFA·구글은 키워드 원천이 아니라 여기 나오지 않는다(구글은 일부러 끈 것).
 
 import { useMemo } from "react";
@@ -44,7 +44,9 @@ export function KeywordSourceStatus({ status, sources, labels, from, to, latestC
       </div>
     );
   }
-  const { stalled, adsOff } = status;
+  const { stalled, adsOff, gap, pending } = status;
+  const name = (s: { platform: string; brand: string }) => `${labels[s.platform] || s.platform} ${brandName(s.brand)}`;
+  const kwLast = (latest: string | null) => (latest ? `키워드 마지막 ${latest}` : "키워드 기록 없음");
   // 기간 전체가 마지막 키워드 기록보다 뒤: 멈춘 원천이 있으면 주황 목록, 전부 광고를 껐으면 "쉬는 기간",
   // 그 밖(동기화 전 「어제」 등)은 "아직 수집 전일 수 있음". 광고비가 나가는데 쉰다고 단정하지 않는다.
   const notice = periodNotice(sources || [], status, from);
@@ -53,7 +55,7 @@ export function KeywordSourceStatus({ status, sources, labels, from, to, latestC
   const legacyRows = legacy || [];
   const legacyCost = legacyRows.reduce((s, r) => s + (Number(r.cost) || 0), 0);
   const warn = stalled.length > 0;
-  const info = adsOff.length > 0 || shopping.length > 0 || legacyRows.length > 0 || allBefore;
+  const info = adsOff.length > 0 || gap.length > 0 || pending.length > 0 || shopping.length > 0 || legacyRows.length > 0 || allBefore;
   if (!warn && !info) return null;
 
   return (
@@ -71,7 +73,7 @@ export function KeywordSourceStatus({ status, sources, labels, from, to, latestC
           <ul className="list-disc pl-4">
             {stalled.map((s) => (
               <li key={`${s.platform}|${s.brand}`}>
-                {labels[s.platform] || s.platform} · {brandName(s.brand)}: 수집 멈춤(키워드 마지막 {s.latest}, 광고비는 {s.lastSpend}까지)
+                {labels[s.platform] || s.platform} · {brandName(s.brand)}: 수집 멈춤({kwLast(s.latest)}, 광고비는 {s.lastSpend}까지)
               </li>
             ))}
           </ul>
@@ -79,7 +81,7 @@ export function KeywordSourceStatus({ status, sources, labels, from, to, latestC
       )}
       {notice === "adsOff" && (
         <p className="text-muted-foreground">
-          고른 기간({from} ~ {to})에는 이 브랜드의 키워드 광고 기록이 없습니다. 마지막 키워드 기록은 <b>{latestCollected}</b>이고, 그 뒤로 광고비도 없어 광고를 쉬는 기간으로 봅니다.
+          고른 기간({from} ~ {to})에는 이 브랜드의 키워드 기록이 없습니다. 마지막 키워드 기록은 <b>{latestCollected}</b>이고, 그 뒤로 파워링크 광고비 기록도 없습니다(광고를 껐거나 네이버 수집 전체가 멈춤).
         </p>
       )}
       {notice === "pending" && (
@@ -87,16 +89,31 @@ export function KeywordSourceStatus({ status, sources, labels, from, to, latestC
           고른 기간({from} ~ {to})에는 아직 키워드 기록이 없습니다. 마지막 키워드 기록은 <b>{latestCollected}</b>입니다. 아직 수집 전일 수 있으니(매일 아침 들어옴) 성과 0으로 읽지 말고 기간을 앞으로 넓히거나 나중에 다시 보세요.
         </p>
       )}
+      {pending.length > 0 && (
+        <p className="text-muted-foreground">
+          확인 중:{" "}
+          {pending.map((s, i) => (
+            <span key={`${s.platform}|${s.brand}`}>{i > 0 && " · "}{name(s)}({kwLast(s.latest)}, 광고비 마지막 {s.lastSpend})</span>
+          ))}
+          . 키워드가 3일 넘게 안 들어왔지만 광고비가 키워드 뒤로 아직 3일 넘게 이어지지 않아, 하루이틀 늦게 들어오는 중인지 멈춘 것인지 아직 가르지 않습니다.
+        </p>
+      )}
+      {gap.length > 0 && (
+        <p className="text-muted-foreground">
+          과거 수집 공백:{" "}
+          {gap.map((s, i) => (
+            <span key={`${s.platform}|${s.brand}`}>{i > 0 && " · "}{name(s)}({kwLast(s.latest)} ~ 광고비 {s.lastSpend}까지)</span>
+          ))}
+          . 그 사이 광고비는 나갔는데 키워드 기록이 없습니다. 지금은 광고비도 끊겨 있습니다.
+        </p>
+      )}
       {adsOff.length > 0 && (
         <p className="text-muted-foreground">
-          광고 집행 없음:{" "}
+          광고비 기록도 끊김:{" "}
           {adsOff.map((s, i) => (
-            <span key={`${s.platform}|${s.brand}`}>
-              {i > 0 && " · "}
-              {labels[s.platform] || s.platform} {brandName(s.brand)}(키워드 마지막 {s.latest}{s.lastSpend ? `, 광고비 마지막 ${s.lastSpend}` : ""})
-            </span>
+            <span key={`${s.platform}|${s.brand}`}>{i > 0 && " · "}{name(s)}({kwLast(s.latest)}{s.lastSpend ? `, 파워링크 광고비 마지막 ${s.lastSpend}` : ", 파워링크 광고비 기록 없음"})</span>
           ))}
-          . 광고를 끈 것이라 수집 멈춤이 아닙니다.
+          . 광고를 껐거나 네이버 수집 전체가 멈춘 것입니다. 키워드 수집만 멈춘 것은 아닙니다.
         </p>
       )}
       {shopping.length > 0 && (

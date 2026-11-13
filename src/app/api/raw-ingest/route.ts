@@ -4,6 +4,7 @@ import { revalidateAfter } from "@/lib/api-cache";
 import { ingestWekeep, isCollectorSource, COLLECTOR_SOURCES } from "@/lib/wekeep-ingest";
 import { kstDate } from "@/lib/date";
 import { API_KEY_HEADER, isApiKeyValid } from "@/lib/team-auth";
+import { refreshDateBatches } from "@/lib/coupang-keyword-range";
 
 // 원천(raw) 수집 값을 받는 자리. 2026-09-17 신설.
 //
@@ -53,6 +54,27 @@ const TARGET: Record<Source, { table: string; onConflict: string }> = {
 // 한 번에 너무 많이 받으면 요청이 죽는다. 나눠 넣는다.
 const CHUNK = 500;
 
+/**
+ * 쿠팡 키워드 원본 적재 뒤 그 날짜들의 일별 묶음(coupang_keyword_daily)을 다시 만든다. 2026-11-13(QA M-1).
+ * ★ 수집은 이 단계 때문에 실패하지 않는다. 함수가 없거나(SQL 실행 전) 시간 제한에 걸려도 결과만 적고 넘어간다.
+ *   묶음이 늦어도 요약 함수(coupang_keyword_summary)가 그날을 원본에서 합치므로 화면 숫자는 맞다(느릴 뿐).
+ *   원본 표에 트리거를 걸지 않은 이유: 트리거가 실패하면 upsert 자체가 「저장 실패」가 된다.
+ */
+async function refreshCoupangDaily(rows: unknown[]): Promise<{ ok: boolean; dates: number; error?: string }> {
+  const batches = refreshDateBatches(rows);
+  let dates = 0;
+  for (const p_dates of batches) {
+    try {
+      const { error } = await supabase.rpc("coupang_keyword_daily_refresh", { p_dates });
+      if (error) return { ok: false, dates, error: `${error.code || ""} ${error.message}`.trim() };
+      dates += p_dates.length;
+    } catch (e) {
+      return { ok: false, dates, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return { ok: true, dates };
+}
+
 async function postImpl(req: NextRequest) {
   let body: { source?: string; rows?: unknown[] };
   try {
@@ -98,6 +120,11 @@ async function postImpl(req: NextRequest) {
       const { error } = await supabase.from(table).upsert(slice, { onConflict });
       if (error) throw error;
       written += slice.length;
+    }
+    if (source === "coupang-keyword") {
+      const daily_refresh = await refreshCoupangDaily(rows);
+      if (!daily_refresh.ok) console.warn("[raw-ingest] 쿠팡 일별 묶음 갱신 실패(수집은 성공):", daily_refresh.error);
+      return NextResponse.json({ ok: true, table, written, daily_refresh });
     }
     return NextResponse.json({ ok: true, table, written });
   } catch (e) {

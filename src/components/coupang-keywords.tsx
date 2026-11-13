@@ -20,7 +20,8 @@ interface Sum {
 }
 interface Entry extends Sum { product: string; keyword: string }
 interface PlacementEntry extends Sum { product: string; placement: string }
-interface Resp { entries: Entry[]; placements: PlacementEntry[]; rows: number; latestCollected: string | null; error?: string }
+/** from·to = 서버가 실제로 합친 기간(2026-11-13). 화면 기간과 다르면 다른 기간의 숫자이므로 쓰지 않는다. */
+interface Resp { entries: Entry[]; placements: PlacementEntry[]; rows: number; latestCollected: string | null; error?: string; from?: string; to?: string }
 
 const METRICS: (keyof Sum)[] = ["impressions", "clicks", "spend", "orders_1d", "conv_sales_1d", "orders_14d", "conv_sales_14d"];
 const zero = (): Sum => ({ impressions: 0, clicks: 0, spend: 0, orders_1d: 0, conv_sales_1d: 0, orders_14d: 0, conv_sales_14d: 0 });
@@ -108,10 +109,14 @@ export function CoupangKeywordSection({ brand, from: pageFrom, to: pageTo }: { b
     requestAnimationFrame(() => kwRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
 
-  if (loading) return <Card><CardContent className="p-8 text-center text-muted-foreground">쿠팡 키워드 불러오는 중...</CardContent></Card>;
+  // ★ QA HIGH-2(2026-11-13): useFetch 는 주소가 바뀌어도 새 응답이 올 때까지 앞 기간의 data 를 들고 있다.
+  //   응답 기간(from·to)이 지금 화면 기간과 다르면 그 숫자를 그리지 않는다(30일 라벨 아래 7일 숫자가 남던 경로).
+  const mismatched = !!data && !data.error && data.from !== undefined && (data.from !== from || data.to !== to);
+  // 실패가 있으면 들고 있는 숫자와 무관하게 실패를 먼저 보인다(옛 숫자를 새 기간 것으로 오해하지 않게).
+  const loadError = error || data?.error || null;
+  if (loading || (mismatched && !loadError)) return <Card><CardContent className="p-8 text-center text-muted-foreground">쿠팡 키워드 불러오는 중...</CardContent></Card>;
   // ★ 2026-11-13: 예전엔 useFetch 의 error 를 안 봐서, 500(DB 시간 초과)이면 data 가 비어 「아직 수집된 쿠팡 키워드가 없습니다」가 떴다.
-  //   실패는 실패로 적고, 줄여 보기·다시 시도를 준다. 직전 값이 있으면(data) 그대로 그리고 화면 위 「갱신 실패」에 맡긴다.
-  const loadError = data?.error || (!data ? error : null);
+  //   실패는 실패로 적고, 줄여 보기·다시 시도를 준다.
   if (loadError) {
     const shorter = shorterRanges(from, to);
     return (
