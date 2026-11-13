@@ -43,13 +43,17 @@ async function lastSpendBySource(brands: string[]): Promise<SpendLatest[]> {
   return found.filter((x): x is SpendLatest => x !== null);
 }
 
-/** 고른 기간에 쇼핑검색 광고비가 있는 브랜드. 키워드 표에 없다는 안내를 그 브랜드에만 붙인다. */
+/** 고른 기간에 쇼핑검색 광고비가 있는 브랜드. 키워드 표에 없다는 안내를 그 브랜드에만 붙인다.
+ *  브랜드마다 한 줄(limit 1)만 본다. 기간이 길어도(올해·전체) 행 한도(1,000)에 걸리지 않게. */
 async function shoppingBrandsInPeriod(brands: string[], from: string, to: string): Promise<string[]> {
-  const { data, error } = await supabase.from("daily_ad_spend").select("brand,spend")
-    .eq("channel", SHOPPING_SPEND_CHANNEL).in("brand", brands).gt("spend", 0).gte("date", from).lte("date", to)
-    .limit(1000);
-  if (error) throw error;
-  return shoppingNoteBrands((data || []) as { brand: string; spend: number }[]);
+  const found = await Promise.all(brands.map(async (brand) => {
+    const { data, error } = await supabase.from("daily_ad_spend").select("brand,spend")
+      .eq("channel", SHOPPING_SPEND_CHANNEL).eq("brand", brand).gt("spend", 0).gte("date", from).lte("date", to)
+      .limit(1);
+    if (error) throw error;
+    return (data || []) as { brand: string; spend: number }[];
+  }));
+  return shoppingNoteBrands(found.flat());
 }
 
 async function getImpl(req: NextRequest) {

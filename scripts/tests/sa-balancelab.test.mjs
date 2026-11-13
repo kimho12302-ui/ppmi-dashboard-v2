@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {
   stalledSources, stalledByPlatform, groupRoutine, routineProducts, keywordState, buildMedinexTest,
   rankLabel, rankDelta, buildRankView, LOCK_LINE_WON,
-  classifyKeywordSources, shoppingNoteBrands, isLegacyCampaignRow, splitLegacyRows,
+  classifyKeywordSources, shoppingNoteBrands, isLegacyCampaignRow, splitLegacyRows, periodNotice,
 } from "../../src/lib/sa-balancelab.ts";
 
 test("수집 멈춤: 오늘보다 3일 넘게 앞인 조합만", () => {
@@ -79,6 +79,30 @@ test("원천 판정: 구글·메타·GFA·네이버 쇼핑은 키워드 원천�
   ];
   const spend = [{ platform: "naver_shopping", brand: "saip", lastSpend: "2026-11-12" }, { platform: "meta", brand: "nutty", lastSpend: "2026-11-12" }];
   assert.deepEqual(classifyKeywordSources(src, spend, "2026-11-13"), { stalled: [], adsOff: [] });
+});
+
+test("기간 안내: 키워드가 이틀 늦었을 뿐인데 「어제」를 고르면 '쉬는 기간'이 아니라 '아직 수집 전일 수 있음'", () => {
+  const src = [{ platform: "naver_search", brand: "balancelab", latest: "2026-11-11" }];
+  const spend = [{ platform: "naver_search", brand: "balancelab", lastSpend: "2026-11-12" }];
+  const st = classifyKeywordSources(src, spend, "2026-11-13");
+  assert.deepEqual(st, { stalled: [], adsOff: [] });
+  assert.equal(periodNotice(src, st, "2026-11-12"), "pending");
+  assert.equal(periodNotice(src, st, "2026-11-11"), "none"); // 기간 안에 기록이 있음
+});
+
+test("기간 안내: 범위 안 원천이 전부 광고를 끈 상태일 때만 '쉬는 기간', 멈춘 원천이 있으면 멈춤 목록", () => {
+  const off = [{ platform: "naver_search", brand: "ironpet", latest: "2026-05-04" }];
+  const st = classifyKeywordSources(off, [{ platform: "naver_search", brand: "ironpet", lastSpend: "2026-05-06" }], "2026-11-13");
+  assert.equal(periodNotice(off, st, "2026-10-14"), "adsOff");
+  // 아이언펫은 끔, 너티는 이틀 늦음 → 단정하지 않음
+  const mix = [...off, { platform: "naver_search", brand: "nutty", latest: "2026-11-11" }];
+  const st2 = classifyKeywordSources(mix, [{ platform: "naver_search", brand: "nutty", lastSpend: "2026-11-12" }], "2026-11-13");
+  assert.equal(periodNotice(mix, st2, "2026-11-12"), "pending");
+  // 너티가 진짜 멈춤
+  const stall = [...off, { platform: "naver_search", brand: "nutty", latest: "2026-11-01" }];
+  const st3 = classifyKeywordSources(stall, [{ platform: "naver_search", brand: "nutty", lastSpend: "2026-11-12" }], "2026-11-13");
+  assert.equal(periodNotice(stall, st3, "2026-11-05"), "stalled");
+  assert.equal(periodNotice([], { stalled: [], adsOff: [] }, "2026-11-05"), "none");
 });
 
 test("쇼핑 안내: 기간 안 쇼핑 광고비가 0보다 큰 브랜드만, 중복 없이 정렬", () => {

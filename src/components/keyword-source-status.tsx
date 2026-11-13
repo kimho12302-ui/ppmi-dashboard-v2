@@ -9,7 +9,7 @@
 import { useMemo } from "react";
 import { BRAND_LABELS } from "@/lib/types";
 import { formatCurrency, formatNumber } from "@/lib/utils";
-import { classifyKeywordSources, type KeywordSourceStatus as Status, type SourceLatest, type SpendLatest } from "@/lib/sa-balancelab";
+import { classifyKeywordSources, periodNotice, type KeywordSourceStatus as Status, type SourceLatest, type SpendLatest } from "@/lib/sa-balancelab";
 
 export function useSourceStatus(sources: SourceLatest[] | undefined, spend: SpendLatest[] | undefined, today: string): Status {
   return useMemo(() => classifyKeywordSources(sources || [], spend || [], today), [sources, spend, today]);
@@ -27,8 +27,8 @@ export interface LegacyRow { platform: string; keyword: string | null; cost?: nu
 
 const brandName = (b: string) => BRAND_LABELS[b] || b;
 
-export function KeywordSourceStatus({ status, labels, from, to, latestCollected, sourcesError, shoppingBrands, legacy, onOpenNaverTab }: {
-  status: Status; labels: Record<string, string>; from: string; to: string; latestCollected: string | null | undefined;
+export function KeywordSourceStatus({ status, sources, labels, from, to, latestCollected, sourcesError, shoppingBrands, legacy, onOpenNaverTab }: {
+  status: Status; sources: SourceLatest[] | undefined; labels: Record<string, string>; from: string; to: string; latestCollected: string | null | undefined;
   /** 원천 상태(마지막 수집일·광고비) 조회 실패. 이때 띠가 없는 것은 "멈춘 곳 없음"이 아니라 "모름"이다 */
   sourcesError?: boolean;
   /** 고른 기간에 쇼핑검색 광고비가 있는 브랜드 */
@@ -45,8 +45,10 @@ export function KeywordSourceStatus({ status, labels, from, to, latestCollected,
     );
   }
   const { stalled, adsOff } = status;
-  // 기간 전체가 마지막 키워드 기록보다 뒤: 멈춘 원천이 있으면 주황(멈춤), 다 광고를 끈 것이면 회색 안내
-  const allBefore = !!latestCollected && latestCollected < from;
+  // 기간 전체가 마지막 키워드 기록보다 뒤: 멈춘 원천이 있으면 주황 목록, 전부 광고를 껐으면 "쉬는 기간",
+  // 그 밖(동기화 전 「어제」 등)은 "아직 수집 전일 수 있음". 광고비가 나가는데 쉰다고 단정하지 않는다.
+  const notice = periodNotice(sources || [], status, from);
+  const allBefore = notice === "adsOff" || notice === "pending";
   const shopping = shoppingBrands || [];
   const legacyRows = legacy || [];
   const legacyCost = legacyRows.reduce((s, r) => s + (Number(r.cost) || 0), 0);
@@ -75,9 +77,14 @@ export function KeywordSourceStatus({ status, labels, from, to, latestCollected,
           </ul>
         </div>
       )}
-      {allBefore && !warn && (
+      {notice === "adsOff" && (
         <p className="text-muted-foreground">
           고른 기간({from} ~ {to})에는 이 브랜드의 키워드 광고 기록이 없습니다. 마지막 키워드 기록은 <b>{latestCollected}</b>이고, 그 뒤로 광고비도 없어 광고를 쉬는 기간으로 봅니다.
+        </p>
+      )}
+      {notice === "pending" && (
+        <p className="text-muted-foreground">
+          고른 기간({from} ~ {to})에는 아직 키워드 기록이 없습니다. 마지막 키워드 기록은 <b>{latestCollected}</b>입니다. 아직 수집 전일 수 있으니(매일 아침 들어옴) 성과 0으로 읽지 말고 기간을 앞으로 넓히거나 나중에 다시 보세요.
         </p>
       )}
       {adsOff.length > 0 && (

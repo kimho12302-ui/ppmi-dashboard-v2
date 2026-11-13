@@ -250,7 +250,7 @@ function KeywordsInner() {
           2026-11-13: 「수집 멈춤」은 키워드 단위 원천(파워링크)인데 광고비가 이어질 때만. 광고를 끈 원천·쇼핑검색·옛 캠페인 단위 기록은 회색 안내. */}
       {tab === "keywords" && !loading && (
         <KeywordSourceStatus
-          status={sourceStatus} labels={PLATFORM_LABELS} from={from} to={to} latestCollected={data?.latestCollected}
+          status={sourceStatus} sources={data?.sources} labels={PLATFORM_LABELS} from={from} to={to} latestCollected={data?.latestCollected}
           sourcesError={data?.sourcesError} shoppingBrands={data?.shoppingBrands} legacy={data?.legacy}
           onOpenNaverTab={() => setTab("naver")}
         />

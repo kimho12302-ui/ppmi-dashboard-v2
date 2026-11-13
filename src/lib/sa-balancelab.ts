@@ -119,6 +119,22 @@ export function classifyKeywordSources(
   return out;
 }
 
+/**
+ * 고른 기간 전체가 마지막 키워드 기록일보다 뒤일 때 띠에 무엇을 쓸지.
+ *   "stalled" : 멈춘 원천이 있음(주황 목록이 이미 설명한다)
+ *   "adsOff"  : 범위 안 원천이 전부 광고를 끈 상태 → "광고를 쉬는 기간"
+ *   "pending" : 그 밖(예: 아침 동기화 전에 「어제」를 고름, 키워드가 1~3일 늦음) → "아직 수집 전일 수 있음"
+ *   "none"    : 기간 안에 키워드 기록이 있음(띠 문장 없음)
+ * 광고비가 이어지는데 "광고를 쉰다"고 단정하지 않는 것이 요점이다.
+ */
+export function periodNotice(sources: SourceLatest[], status: KeywordSourceStatus, from: string): "none" | "stalled" | "adsOff" | "pending" {
+  const kw = sources.filter((s) => KEYWORD_PLATFORMS.includes(s.platform));
+  const latest = kw.reduce<string | null>((m, s) => (!m || s.latest > m ? s.latest : m), null);
+  if (!latest || latest >= from) return "none";
+  if (status.stalled.length > 0) return "stalled";
+  return kw.length > 0 && status.adsOff.length === kw.length ? "adsOff" : "pending";
+}
+
 /** 쇼핑 안내를 붙일 브랜드: 고른 기간에 쇼핑검색 광고비가 있는 브랜드(정렬). */
 export function shoppingNoteBrands(spendRows: { brand: string; spend: number | string | null }[]): string[] {
   return Array.from(new Set(spendRows.filter((r) => (Number(r.spend) || 0) > 0).map((r) => r.brand))).sort();

@@ -60,10 +60,11 @@ where exists (select 1 from keyword_performance_legacy_backup_20261113 b where b
 
 commit;
 
--- 5) 확인: 아래 둘 다 0 이면 정상, 백업 행 수는 468 안팎
-select count(*) as legacy_left from keyword_performance
-where platform <> 'naver_search' or keyword ~ '^[0-9]{2}\.\s?[^\s_]+_';
-select count(*) as backed_up from keyword_performance_legacy_backup_20261113;
+-- 5) 확인(SQL Editor 는 마지막 결과만 보여 주므로 한 줄로 합침): legacy_left 0, backed_up 468 안팎이면 정상
+select
+  (select count(*) from keyword_performance
+    where platform <> 'naver_search' or keyword ~ '^[0-9]{2}\.\s?[^\s_]+_') as legacy_left,
+  (select count(*) from keyword_performance_legacy_backup_20261113) as backed_up;
 
 -- ── 되돌리기(필요할 때만, 주석을 풀어 실행) ─────────────────────────
 -- insert into keyword_performance select * from keyword_performance_legacy_backup_20261113 b
