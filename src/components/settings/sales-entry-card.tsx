@@ -232,6 +232,9 @@ export function SalesEntryCard() {
               <p className="text-xs font-medium" style={{ color: "var(--sig-warn)" }}>
                 미매칭 상품 (품목코드 #N/A) · 「코드 넣기」로 코드를 넣으면 보관된 그 상품 줄도 바로 고쳐집니다
               </p>
+              <p className="text-[11px] text-muted-foreground">
+                단, 「원본」인 날은 받는 파일이 회사 PC 가 만든 그대로라 #N/A 가 남습니다(그대로 올리면 「미등록 품목코드」로 막힘). 코드를 넣은 뒤 회사 PC 에서 그날을 다시 만들어 보내세요.
+              </p>
               {unmatchedDays.map((d) => (
                 <div key={d.date} className="text-[11px] leading-snug">
                   <p className="font-medium text-muted-foreground mb-0.5">{dayLabel(d.date)}</p>
