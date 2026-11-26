@@ -112,11 +112,12 @@ test("경로·파일 이름", () => {
 // ── 올리기 흐름 (가짜 Storage·DB) ──
 
 function fakeUpload(o = {}) {
-  const calls = { put: [], mark: [] };
+  const calls = { put: [], mark: [], clear: [] };
   const deps = {
     runExists: async () => o.run ?? { exists: true, error: null },
     put: async (path, blob) => { calls.put.push({ path, blob }); return o.put ?? { error: null }; },
     markRun: async (date, cols) => { calls.mark.push({ date, cols }); return o.mark ?? { updated: 1, error: null }; },
+    clearStale: async (date) => { calls.clear.push(date); return o.clear ?? { error: null }; },
     now: () => "2026-11-26T09:00:00.000Z",
   };
   return { deps, calls };
@@ -258,4 +259,35 @@ test("실파일: 판매입력_261125.xlsx 검사 통과 + 왕복 바이트 동�
   assert.equal(down.headers[SOURCE_HEADER], "original");
   assert.equal(sha(down.bytes), sha(real), "복호화한 원본의 해시가 실파일과 같아야 한다");
   assert.equal(down.bytes.length, real.length);
+});
+
+// ── 원본 다시 만들기 표시 (2026-11-26, docs/sql/2026-11-26-sales-entry-stale.sql) ──
+
+test("원본 올리기가 성공하면 「원본 다시 만들기」 표시를 끈다(원본 칸 갱신과 따로)", async () => {
+  const { deps, calls } = fakeUpload();
+  const r = await runSalesFileUpload(deps, DATE, GOOD, keyB64(newKey()), TODAY);
+  assert.equal(r.status, 200);
+  assert.deepEqual(calls.clear, [DATE]);
+  assert.equal(Object.keys(calls.mark[0].cols).includes("original_stale"), false, "원본 칸 갱신에 표시 칸을 섞지 않는다(SQL 전 DB 에서 올리기가 깨진다)");
+  assert.equal(r.body.warning, undefined);
+});
+
+test("표시 칸이 없는 DB(SQL 전)여도 원본 올리기는 200, 다른 실패는 경고만", async () => {
+  const key = keyB64(newKey());
+  for (const err of [
+    { code: "PGRST204", message: "Could not find the 'original_stale' column of 'sales_entry_runs' in the schema cache" },
+    { code: "42703", message: "column sales_entry_runs.original_stale does not exist" },
+  ]) {
+    const r = await runSalesFileUpload(fakeUpload({ clear: { error: err } }).deps, DATE, GOOD, key, TODAY);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.ok, true);
+    assert.equal(r.body.warning, undefined);
+  }
+  const other = await runSalesFileUpload(fakeUpload({ clear: { error: { message: "연결 끊김" } } }).deps, DATE, GOOD, key, TODAY);
+  assert.equal(other.status, 200);
+  assert.match(other.body.warning, /원본 다시 만들기/);
+  // 원본 칸 갱신이 실패하면 표시를 건드리지 않는다
+  const bad = fakeUpload({ mark: { updated: 0, error: null } });
+  await runSalesFileUpload(bad.deps, DATE, GOOD, key, TODAY);
+  assert.deepEqual(bad.calls.clear, []);
 });

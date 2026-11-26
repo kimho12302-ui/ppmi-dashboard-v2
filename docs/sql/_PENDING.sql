@@ -1,4 +1,12 @@
 -- ============================================================
+--  ★ 2026-11-26 추가: 판매입력 「원본 다시 만들기」 표시 → 별도 파일 하나만 붙여넣으면 된다
+--    docs/sql/2026-11-26-sales-entry-stale.sql  (sales_entry_runs 에 original_stale 칸 하나, 기본 false)
+--    ★ 2026-11-26-sales-entry.sql → 2026-11-26-sales-entry-files.sql 뒤에 실행
+--    「코드 넣기」로 원본이 있는 날 줄을 고치면 이 칸이 켜지고, 회사 PC 아침 회차(sales_entry_daily.py plan)가 그날을 다시 만들어 올린다
+--    안 돌려도 화면·원본 올리기는 돈다(표시만 안 켜진다). 끝의 select 첫 줄이 1 이면 정상
+-- ============================================================
+
+-- ============================================================
 --  ★ 2026-11-26 추가: 판매입력 원본 엑셀 암호화 보관 → 별도 파일 하나만 붙여넣으면 된다
 --    docs/sql/2026-11-26-sales-entry-files.sql  (Storage 비공개 버킷 sales-entry-files + 그 버킷 한정 정책 4개,
 --    sales_entry_runs 에 original_file_path·original_file_size·original_uploaded_at 칸)

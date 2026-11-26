@@ -3,24 +3,40 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { freshFetch } from "@/lib/fresh-fetch";
-import { SOURCE_DASHBOARD, normKey, suggestCodes } from "@/lib/sales-match-core";
+import {
+  PRODUCT_LIST_URL, SOURCE_DASHBOARD, WAREHOUSE_CHANGE_HINT, isBlankWarehouse, normKey, suggestCodes, warehouseOptions,
+} from "@/lib/sales-match-core";
+import { ItemWarehousePanel } from "@/components/settings/sales-item-warehouse";
 
 // 「자동 판매입력」 카드 안의 판매입력 매칭표 편집 (2026-11-26).
 //   미매칭 상품 줄마다 「코드 넣기」 → 통계 시트 「상품 목록」 코드 중에서 고르기 → 저장하면 보관된 #N/A 줄도 바로 고친다.
-//   「매칭표 보기」 → 검색·코드 바꾸기·지우기(대시보드에서 넣은 줄만).
-// API: GET/POST/DELETE /api/sales-match, GET /api/sales-match/products. 규칙 src/lib/sales-match-core.ts.
+//   「매칭표 보기」 → 검색·코드 바꾸기·지우기(대시보드에서 넣은 줄만), 품목코드별 출하창고(sales-item-warehouse.tsx).
+//   고른 코드의 출하창고가 없으면 「코드 넣기」 안에서 창고를 고른다(있는 창고는 보기만, 바꾸기는 「매칭표 보기」에서).
+// API: GET/POST/DELETE /api/sales-match, GET /api/sales-match/products, POST /api/sales-match/item. 규칙 src/lib/sales-match-core.ts.
 
 export interface MatchItem { key: string; code: string; source: string; note: string | null; updatedAt: string | null }
+/** 출하창고 표 한 줄(GET /api/sales-match items) */
+export interface ItemRow { code: string; name: string | null; warehouse: string | null }
 export type MatchState =
   | { kind: "loading" }
   | { kind: "setup" }
   | { kind: "error"; message: string }
-  | { kind: "ok"; seeded: boolean; match: MatchItem[] };
+  | { kind: "ok"; seeded: boolean; match: MatchItem[]; items: ItemRow[] };
 
 interface Product { code: string; name: string; brand: string; category?: string; lineup?: string }
 type ProductState = { kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "ok"; items: Product[] };
 
-export interface SaveOutcome { key: string; code: string; dates: string[]; lines: number; warnings: string[] }
+export interface SaveOutcome {
+  key: string;
+  code: string;
+  dates: string[];
+  lines: number;
+  warnings: string[];
+  /** 같이 넣은 출하창고(창고를 고른 경우만) */
+  warehouse?: string | null;
+  /** 줄을 고친 날 중 원본이 있어 「원본 다시 만들기」 표시를 켠 날 */
+  originalStale?: string[];
+}
 
 const WARN = { background: "var(--sig-warn-surface)", color: "var(--sig-warn)" };
 const DANGER = { background: "var(--sig-danger-surface)", color: "var(--sig-danger)" };
@@ -36,7 +52,7 @@ export function useSalesMatch() {
         const d = await r.json().catch(() => ({}));
         if (d.setupNeeded) return setState({ kind: "setup" });
         if (!r.ok || !d.ok) return setState({ kind: "error", message: d.message || d.error || `HTTP ${r.status}` });
-        setState({ kind: "ok", seeded: !!d.seeded, match: d.match ?? [] });
+        setState({ kind: "ok", seeded: !!d.seeded, match: d.match ?? [], items: d.items ?? [] });
       })
       .catch((e) => setState({ kind: "error", message: e instanceof Error ? e.message : String(e) }));
   }, []);
@@ -63,17 +79,24 @@ function useProducts(active: boolean) {
   return { state, reload: load };
 }
 
-async function postMatch(key: string, code: string): Promise<{ ok: true; outcome: SaveOutcome } | { ok: false; message: string }> {
+async function postMatch(key: string, code: string, warehouse: string | null): Promise<{ ok: true; outcome: SaveOutcome } | { ok: false; message: string }> {
   try {
     const r = await fetch("/api/sales-match", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ key, code }),
+      // 창고는 고른 경우만 보낸다(이미 창고가 있는 코드는 안 보낸다: 서버가 다른 창고면 409)
+      body: JSON.stringify(warehouse ? { key, code, warehouse } : { key, code }),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok && !d.saved) return { ok: false, message: d.error || `HTTP ${r.status}` };
     const warnings: string[] = [...(d.warnings ?? []), ...(d.error ? [d.error] : [])];
-    return { ok: true, outcome: { key, code, dates: d.patched?.dates ?? [], lines: d.patched?.lines ?? 0, warnings } };
+    return {
+      ok: true,
+      outcome: {
+        key, code, dates: d.patched?.dates ?? [], lines: d.patched?.lines ?? 0, warnings,
+        warehouse: d.warehouse?.warehouse ?? null, originalStale: d.originalStale ?? [],
+      },
+    };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
@@ -85,17 +108,66 @@ const matchesQuery = (p: Product, q: string) => {
   return [p.code, p.name, p.brand, p.category ?? ""].some((v) => v.toLowerCase().includes(s));
 };
 
+/** 통계 시트 「상품 목록」 탭 새 탭으로 열기(새 상품이라 품목코드가 없을 때 바로 가서 등록) */
+export function ProductListLink({ className }: { className?: string }) {
+  return (
+    <a href={PRODUCT_LIST_URL} target="_blank" rel="noopener noreferrer"
+      className={cn("inline-flex items-center px-2 py-0.5 rounded border border-border text-[11px] font-medium text-foreground hover:bg-muted/60 whitespace-nowrap", className)}>
+      상품 목록 열기 ↗
+    </a>
+  );
+}
+
+/**
+ * 고른 코드의 출하창고. 이미 있으면 보기만(바꾸기는 「매칭표 보기」에서, 실수 방지),
+ * 없으면 고르기(출하창고 표에 실제로 쓰인 값만, 많이 쓰인 순. 직접 입력 없음).
+ */
+function WarehouseField({ code, current, options, value, onChange }: {
+  code: string;
+  current: string | null;
+  options: string[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  if (current) {
+    return (
+      <p className="text-[11px] text-muted-foreground">
+        출하창고 <span className="font-medium text-foreground">{current}</span> · {WAREHOUSE_CHANGE_HINT}
+      </p>
+    );
+  }
+  return (
+    <div className="rounded px-2 py-1.5 space-y-1" style={value ? OK : WARN}>
+      <label className="flex items-center gap-2 flex-wrap text-[11px] font-medium">
+        <span>{code} 출하창고</span>
+        <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={`${code} 출하창고`}
+          className="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40">
+          <option value="">고르기</option>
+          {options.map((w) => <option key={w} value={w}>{w}</option>)}
+        </select>
+      </label>
+      {!value && (
+        <p className="text-[11px]">
+          이 코드는 출하창고가 없습니다. 고르면 저장 때 같이 넣고 고친 줄에도 씁니다. 안 고르면 고친 줄의 출하창고가 비어 이카운트 올리기 전에 손봐야 합니다.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** 「상품 목록」 코드 검색 선택 + 저장. 추천 코드(머리표만 다른 기존 매칭)를 맨 위에 둔다 */
-function CodePicker({ matchKey, current, matches, onSaved, onCancel }: {
+function CodePicker({ matchKey, current, matches, items, onSaved, onCancel }: {
   matchKey: string;
   current?: string;
   matches: MatchItem[];
+  items: ItemRow[];
   onSaved: (o: SaveOutcome) => void;
   onCancel: () => void;
 }) {
   const products = useProducts(true);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
+  const [warehouse, setWarehouse] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const suggested = useMemo(() => suggestCodes(matchKey, matches), [matchKey, matches]);
@@ -112,11 +184,18 @@ function CodePicker({ matchKey, current, matches, onSaved, onCancel }: {
   const loadedCodes = products.state.kind === "ok" ? new Set(products.state.items.map((p) => p.code)) : null;
   const missingSuggest = loadedCodes ? suggested.filter((c) => !loadedCodes.has(c)) : [];
 
+  const options = useMemo(() => warehouseOptions(items), [items]);
+  const currentWarehouse = useMemo(() => {
+    const it = picked ? items.find((i) => i.code === picked) : undefined;
+    return it && !isBlankWarehouse(it.warehouse) ? it.warehouse : null;
+  }, [picked, items]);
+  const pick = (code: string) => { setPicked(code); setWarehouse(""); };
+
   const save = async () => {
     if (!picked || saving) return;
     setSaving(true);
     setError(null);
-    const r = await postMatch(matchKey, picked);
+    const r = await postMatch(matchKey, picked, currentWarehouse ? null : warehouse || null);
     setSaving(false);
     if (r.ok) onSaved(r.outcome);
     else setError(r.message);
@@ -133,6 +212,7 @@ function CodePicker({ matchKey, current, matches, onSaved, onCancel }: {
         />
         <button type="button" onClick={products.reload} disabled={products.state.kind === "loading"}
           className="text-[11px] text-primary hover:underline disabled:opacity-50">목록 다시 읽기</button>
+        <ProductListLink />
       </div>
       {products.state.kind === "loading" && <p className="text-[11px] text-muted-foreground">통계 시트 「상품 목록」 읽는 중...</p>}
       {products.state.kind === "error" && (
@@ -146,7 +226,7 @@ function CodePicker({ matchKey, current, matches, onSaved, onCancel }: {
               const sel = picked === p.code;
               return (
                 <li key={p.code} role="option" aria-selected={sel}>
-                  <button type="button" onClick={() => setPicked(p.code)}
+                  <button type="button" onClick={() => pick(p.code)}
                     className={cn("w-full text-left px-2 py-1 text-[11px] flex items-baseline gap-2 hover:bg-muted/60 focus:outline-none focus-visible:bg-muted",
                       sel && "bg-primary/10")}>
                     <span className="num font-medium shrink-0">{p.code}</span>
@@ -171,16 +251,22 @@ function CodePicker({ matchKey, current, matches, onSaved, onCancel }: {
             </p>
           )}
           <p className="text-[11px] text-muted-foreground">
-            목록에 없는 새 코드는 통계 시트 「상품 목록」 탭에 먼저 등록한 뒤 「목록 다시 읽기」를 누르세요. 여기 없는 코드는 매출 업로드에서 「미등록 품목코드」로 막힙니다.
+            목록에 없는 새 코드는 통계 시트 「상품 목록」 탭(「상품 목록 열기」)에 먼저 등록한 뒤 「목록 다시 읽기」를 누르세요. 여기 없는 코드는 매출 업로드에서 「미등록 품목코드」로 막힙니다.
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            등록은 맨 아래 줄에 A 품목코드 · B 카테고리 · C 브랜드 · D 라인업 · E 상품명 순서로 넣습니다.
           </p>
         </>
+      )}
+      {picked && (
+        <WarehouseField code={picked} current={currentWarehouse} options={options} value={warehouse} onChange={setWarehouse} />
       )}
       {error && <p className="text-[11px] rounded px-2 py-1" style={DANGER}>저장 못 함: {error}</p>}
       <div className="flex items-center gap-2 justify-end">
         <button type="button" onClick={onCancel} className="text-[11px] text-muted-foreground hover:underline">닫기</button>
         <button type="button" onClick={save} disabled={!picked || saving}
           className="px-2.5 py-1 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
-          {saving ? "저장 중..." : picked ? `${picked} 로 저장` : "코드를 고르세요"}
+          {saving ? "저장 중..." : picked ? `${picked}${!currentWarehouse && warehouse ? ` · ${warehouse}` : ""} 로 저장` : "코드를 고르세요"}
         </button>
       </div>
     </div>
@@ -193,11 +279,14 @@ export function SaveOutcomeNote({ outcome, onClose }: { outcome: SaveOutcome; on
     <div className="text-xs rounded px-3 py-2 leading-relaxed" style={outcome.warnings.length ? WARN : OK} role="status">
       <div className="flex items-start justify-between gap-2">
         <p>
-          <span className="font-medium">{outcome.code}</span> 저장.{" "}
+          <span className="font-medium">{outcome.code}</span> 저장{outcome.warehouse ? ` (출하창고 ${outcome.warehouse})` : ""}.{" "}
           {outcome.lines > 0 ? `보관된 판매입력 ${outcome.dates.length}일치 ${outcome.lines}줄 고침 (${outcome.dates.join(", ")})` : "고칠 보관 줄 없음"}
         </p>
         <button type="button" onClick={onClose} className="shrink-0 hover:underline">닫기</button>
       </div>
+      {(outcome.originalStale ?? []).length > 0 && (
+        <p>· 원본인 날 {(outcome.originalStale ?? []).join(", ")} 은 다음 아침 회차에 고친 코드로 원본을 다시 만들어 올립니다. 그전까지 「엑셀 받기」는 옛 원본입니다.</p>
+      )}
       {outcome.warnings.map((w) => <p key={w}>· {w}</p>)}
     </div>
   );
@@ -232,7 +321,7 @@ export function UnmatchedFixList({ entries, match, onSaved }: {
               )}
             </div>
             {open === id && match.kind === "ok" && (
-              <CodePicker matchKey={key} matches={match.match}
+              <CodePicker matchKey={key} matches={match.match} items={match.items}
                 onSaved={(o) => { setOpen(null); onSaved(o); }} onCancel={() => setOpen(null)} />
             )}
           </li>
@@ -302,9 +391,12 @@ export function MatchTablePanel({ match, onChanged }: { match: MatchState; onCha
                 매칭표 옮기기 전입니다. 회사 PC 에서 볼트 sales_match.json 을 한 번 옮겨야(seed) 코드를 넣고 바꿀 수 있습니다.
               </p>
             )}
-            <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setLimit(TABLE_PAGE); }}
-              placeholder="상품명+옵션 또는 코드 검색" aria-label="매칭표 검색"
-              className="w-full text-xs px-2 py-1 rounded border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <input type="search" value={q} onChange={(e) => { setQ(e.target.value); setLimit(TABLE_PAGE); }}
+                placeholder="상품명+옵션 또는 코드 검색" aria-label="매칭표 검색"
+                className="flex-1 min-w-[180px] text-xs px-2 py-1 rounded border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/40" />
+              <ProductListLink />
+            </div>
             {error && <p className="text-xs rounded px-3 py-2" style={DANGER}>{error}</p>}
             <ul className="divide-y divide-border/40 text-[11px]">
               {rows.slice(0, limit).map((m) => {
@@ -336,7 +428,7 @@ export function MatchTablePanel({ match, onChanged }: { match: MatchState; onCha
                       <p className="text-muted-foreground">{[m.note, dash || m.note ? stamp(m.updatedAt) : ""].filter(Boolean).join(" · ")}</p>
                     )}
                     {editing === id && (
-                      <CodePicker matchKey={m.key} current={m.code} matches={match.match}
+                      <CodePicker matchKey={m.key} current={m.code} matches={match.match} items={match.items}
                         onSaved={(o) => { setEditing(null); onChanged(o); }} onCancel={() => setEditing(null)} />
                     )}
                   </li>
@@ -349,6 +441,7 @@ export function MatchTablePanel({ match, onChanged }: { match: MatchState; onCha
                 더 보기 ({rows.length - limit}줄 남음)
               </button>
             )}
+            <ItemWarehousePanel items={match.items} seeded={match.seeded} onChanged={() => onChanged(null)} />
             <p className="stamp text-muted-foreground">
               대소문자는 안 가리고 상품명+옵션이 글자 그대로 같아야 맞습니다. 회사 PC 는 매일 이 표를 받아 계산합니다. 엑셀에서 옮긴 줄은 코드만 바꿀 수 있고(옛 코드는 메모에 남음), 지우기는 대시보드에서 넣은 줄만 됩니다.
             </p>

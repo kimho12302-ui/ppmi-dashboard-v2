@@ -10,7 +10,12 @@ import { deleteMatchRow, getMatchRow, saveDeps } from "./deps";
 // 표 docs/sql/2026-11-26-sales-match.sql.
 //   GET    /api/sales-match           → {ok, setupNeeded, seeded, match:[{key, code, source, note, updatedAt}], items:[{code, name, warehouse}]}
 //                                        ★ 볼트 sales_entry_push.py fetch_match 가 매일 x-ppmi-key 로 받아 계산한다(정본). 캐시 안 씀
-//   POST   /api/sales-match           ← {key, code, note?} 한 줄 넣기·바꾸기 + 보관된 #N/A 줄 고치기
+//   POST   /api/sales-match           ← {key, code, note?, warehouse?} 한 줄 넣기·바꾸기 + 보관된 #N/A 줄 고치기
+//                                        warehouse: 그 코드의 출하창고가 없을(표에 없거나 빈) 때 고른 창고. 출하창고 표에 넣고 고친 줄에 쓴다.
+//                                        고르기 목록 밖이면 400, 이미 다른 창고가 있는 코드면 409(「매칭표 보기」에서 바꾸기). 같은 창고면 그냥 지나간다
+//                                        응답 {ok, saved, match, product, warehouse, patched:{dates, lines}, originalStale:[날짜], warnings}
+//                                        originalStale = 줄을 고친 날 중 원본 파일이 있어 「원본 다시 만들기」 표시를 켠 날
+//   POST   /api/sales-match/item      ← {code, warehouse} 품목코드별 출하창고 바꾸기(item/route.ts)
 //   DELETE /api/sales-match?key=…     ← 대시보드에서 넣은 줄만 지운다
 // 인증은 미들웨어(팀 로그인 쿠키 또는 x-ppmi-key). 통계 시트는 읽기만, 매출 원장은 안 건드린다.
 export const dynamic = "force-dynamic";

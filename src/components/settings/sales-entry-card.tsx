@@ -12,6 +12,9 @@ import { MatchTablePanel, SaveOutcomeNote, UnmatchedFixList, useSalesMatch, type
 // 2026-11-26 원본 보관: 회사 PC 가 원본 엑셀(고객정보 포함, 15탭)을 보내면 서버가 암호화해 둔다(/api/sales-entry/file).
 //   그날 「원본」이면 「엑셀 받기」가 그 원본 그대로, 「요약본」이면 고객정보 없는 생성본(판매정리·요약·미매칭·누락 탭)
 // 2026-11-26 매칭표 편집: 미매칭 상품마다 「코드 넣기」, 아래 「매칭표 보기」(sales-match-editor.tsx, /api/sales-match)
+// 2026-11-26 원본 다시 만들기: 「코드 넣기」로 원본이 있는 날 줄을 고치면 그날 original_stale=true.
+//   회사 PC 아침 회차(볼트 sales_entry_daily.py plan)가 그날을 다시 만들어 올리고, 원본 POST 가 성공하면 false 로 돌아간다.
+//   그동안 「엑셀 받기」는 옛 원본 그대로 주고 그날 줄 아래에 「원본 다시 만드는 중」을 띄운다
 
 interface Unmatched { 판매몰?: string; 매칭열쇠?: string; 줄수?: number }
 interface Item {
@@ -28,6 +31,8 @@ interface Item {
   updated_at?: string;
   /** 원본 엑셀(암호화 보관) 경로. 없으면(또는 SQL 전) 생성본 */
   original_file_path?: string | null;
+  /** 원본을 다시 만들어야 하는 날(코드 넣기로 줄이 바뀜). 칸 SQL 전이면 없음 */
+  original_stale?: boolean;
 }
 type ListState =
   | { kind: "loading" }
@@ -52,6 +57,8 @@ function sentAt(it: Item): string {
 }
 
 const hasOriginal = (it: Item) => !!it.original_file_path;
+const isStale = (it: Item) => hasOriginal(it) && it.original_stale === true;
+const STALE_NOTE = "원본 다시 만드는 중: 다음 아침 회차에 고친 코드로 다시 올라옵니다";
 const hasWarning = (it: Item) => it.unmatched_count > 0 || it.gap_count > 0 || it.problem_count > 0;
 
 export function SalesEntryCard() {
@@ -219,7 +226,16 @@ export function SalesEntryCard() {
                           </button>
                         </td>
                       </tr>
-
+                      {isStale(it) && (
+                        <tr style={bg}>
+                          <td colSpan={7} className="pb-1.5 pr-2 font-sans text-[11px] whitespace-normal" style={{ color: "var(--sig-warn)" }}>
+                            {/* 좁은 화면은 표가 가로로 밀려 오른쪽 글이 잘린다: 왼쪽에 붙여 화면 폭 안에서 접는다 */}
+                            <div className="sticky left-0 w-fit max-w-[calc(100vw-8rem)] sm:max-w-none sm:ml-auto sm:text-right">
+                              {STALE_NOTE}. 지금 「엑셀 받기」는 고치기 전 원본입니다.
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                       </Fragment>
                     );
                   })}
@@ -233,7 +249,7 @@ export function SalesEntryCard() {
                 미매칭 상품 (품목코드 #N/A) · 「코드 넣기」로 코드를 넣으면 보관된 그 상품 줄도 바로 고쳐집니다
               </p>
               <p className="text-[11px] text-muted-foreground">
-                단, 「원본」인 날은 받는 파일이 회사 PC 가 만든 그대로라 #N/A 가 남습니다(그대로 올리면 「미등록 품목코드」로 막힘). 코드를 넣은 뒤 회사 PC 에서 그날을 다시 만들어 보내세요.
+                「원본」인 날은 받는 파일이 회사 PC 가 만든 그대로라 코드를 넣어도 바로는 #N/A 가 남습니다. 대신 그날에 「원본 다시 만드는 중」이 켜지고, 다음 아침 회차가 고친 코드로 그날 원본을 다시 만들어 올립니다. 그 전에 받은 파일을 그대로 올리면 「미등록 품목코드」로 막힙니다.
               </p>
               {unmatchedDays.map((d) => (
                 <div key={d.date} className="text-[11px] leading-snug">

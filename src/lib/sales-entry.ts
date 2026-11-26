@@ -29,11 +29,19 @@ const LIST_COLS =
   "date,line_count,total,revenue,shipping,unmatched_count,gap_count,problem_count,unmatched,generated_at,updated_at";
 /** 원본 보관 칸(docs/sql/2026-11-26-sales-entry-files.sql). SQL 전이면 빼고 다시 읽는다 */
 const ORIGINAL_LIST_COLS = "original_file_path,original_file_size,original_uploaded_at";
+/** 「원본 다시 만들기」 표시(docs/sql/2026-11-26-sales-entry-stale.sql). 회사 PC 아침 회차가 이 칸이 true 인 날을 다시 만든다 */
+const STALE_LIST_COL = "original_stale";
+/** 칸이 없을 때 한 단계씩 줄여 읽는다(표시 칸 SQL 전이 원본 칸까지 지워 전부 「요약본」으로 보이지 않게) */
+const LIST_COL_TIERS = [
+  `${LIST_COLS},${ORIGINAL_LIST_COLS},${STALE_LIST_COL}`,
+  `${LIST_COLS},${ORIGINAL_LIST_COLS}`,
+  LIST_COLS,
+];
 export type SalesEntryListItem = Pick<
   SalesEntryRun,
   "date" | "line_count" | "total" | "revenue" | "shipping" | "unmatched_count" | "gap_count" | "problem_count" | "unmatched" | "generated_at" | "updated_at"
   | "original_file_path" | "original_file_size" | "original_uploaded_at"
->;
+> & { original_stale?: boolean };
 
 export type Loaded<T> = { setupNeeded: true } | { setupNeeded: false; error: DbError } | { setupNeeded: false; error: null; data: T };
 
@@ -43,12 +51,17 @@ function failed<T>(error: DbError): Loaded<T> {
 
 export async function listSalesEntries(from: string): Promise<Loaded<SalesEntryListItem[]>> {
   const query = (cols: string) => supabase.from(RUNS_TABLE).select(cols).gte("date", from).order("date", { ascending: false });
-  let { data, error } = await query(`${LIST_COLS},${ORIGINAL_LIST_COLS}`);
-  // 원본 칸 SQL 전: 칸을 빼고 다시 읽는다(목록이 통째로 죽지 않게). 카드는 전부 「요약본」으로 보인다
-  if (error && isMissingColumn(error) && !isMissingTable(error)) ({ data, error } = await query(LIST_COLS));
+  // 칸 SQL 전: 없는 칸을 빼고 다시 읽는다(목록이 통째로 죽지 않게). 원본 칸까지 없으면 카드는 전부 「요약본」으로 보인다
+  let { data, error } = await query(LIST_COL_TIERS[0]);
+  for (let i = 1; i < LIST_COL_TIERS.length && error && isMissingColumnAny(error) && !isMissingTable(error); i++) {
+    ({ data, error } = await query(LIST_COL_TIERS[i]));
+  }
   if (error) return failed(error);
   return { setupNeeded: false, error: null, data: (data ?? []) as unknown as SalesEntryListItem[] };
 }
+
+/** 읽기(select)에서 칸이 없을 때. sales-entry-core isMissingColumn 은 match_key 문구를 보므로 칸 이름으로도 본다 */
+const isMissingColumnAny = (e: DbError) => isMissingColumn(e) || /original_(file|stale|uploaded)/.test(e.message ?? "");
 
 const PAGE = 1000; // PostgREST 기본 최대 행
 

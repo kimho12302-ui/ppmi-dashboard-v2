@@ -9,6 +9,12 @@
 //      그래서 ①에 넣는 코드는 「상품 목록」 A열에 있는 코드만 받는다(upload-sales 와 같은 읽기: A3:E1000, trim, 대소문자 구분, 먼저 나온 줄).
 
 export const MATCH_TABLE = "sales_match";
+/** 통계 시트(「상품 목록」 탭이 든 파일). 화면 단추와 서버 읽기가 같이 쓴다 */
+export const STATS_SHEET_ID = "1FzxDCyR9FyAIduf7Q0lfUIOzvSqVlod21eOFqaPrXio";
+/** 「상품 목록」 탭 gid (2026-11-26 김호 링크) */
+export const PRODUCT_LIST_GID = 1856953194;
+/** 「상품 목록 열기」 단추 주소. 새 상품이라 품목코드가 없을 때 바로 가서 맨 아래 줄에 등록한다 */
+export const PRODUCT_LIST_URL = `https://docs.google.com/spreadsheets/d/${STATS_SHEET_ID}/edit#gid=${PRODUCT_LIST_GID}`;
 export const ITEMS_TABLE = "sales_item_codes";
 export const SOURCE_SEED = "엑셀옮김";
 export const SOURCE_DASHBOARD = "대시보드";
@@ -51,6 +57,34 @@ export interface MatchRow {
   updated_at?: string | null;
 }
 export interface ItemCodeRow { code: string; name: string | null; warehouse: string | null }
+
+// ── 출하창고 ──────────────────────────────────────────
+
+/** 엑셀 「제품코드별출하창고」 머리글 찌꺼기(seed 로 들어온 값). 고를 수 있는 창고가 아니다 */
+const WAREHOUSE_HEADER_VALUE = "출하창고";
+
+/** 창고가 빈 것으로 보는가(null·빈 글자·머리글 찌꺼기) */
+export function isBlankWarehouse(v: string | null | undefined): boolean {
+  return v === null || v === undefined || v.trim() === "" || v.trim() === WAREHOUSE_HEADER_VALUE;
+}
+
+/**
+ * 고를 수 있는 출하창고 = sales_item_codes 에 실제로 쓰인 값, 많이 쓰인 순(같으면 글자 순).
+ * 직접 입력은 받지 않는다(오타 창고가 이카운트로 가는 것을 막는다). 원본 배열은 안 바꾼다.
+ */
+export function warehouseOptions(items: readonly Pick<ItemCodeRow, "warehouse">[]): string[] {
+  const count = new Map<string, number>();
+  for (const it of items) {
+    if (isBlankWarehouse(it.warehouse)) continue;
+    const w = it.warehouse as string;
+    count.set(w, (count.get(w) ?? 0) + 1);
+  }
+  return Array.from(count.entries())
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([w]) => w);
+}
+
+export const WAREHOUSE_CHANGE_HINT = "이미 창고가 있는 코드입니다. 창고 바꾸기는 「매칭표 보기」의 품목코드별 출하창고에서 하세요";
 
 /** GET /api/sales-match 의 match 한 줄(볼트 실행기 fetch_match 가 key·code 를 읽는다) */
 export interface MatchApiRow { key: string; code: string; source: MatchSource; note: string | null; updatedAt: string | null }
@@ -97,20 +131,37 @@ export function parseProductList(rows: readonly (readonly unknown[])[], firstRow
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-export interface MatchInput { key: string; keyNorm: string; code: string; note: string | null }
+export interface MatchInput { key: string; keyNorm: string; code: string; note: string | null; warehouse?: string | null }
 export type Checked<T> = { ok: true; value: T } | { ok: false; error: string };
 
-/** POST /api/sales-match 몸통 {key, code, note?}. 열쇠는 원문 그대로(공백 포함), 코드는 앞뒤 공백만 뗀다 */
+/**
+ * POST /api/sales-match 몸통 {key, code, note?, warehouse?}. 열쇠는 원문 그대로(공백 포함), 코드는 앞뒤 공백만 뗀다.
+ * warehouse 는 고르기 목록 값 그대로(목록에 있는지는 saveMatch 가 DB 로 본다). 빈 글자·null 은 「안 고름」
+ */
 export function validateMatchInput(body: unknown): Checked<MatchInput> {
   if (!isObj(body)) return { ok: false, error: "JSON 객체가 아닙니다" };
-  const { key, code, note } = body;
+  const { key, code, note, warehouse } = body;
+  if (warehouse !== undefined && warehouse !== null && typeof warehouse !== "string") return { ok: false, error: "warehouse 는 문자열이어야 합니다" };
   if (typeof key !== "string" || key.trim() === "") return { ok: false, error: "key(매칭열쇠 = 상품명+옵션)가 비었습니다" };
   if (key.length > KEY_MAX) return { ok: false, error: `key 가 너무 깁니다(${key.length}자, 최대 ${KEY_MAX})` };
   if (typeof code !== "string" || code.trim() === "") return { ok: false, error: "code(품목코드)가 비었습니다" };
   if (code.trim().length > CODE_MAX) return { ok: false, error: `code 가 너무 깁니다(최대 ${CODE_MAX}자)` };
   if (note !== undefined && note !== null && typeof note !== "string") return { ok: false, error: "note 는 문자열이어야 합니다" };
   const n = typeof note === "string" && note.trim() !== "" ? note.trim().slice(0, NOTE_MAX) : null;
-  return { ok: true, value: { key, keyNorm: normKey(key), code: code.trim(), note: n } };
+  const wh = typeof warehouse === "string" && warehouse.trim() !== "" ? warehouse : null;
+  return { ok: true, value: { key, keyNorm: normKey(key), code: code.trim(), note: n, warehouse: wh } };
+}
+
+export interface ItemInput { code: string; warehouse: string }
+
+/** POST /api/sales-match/item 몸통 {code, warehouse}. 둘 다 필요 */
+export function validateItemInput(body: unknown): Checked<ItemInput> {
+  if (!isObj(body)) return { ok: false, error: "JSON 객체가 아닙니다" };
+  const { code, warehouse } = body;
+  if (typeof code !== "string" || code.trim() === "") return { ok: false, error: "code(품목코드)가 비었습니다" };
+  if (code.trim().length > CODE_MAX) return { ok: false, error: `code 가 너무 깁니다(최대 ${CODE_MAX}자)` };
+  if (typeof warehouse !== "string" || warehouse.trim() === "") return { ok: false, error: "warehouse(출하창고)가 비었습니다" };
+  return { ok: true, value: { code: code.trim(), warehouse } };
 }
 
 /**
@@ -368,18 +419,75 @@ export interface SaveMatchDeps {
   getRow(keyNorm: string): Promise<{ setupNeeded: boolean; error: DbError | null; data?: MatchRow | null }>;
   upsert(row: MatchRow): Promise<{ error: DbError | null }>;
   getWarehouse(code: string): Promise<{ data: string | null; found: boolean; error: DbError | null }>;
+  /** 출하창고 표 전부(창고를 골랐을 때만 읽는다: 고르기 목록·지금 창고 확인) */
+  listItems(): Promise<{ data: ItemCodeRow[]; error: DbError | null }>;
+  /** 출하창고 표 한 줄 넣기·바꾸기(code 기준) */
+  upsertItem(row: ItemCodeRow): Promise<{ error: DbError | null }>;
+  /** 그날들 중 원본 파일이 있는 날에 「원본 다시 만들기」 표시. 표시한 날짜를 돌려준다 */
+  markOriginalStale(dates: readonly string[]): Promise<StaleMarkResult>;
   patchDb: MatchPatchDb;
   headers: readonly string[];
   now(): string;
 }
 
+/** markOriginalStale 결과. missingColumn = 칸이 아직 없음(SQL 전, docs/sql/2026-11-26-sales-entry-stale.sql) */
+export interface StaleMarkResult { marked: string[]; missingColumn: boolean; error: DbError | null }
+
+export const STALE_SQL_PATH = "docs/sql/2026-11-26-sales-entry-stale.sql";
+
 const setupResult = (): ApiResult => ({ status: 503, body: { ok: false, setupNeeded: true, error: MATCH_SETUP_MESSAGE } });
 const dbFail = (step: string, e: DbError): ApiResult =>
   isMissingTable(e) ? setupResult() : { status: 500, body: { ok: false, step, error: `${step} 실패: ${e.message}` } };
+const badWarehouse = (warehouse: string, options: readonly string[]): ApiResult => ({
+  status: 400,
+  body: { ok: false, error: `고를 수 없는 출하창고: ${warehouse}. 목록(${options.join(", ") || "없음"}) 중에서 고르세요` },
+});
+
+type ItemPlan = { ok: true; write: ItemCodeRow | null } | { ok: false; result: ApiResult };
 
 /**
- * POST /api/sales-match: 한 줄 넣기·바꾸기 → 보관된 #N/A 줄 고치기.
- * 막는 경우: seed 전(409), 「상품 목록」에 없는 코드(400), 시트를 못 읽음(502, 저장 안 함).
+ * 골라 온 창고 검사(쓰기 전). 목록에 없는 창고 400, 이미 다른 창고가 있는 코드 409, 같은 창고면 쓸 것 없음.
+ * 창고가 비었거나 표에 없는 코드면 넣을 줄을 돌려준다(이름 = 「상품 목록」 E열, 비면 표에 있던 이름).
+ */
+async function planItemWrite(deps: Pick<SaveMatchDeps, "listItems">, code: string, warehouse: string, productName: string | null): Promise<ItemPlan> {
+  const items = await deps.listItems();
+  if (items.error) return { ok: false, result: dbFail("출하창고 표 읽기", items.error) };
+  const options = warehouseOptions(items.data);
+  if (!options.includes(warehouse)) return { ok: false, result: badWarehouse(warehouse, options) };
+  const item = items.data.find((i) => i.code === code) ?? null;
+  if (item && !isBlankWarehouse(item.warehouse)) {
+    if (item.warehouse === warehouse) return { ok: true, write: null };
+    return {
+      ok: false,
+      result: {
+        status: 409,
+        body: { ok: false, warehouseConflict: true, current: item.warehouse, error: `${code} 는 이미 출하창고가 ${item.warehouse} 입니다. ${WAREHOUSE_CHANGE_HINT}` },
+      },
+    };
+  }
+  const name = productName && productName.trim() !== "" ? productName : item?.name ?? null;
+  return { ok: true, write: { code, name, warehouse } };
+}
+
+/** 줄을 고친 날 중 원본이 있는 날에 표시. 실패해도 저장은 그대로이고 경고만 남긴다 */
+async function markStale(deps: Pick<SaveMatchDeps, "markOriginalStale">, dates: readonly string[], warnings: string[]): Promise<string[]> {
+  if (dates.length === 0) return [];
+  const r = await deps.markOriginalStale(dates);
+  if (r.missingColumn) {
+    warnings.push(`원본 다시 만들기 표시 칸이 아직 없습니다(${STALE_SQL_PATH} 실행 전). 「원본」인 날은 회사 PC 에서 그날을 다시 만들어 보내세요`);
+    return [];
+  }
+  if (r.error) {
+    warnings.push(`원본 다시 만들기 표시 실패: ${r.error.message}. 「원본」인 날은 회사 PC 에서 그날을 다시 만들어 보내세요`);
+    return [];
+  }
+  return r.marked;
+}
+
+/**
+ * POST /api/sales-match: 한 줄 넣기·바꾸기 → (창고를 골랐으면 출하창고 표) → 보관된 #N/A 줄 고치기 → 원본 다시 만들기 표시.
+ * 막는 경우(아무것도 안 씀): seed 전(409), 「상품 목록」에 없는 코드(400), 시트를 못 읽음(502),
+ * 목록에 없는 창고(400), 이미 다른 창고가 있는 코드(409).
  */
 export async function saveMatch(deps: SaveMatchDeps, body: unknown): Promise<ApiResult> {
   const v = validateMatchInput(body);
@@ -402,9 +510,22 @@ export async function saveMatch(deps: SaveMatchDeps, body: unknown): Promise<Api
     return { status: 400, body: { ok: false, notInProductList: true, error: `상품 목록에 없는 코드: ${input.code}. 통계 시트 「상품 목록」 탭에 먼저 등록하세요` } };
   }
 
+  // 창고 검사는 쓰기 전에(409 인데 매칭만 저장되는 반쪽 저장을 막는다)
+  let itemWrite: ItemCodeRow | null = null;
+  if (input.warehouse) {
+    const plan = await planItemWrite(deps, product.code, input.warehouse, product.name);
+    if (!plan.ok) return plan.result;
+    itemWrite = plan.write;
+  }
+
   const existing = await deps.getRow(input.keyNorm);
   if (existing.setupNeeded) return setupResult();
   if (existing.error) return dbFail("매칭표 읽기", existing.error);
+
+  if (itemWrite) {
+    const r = await deps.upsertItem(itemWrite);
+    if (r.error) return dbFail("출하창고 저장", r.error);
+  }
   const row = nextMatchRow(existing.data ?? null, { ...input, code: product.code }, deps.now());
   const up = await deps.upsert(row);
   if (up.error) return dbFail("매칭표 저장", up.error);
@@ -413,9 +534,13 @@ export async function saveMatch(deps: SaveMatchDeps, body: unknown): Promise<Api
   const wh = await deps.getWarehouse(row.code);
   if (wh.error && !isMissingTable(wh.error)) warnings.push(`출하창고 표를 못 읽어 출하창고를 비웠습니다: ${wh.error.message}`);
   else if (!wh.found) warnings.push(`출하창고 표에 ${row.code} 가 없어 고친 줄의 출하창고를 비웠습니다. 이카운트 올리기 전에 확인하세요`);
+  else if (isBlankWarehouse(wh.data)) warnings.push(`${row.code} 의 출하창고가 비어 고친 줄의 출하창고를 비웠습니다. 「매칭표 보기」의 품목코드별 출하창고에서 넣으세요`);
+  const whValue = isBlankWarehouse(wh.data) ? null : wh.data;
 
-  const patch = await runMatchPatch(deps.patchDb, row.key_norm, row.code, wh.data, deps.headers);
+  const patch = await runMatchPatch(deps.patchDb, row.key_norm, row.code, whValue, deps.headers);
   warnings.push(...patch.warnings);
+  // 줄이 실제로 바뀐 날만(멈췄어도 이미 고친 날은 포함)
+  const originalStale = await markStale(deps, patch.dates, warnings);
   const changedFrom = existing.data && existing.data.code !== row.code ? existing.data.code : null;
   if (changedFrom) warnings.push(`코드를 ${changedFrom} → ${row.code} 로 바꿨습니다. 이미 ${changedFrom} 로 들어간 보관 줄은 그대로입니다(회사 PC 에서 그날을 다시 보내면 바뀝니다)`);
   // 줄 고치기가 멈춰도 매칭은 저장됐다. 200 으로 돌려 캐시(매칭표·판매입력)를 지우게 하고 ok:false 로 알린다
@@ -426,11 +551,56 @@ export async function saveMatch(deps: SaveMatchDeps, body: unknown): Promise<Api
       saved: true,
       match: toApiMatch(row),
       product: { code: product.code, name: product.name, brand: product.brand },
+      warehouse: itemWrite ? { code: itemWrite.code, warehouse: itemWrite.warehouse } : null,
       patched: { dates: patch.dates, lines: patch.lines },
+      originalStale,
       warnings,
       ...(patch.error ? { error: `매칭은 저장했지만 보관 줄 고치기가 멈췄습니다: ${patch.error}` } : {}),
     },
   };
+}
+
+export interface ItemSaveDeps {
+  listItems(): Promise<{ data: ItemCodeRow[]; error: DbError | null }>;
+  upsertItem(row: ItemCodeRow): Promise<{ error: DbError | null }>;
+  /** 표에 없는 코드를 넣을 때만 부른다. 못 읽으면 throw */
+  readProductCodes(): Promise<ProductListItem[]>;
+}
+
+/**
+ * POST /api/sales-match/item {code, warehouse}: 「매칭표 보기」의 품목코드별 출하창고 보기·바꾸기.
+ * 출하창고 표만 바꾼다. 이미 보관된 판매입력 줄은 그대로다(코드 바꾸기와 같은 규칙. 회사 PC 가 그날을 다시 보내면 바뀐다).
+ * 표에 없는 코드는 「상품 목록」에 있을 때만 넣는다(이름 = E열).
+ */
+export async function saveItemWarehouse(deps: ItemSaveDeps, body: unknown): Promise<ApiResult> {
+  const v = validateItemInput(body);
+  if (!v.ok) return { status: 400, body: { ok: false, error: v.error } };
+  const { code, warehouse } = v.value;
+  const items = await deps.listItems();
+  if (items.error) return dbFail("출하창고 표 읽기", items.error);
+  const options = warehouseOptions(items.data);
+  if (!options.includes(warehouse)) return badWarehouse(warehouse, options);
+  const item = items.data.find((i) => i.code === code) ?? null;
+  const previous = item && !isBlankWarehouse(item.warehouse) ? item.warehouse : null;
+  let name = item?.name ?? null;
+  if (!item) {
+    let products: ProductListItem[];
+    try {
+      products = await deps.readProductCodes();
+    } catch (e) {
+      return { status: 502, body: { ok: false, error: `통계 시트 「상품 목록」을 못 읽어 저장하지 않았습니다: ${e instanceof Error ? e.message : String(e)}` } };
+    }
+    const product = products.find((p) => p.code === code);
+    if (!product) {
+      return { status: 400, body: { ok: false, notInProductList: true, error: `상품 목록에 없는 코드: ${code}. 통계 시트 「상품 목록」 탭에 먼저 등록하세요` } };
+    }
+    name = product.name || null;
+  }
+  const note = "이미 보관된 판매입력 줄의 출하창고는 그대로입니다. 회사 PC 가 다음 계산부터 이 창고를 씁니다";
+  if (previous === warehouse) return { status: 200, body: { ok: true, unchanged: true, item: { code, name, warehouse }, previous, note } };
+  const r = await deps.upsertItem({ code, name, warehouse });
+  if (r.error) return dbFail("출하창고 저장", r.error);
+  return { status: 200, body: { ok: true, item: { code, name, warehouse }, previous, note } };
 }
 
 export interface SeedDeps {

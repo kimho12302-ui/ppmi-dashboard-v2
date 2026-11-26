@@ -4,17 +4,17 @@
 //   DELETE /api/sales-match?key=     ← 대시보드에서 넣은 줄 지우기
 //   POST /api/sales-match/seed       ← 볼트 sales_match.json 처음 옮기기(없는 것만)
 //   GET  /api/sales-match/products   → 통계 시트 「상품 목록」 코드(선택 상자)
+//   POST /api/sales-match/item       ← 「매칭표 보기」 품목코드별 출하창고 바꾸기
 // 통계 시트는 읽기만 한다(readonly 범위). product_sales·daily_sales 는 건드리지 않는다.
 import { google } from "googleapis";
 import { supabase } from "@/lib/supabase";
 import { LINES_TABLE, RUNS_TABLE } from "@/lib/sales-entry-core";
 import {
-  ITEMS_TABLE, MATCH_TABLE, SOURCE_SEED, isMissingTable, parseProductList,
+  ITEMS_TABLE, MATCH_TABLE, SOURCE_SEED, STATS_SHEET_ID, isMissingColumn, isMissingTable, parseProductList,
   type DbError, type ItemCodeRow, type LineUpdate, type MatchPatchDb, type MatchRow, type PatchLine,
-  type ProductListItem, type RunLite, type RunUpdate,
+  type ProductListItem, type RunLite, type RunUpdate, type StaleMarkResult,
 } from "@/lib/sales-match-core";
 
-const STATS_SHEET_ID = "1FzxDCyR9FyAIduf7Q0lfUIOzvSqVlod21eOFqaPrXio";
 /** /api/upload-sales 와 같은 범위(A 코드, B 카테고리, C 브랜드, D 라인업, E 상품명) */
 const PRODUCT_LIST_RANGE = "상품 목록!A3:E1000";
 const PAGE = 1000; // PostgREST 기본 최대 행
@@ -81,6 +81,34 @@ export async function getWarehouse(code: string): Promise<{ data: string | null;
   if (error) return { data: null, found: false, error };
   const row = data as { warehouse: string | null } | null;
   return { data: row?.warehouse ?? null, found: !!row, error: null };
+}
+
+/** 출하창고 표 전부(고르기 목록·지금 창고) */
+export function listItems(): Promise<{ data: ItemCodeRow[]; error: DbError | null }> {
+  return readAll<ItemCodeRow>(ITEMS_TABLE, "code,name,warehouse", ["code"]);
+}
+
+/** 출하창고 표 한 줄 넣기·바꾸기(code 기준) */
+export async function upsertItem(row: ItemCodeRow): Promise<{ error: DbError | null }> {
+  const { error } = await supabase.from(ITEMS_TABLE).upsert(row, { onConflict: "code" });
+  return { error };
+}
+
+/**
+ * 그날들 중 원본 파일이 있는 날에 original_stale=true (docs/sql/2026-11-26-sales-entry-stale.sql).
+ * 회사 PC 아침 회차(sales_entry_daily.py plan)가 이 표시가 있는 날을 다시 만들어 올린다. 원본 POST 가 성공하면 false 로 돌아간다.
+ * 칸이 아직 없으면(original_stale·original_file_path SQL 전) missingColumn 으로 알린다.
+ */
+export async function markOriginalStale(dates: readonly string[]): Promise<StaleMarkResult> {
+  if (dates.length === 0) return { marked: [], missingColumn: false, error: null };
+  const { data, error } = await supabase.from(RUNS_TABLE)
+    .update({ original_stale: true })
+    .in("date", [...dates])
+    .not("original_file_path", "is", null)
+    .select("date");
+  if (error) return isMissingColumn(error) ? { marked: [], missingColumn: true, error: null } : { marked: [], missingColumn: false, error };
+  const marked = ((data ?? []) as { date: string }[]).map((r) => r.date).sort();
+  return { marked, missingColumn: false, error: null };
 }
 
 /** 없는 것만 넣는다(ON CONFLICT DO NOTHING). 이미 있는 열쇠·코드는 건드리지 않는다 */

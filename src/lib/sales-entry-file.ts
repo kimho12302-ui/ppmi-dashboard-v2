@@ -31,6 +31,10 @@ export const fileUploadDeps: FileUploadDeps = {
     const { data, error } = await supabase.from(RUNS_TABLE).update(cols).eq("date", date).select("date");
     return { updated: data?.length ?? 0, error };
   },
+  clearStale: async (date) => {
+    const { error } = await supabase.from(RUNS_TABLE).update({ original_stale: false }).eq("date", date);
+    return { error };
+  },
   now: () => new Date().toISOString(),
 };
 

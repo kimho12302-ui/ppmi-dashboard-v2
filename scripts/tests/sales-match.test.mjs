@@ -7,6 +7,7 @@ import {
   normKey, validateMatchInput, nextMatchRow, canDelete, validateSeed, onlyNew, parseProductList,
   patchRowValues, planPatch, runMatchPatch, unmatchedFromLines, suggestCodes, baseKey, sortMatches,
   saveMatch, runSeed, SOURCE_SEED, SOURCE_DASHBOARD, NA,
+  saveItemWarehouse, warehouseOptions, isBlankWarehouse, validateItemInput, PRODUCT_LIST_URL, STATS_SHEET_ID, PRODUCT_LIST_GID,
 } from "../../src/lib/sales-match-core.ts";
 import {
   SHEET_HEADERS, SHEET_COLS, LINES_TABLE, RUNS_TABLE, validateSalesEntry, runSalesEntryIngest,
@@ -114,13 +115,14 @@ test("unmatched 목록은 판매몰·열쇠별 줄 수, 순서대로", () => {
 
 function fakePatchDb(cands, runs, o = {}) {
   const calls = [];
+  const lineUpdates = [];
   const db = {
     listUnmatchedLines: async () => (o.linesError ? { data: [], error: o.linesError } : { data: cands, error: null }),
     listRunsWithUnmatched: async () => ({ data: runs, error: null }),
-    updateLine: async (u) => { calls.push(["line", u.date, u.seq, u.item_code]); return { error: o.lineError ?? null }; },
+    updateLine: async (u) => { calls.push(["line", u.date, u.seq, u.item_code]); lineUpdates.push(u); return { error: o.lineError ?? null }; },
     updateRun: async (u) => { calls.push(["run", u.date, u.unmatched_count]); return { error: null }; },
   };
-  return { db, calls };
+  return { db, calls, lineUpdates };
 }
 
 const PRODUCTS = parseProductList([
@@ -135,14 +137,34 @@ function saveDeps(o = {}) {
   const rows = new Map((o.rows ?? []).map((r) => [r.key_norm, r]));
   const fp = fakePatchDb(o.cands ?? [], o.runs ?? []);
   const upserts = [];
+  // 출하창고 표(가짜). 기본: P0001=PPMI_3PL, 창고 목록 PPMI_3PL ×2 · YS_내부창고 ×1 + 머리글 찌꺼기
+  const items = new Map((o.items ?? [
+    { code: "P0001", name: "큐모발 검사", warehouse: "PPMI_3PL" },
+    { code: "Q0001", name: "다른", warehouse: "PPMI_3PL" },
+    { code: "Q0002", name: "또 다른", warehouse: "YS_내부창고" },
+    { code: "제품코드", name: "제품명", warehouse: "출하창고" },
+  ]).map((i) => [i.code, i]));
+  const itemUpserts = [];
+  const staleCalls = [];
+  const originals = new Set(o.originals ?? []);
   return {
-    upserts, calls: fp.calls, rows,
+    upserts, calls: fp.calls, lineUpdates: fp.lineUpdates, rows, items, itemUpserts, staleCalls,
     deps: {
       isSeeded: async () => o.setup ? { setupNeeded: true, error: null } : { setupNeeded: false, error: null, data: o.seeded ?? true },
       readProductCodes: async () => { if (o.sheetFails) throw new Error("시트 권한 없음"); return PRODUCTS; },
       getRow: async (k) => ({ setupNeeded: false, error: null, data: rows.get(k) ?? null }),
       upsert: async (r) => { upserts.push(r); rows.set(r.key_norm, r); return { error: null }; },
-      getWarehouse: async (code) => (code === "P0001" ? { data: "PPMI_3PL", found: true, error: null } : { data: null, found: false, error: null }),
+      getWarehouse: async (code) => {
+        const it = items.get(code);
+        return it ? { data: it.warehouse, found: true, error: null } : { data: null, found: false, error: null };
+      },
+      listItems: async () => ({ data: Array.from(items.values()), error: null }),
+      upsertItem: async (r) => { itemUpserts.push(r); items.set(r.code, r); return { error: null }; },
+      markOriginalStale: async (dates) => {
+        staleCalls.push([...dates]);
+        if (o.staleMissing) return { marked: [], missingColumn: true, error: null };
+        return { marked: dates.filter((d) => originals.has(d)), missingColumn: false, error: null };
+      },
       patchDb: fp.db,
       headers: SHEET_HEADERS,
       now: () => NOW,
@@ -341,4 +363,134 @@ test("줄 고치기가 중간에 멈춰도 매칭은 저장됐다고 200 + ok:fa
   assert.equal(res.body.saved, true);
   assert.match(res.body.error, /보관 줄 고치기가 멈췄습니다/);
   assert.equal(s.upserts.length, 1);
+});
+
+// ── 출하창고 고르기 · 상품 목록 바로가기 · 원본 다시 만들기 (2026-11-26) ──
+
+test("상품 목록 URL 상수: 통계 시트 ID + 「상품 목록」 gid", () => {
+  assert.equal(STATS_SHEET_ID, "1FzxDCyR9FyAIduf7Q0lfUIOzvSqVlod21eOFqaPrXio");
+  assert.equal(PRODUCT_LIST_GID, 1856953194);
+  assert.equal(PRODUCT_LIST_URL, "https://docs.google.com/spreadsheets/d/1FzxDCyR9FyAIduf7Q0lfUIOzvSqVlod21eOFqaPrXio/edit#gid=1856953194");
+});
+
+test("창고 고르기 목록: 실제로 쓰인 값만, 많이 쓰인 순, 빈 값·머리글 「출하창고」 빼기", () => {
+  const items = [
+    { warehouse: "YS_내부창고" }, { warehouse: "PPMI_3PL" }, { warehouse: "PPMI_3PL" }, { warehouse: "출하창고" },
+    { warehouse: null }, { warehouse: "  " }, { warehouse: "PPMI_내부창고" }, { warehouse: "PPMI_3PL" }, { warehouse: "YS_내부창고" },
+  ];
+  assert.deepEqual(warehouseOptions(items), ["PPMI_3PL", "YS_내부창고", "PPMI_내부창고"]);
+  assert.equal(isBlankWarehouse("출하창고"), true);
+  assert.equal(isBlankWarehouse(null), true);
+  assert.equal(isBlankWarehouse("PPMI_3PL"), false);
+  const v = validateMatchInput({ key: "a", code: "P", warehouse: "" });
+  assert.equal(v.value.warehouse, null, "빈 창고는 안 고른 것");
+  assert.equal(validateMatchInput({ key: "a", code: "P", warehouse: 3 }).ok, false);
+  assert.equal(validateItemInput({ code: "P" }).ok, false);
+});
+
+test("코드 넣기 + 창고: 표에 없는 코드는 출하창고 표에 넣고(이름 = 상품 목록 E열) 고친 줄에 그 창고", async () => {
+  const s = saveDeps({
+    cands: [line("2026-11-25", 1, "X0")],
+    runs: [{ date: "2026-11-25", unmatched: [{ 판매몰: "PPMI_스마트스토어", 매칭열쇠: "X0", 줄수: 1 }], unmatched_count: 1 }],
+  });
+  const r = await saveMatch(s.deps, { key: "X0", code: "P0002", warehouse: "YS_내부창고" });
+  assert.equal(r.status, 200);
+  assert.deepEqual(s.itemUpserts, [{ code: "P0002", name: "너티 사료", warehouse: "YS_내부창고" }]);
+  assert.deepEqual(r.body.warehouse, { code: "P0002", warehouse: "YS_내부창고" });
+  assert.equal(s.lineUpdates.length, 1);
+  assert.equal(s.lineUpdates[0].warehouse, "YS_내부창고");
+  assert.equal(s.lineUpdates[0].row_values[idx("출하창고")], "YS_내부창고");
+  assert.equal(s.lineUpdates[0].row_values[last("출하창고")], "YS_내부창고");
+  assert.equal(r.body.warnings.some((w) => /출하창고/.test(w)), false, "창고를 고르면 「출하창고 없음」 경고가 안 뜬다");
+});
+
+test("창고가 빈 코드(머리글 찌꺼기 포함)는 채우고, 같은 창고는 쓰지 않는다", async () => {
+  const s = saveDeps({ items: [{ code: "P0002", name: "옛 이름", warehouse: "" }, { code: "Q", name: "q", warehouse: "PPMI_3PL" }] });
+  const r = await saveMatch(s.deps, { key: "X0", code: "P0002", warehouse: "PPMI_3PL" });
+  assert.equal(r.status, 200);
+  assert.deepEqual(s.itemUpserts, [{ code: "P0002", name: "너티 사료", warehouse: "PPMI_3PL" }]);
+  const same = saveDeps();
+  const r2 = await saveMatch(same.deps, { key: "Y0", code: "P0001", warehouse: "PPMI_3PL" });
+  assert.equal(r2.status, 200);
+  assert.equal(same.itemUpserts.length, 0);
+  assert.equal(r2.body.warehouse, null);
+});
+
+test("이미 창고가 있는 코드에 다른 창고를 보내면 409, 아무것도 안 쓴다", async () => {
+  const s = saveDeps({ cands: [line("2026-11-25", 1, "X0")] });
+  const r = await saveMatch(s.deps, { key: "X0", code: "P0001", warehouse: "YS_내부창고" });
+  assert.equal(r.status, 409);
+  assert.equal(r.body.warehouseConflict, true);
+  assert.equal(r.body.current, "PPMI_3PL");
+  assert.match(r.body.error, /매칭표 보기/);
+  assert.equal(s.upserts.length, 0, "매칭도 저장하지 않는다(반쪽 저장 방지)");
+  assert.equal(s.itemUpserts.length, 0);
+  assert.equal(s.calls.length, 0);
+});
+
+test("고르기 목록 밖 창고는 400(직접 입력 안 받음), 아무것도 안 쓴다", async () => {
+  const s = saveDeps();
+  const r = await saveMatch(s.deps, { key: "X0", code: "P0002", warehouse: "출하창고" });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error, /고를 수 없는 출하창고/);
+  assert.equal(s.upserts.length + s.itemUpserts.length, 0);
+});
+
+test("창고를 안 고르고 창고 없는 코드면 「출하창고 없음」 경고는 그대로", async () => {
+  const s = saveDeps({ cands: [line("2026-11-25", 1, "X0")] });
+  const r = await saveMatch(s.deps, { key: "X0", code: "P0002" });
+  assert.match(r.body.warnings.join(" "), /출하창고 표에 P0002 가 없어/);
+  assert.equal(s.lineUpdates[0].warehouse, null);
+});
+
+test("품목코드별 출하창고 바꾸기: 있는 코드는 창고만, 목록 밖 400, 없는 코드는 상품 목록에 있을 때만", async () => {
+  const s = saveDeps();
+  const r = await saveItemWarehouse(s.deps, { code: "P0001", warehouse: "YS_내부창고" });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.previous, "PPMI_3PL");
+  assert.deepEqual(s.itemUpserts, [{ code: "P0001", name: "큐모발 검사", warehouse: "YS_내부창고" }]);
+  assert.match(r.body.note, /보관된 판매입력 줄의 출하창고는 그대로/);
+  const same = await saveItemWarehouse(s.deps, { code: "P0001", warehouse: "YS_내부창고" });
+  assert.equal(same.body.unchanged, true);
+  assert.equal(s.itemUpserts.length, 1);
+  assert.equal((await saveItemWarehouse(s.deps, { code: "P0001", warehouse: "새창고" })).status, 400);
+  const added = await saveItemWarehouse(s.deps, { code: "P0002", warehouse: "PPMI_3PL" });
+  assert.equal(added.status, 200);
+  assert.deepEqual(s.itemUpserts[1], { code: "P0002", name: "너티 사료", warehouse: "PPMI_3PL" });
+  const missing = await saveItemWarehouse(s.deps, { code: "Z9999", warehouse: "PPMI_3PL" });
+  assert.equal(missing.status, 400);
+  assert.equal(missing.body.notInProductList, true);
+});
+
+test("원본 다시 만들기: 줄이 실제로 바뀐 날만 표시를 요청, 원본 있는 날만 켜진다", async () => {
+  const s = saveDeps({
+    cands: [line("2026-11-24", 1, "ABC 옵션0"), line("2026-11-25", 1, "ABC 옵션0"), line("2026-11-25", 2, "다른0")],
+    runs: [],
+    originals: ["2026-11-25"],
+  });
+  const r = await saveMatch(s.deps, { key: "ABC 옵션0", code: "P0001" });
+  assert.equal(r.status, 200);
+  assert.deepEqual(s.staleCalls, [["2026-11-24", "2026-11-25"]]);
+  assert.deepEqual(r.body.originalStale, ["2026-11-25"]);
+  // 고칠 줄이 없으면 표시 요청도 없다
+  const none = saveDeps({ originals: ["2026-11-25"] });
+  const r2 = await saveMatch(none.deps, { key: "없는0", code: "P0001" });
+  assert.deepEqual(none.staleCalls, []);
+  assert.deepEqual(r2.body.originalStale, []);
+});
+
+test("원본 다시 만들기: 칸이 없는 DB(SQL 전)면 저장은 그대로, 경고로 알린다. 줄 고치기가 멈춰도 고친 날은 표시", async () => {
+  const s = saveDeps({ cands: [line("2026-11-25", 1, "ABC 옵션0")], staleMissing: true });
+  const r = await saveMatch(s.deps, { key: "ABC 옵션0", code: "P0001" });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.ok, true);
+  assert.deepEqual(r.body.originalStale, []);
+  assert.match(r.body.warnings.join(" "), /2026-11-26-sales-entry-stale\.sql/);
+  // 두 줄 중 두 번째에서 멈춤 → 첫 줄 날짜는 표시
+  const p = saveDeps({ cands: [line("2026-11-24", 1, "ABC 옵션0"), line("2026-11-25", 1, "ABC 옵션0")], originals: ["2026-11-24", "2026-11-25"] });
+  let n = 0;
+  p.deps.patchDb.updateLine = async () => (++n === 2 ? { error: { message: "연결 끊김" } } : { error: null });
+  const r3 = await saveMatch(p.deps, { key: "ABC 옵션0", code: "P0001" });
+  assert.equal(r3.body.ok, false);
+  assert.deepEqual(r3.body.originalStale, ["2026-11-24"]);
 });

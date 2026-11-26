@@ -138,6 +138,11 @@ export interface FileUploadDeps {
   put(path: string, blob: Buffer): Promise<{ error: StoreError | null }>;
   /** 실행 행의 원본 칸 갱신. 바뀐 행 수 */
   markRun(date: string, cols: Required<OriginalCols>): Promise<{ updated: number; error: FileDbError | null }>;
+  /**
+   * 「원본 다시 만들기」 표시 끄기(original_stale=false, docs/sql/2026-11-26-sales-entry-stale.sql).
+   * 원본 칸 갱신과 따로 부른다: 이 칸이 아직 없는 DB(SQL 전)에서도 원본 올리기는 그대로 성공해야 한다.
+   */
+  clearStale(date: string): Promise<{ error: FileDbError | null }>;
   now(): string;
 }
 export interface FileResult { status: number; body: Record<string, unknown> }
@@ -145,6 +150,7 @@ export interface FileResult { status: number; body: Record<string, unknown> }
 const isMissingTable = (e: { code?: string } | null) => !!e && (e.code === "PGRST205" || e.code === "42P01");
 const isMissingColumn = (e: { code?: string; message?: string } | null) =>
   !!e && (e.code === "PGRST204" || e.code === "42703" || /original_file/.test(e.message ?? ""));
+const isMissingStaleColumn = (e: { code?: string; message?: string } | null) => !!e && /original_stale/.test(e.message ?? "");
 const isMissingBucket = (e: StoreError | null) => !!e && /bucket not found/i.test(e.message);
 
 /** 검사 → 실행 행 확인 → 암호화 → Storage 덮어쓰기 → 실행 행 칸 갱신. 하나라도 실패하면 ok 가 아니다 */
@@ -182,7 +188,12 @@ export async function runSalesFileUpload(
   if (mark.updated === 0) {
     return bad(409, `${date} 실행 행이 그 사이 사라졌습니다(JSON 재전송 중). JSON 이 끝난 뒤 파일을 다시 보내세요`, { stored: true });
   }
-  return { status: 200, body: { ok: true, date, size: bytes.byteLength, path, uploadedAt } };
+  // 새 원본이 들어왔으니 「원본 다시 만들기」 표시를 끈다. 칸이 없으면(SQL 전) 조용히 넘어가고, 그 밖의 실패도 올리기는 성공으로 둔다
+  const clear = await deps.clearStale(date);
+  const staleWarning = clear.error && !isMissingColumn(clear.error) && !isMissingStaleColumn(clear.error)
+    ? { warning: `원본은 저장했지만 「원본 다시 만들기」 표시를 못 껐습니다: ${clear.error.message}` }
+    : {};
+  return { status: 200, body: { ok: true, date, size: bytes.byteLength, path, uploadedAt, ...staleWarning } };
 }
 
 // ── 내려받기 흐름 ─────────────────────────────────────
