@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { SalesCoverage } from "@/components/sales-coverage";
 import { freshFetch } from "@/lib/fresh-fetch";
+import { SalesEntryCard } from "@/components/settings/sales-entry-card";
 
 /* ── 배치 업로드 row 타입 ── */
 type BatchRow = { id: number; date: string; file: File | null; status: "pending" | "uploading" | "done" | "error"; result?: string };
@@ -256,6 +257,9 @@ export function UploadTab() {
             onSuccess={refreshMissing}
           />
           </div>
+
+          {/* 자동 판매입력 (회사 PC 수집 결과 보관·엑셀 받기, 2026-11-26) */}
+          <SalesEntryCard />
 
           {/* 쿠팡 퍼널 */}
           <div data-tour="daily-upload-coupang-funnel">
