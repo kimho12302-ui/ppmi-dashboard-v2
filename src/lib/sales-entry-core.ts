@@ -141,6 +141,17 @@ const cellText = (v: Cell): string | null => {
   return s === "" ? null : s;
 };
 
+/**
+ * 시각 문자열 → KST "YYYY-MM-DD HH:MM:SS". 저장은 +09:00 으로 하지만 DB(timestamptz)는 UTC(+00:00)로 돌려주므로
+ * 문자열을 자르지 않고 시각으로 읽어 바꾼다. 못 읽으면 원문 그대로.
+ */
+export function kstStamp(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const t = Date.parse(v);
+  if (Number.isNaN(t)) return v;
+  return new Date(t + 9 * 3600 * 1000).toISOString().slice(0, 19).replace("T", " ");
+}
+
 /** 보내는 쪽 generatedAt("2026-11-26T16:19:25", KST·오프셋 없음) → 오프셋 붙은 ISO. 못 읽으면 null */
 export function normalizeGeneratedAt(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -437,7 +448,7 @@ export function summarySheet(run: Pick<SalesEntryRun, "date" | "summary" | "basi
     [s("판매입력 요약"), s(run.date)],
     [s("기준"), s(basisText(run.basis))],
     [s("판매정리 줄 수"), { t: "n", v: run.line_count }],
-    [s("만든 시각"), run.generated_at ? s(run.generated_at) : null],
+    [s("만든 시각(KST)"), run.generated_at ? s(kstStamp(run.generated_at) ?? "") : null],
     [],
     [s("거래처"), s("품목"), s("수량"), s("합계")],
   ];

@@ -11,7 +11,7 @@ import * as XLSX from "xlsx";
 import {
   SHEET_HEADERS, SHEET_COLS, COL, PII_HEADERS, MAX_LINES, RUNS_TABLE, LINES_TABLE, NA,
   validateSalesEntry, runSalesEntryIngest, completeness, buildSalesEntryWorkbook, workbookBytes,
-  salesEntryFileName, excelSerial, normalizeGeneratedAt, isMissingTable,
+  salesEntryFileName, excelSerial, normalizeGeneratedAt, isMissingTable, kstStamp,
 } from "../../src/lib/sales-entry-core.ts";
 
 const TODAY = "2026-11-26";
@@ -220,6 +220,16 @@ test("파일명·엑셀 일련번호·생성 시각", () => {
   assert.equal(excelSerial("2026-02-30"), null);
   assert.equal(normalizeGeneratedAt("2026-11-26T16:19:25Z"), "2026-11-26T16:19:25Z");
   assert.equal(normalizeGeneratedAt("어제"), null);
+});
+
+test("만든 시각은 DB 가 UTC 로 돌려줘도 KST 로 찍는다", () => {
+  assert.equal(kstStamp("2026-11-26T16:19:25+09:00"), "2026-11-26 16:19:25");
+  assert.equal(kstStamp("2026-11-26T07:19:25+00:00"), "2026-11-26 16:19:25");
+  assert.equal(kstStamp(null), null);
+  const v = validateSalesEntry(payload(), TODAY).value;
+  const wb = buildSalesEntryWorkbook({ ...v.run, generated_at: "2026-11-26T07:19:25+00:00" }, v.lines);
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets["요약"], { header: 1 });
+  assert.ok(rows.some((r) => r[0] === "만든 시각(KST)" && r[1] === "2026-11-26 16:19:25"));
 });
 
 function workbookFor(p) {

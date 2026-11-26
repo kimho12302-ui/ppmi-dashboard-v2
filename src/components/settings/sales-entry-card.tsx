@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { freshFetch } from "@/lib/fresh-fetch";
 
@@ -35,11 +35,14 @@ const fileName = (date: string) => `판매입력_${date.slice(2, 4)}${date.slice
 const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"];
 const dayLabel = (d: string) => `${d.slice(5)} (${WEEKDAY[new Date(`${d}T00:00:00Z`).getUTCDay()]})`;
 
-/** 보낸 시각 "2026-11-26T16:19:25+09:00" → "11-26 16:19" (KST 문자열을 그대로 자른다) */
+/**
+ * 보낸 시각 → KST "11-26 16:19". DB(timestamptz)는 UTC(+00:00)로 돌려주므로 문자열을 자르지 않고 시각으로 읽어 9시간 더한다.
+ * (같은 규칙: src/lib/sales-entry-core.ts kstStamp. 그 모듈은 xlsx 를 끌고 와 화면에서 import 하지 않는다)
+ */
 function sentAt(it: Item): string {
-  const s = it.generated_at ?? "";
-  const m = /^\d{4}-(\d{2}-\d{2})T(\d{2}:\d{2})/.exec(s);
-  return m ? `${m[1]} ${m[2]}` : "-";
+  const t = Date.parse(it.generated_at ?? "");
+  if (Number.isNaN(t)) return "-";
+  return new Date(t + 9 * 3600 * 1000).toISOString().slice(5, 16).replace("T", " ");
 }
 
 const hasWarning = (it: Item) => it.unmatched_count > 0 || it.gap_count > 0 || it.problem_count > 0;
@@ -138,7 +141,7 @@ export function SalesEntryCard() {
             <p className="text-xs text-muted-foreground">최근 {state.days}일 동안 보관된 판매입력이 없습니다. 회사 PC 수집이 아직 보내지 않았거나 멈춘 상태입니다.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="num text-xs border-collapse w-full">
+              <table className="num text-xs border-collapse w-full min-w-[560px] whitespace-nowrap">
                 <thead>
                   <tr className="text-muted-foreground">
                     <th className="text-left font-medium py-1 pr-2">날짜</th>
@@ -154,9 +157,10 @@ export function SalesEntryCard() {
                   {items.map((it) => {
                     const warn = hasWarning(it);
                     const names = (it.unmatched ?? []).map((u) => `${(u.매칭열쇠 ?? "").slice(0, 40)}${u.줄수 && u.줄수 > 1 ? ` ×${u.줄수}` : ""}`).filter(Boolean);
+                    const bg = warn ? { background: "var(--sig-warn-surface)" } : undefined;
                     return (
-                      <tr key={it.date} className="border-t border-border/40 align-top"
-                        style={warn ? { background: "var(--sig-warn-surface)" } : undefined}>
+                      <Fragment key={it.date}>
+                      <tr className="border-t border-border/40 align-top" style={bg}>
                         <td className="py-1.5 pr-2 whitespace-nowrap font-medium">{dayLabel(it.date)}</td>
                         <td className="py-1.5 px-2 text-right">{it.line_count}</td>
                         <td className="py-1.5 px-2 text-right whitespace-nowrap">{won(it.total)}</td>
@@ -171,7 +175,6 @@ export function SalesEntryCard() {
                                   it.problem_count > 0 && `문제 ${it.problem_count}건`,
                                 ].filter(Boolean).join(" · ")}
                               </span>
-                              {names.length > 0 && <div className="text-[11px] leading-snug">{names.join(", ")}</div>}
                             </div>
                           ) : (
                             <span className="text-muted-foreground">없음</span>
@@ -186,6 +189,14 @@ export function SalesEntryCard() {
                           </button>
                         </td>
                       </tr>
+                      {names.length > 0 && (
+                        <tr style={bg}>
+                          <td colSpan={7} className="px-2 pb-1.5 pt-0 font-sans text-[11px] leading-snug whitespace-normal" style={{ color: "var(--sig-warn)" }}>
+                            미매칭 상품: {names.join(", ")}
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
