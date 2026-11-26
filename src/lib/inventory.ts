@@ -1165,6 +1165,36 @@ export function attachSalesScale(rows: readonly InventoryRow[], scale: SalesScal
   };
 }
 
+/**
+ * 숫자 카드(2026-11-26 김호 "카드 누르면 해당하는거 필터링"). 카드 숫자와 카드를 눌렀을 때 남는 행이 같은 판정 함수 하나를 쓴다.
+ *   품절 = 품절(보류 뺌) + 입고 지연 중 밑 상태가 품절
+ *   발주 필요 = 발주 필요(보류 뺌) + 입고 지연 중 밑 상태가 발주 필요·곧 발주
+ *   곧 발주 · 쿠팡 입고 요청 · 과재고 = 그 상태 그대로(보류는 품절·발주 필요에만 있음)
+ * 입고 대기·정상·출고 0·판정 제외와 보류 행은 어느 카드에도 안 걸린다. 재고 가치 카드는 개수 카드가 아니라 대상 밖
+ */
+export type InvCardKey = "soldout" | "order" | "soon" | "restock" | "over";
+export const CARD_KEYS: readonly InvCardKey[] = ["soldout", "order", "soon", "restock", "over"];
+export function cardMatches(key: InvCardKey, r: Pick<InventoryRow, "status" | "base_status" | "held">): boolean {
+  switch (key) {
+    case "soldout":
+      return (r.status === "soldout" && !r.held) || (r.status === "late" && r.base_status === "soldout");
+    case "order":
+      return (r.status === "order" && !r.held) || (r.status === "late" && (r.base_status === "order" || r.base_status === "soon"));
+    case "soon":
+    case "restock":
+    case "over":
+      return r.status === key;
+  }
+}
+/** 카드 누르기: 같은 카드를 다시 누르면 해제(null), 다른 카드면 그 카드로 바꾼다 */
+export function toggleCardFilter(current: InvCardKey | null, clicked: InvCardKey): InvCardKey | null {
+  return current === clicked ? null : clicked;
+}
+/** 카드를 눌렀을 때 남는 행(넘겨받은 순서 그대로) */
+export function filterByCard<T extends Pick<InventoryRow, "status" | "base_status" | "held">>(rows: readonly T[], key: InvCardKey): T[] {
+  return rows.filter((r) => cardMatches(key, r));
+}
+
 const BRANDS: InvBrand[] = ["nutty", "saip", "ironpet", "other"];
 export function buildCards(rows: readonly InventoryRow[]): InventoryCards {
   const counts = Object.fromEntries(Object.keys(STATUS_LABEL).map((k) => [k, 0])) as Record<InvStatus, number>;
@@ -1178,14 +1208,13 @@ export function buildCards(rows: readonly InventoryRow[]): InventoryCards {
     if (r.value !== null) { total += r.value; byBrand[r.brand] += r.value; }
     else if (r.total_stock > 0) { missing += 1; missByBrand[r.brand] += 1; }
   }
-  const lateOf = (base: InvStatus[]) => rows.filter((r) => r.status === "late" && base.includes(r.base_status)).length;
   const heldOf = (st: InvStatus) => rows.filter((r) => r.held && r.status === st).length;
   const card = {
-    soldout: counts.soldout - heldOf("soldout") + lateOf(["soldout"]),
-    order: counts.order - heldOf("order") + lateOf(["order", "soon"]),
-    soon: counts.soon,
-    restock: counts.restock,
-    over: counts.over,
+    soldout: filterByCard(rows, "soldout").length,
+    order: filterByCard(rows, "order").length,
+    soon: filterByCard(rows, "soon").length,
+    restock: filterByCard(rows, "restock").length,
+    over: filterByCard(rows, "over").length,
     late: counts.late,
     incoming: counts.incoming,
     held_soldout: heldOf("soldout"),

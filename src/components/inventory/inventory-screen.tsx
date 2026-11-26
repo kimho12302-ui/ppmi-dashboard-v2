@@ -5,14 +5,14 @@
 //   묶음: ① 지금 손댈 것(펼침, 안에 보류 접힘) ② 정상(접힘) ③ 과재고(재고 가치 순) ④ 출고 0(재고 가치 순) ⑤ 판정 제외(접힘)
 //   2026-11-10 김호: 사입을 브랜드별 탭으로, 판매 규모 등급(ABC)으로 급한 순서를 가르고 안 팔리는 품절·발주 필요는 보류로.
 // 계산은 전부 src/lib/inventory.ts. 이 파일은 고르고 그리기만 한다. 문구를 바꾸면 src/lib/guides/screens/inventory.ts 도 고친다.
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { freshFetch } from "@/lib/fresh-fetch";
 import { kstDate } from "@/lib/date";
 import {
   BRAND_LABEL, SPEED_WINDOWS, STATUS_LABEL, buildCards, addDays, buildBrandTabs, inBrandTab, ownSaipTabs,
-  ABC_A_SHARE, ABC_B_SHARE, SCALE_LABEL, SCALE_POOL_LABEL, HOLD_QUIET_DAYS,
-  type InvBrand, type InvGroup, type InventoryRow, type InvStatus, type SpeedWindow,
+  ABC_A_SHARE, ABC_B_SHARE, SCALE_LABEL, SCALE_POOL_LABEL, HOLD_QUIET_DAYS, filterByCard, toggleCardFilter,
+  type InvBrand, type InvCardKey, type InvGroup, type InventoryRow, type InvStatus, type SpeedWindow,
 } from "@/lib/inventory";
 import { RunwayAxis, RunwayBar } from "./runway-bar";
 import { InventoryDetail } from "./inventory-detail";
@@ -33,6 +33,11 @@ export function InventoryScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   // 보류(사입 품절·발주 필요 중 C·판매 없음·미상이고 최근 30일 출고 0)는 ① 안에서 접어 둔다. 판정은 그대로
   const [showHold, setShowHold] = useState(false);
+  // 카드를 누르면 그 카드 숫자에 든 행만 본다(2026-11-26). 판정은 src/lib/inventory.ts cardMatches 하나로 카드 숫자와 같다.
+  // 브랜드 탭·하루 출고 기간을 바꿔도 유지하고(카드 숫자도 그 범위로 다시 셈), 묶음은 필터 동안 펼친다(원래 접힘 상태는 건드리지 않음)
+  const [cardFilter, setCardFilter] = useState<InvCardKey | null>(null);
+  const [filterClosed, setFilterClosed] = useState<Partial<Record<InvGroup, boolean>>>({});
+  const pickCard = useCallback((k: InvCardKey) => { setCardFilter((f) => toggleCardFilter(f, k)); setFilterClosed({}); }, []);
 
   // 7·14·28 을 빨리 바꾸면 늦게 온 앞 요청이 뒤 결과를 덮지 않게 앞 요청을 취소한다
   const inflight = useRef<AbortController | null>(null);
@@ -69,6 +74,8 @@ export function InventoryScreen() {
   const activeTab = tabs.some((t) => t.key === tab) ? tab : "all";
   const rows = useMemo(() => (ready ? ready.rows.filter((r) => inBrandTab(r, activeTab, own)) : []), [ready, activeTab, own]);
   const cards = useMemo(() => buildCards(rows), [rows]);
+  const viewRows = useMemo(() => (cardFilter ? filterByCard(rows, cardFilter) : rows), [rows, cardFilter]);
+  const cardProps = (k: InvCardKey) => ({ active: cardFilter === k, onClick: () => pickCard(k) });
 
   return (
     <div className="space-y-4">
@@ -92,13 +99,13 @@ export function InventoryScreen() {
           <CoupangRgNotice data={ready} />
 
           <section data-tour="inventory-cards" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
-            <CountCard status="soldout" n={cards.card.soldout}
+            <CountCard status="soldout" n={cards.card.soldout} {...cardProps("soldout")}
               sub={`재고 합 0${cards.counts.late ? " · 입고 지연 포함" : ""}`} held={ready.scale ? cards.card.held_soldout : undefined} />
-            <CountCard status="order" n={cards.card.order}
+            <CountCard status="order" n={cards.card.order} {...cardProps("order")}
               sub={`남은 날 ≤ 주의 일수${cards.card.late ? ` · 입고 지연 ${cards.card.late} 포함` : ""}`} held={ready.scale ? cards.card.held_order : undefined} />
-            <CountCard status="soon" n={cards.card.soon} sub={`≤ 30일 · 입고 대기 ${cards.card.incoming}`} />
-            <CountCard status="restock" n={cards.card.restock} sub="쿠팡만 부족, 위킵엔 있음 · 발주 아님" />
-            <CountCard status="over" n={cards.card.over} sub="남은 날 > 60일" />
+            <CountCard status="soon" n={cards.card.soon} {...cardProps("soon")} sub={`≤ 30일 · 입고 대기 ${cards.card.incoming}`} />
+            <CountCard status="restock" n={cards.card.restock} {...cardProps("restock")} sub="쿠팡만 부족, 위킵엔 있음 · 발주 아님" />
+            <CountCard status="over" n={cards.card.over} {...cardProps("over")} sub="남은 날 > 60일" />
             <ValueCard cards={cards} />
           </section>
 
@@ -130,22 +137,34 @@ export function InventoryScreen() {
             <Link href="/settings?tab=inventory" data-tour="inventory-settings-link" className="ml-1 underline underline-offset-2 text-foreground">쿠팡 재고·발주·기준 일수 입력 →</Link>
           </p>
 
+          {cardFilter && (
+            <CardFilterBar k={cardFilter} n={viewRows.length} late={viewRows.filter((r) => r.status === "late").length} cards={cards}
+              tabLabel={activeTab === "all" ? null : tabs.find((t) => t.key === activeTab)?.label ?? null} onClear={() => setCardFilter(null)} />
+          )}
+
           <div className="space-y-3">
             {GROUPS.map((g) => {
-              const list = rows.filter((r) => r.group === g.key);
-              // 보류(inventory.ts isHeld)는 ① 안 맨 아래에 접어 둔다
-              const hold = g.key === "act" ? rows.filter((r) => r.group === "hold") : [];
+              const list = viewRows.filter((r) => r.group === g.key);
+              // 보류(inventory.ts isHeld)는 ① 안 맨 아래에 접어 둔다. 카드 필터 중에는 카드 숫자와 같게 보류가 빠져 있다
+              const hold = g.key === "act" ? viewRows.filter((r) => r.group === "hold") : [];
+              const empty = list.length === 0 && hold.length === 0;
+              // 필터 중: 걸린 행이 있는 묶음은 펼치고(눌러서 접을 수 있음) 없는 묶음은 제목만
+              const isOpen = cardFilter ? !empty && !filterClosed[g.key] : open[g.key];
+              const toggle = () => (cardFilter
+                ? setFilterClosed((c) => ({ ...c, [g.key]: !c[g.key] }))
+                : setOpen((o) => ({ ...o, [g.key]: !o[g.key] })));
               return (
-                <section key={g.key} data-tour={`inventory-group-${g.key}`} className="rounded-xl border bg-card overflow-hidden">
-                  <button type="button" onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))} aria-expanded={open[g.key]}
-                    className="w-full flex items-center gap-2 px-3 sm:px-4 py-2.5 text-left hover:bg-muted/40">
+                <section key={g.key} data-tour={`inventory-group-${g.key}`}
+                  className={`rounded-xl border bg-card overflow-hidden ${cardFilter && empty ? "opacity-60" : ""}`}>
+                  <button type="button" onClick={toggle} aria-expanded={isOpen} disabled={!!cardFilter && empty}
+                    className="w-full flex items-center gap-2 px-3 sm:px-4 py-2.5 text-left hover:bg-muted/40 disabled:hover:bg-transparent disabled:cursor-default">
                     <span className="text-sm font-semibold">{g.no} {g.title}</span>
                     <span className="num text-sm text-muted-foreground">{list.length}</span>
                     {hold.length > 0 && <span className="num text-xs text-muted-foreground">+ 보류 {hold.length}</span>}
                     <span className="hidden sm:inline text-xs text-muted-foreground truncate">{g.hint}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">{open[g.key] ? "접기" : "펼치기"}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{cardFilter && empty ? "해당 없음" : isOpen ? "접기" : "펼치기"}</span>
                   </button>
-                  {open[g.key] && (list.length > 0 || hold.length > 0) && (
+                  {isOpen && (list.length > 0 || hold.length > 0) && (
                     <div className="border-t">
                       <HeaderRow />
                       {list.map((r, i) => (
@@ -163,7 +182,7 @@ export function InventoryScreen() {
                             <span className="font-medium text-foreground">안 팔려서 보류 중일 수 있음 {hold.length}개</span>
                             <span className="text-muted-foreground"> · {showHold ? "접기" : "펼치기"} · 사입 품절·발주 필요 중 90일 판매 규모가 C·판매 없음·미상이고 최근 {HOLD_QUIET_DAYS}일 위킵 출고도 0. 일부러 발주를 끊었을 수 있어 위에서 뺐습니다(판정은 그대로)</span>
                           </button>
-                          {showHold && hold.map((r) => (
+                          {(showHold || cardFilter) && hold.map((r) => (
                             <Fragment key={r.sku_no}>
                               <Row row={r} asOf={ready.as_of} first={false} active={selected === r.sku_no}
                                 onClick={() => setSelected((s) => (s === r.sku_no ? null : r.sku_no))} />
@@ -174,7 +193,7 @@ export function InventoryScreen() {
                       )}
                     </div>
                   )}
-                  {open[g.key] && list.length === 0 && hold.length === 0 && <p className="border-t px-4 py-3 text-xs text-muted-foreground">해당 상품 없음</p>}
+                  {isOpen && list.length === 0 && hold.length === 0 && <p className="border-t px-4 py-3 text-xs text-muted-foreground">해당 상품 없음</p>}
                 </section>
               );
             })}
@@ -230,11 +249,25 @@ function Freshness({ data, loading, onRefresh }: { data: Exclude<InventoryRespon
   );
 }
 
-function CountCard({ status, n, sub, held }: { status: InvStatus; n: number; sub: string; held?: number }) {
+/** 개수 카드. 누르면 아래 목록이 이 카드 숫자에 든 행만 남고, 다시 누르면 해제(0 개 카드는 못 누름, 걸려 있으면 해제는 됨) */
+function CountCard({ status, n, sub, held, active, onClick }: {
+  status: InvStatus; n: number; sub: string; held?: number; active: boolean; onClick: () => void;
+}) {
   const t = STATUS_TONE[status];
+  const tint = n > 0 || active;
+  const style: CSSProperties = {
+    ...(tint ? { borderColor: t.border, background: t.surface } : {}),
+    ...(active ? { borderColor: t.color, boxShadow: `0 0 0 2px ${t.color}` } : {}),
+  };
   return (
-    <div className="rounded-xl border bg-card p-3" style={n > 0 ? { borderColor: t.border, background: t.surface } : undefined}>
-      <p className="text-xs font-medium" style={{ color: n > 0 ? t.color : "var(--muted-foreground)" }}>
+    <button type="button" onClick={onClick} aria-pressed={active} disabled={n === 0 && !active}
+      title={active ? "다시 누르면 필터 해제" : `누르면 아래 목록에서 ${STATUS_LABEL[status]}만 봅니다`}
+      className="relative w-full text-left rounded-xl border bg-card p-3 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:shadow-none"
+      style={style}>
+      {active && (
+        <span className="absolute top-2 right-2 rounded px-1.5 py-0.5 text-[10px] font-semibold text-white" style={{ background: t.color }}>보는 중</span>
+      )}
+      <p className="text-xs font-medium" style={{ color: tint ? t.color : "var(--muted-foreground)" }}>
         {STATUS_LABEL[status]}
       </p>
       <p className="num text-2xl font-bold leading-tight mt-0.5">
@@ -242,6 +275,29 @@ function CountCard({ status, n, sub, held }: { status: InvStatus; n: number; sub
       </p>
       {held ? <p className="text-[11px] text-muted-foreground" title="사입 C·판매 없음·미상이고 최근 30일 출고 0 인 것은 ① 아래 보류로 보내 이 개수에서 뺐습니다">보류 {held}개 제외</p> : null}
       <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
+    </button>
+  );
+}
+
+/** 카드 필터가 걸려 있을 때 목록 위 한 줄: 무엇을 보는 중인지 · 몇 개인지 · 카드 숫자에 든 것·빠진 것 · 해제 */
+function CardFilterBar({ k, n, late, cards, tabLabel, onClear }: {
+  k: InvCardKey; n: number; late: number; cards: ReturnType<typeof buildCards>; tabLabel: string | null; onClear: () => void;
+}) {
+  const t = STATUS_TONE[k];
+  const held = k === "soldout" ? cards.card.held_soldout : k === "order" ? cards.card.held_order : 0;
+  const notes = [
+    n === 0 ? `${tabLabel ? "이 탭에는" : "지금은"} 해당 상품 없음` : null,
+    late ?`입고 지연 ${late}개 포함(발주했는데 입고 예정일이 지남)` : null,
+    held ? `보류 ${held}개는 카드 숫자처럼 빠짐(필터를 풀면 ① 아래 보류에 있음)` : null,
+    k === "soon" && cards.card.incoming ? `발주를 넣은 입고 대기 ${cards.card.incoming}개는 빠짐` : null,
+  ].filter(Boolean);
+  return (
+    <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-3 py-2 text-sm"
+      style={{ borderColor: t.border, background: t.surface }}>
+      <span className="font-semibold" style={{ color: t.color }}>{tabLabel ? `${tabLabel} · ` : ""}{STATUS_LABEL[k]}만 보는 중</span>
+      <span className="num">· {n}개</span>
+      {notes.length > 0 && <span className="text-xs text-muted-foreground">· {notes.join(" · ")}</span>}
+      <button type="button" onClick={onClear} className="ml-auto rounded border bg-card px-2 py-0.5 text-xs hover:bg-muted">필터 해제</button>
     </div>
   );
 }
