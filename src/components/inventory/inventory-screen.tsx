@@ -261,8 +261,8 @@ function CountCard({ status, n, sub, held, active, onClick }: {
   };
   return (
     <button type="button" onClick={onClick} aria-pressed={active} disabled={n === 0 && !active}
-      title={active ? "다시 누르면 필터 해제" : `누르면 아래 목록에서 ${STATUS_LABEL[status]}만 봅니다`}
-      className="relative w-full text-left rounded-xl border bg-card p-3 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:shadow-none"
+      title={active ? "다시 누르면 필터 해제" : n === 0 ? `${STATUS_LABEL[status]} 0개` : `누르면 아래 목록에서 ${STATUS_LABEL[status]}만 봅니다`}
+      className="relative w-full h-full flex flex-col justify-start items-stretch text-left rounded-xl border bg-card p-3 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:shadow-none"
       style={style}>
       {active && (
         <span className="absolute top-2 right-2 rounded px-1.5 py-0.5 text-[10px] font-semibold text-white" style={{ background: t.color }}>보는 중</span>
