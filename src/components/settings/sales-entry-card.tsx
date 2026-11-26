@@ -9,6 +9,8 @@ import { MatchTablePanel, SaveOutcomeNote, UnmatchedFixList, useSalesMatch, type
 // 회사 PC 스크립트(볼트 sales_entry_push.py)가 날마다 보낸 판매입력을 날짜별로 보여 주고, 그날 엑셀을 내려받는다.
 // 보관·받기만 한다. 매출 원장 반영은 위 「판매 실적 (이카운트)」 칸에 이 엑셀을 올려야 된다.
 // API: GET /api/sales-entry(목록), GET /api/sales-entry/xlsx?date=(엑셀)
+// 2026-11-26 원본 보관: 회사 PC 가 원본 엑셀(고객정보 포함, 15탭)을 보내면 서버가 암호화해 둔다(/api/sales-entry/file).
+//   그날 「원본」이면 「엑셀 받기」가 그 원본 그대로, 「요약본」이면 고객정보 없는 생성본(판매정리·요약·미매칭·누락 탭)
 // 2026-11-26 매칭표 편집: 미매칭 상품마다 「코드 넣기」, 아래 「매칭표 보기」(sales-match-editor.tsx, /api/sales-match)
 
 interface Unmatched { 판매몰?: string; 매칭열쇠?: string; 줄수?: number }
@@ -24,6 +26,8 @@ interface Item {
   unmatched: Unmatched[] | null;
   generated_at: string | null;
   updated_at?: string;
+  /** 원본 엑셀(암호화 보관) 경로. 없으면(또는 SQL 전) 생성본 */
+  original_file_path?: string | null;
 }
 type ListState =
   | { kind: "loading" }
@@ -47,6 +51,7 @@ function sentAt(it: Item): string {
   return new Date(t + 9 * 3600 * 1000).toISOString().slice(5, 16).replace("T", " ");
 }
 
+const hasOriginal = (it: Item) => !!it.original_file_path;
 const hasWarning = (it: Item) => it.unmatched_count > 0 || it.gap_count > 0 || it.problem_count > 0;
 
 export function SalesEntryCard() {
@@ -121,7 +126,7 @@ export function SalesEntryCard() {
         <div>
           <h4 className="font-medium">자동 판매입력</h4>
           <p className="text-xs text-muted-foreground">
-            회사 PC 가 매일 만든 이카운트 판매입력을 날짜별로 보관합니다. 「엑셀 받기」로 그날 판매입력 엑셀(판매정리·요약·미매칭·누락 탭)을 받습니다.
+            회사 PC 가 매일 만든 이카운트 판매입력을 날짜별로 보관합니다. 「엑셀 받기」는 「원본」인 날은 회사 PC 가 만든 파일 그대로, 「요약본」인 날은 판매정리·요약·미매칭·누락 탭만 든 파일을 받습니다.
             여기 보관만으로는 매출에 반영되지 않습니다. 반영하려면 받은 파일을 위 「판매 실적 (이카운트)」에 올립니다.
           </p>
         </div>
@@ -177,7 +182,16 @@ export function SalesEntryCard() {
                     return (
                       <Fragment key={it.date}>
                       <tr className="border-t border-border/40 align-top" style={bg}>
-                        <td className="py-1.5 pr-2 whitespace-nowrap font-medium">{dayLabel(it.date)}</td>
+                        <td className="py-1.5 pr-2 whitespace-nowrap font-medium">
+                          {dayLabel(it.date)}
+                          <span
+                            className={cn("ml-1.5 font-sans font-normal text-[10px] rounded px-1 py-px border border-current",
+                              !hasOriginal(it) && "text-muted-foreground")}
+                            style={hasOriginal(it) ? { color: "var(--sig-ok)" } : undefined}
+                            title={hasOriginal(it) ? "회사 PC 가 만든 원본 파일(고객정보 포함, 암호화 보관)" : "원본 파일 없음. 고객정보 없는 생성본을 받습니다"}>
+                            {hasOriginal(it) ? "원본" : "요약본"}
+                          </span>
+                        </td>
                         <td className="py-1.5 px-2 text-right">{it.line_count}</td>
                         <td className="py-1.5 px-2 text-right whitespace-nowrap">{won(it.total)}</td>
                         <td className="py-1.5 px-2 text-right whitespace-nowrap">{won(it.shipping)}</td>
@@ -238,7 +252,7 @@ export function SalesEntryCard() {
             </p>
           )}
           <p className="stamp text-muted-foreground">
-            미매칭 = 품목코드를 못 찾은 상품(엑셀에 #N/A). 「코드 넣기」로 「상품 목록」 코드를 고르면 매칭표에 저장되고 보관된 그 상품 줄도 바로 고쳐집니다. 누락 = 스마트스토어 발주확인 목록에는 있는데 판매정리에 빠진 주문. 받는 사람 이름·연락처·주소와 적요 칸은 보관하지 않습니다.
+            미매칭 = 품목코드를 못 찾은 상품(엑셀에 #N/A). 「코드 넣기」로 「상품 목록」 코드를 고르면 매칭표에 저장되고 보관된 그 상품 줄도 바로 고쳐집니다. 누락 = 스마트스토어 발주확인 목록에는 있는데 판매정리에 빠진 주문. 원본 = 회사 PC 가 만든 파일 그대로(받는 사람 이름·연락처·주소 포함). 서버에서 암호화해 보관하고 받을 때만 풉니다. 표로 저장하는 판매정리 데이터에는 받는 사람 정보와 적요 칸을 넣지 않습니다.
           </p>
         </>
       )}

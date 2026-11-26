@@ -2,10 +2,10 @@
 // 여기는 supabase 를 이어 줄 뿐이다. 표: docs/sql/2026-11-26-sales-entry.sql
 //   POST /api/sales-entry        ← 볼트 sales_entry_push.py (x-ppmi-key)
 //   GET  /api/sales-entry        → 최근 목록 / ?date= 상세
-//   GET  /api/sales-entry/xlsx   → 판매입력 엑셀
+//   GET  /api/sales-entry/xlsx   → 판매입력 엑셀(원본이 있으면 원본, src/lib/sales-entry-file.ts)
 import { supabase } from "@/lib/supabase";
 import {
-  LINES_TABLE, RUNS_TABLE, completeness, isMissingTable, runSalesEntryIngest,
+  LINES_TABLE, RUNS_TABLE, completeness, isMissingColumn, isMissingTable, runSalesEntryIngest,
   type DbError, type IngestResult, type SalesEntryDb, type SalesEntryLine, type SalesEntryRun, type Validated,
 } from "@/lib/sales-entry-core";
 
@@ -27,9 +27,12 @@ export function saveSalesEntry(v: Validated): Promise<IngestResult> {
 /** 목록 칸(무거운 jsonb 중 summary·gaps·problems 는 빼고 unmatched 만 둔다: 카드에서 상품명을 보여 준다) */
 const LIST_COLS =
   "date,line_count,total,revenue,shipping,unmatched_count,gap_count,problem_count,unmatched,generated_at,updated_at";
+/** 원본 보관 칸(docs/sql/2026-11-26-sales-entry-files.sql). SQL 전이면 빼고 다시 읽는다 */
+const ORIGINAL_LIST_COLS = "original_file_path,original_file_size,original_uploaded_at";
 export type SalesEntryListItem = Pick<
   SalesEntryRun,
   "date" | "line_count" | "total" | "revenue" | "shipping" | "unmatched_count" | "gap_count" | "problem_count" | "unmatched" | "generated_at" | "updated_at"
+  | "original_file_path" | "original_file_size" | "original_uploaded_at"
 >;
 
 export type Loaded<T> = { setupNeeded: true } | { setupNeeded: false; error: DbError } | { setupNeeded: false; error: null; data: T };
@@ -39,7 +42,10 @@ function failed<T>(error: DbError): Loaded<T> {
 }
 
 export async function listSalesEntries(from: string): Promise<Loaded<SalesEntryListItem[]>> {
-  const { data, error } = await supabase.from(RUNS_TABLE).select(LIST_COLS).gte("date", from).order("date", { ascending: false });
+  const query = (cols: string) => supabase.from(RUNS_TABLE).select(cols).gte("date", from).order("date", { ascending: false });
+  let { data, error } = await query(`${LIST_COLS},${ORIGINAL_LIST_COLS}`);
+  // 원본 칸 SQL 전: 칸을 빼고 다시 읽는다(목록이 통째로 죽지 않게). 카드는 전부 「요약본」으로 보인다
+  if (error && isMissingColumn(error) && !isMissingTable(error)) ({ data, error } = await query(LIST_COLS));
   if (error) return failed(error);
   return { setupNeeded: false, error: null, data: (data ?? []) as unknown as SalesEntryListItem[] };
 }

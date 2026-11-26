@@ -9,9 +9,10 @@
 //   없으면(옛 실행기) match_key 칸을 안 쓴다. 칸이 아직 없는 DB(SQL 전)면 칸을 빼고 다시 넣는다.
 // 표: docs/sql/2026-11-26-sales-entry.sql (sales_entry_runs · sales_entry_lines)
 //
-// ★ 고객 개인정보는 저장하지 않는다. 이 DB 는 anon 키로 읽고 쓰고 그 키가 공개 리포에 있다.
+// ★ 이 표들(sales_entry_runs·lines)에는 고객 개인정보를 저장하지 않는다. 이 DB 는 anon 키로 읽고 쓰고 그 키가 공개 리포에 있다.
 //   보내는 쪽이 비워 보내지만, 받는 쪽에서도 수령인·수령인번호·수령인주소·적요 칸을 비운다.
 //   적요: 보내는 쪽(sales_entry.py _sheet_row)이 수령인 이름을 넣는다(2026-11-26 확인). 그래서 같이 비운다.
+//   고객정보가 든 원본 엑셀은 따로 서버에서 암호화해 Storage 에 둔다(src/lib/sales-entry-file-core.ts, 열쇠는 Vercel 환경변수에만).
 // ★ 매출 원장(product_sales·daily_sales)·통계 시트에는 쓰지 않는다. 보관·조회·다운로드만.
 import * as XLSX from "xlsx";
 
@@ -82,6 +83,10 @@ export interface SalesEntryRun {
   problem_count: number;
   generated_at: string | null;
   updated_at?: string;
+  /** 원본 엑셀(암호화 보관) 경로·크기·올린 시각. docs/sql/2026-11-26-sales-entry-files.sql, src/lib/sales-entry-file-core.ts */
+  original_file_path?: string | null;
+  original_file_size?: number | null;
+  original_uploaded_at?: string | null;
 }
 
 export interface SalesEntryLine {

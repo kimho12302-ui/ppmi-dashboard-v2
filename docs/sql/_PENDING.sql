@@ -1,4 +1,13 @@
 -- ============================================================
+--  ★ 2026-11-26 추가: 판매입력 원본 엑셀 암호화 보관 → 별도 파일 하나만 붙여넣으면 된다
+--    docs/sql/2026-11-26-sales-entry-files.sql  (Storage 비공개 버킷 sales-entry-files + 그 버킷 한정 정책 4개,
+--    sales_entry_runs 에 original_file_path·original_file_size·original_uploaded_at 칸)
+--    ★ 2026-11-26-sales-entry.sql 을 먼저 돌린 뒤 실행. 파일은 서버가 암호화해 넣는다(열쇠 SALES_FILE_KEY 는 Vercel 에만)
+--    순서: SQL → 배포 → GET /api/sales-entry/file/health 가 {keyOk:true, bucketOk:true} → 회사 PC 가 JSON 뒤 파일 보내기
+--    안 돌려도 카드는 돈다(전부 「요약본」). 끝의 select 세 줄이 1·4·3 이면 정상. 다른 버킷·표는 안 건드린다
+-- ============================================================
+
+-- ============================================================
 --  ★ 2026-11-26 추가: 판매입력 매칭표(대시보드에서 품목코드 넣기) → 별도 파일 하나만 붙여넣으면 된다
 --    docs/sql/2026-11-26-sales-match.sql  (표 2개 sales_match·sales_item_codes, sales_entry_lines 에 match_key 칸)
 --    ★ 위 2026-11-26-sales-entry.sql 을 먼저 돌린 뒤 실행(sales_entry_lines 에 칸을 붙인다)
