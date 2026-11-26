@@ -3,7 +3,10 @@
 //
 // 받는 모양(볼트 settings/collectors/bin/sales_entry_push.py build_payload):
 //   { date, basis, generatedAt, sheetHeaders(42칸), sheetRows(42칸 값 배열들),
-//     summary{total, revenue, shipping, groups[]}, unmatched[], gaps{}, problems[] }
+//     summary{total, revenue, shipping, groups[]}, unmatched[], gaps{}, problems[],
+//     matchKeys?(sheetRows 와 같은 길이, 줄마다 매칭열쇠 = 상품명+옵션, 2026-11-26 추가) }
+//   matchKeys 는 대시보드 매칭표(src/lib/sales-match-core.ts)에서 코드를 넣을 때 보관된 #N/A 줄을 찾는 열쇠다.
+//   없으면(옛 실행기) match_key 칸을 안 쓴다. 칸이 아직 없는 DB(SQL 전)면 칸을 빼고 다시 넣는다.
 // 표: docs/sql/2026-11-26-sales-entry.sql (sales_entry_runs · sales_entry_lines)
 //
 // ★ 고객 개인정보는 저장하지 않는다. 이 DB 는 anon 키로 읽고 쓰고 그 키가 공개 리포에 있다.
@@ -33,6 +36,8 @@ export const MAX_LINES = 5000;
 /** 이보다 이른 날짜는 잘못 보낸 것으로 본다 */
 export const MIN_DATE = "2025-01-01";
 const CELL_TEXT_MAX = 2000;
+/** 매칭열쇠 최대 길이(상품명+옵션) */
+const MATCH_KEY_MAX = 2000;
 /** summary·unmatched·gaps·problems·basis 를 합친 JSON 최대 길이 */
 const META_JSON_MAX = 1_000_000;
 const CHUNK = 500;
@@ -95,6 +100,8 @@ export interface SalesEntryLine {
   warehouse: string | null;
   unmatched: boolean;
   row_values: Cell[];
+  /** 매칭열쇠(상품명+옵션). 보내는 쪽이 matchKeys 를 줄 때만 있다 */
+  match_key?: string | null;
 }
 
 export interface SummaryGroup {
@@ -214,11 +221,11 @@ export function stripPii(row: readonly Cell[]): { row: Cell[]; cleared: string[]
   return { row: out, cleared };
 }
 
-export function toLine(date: string, seq: number, row: Cell[]): SalesEntryLine {
+export function toLine(date: string, seq: number, row: Cell[], matchKey?: string | null): SalesEntryLine {
   const supply = cellNum(row[COL.supply]);
   const vat = cellNum(row[COL.vat]);
   const code = cellText(row[COL.itemCode]);
-  return {
+  const line: SalesEntryLine = {
     date,
     seq,
     mall: cellText(row[COL.mall]),
@@ -236,6 +243,17 @@ export function toLine(date: string, seq: number, row: Cell[]): SalesEntryLine {
     unmatched: !code || code === NA,
     row_values: row,
   };
+  return matchKey === undefined ? line : { ...line, match_key: matchKey };
+}
+
+/** matchKeys 검사: 없으면 undefined(옛 실행기), 있으면 줄 수와 같은 길이의 문자열·null 배열 */
+function validateMatchKeys(v: unknown, rowCount: number): { ok: true; value: (string | null)[] | undefined } | { ok: false; error: string } {
+  if (v === undefined || v === null) return { ok: true, value: undefined };
+  if (!Array.isArray(v)) return { ok: false, error: "matchKeys 가 배열이 아닙니다" };
+  if (v.length !== rowCount) return { ok: false, error: `matchKeys 길이(${v.length})가 sheetRows 줄 수(${rowCount})와 다릅니다` };
+  const bad = v.findIndex((k) => !(k === null || (typeof k === "string" && k.length <= MATCH_KEY_MAX)));
+  if (bad >= 0) return { ok: false, error: `matchKeys[${bad}] 는 문자열(${MATCH_KEY_MAX}자 이하) 또는 null 이어야 합니다` };
+  return { ok: true, value: v.map((k) => (k === "" ? null : (k as string | null))) };
 }
 
 /** 받은 JSON 을 검사해 저장할 행으로 바꾼다. 하나라도 걸리면 아무것도 안 쓴다 */
@@ -255,6 +273,9 @@ export function validateSalesEntry(body: unknown, today: string): ValidateResult
   const rows = body.sheetRows;
   if (!Array.isArray(rows)) return { ok: false, error: "sheetRows 가 배열이 아닙니다" };
   if (rows.length > MAX_LINES) return { ok: false, error: `줄이 너무 많습니다: ${rows.length} (최대 ${MAX_LINES})` };
+  const mk = validateMatchKeys(body.matchKeys, rows.length);
+  if (!mk.ok) return { ok: false, error: mk.error };
+  const matchKeys = mk.value;
 
   const errors: string[] = [];
   const sanitized: Record<string, number> = {};
@@ -271,7 +292,7 @@ export function validateSalesEntry(body: unknown, today: string): ValidateResult
     }
     const { row, cleared } = stripPii(r as Cell[]);
     for (const h of cleared) sanitized[h] = (sanitized[h] ?? 0) + 1;
-    lines.push(toLine(date, n, row));
+    lines.push(toLine(date, n, row, matchKeys ? matchKeys[i] : undefined));
   });
   if (errors.length) return { ok: false, error: `잘못된 줄 ${errors.length}개`, details: errors.slice(0, 20) };
 
@@ -321,6 +342,20 @@ export interface IngestResult { status: number; body: Record<string, unknown> }
 export function isMissingTable(error: { code?: string } | null | undefined): boolean {
   return !!error && (error.code === "PGRST205" || error.code === "42P01");
 }
+/**
+ * 칸이 아직 없을 때(match_key, docs/sql/2026-11-26-sales-match.sql 실행 전). 실제 PostgREST 가 주는 코드를 운영에서 확인하지 못해
+ * 오류 문구에 match_key 가 든 경우도 같이 본다(빼고 다시 넣어도 해가 없다. 매일 저장을 지키는 마지막 방어선이라 넓게 잡는다).
+ */
+export function isMissingColumn(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  return error.code === "PGRST204" || error.code === "42703" || /match_key/.test(error.message ?? "");
+}
+
+const withoutMatchKey = (l: SalesEntryLine): SalesEntryLine => {
+  const { match_key: _drop, ...rest } = l;
+  void _drop;
+  return rest;
+};
 export const SETUP_MESSAGE = "표 없음, SQL 실행 필요: docs/sql/2026-11-26-sales-entry.sql 를 Supabase SQL 편집기에서 실행하세요";
 
 /**
@@ -329,7 +364,9 @@ export const SETUP_MESSAGE = "표 없음, SQL 실행 필요: docs/sql/2026-11-26
  * 줄 삽입이 중간에 실패하면 실행 행이 없으니 그날은 「저장 불완전」으로 보이고, 같은 날을 다시 보내면 통째로 다시 쓴다.
  */
 export async function runSalesEntryIngest(db: SalesEntryDb, v: Validated): Promise<IngestResult> {
-  const { run, lines, sanitized } = v;
+  const { run, sanitized } = v;
+  let lines = v.lines;
+  let matchKeySkipped = false;
   const fail = (step: string, error: DbError): IngestResult => {
     if (isMissingTable(error)) return { status: 503, body: { ok: false, setupNeeded: true, error: SETUP_MESSAGE } };
     return { status: 500, body: { ok: false, step, error: `${step} 실패: ${error.message}` } };
@@ -339,7 +376,13 @@ export async function runSalesEntryIngest(db: SalesEntryDb, v: Validated): Promi
     if (error) return fail(`${table} 삭제`, error);
   }
   for (let i = 0; i < lines.length; i += CHUNK) {
-    const { error } = await db.insert(LINES_TABLE, lines.slice(i, i + CHUNK));
+    let { error } = await db.insert(LINES_TABLE, lines.slice(i, i + CHUNK));
+    // match_key 칸이 아직 없는 DB(매칭표 SQL 전): 칸을 빼고 이 덩어리부터 다시 넣는다. 판매입력 보관은 깨지지 않는다
+    if (error && isMissingColumn(error) && !matchKeySkipped && lines.some((l) => "match_key" in l)) {
+      matchKeySkipped = true;
+      lines = lines.map(withoutMatchKey);
+      ({ error } = await db.insert(LINES_TABLE, lines.slice(i, i + CHUNK)));
+    }
     if (error) {
       const r = fail(`${LINES_TABLE} 저장`, error);
       return { ...r, body: { ...r.body, note: `${run.date} 는 지금 비어 있습니다. 같은 날을 다시 보내면 통째로 다시 저장합니다` } };
@@ -362,6 +405,7 @@ export async function runSalesEntryIngest(db: SalesEntryDb, v: Validated): Promi
       gaps: run.gap_count,
       problems: run.problem_count,
       sanitized,
+      ...(matchKeySkipped ? { matchKeySkipped: true, warning: "match_key 칸이 없어 매칭열쇠 없이 저장했습니다(docs/sql/2026-11-26-sales-match.sql 실행 필요)" } : {}),
     },
   };
 }

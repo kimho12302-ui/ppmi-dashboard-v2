@@ -3,11 +3,13 @@
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { freshFetch } from "@/lib/fresh-fetch";
+import { MatchTablePanel, SaveOutcomeNote, UnmatchedFixList, useSalesMatch, type SaveOutcome } from "@/components/settings/sales-match-editor";
 
 // 「📤 엑셀 업로드」 탭의 「자동 판매입력」 칸 (2026-11-26).
 // 회사 PC 스크립트(볼트 sales_entry_push.py)가 날마다 보낸 판매입력을 날짜별로 보여 주고, 그날 엑셀을 내려받는다.
 // 보관·받기만 한다. 매출 원장 반영은 위 「판매 실적 (이카운트)」 칸에 이 엑셀을 올려야 된다.
 // API: GET /api/sales-entry(목록), GET /api/sales-entry/xlsx?date=(엑셀)
+// 2026-11-26 매칭표 편집: 미매칭 상품마다 「코드 넣기」, 아래 「매칭표 보기」(sales-match-editor.tsx, /api/sales-match)
 
 interface Unmatched { 판매몰?: string; 매칭열쇠?: string; 줄수?: number }
 interface Item {
@@ -51,6 +53,8 @@ export function SalesEntryCard() {
   const [state, setState] = useState<ListState>({ kind: "loading" });
   const [downloading, setDownloading] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const match = useSalesMatch();
+  const [outcome, setOutcome] = useState<SaveOutcome | null>(null);
 
   const load = useCallback((fresh = false) => {
     setState({ kind: "loading" });
@@ -97,6 +101,19 @@ export function SalesEntryCard() {
 
   const items = state.kind === "ok" ? state.items : [];
   const warnDays = items.filter(hasWarning).length;
+  // 미매칭 상품은 표 밖(아래)에 둔다. 표는 좁은 화면에서 가로로 밀려 선택 상자가 잘린다(2026-11-26 390px 캡처)
+  const unmatchedDays = items
+    .map((it) => ({ date: it.date, entries: (it.unmatched ?? []).filter((u) => u && (u.매칭열쇠 ?? "") !== "") }))
+    .filter((d) => d.entries.length > 0);
+  const anyUnmatched = unmatchedDays.length > 0;
+  const editable = match.state.kind === "ok" && match.state.seeded;
+
+  // 코드를 저장하면 보관 줄이 고쳐지므로 목록·매칭표를 캐시 없이 다시 읽는다
+  const afterSave = (o: SaveOutcome | null) => {
+    if (o) setOutcome(o);
+    load(true);
+    match.reload();
+  };
 
   return (
     <div data-tour="daily-upload-sales-entry" className="border rounded-lg p-4 space-y-3">
@@ -156,7 +173,6 @@ export function SalesEntryCard() {
                 <tbody>
                   {items.map((it) => {
                     const warn = hasWarning(it);
-                    const names = (it.unmatched ?? []).map((u) => `${(u.매칭열쇠 ?? "").slice(0, 40)}${u.줄수 && u.줄수 > 1 ? ` ×${u.줄수}` : ""}`).filter(Boolean);
                     const bg = warn ? { background: "var(--sig-warn-surface)" } : undefined;
                     return (
                       <Fragment key={it.date}>
@@ -189,13 +205,7 @@ export function SalesEntryCard() {
                           </button>
                         </td>
                       </tr>
-                      {names.length > 0 && (
-                        <tr style={bg}>
-                          <td colSpan={7} className="px-2 pb-1.5 pt-0 font-sans text-[11px] leading-snug whitespace-normal" style={{ color: "var(--sig-warn)" }}>
-                            미매칭 상품: {names.join(", ")}
-                          </td>
-                        </tr>
-                      )}
+
                       </Fragment>
                     );
                   })}
@@ -203,16 +213,37 @@ export function SalesEntryCard() {
               </table>
             </div>
           )}
+          {anyUnmatched && (
+            <div className="rounded px-3 py-2 space-y-2" style={{ background: "var(--sig-warn-surface)" }}>
+              <p className="text-xs font-medium" style={{ color: "var(--sig-warn)" }}>
+                미매칭 상품 (품목코드 #N/A) · 「코드 넣기」로 코드를 넣으면 보관된 그 상품 줄도 바로 고쳐집니다
+              </p>
+              {unmatchedDays.map((d) => (
+                <div key={d.date} className="text-[11px] leading-snug">
+                  <p className="font-medium text-muted-foreground mb-0.5">{dayLabel(d.date)}</p>
+                  <UnmatchedFixList entries={d.entries} match={match.state} onSaved={afterSave} />
+                </div>
+              ))}
+            </div>
+          )}
+          {outcome && <SaveOutcomeNote outcome={outcome} onClose={() => setOutcome(null)} />}
+          {anyUnmatched && !editable && match.state.kind !== "loading" && (
+            <p className="text-[11px] text-muted-foreground">
+              「코드 넣기」는 매칭표 표를 만들고(SQL) 회사 PC 에서 매칭표를 한 번 옮긴 뒤 켜집니다. 아래 「매칭표 보기」에 지금 상태가 있습니다.
+            </p>
+          )}
           {downloadError && (
             <p className="text-xs rounded px-3 py-2" style={{ background: "var(--sig-danger-surface)", color: "var(--sig-danger)" }}>
               엑셀을 받지 못했습니다. {downloadError}
             </p>
           )}
           <p className="stamp text-muted-foreground">
-            미매칭 = 품목코드를 못 찾은 상품(엑셀에 #N/A). 누락 = 스마트스토어 발주확인 목록에는 있는데 판매정리에 빠진 주문. 받는 사람 이름·연락처·주소와 적요 칸은 보관하지 않습니다.
+            미매칭 = 품목코드를 못 찾은 상품(엑셀에 #N/A). 「코드 넣기」로 「상품 목록」 코드를 고르면 매칭표에 저장되고 보관된 그 상품 줄도 바로 고쳐집니다. 누락 = 스마트스토어 발주확인 목록에는 있는데 판매정리에 빠진 주문. 받는 사람 이름·연락처·주소와 적요 칸은 보관하지 않습니다.
           </p>
         </>
       )}
+
+      <MatchTablePanel match={match.state} onChanged={afterSave} />
     </div>
   );
 }

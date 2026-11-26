@@ -61,6 +61,8 @@ export const DATA_TAGS = [
   "raw_coupang_rg_inventory", "coupang_rg_sku_map",
   // 자동 판매입력 보관 (2026-11-26, docs/sql/2026-11-26-sales-entry.sql)
   "sales_entry_runs", "sales_entry_lines",
+  // 판매입력 매칭표 (2026-11-26, docs/sql/2026-11-26-sales-match.sql)
+  "sales_match", "sales_item_codes",
 ] as const;
 export type DataTag = (typeof DATA_TAGS)[number];
 
