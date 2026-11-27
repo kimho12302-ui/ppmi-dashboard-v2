@@ -241,7 +241,7 @@ function CoupangOptions({ row }: { row: InventoryRow }) {
           <tbody>
             {/* 옛 캐시 응답(옵션 상태 없음)은 예전 순서(낱개 재고 큰 순), 새 응답은 쿠팡 옵션별 표와 같은 순서(품절 → 품절임박 → 남은 날) */}
             {[...rg.options].sort((a, b) => (a.status && b.status ? compareRgOptions(a, b) : b.orderable * b.qty - a.orderable * a.qty || (b.sales_30d ?? 0) - (a.sales_30d ?? 0))).map((o) => (
-              <tr key={o.vendor_item_id} className={`border-t ${o.sale_suspended ? "text-muted-foreground" : ""}`}>
+              <tr key={o.vendor_item_id} className={`border-t ${o.sale_suspended || (o.status === "soldout" && o.no_sales_30d) ? "text-muted-foreground" : ""}`}>
                 <td className="px-2 py-1 text-left">
                   {o.name}
                   {o.sale_suspended && <span className="ml-1 text-[10px]">(판매중지)</span>}
@@ -251,7 +251,9 @@ function CoupangOptions({ row }: { row: InventoryRow }) {
                 <td className="px-2 py-1 text-right">{u(o.orderable, o.qty)}</td>
                 <td className="px-2 py-1 text-right whitespace-nowrap">
                   {o.status === "soldout" ? "0일" : o.runway === null || o.runway === undefined ? <span className="text-muted-foreground">판매 없음</span> : `${fmt1(o.runway)}일`}
-                  {o.status && o.status !== "ok" && o.status !== "suspended" && <span className="block"><RgStatusBadge status={o.status} /></span>}
+                  {o.status === "soldout" && o.no_sales_30d
+                    ? <span className="block text-[10px] whitespace-nowrap">30일 판매 없음</span>
+                    : o.status && o.status !== "ok" && o.status !== "suspended" && <span className="block"><RgStatusBadge status={o.status} /></span>}
                 </td>
                 <td className="px-2 py-1 text-left"><RgHealthCell o={o} /></td>
                 <td className="px-2 py-1 text-right">

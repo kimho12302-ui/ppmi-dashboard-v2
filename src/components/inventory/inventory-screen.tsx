@@ -519,7 +519,8 @@ function CoupangRgNotice({ data }: { data: Exclude<InventoryResponse, { setupNee
 
 /** 「제품별 / 쿠팡 옵션별」 보기 전환. 옵션 쪽 버튼에 품절임박·품절 옵션 수를 같이 보인다 */
 function ViewToggle({ view, onChange, data }: { view: "product" | "options"; onChange: (v: "product" | "options") => void; data: Exclude<InventoryResponse, { setupNeeded: true }> }) {
-  const opts = data.coupang_options ?? [];
+  // WING 원천이 오래되면(fresh=false) 옛 기준일 숫자를 오늘 것처럼 띄우지 않는다. 표 안에서는 「오래됨」과 같이 보인다
+  const opts = data.coupang_rg?.fresh ? data.coupang_options ?? [] : [];
   const soon = opts.filter((o) => o.status === "soon").length;
   const soldout = opts.filter((o) => o.status === "soldout" && !o.no_sales_30d).length;
   const btn = (v: "product" | "options") => `px-2 py-0.5 rounded ${view === v ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`;
