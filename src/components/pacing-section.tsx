@@ -152,12 +152,18 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
   const adThroughActual = actual.adThroughSum ?? actual.ad;
   const projRevenue = !early && remaining.dailyAvgRevenue > 0 ? remaining.dailyAvgRevenue * data.daysInMonth : null;
   const projAd = !early && remaining.dailyAvgAd > 0 ? remaining.dailyAvgAd * data.daysInMonth : null;
+  // 2026-11-27(전체 진단 2-4): 이 ROAS 는 목표와 같은 공구 포함 매출로 나눈 값이다. 같은 인사이트 화면의
+  //   「전체 ROAS」 카드는 자체매출(공구 제외) 기준이라, 공구가 있는 달엔 두 값이 표시 없이 달랐다(밸런스랩 11월 2.23x vs 1.36x).
+  //   공구가 있으면 「공구 포함」을 붙이고 자체 기준 값을 같이 보인다. 브랜드별 줄의 (자체 …x) 와 같은 식(revenueOwn ÷ adToSales).
+  const roasOwn = actual.gonggu > 0 && (actual.adToSales ?? 0) > 0 ? actual.revenueOwn / (actual.adToSales as number) : null;
+  const roasOwnNote = roasOwn !== null ? " 공구 포함" : "";
   const rows = [
     { key: "매출", target: target.revenue, actual: actual.revenue, ach: achievement.revenue, marker: salesProgress, fmt: formatCurrency, color: "#2563eb",
       bullet: { actual: actual.revenue, projected: projRevenue } },
     { key: "광고비", target: target.ad, actual: actual.ad, ach: adCompareAch, achNote: data.adThrough ? `${md(data.adThrough)}까지` : undefined, marker: adProgress, fmt: formatCurrency, color: "#dc2626", invert: true,
       bullet: { actual: adThroughActual, projected: projAd } },
-    { key: `ROAS${salesNote}`, target: target.roas, actual: actual.roas, ach: achievement.roas, marker: undefined, fmt: (v: number) => `${v.toFixed(2)}x`, color: "#10b981" },
+    { key: `ROAS${roasOwnNote}${salesNote}`, target: target.roas, actual: actual.roas, ach: achievement.roas, marker: undefined, fmt: (v: number) => `${v.toFixed(2)}x`, color: "#10b981",
+      subNote: roasOwn !== null ? `자체(공구 제외) ${roasOwn.toFixed(2)}x · 광고 성과는 이 값으로 봅니다` : undefined },
     { key: `광고비 비중${salesNote}`, target: target.adRatio, actual: actual.adRatio, ach: target.adRatio > 0 ? actual.adRatio / target.adRatio : 0, marker: undefined, fmt: (v: number) => pct(v), color: "#8b5cf6", invert: true },
   ];
 
@@ -221,6 +227,7 @@ export function PacingSection({ brand, from, to }: { brand: string; from?: strin
                     {"achNote" in r && r.achNote && <span className="ml-1 text-[10px]">({r.achNote} 기준)</span>}
                   </span>
                 </div>
+                {"subNote" in r && r.subNote && <p className="text-[11px] text-muted-foreground">{r.subNote}</p>}
                 {"bullet" in r && r.bullet && r.target <= 0 ? (
                   // 목표가 0 이하면 불릿(목표 대비)도 「예산을 넘길 속도」도 말할 수 없다(검수 M5)
                   <p className="text-[11px] text-muted-foreground">{r.key} 목표 없음 · 설정에서 이번 달 {r.key} 목표를 넣으면 막대가 나타납니다.</p>

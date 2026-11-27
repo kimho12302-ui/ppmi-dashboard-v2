@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cachedGET } from "@/lib/api-cache";
 
+// 「전체」는 브랜드 4개를 차례로 부른다. 함수 한도 12초(2026-11-27) 뒤에는 최악일 때 기본 한도를 넘을 수 있다.
+export const maxDuration = 60;
+
 // 네이버 검색광고 실제 검색어. 2026-09-18 신설, 2026-09-30 브랜드 축으로 전환.
 // 원천 raw_naver_search_term(수집기 marketing-dashboard scripts/sync_naver_search_terms.py, daily-sync).
 // 요약은 DB 함수 naver_search_term_summary 가 (광고유형 × 상품 × 검색어) 로 합쳐 준다(한 달 7만 행이라).
@@ -69,17 +72,25 @@ async function getImpl(req: NextRequest) {
     .in("channel", ["naver_search", "naver_shopping"])
     .in("brand", spendBrands(brand)).gte("date", from).lte("date", to).limit(5000);
 
+  // ★ 2026-11-27: 30일은 공개 키 시간 한도(3초)에 걸려 실패했다(전체 진단 2-3). 고치는 곳은 DB 함수의 함수 단위 한도
+  //   (docs/sql/2026-11-27-naver-search-term-timeout.sql, 12초). 날짜를 3~5일씩 나눠 부르는 방법도 시험했으나
+  //   연달아 부르면 3일 구간도 실패하고 「전체」 30일이 66초 걸려 버렸다.
   // 오래 안 본 뒤 처음 여는 질의(cold)는 타임아웃을 넘길 때가 있다. 두 번째는 1~3초에 끝난다.
   // 읽기 전용이라 다시 불러도 안전하다. 타임아웃(57014)일 때만 한 번 더 부른다.
   const isTimeout = (e: { code?: string; message?: string } | null) =>
     !!e && (e.code === "57014" || (e.message || "").includes("statement timeout"));
 
+  // 2026-11-27(Fable 검수 M1): 함수 한도가 12초가 되면 「브랜드마다 재시도」가 60초 실행 한도를 넘길 수 있다.
+  //   첫 오류에서 멈추고, 재시도는 시작 뒤 25초 안일 때만 한다(넘기면 Vercel 이 504 로 끊어 어느 브랜드인지도 못 알린다).
+  const started = Date.now();
+  const RETRY_BUDGET_MS = 25_000;
   const rpcs: { brand: string; data: unknown; error: { message: string } | null }[] = [];
   for (const c of calls) {
     const args = { p_account: c.account, p_from: from, p_to: to, p_brand: c.brand };
     let r = await supabase.rpc("naver_search_term_summary", args);
-    if (isTimeout(r.error)) r = await supabase.rpc("naver_search_term_summary", args);
+    if (isTimeout(r.error) && Date.now() - started < RETRY_BUDGET_MS) r = await supabase.rpc("naver_search_term_summary", args);
     rpcs.push({ brand: c.brand, data: r.data, error: r.error });
+    if (r.error) break; // 하나라도 실패하면 아래에서 500. 남은 브랜드를 더 부르면 DB 만 붙잡는다
   }
   const ads = await adsPromise;
 

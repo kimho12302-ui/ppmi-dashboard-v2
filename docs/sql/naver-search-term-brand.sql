@@ -1,3 +1,4 @@
+-- ★ 2026-11-27: 함수 단위 12초 한도(set statement_timeout)를 아래 정의에 넣었다. 다시 돌려도 유지된다
 -- 네이버 검색어 요약 함수에 브랜드 축 추가. 2026-09-30.
 --
 -- 왜: 키워드 화면의 계정 탭(너티·사입·아이언펫 / 밸런스랩)이 상단 브랜드 필터와 겹쳐,
@@ -28,6 +29,7 @@ create or replace function naver_search_term_summary(
 returns json
 language sql
 stable
+set statement_timeout = '12s'   -- 2026-11-27: anon 3초 한도에 30일이 걸려 함수에만 12초. 다시 만들 때 지우지 말 것
 as $$
 with r as (
   select * from raw_naver_search_term

@@ -21,6 +21,7 @@ create or replace function naver_search_term_summary(
 returns json
 language sql
 stable
+set statement_timeout = '12s'   -- 2026-11-27: anon 3초 한도에 30일이 걸려 함수에만 12초(2026-11-27-naver-search-term-timeout.sql). 다시 만들 때 지우지 말 것
 as $$
 with r as (
   -- 쓰는 칸만. product 는 여기서 한 번만 정리해 둔다.
