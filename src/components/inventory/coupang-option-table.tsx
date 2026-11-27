@@ -51,7 +51,7 @@ export function RgInboundCell({ inbounds }: { inbounds: readonly RgPendingInboun
   return (
     <span className="block space-y-0.5">
       {inbounds.map((x, i) => (
-        <span key={x.shipment_id ?? i} className="block whitespace-nowrap"
+        <span key={`${x.shipment_id ?? "x"}-${i}`} className="block whitespace-nowrap"
           style={x.late ? { color: "var(--sig-warn)" } : undefined}
           title={`쿠팡 입고 건 ${x.shipment_id ?? "-"} · 상태 ${x.status}${x.shipped ? "" : " · 쿠팡에 요청만 하고 위킵에서 아직 안 나감(위킵 가용에 들어 있어 쿠팡 쪽에 안 셈)"}`}>
           {fmtInt(x.qty)}세트 {x.expected ? md(x.expected) : "예정일 없음"}
