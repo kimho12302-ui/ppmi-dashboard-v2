@@ -364,10 +364,15 @@ function rgOptionBase(r: RgInventoryRow, today: string): Omit<RgOption, "qty" | 
   };
 }
 
-/** 「쿠팡 옵션별」 표 순서: 품절(30일 판매 있던 것 먼저) → 품절임박 → 정상 → 판매중지, 같은 상태는 남은 날 짧은 순(계산 불가는 뒤) */
-const RG_STATUS_ORDER: Record<RgOptionStatus, number> = { soldout: 0, soon: 1, ok: 2, suspended: 3 };
+/**
+ * 「쿠팡 옵션별」 표 순서: 품절(30일 판매 있던 것) → 품절임박 → 정상 → 30일 판매 없는 품절(경고 개수에서 뺀 죽은 등록) → 판매중지,
+ * 같은 상태는 남은 날 짧은 순(계산 불가는 뒤). 죽은 품절이 품절임박 위에 오면 볼 줄이 밀려서 정상 아래로 내린다(2026-11-27)
+ */
+const RG_STATUS_ORDER: Record<RgOptionStatus, number> = { soldout: 0, soon: 1, ok: 2, suspended: 4 };
+const RG_DEAD_SOLDOUT_ORDER = 3;
+const rgSortRank = (o: Pick<RgOption, "status" | "no_sales_30d">) => (o.status === "soldout" && o.no_sales_30d ? RG_DEAD_SOLDOUT_ORDER : RG_STATUS_ORDER[o.status]);
 export function compareRgOptions(a: Pick<RgOption, "status" | "runway" | "no_sales_30d" | "sales_30d" | "name">, b: Pick<RgOption, "status" | "runway" | "no_sales_30d" | "sales_30d" | "name">): number {
-  return RG_STATUS_ORDER[a.status] - RG_STATUS_ORDER[b.status]
+  return rgSortRank(a) - rgSortRank(b)
     || Number(a.no_sales_30d) - Number(b.no_sales_30d)
     || (a.runway ?? Infinity) - (b.runway ?? Infinity)
     || (Number(b.sales_30d) || 0) - (Number(a.sales_30d) || 0)

@@ -691,7 +691,7 @@ test("쿠팡 옵션 11-27 실례: 껌 3박스·바삭 4세트 둘 다 품절임�
   assert.equal(s.bySku.get("GUM").options[0].status, "soon");
 });
 
-test("쿠팡 옵션별 목록: 짝 없는 옵션 포함, 1+1 은 한 번, 품절 → 품절임박 → 남은 날 순, 판매중지는 맨 뒤", () => {
+test("쿠팡 옵션별 목록: 짝 없는 옵션 포함, 1+1 은 한 번, 품절 → 품절임박 → 정상 → 30일 판매 없는 품절 → 판매중지", () => {
   const map = [
     { vendor_item_id: 1, sku_no: "A", qty: 2 },
     { vendor_item_id: 2, sku_no: "A", qty: 1 }, { vendor_item_id: 2, sku_no: "B", qty: 1 }, // 1+1
@@ -709,7 +709,7 @@ test("쿠팡 옵션별 목록: 짝 없는 옵션 포함, 1+1 은 한 번, 품절
   ];
   const s = summarizeCoupangRg(rows, map, "2026-11-10", (sku) => `상품${sku}`);
   assert.equal(s.options.length, 6); // 옵션마다 한 줄, 1+1 도 한 번
-  assert.deepEqual(s.options.map((o) => o.vendor_item_id), ["3", "6", "2", "1", "5", "4"]);
+  assert.deepEqual(s.options.map((o) => o.vendor_item_id), ["3", "2", "1", "5", "6", "4"]); // 죽은 품절(6)은 정상 아래
   const pair = s.options.find((o) => o.vendor_item_id === "2");
   assert.deepEqual(pair.products.map((p) => p.sku_no), ["A", "B"]);
   assert.equal(pair.qty, null); // 두 SKU 라 낱개 환산 하나로 못 셈
