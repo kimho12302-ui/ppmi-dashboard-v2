@@ -25,7 +25,7 @@ import { isGongguAggregate, isGongguOutOfDailySales } from "@/lib/gonggu";
 import {
   addDays, mergeDailyRows, coupangWindowFor, parseWekeepName, SALES_SCALE_DAYS, COUPANG_SALES_LAG_DAYS,
   type ComputeInput, type SalesScaleInput, type SkuCostRow, type DailyRow, type ManualStockRow, type NoteRow, type OrderRow, type RuleRow,
-  type SkuMapRow, type SnapshotRow, type RgInventoryRow, type RgMapRow,
+  type SkuMapRow, type SnapshotRow, type RgInventoryRow, type RgInboundRow, type RgMapRow,
 } from "@/lib/inventory";
 
 export const INVENTORY_TABLES = [
@@ -108,7 +108,7 @@ interface DraftRow { skuNo: string; productName: string; productManageCode?: str
   component?: { name?: string; brand?: string } | null; codes?: { code: string; role?: string; confidence?: string }[]; notes?: string[] }
 /** 개발용: 볼트 RG 누적 원천(raw/coupang-rg-inventory.json)과 짝짓기 초안. 없으면 null */
 interface RawRg { date: string; vendorItemId: number; productName?: string | null; optionName?: string | null; saleSuspended?: boolean;
-  hiddenByVendor?: boolean; orderable: number; inbound: number; daysOfCover?: number | null; healthGroup?: string | null;
+  hiddenByVendor?: boolean; orderable: number; inbound: number; inbounds?: RgInboundRow[] | null; daysOfCover?: number | null; healthGroup?: string | null;
   sales7d?: number | null; sales30d?: number | null }
 interface RawRgMap { items: { vendorItemId: number; needs_review?: boolean; note?: string; components: { wekeep_sku_no: string; component?: string; qty: number }[] }[] }
 function devCoupangRg(dir: string): { rows: RgInventoryRow[]; map: RgMapRow[] } | null {
@@ -120,7 +120,7 @@ function devCoupangRg(dir: string): { rows: RgInventoryRow[]; map: RgMapRow[] } 
   return {
     rows: items.filter((v) => v.date === last).map((v) => ({
       date: v.date, vendor_item_id: v.vendorItemId, product_name: v.productName ?? null, option_name: v.optionName ?? null,
-      sale_suspended: !!v.saleSuspended, hidden_by_vendor: !!v.hiddenByVendor, orderable: v.orderable, inbound: v.inbound,
+      sale_suspended: !!v.saleSuspended, hidden_by_vendor: !!v.hiddenByVendor, orderable: v.orderable, inbound: v.inbound, inbounds: v.inbounds ?? null,
       days_of_cover: v.daysOfCover ?? null, health_group: v.healthGroup ?? null, sales_7d: v.sales7d ?? null, sales_30d: v.sales30d ?? null,
     })),
     map: readJson<RawRgMap>(mp).items.flatMap((i) => i.components.map((c) => ({

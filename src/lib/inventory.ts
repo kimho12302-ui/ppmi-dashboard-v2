@@ -202,6 +202,71 @@ export function splitRgInbound(r: Pick<RgInventoryRow, "inbound" | "inbounds">):
   }
   return { shipped, requested };
 }
+// ── 쿠팡 옵션(세트 SKU)별 상태 (2026-11-27 김호 "쿠팡 재고는 세트별로 SKU 가 다르게 잡힌다. SKU 별 재고가 별도다") ──
+/**
+ * 쿠팡 옵션 하나를 「품절임박」으로 보는 우리 남은 날 기준(일). 남은 날 = 판매 가능 ÷ (30일 판매 ÷ 30), 이 일수 이하이면 품절임박.
+ * 쿠팡 품절임박 표시가 daysOfCover 4·7 에서 떠 있던 것(2026-11-27)에 맞춤. 쿠팡이 ALMOST_OUT_OF_STOCK 으로 판정하면 우리 값과 상관없이 품절임박
+ */
+export const RG_OPTION_SOON_DAYS = 7;
+/** 쿠팡 WING 재고 건강도 중 품절임박 값(healthGroup) */
+export const RG_HEALTH_ALMOST_OUT = "ALMOST_OUT_OF_STOCK";
+export type RgOptionStatus = "suspended" | "soldout" | "soon" | "ok";
+export const RG_OPTION_STATUS_LABEL: Record<RgOptionStatus, string> = { suspended: "판매중지", soldout: "품절", soon: "품절임박", ok: "정상" };
+/** 쿠팡 건강도 한글(표의 「쿠팡 판정」 칸). 모르는 값은 원문 그대로 */
+export function rgHealthLabel(h: string | null | undefined): string | null {
+  if (!h) return null;
+  return h === RG_HEALTH_ALMOST_OUT ? "품절임박" : h === "OUT_OF_STOCK" ? "품절" : h;
+}
+/** 옵션 남은 날 = 판매 가능 ÷ (30일 순판매 ÷ 30). 30일 판매가 없거나(null) 0 이하이면 null(계산 불가) */
+export function rgOptionRunway(orderable: number, sales30d: number | null | undefined): number | null {
+  const s = Number(sales30d);
+  if (sales30d === null || sales30d === undefined || !(s > 0)) return null;
+  return Math.max(0, Number(orderable) || 0) / (s / COUPANG_RG_SALES_DAYS);
+}
+/**
+ * 옵션 상태: 판매중지 → suspended, 판매 가능 0 → soldout, 쿠팡 판정 품절임박이거나 우리 남은 날 ≤ RG_OPTION_SOON_DAYS → soon, 그 밖 ok.
+ * 입고 중·입고 요청은 넣지 않는다(아직 팔 수 없는 재고, INIT_COMPLETED 는 위킵에 있음)
+ */
+export function rgOptionStatus(o: { sale_suspended: boolean; orderable: number; health_group?: string | null; runway: number | null }): RgOptionStatus {
+  if (o.sale_suspended) return "suspended";
+  if (!((Number(o.orderable) || 0) > 0)) return "soldout";
+  if (o.health_group === RG_HEALTH_ALMOST_OUT) return "soon";
+  if (o.runway !== null && o.runway <= RG_OPTION_SOON_DAYS) return "soon";
+  return "ok";
+}
+/** 아직 진행 중인 쿠팡 입고 건 한 줄(수량은 옵션 묶음). 입고가 끝난 건(inProgress 0)은 안 담는다 */
+export interface RgPendingInbound {
+  shipment_id: string | null;
+  status: string;
+  expected: string | null;
+  /** 아직 판매 가능에 안 들어온 수량(inProgress) */
+  qty: number;
+  /** false = 쿠팡에 입고 요청만 하고 위킵에서 아직 안 나감(INIT_COMPLETED). 위킵 가용에 들어 있다 */
+  shipped: boolean;
+  /** 입고 예정일이 오늘보다 앞인데 아직 진행 중 */
+  late: boolean;
+}
+/** 입고 건 중 진행 중(inProgress > 0)인 것만 예정일 순으로. 예정일이 지났으면 late */
+export function pendingRgInbounds(list: readonly RgInboundRow[] | null | undefined, today: string): RgPendingInbound[] {
+  if (!Array.isArray(list)) return [];
+  const out: RgPendingInbound[] = [];
+  for (const x of list) {
+    if (!x || typeof x !== "object") continue;
+    const qty = Math.max(0, Number(x.inProgress) || 0);
+    if (!(qty > 0)) continue;
+    const expected = isRealDate(x.expected) ? x.expected : null;
+    out.push({
+      shipment_id: x.shipmentId === null || x.shipmentId === undefined ? null : String(x.shipmentId),
+      status: String(x.status ?? ""),
+      expected,
+      qty,
+      shipped: !RG_NOT_SHIPPED_STATUSES.includes(String(x.status ?? "")),
+      late: expected !== null && expected < today,
+    });
+  }
+  return out.sort((a, b) => String(a.expected ?? "9").localeCompare(String(b.expected ?? "9")));
+}
+
 /** 옵션 → 위킵 SKU. qty = 옵션 한 묶음에 든 그 SKU 낱개 수. 한 옵션이 두 SKU 로 나뉠 수 있다(1+1 세트) */
 export interface RgMapRow { vendor_item_id: number | string; sku_no: string; qty: number; component?: string | null; needs_review?: boolean | null; note?: string | null }
 /** 상세에 보이는 옵션 한 줄(수량은 옵션 묶음 단위, units = 낱개 환산) */
@@ -218,6 +283,26 @@ export interface RgOption {
   inbound_requested: number;
   sales_7d: number | null;
   sales_30d: number | null;
+  /** 쿠팡이 계산한 남은 날(daysOfCover). 없으면 null */
+  days_of_cover: number | null;
+  /** 쿠팡 재고 건강도(ALMOST_OUT_OF_STOCK · OUT_OF_STOCK · null) */
+  health_group: string | null;
+  /** 우리 남은 날 = 판매 가능 ÷ (30일 판매 ÷ 30). 30일 판매가 없으면 null */
+  runway: number | null;
+  status: RgOptionStatus;
+  /** 30일 판매가 0 이거나 비어 있음. 품절이어도 오래 안 판 등록일 수 있어 배지 개수에서 뺀다 */
+  no_sales_30d: boolean;
+  /** 아직 진행 중인 입고 건(예정일 순) */
+  inbounds: RgPendingInbound[];
+}
+/** 화면 「쿠팡 옵션별」 표 한 줄. 옵션 하나에 한 줄(1+1 처럼 두 SKU 로 나뉘어도 한 번) */
+export interface CoupangOptionRow extends Omit<RgOption, "qty"> {
+  /** 짝지은 위킵 SKU(이름은 위킵 상품명 머리표 뺀 것). 짝이 없으면 빈 배열 */
+  products: { sku_no: string; name: string; qty: number }[];
+  /** 짝짓기 표에 없는 옵션. 재고가 따로라 숨기지 않는다 */
+  unmapped: boolean;
+  /** 낱개 환산 묶음 수: 짝지은 SKU 가 하나면 그 qty, 둘 이상(1+1)·짝 없음이면 null */
+  qty: number | null;
 }
 /** 위킵 SKU 하나에 모인 RG 값(낱개 환산) */
 export interface RgSku {
@@ -237,6 +322,8 @@ export interface RgSku {
   active: boolean;
   needs_review: boolean;
   options: RgOption[];
+  /** 판매 중 옵션 중 품절(30일 판매가 있었던 것만)·품절임박 개수. 제품별 표 배지 */
+  option_alerts: { soldout: number; soon: number };
 }
 export interface RgUnmapped { vendor_item_id: string; name: string; orderable: number; inbound: number; sale_suspended: boolean }
 /** 화면 위 한 줄과 경고에 쓰는 RG 요약 */
@@ -258,11 +345,50 @@ export interface CoupangRgSummary {
 
 const rgName = (r: Pick<RgInventoryRow, "product_name" | "option_name">) => `${r.product_name ?? ""} / ${r.option_name ?? ""}`;
 
+/** 옵션 한 줄의 공통 값(묶음 수·짝 확인 제외). 상세 표와 「쿠팡 옵션별」 표가 같은 값을 쓴다 */
+function rgOptionBase(r: RgInventoryRow, today: string): Omit<RgOption, "qty" | "needs_review"> {
+  const orderable = Number(r.orderable) || 0;
+  const { shipped: inbound, requested } = splitRgInbound(r);
+  const s30 = r.sales_30d ?? null;
+  const runway = rgOptionRunway(orderable, s30);
+  const dc = r.days_of_cover;
+  const health = r.health_group ?? null;
+  return {
+    vendor_item_id: String(r.vendor_item_id), name: rgName(r), sale_suspended: !!r.sale_suspended,
+    orderable, inbound, inbound_requested: requested, sales_7d: r.sales_7d ?? null, sales_30d: s30,
+    days_of_cover: dc === null || dc === undefined || !Number.isFinite(Number(dc)) ? null : Number(dc),
+    health_group: health, runway,
+    status: rgOptionStatus({ sale_suspended: !!r.sale_suspended, orderable, health_group: health, runway }),
+    no_sales_30d: !(Number(s30) > 0),
+    inbounds: pendingRgInbounds(r.inbounds, today),
+  };
+}
+
+/** 「쿠팡 옵션별」 표 순서: 품절(30일 판매 있던 것 먼저) → 품절임박 → 정상 → 판매중지, 같은 상태는 남은 날 짧은 순(계산 불가는 뒤) */
+const RG_STATUS_ORDER: Record<RgOptionStatus, number> = { soldout: 0, soon: 1, ok: 2, suspended: 3 };
+export function compareRgOptions(a: Pick<RgOption, "status" | "runway" | "no_sales_30d" | "sales_30d" | "name">, b: Pick<RgOption, "status" | "runway" | "no_sales_30d" | "sales_30d" | "name">): number {
+  return RG_STATUS_ORDER[a.status] - RG_STATUS_ORDER[b.status]
+    || Number(a.no_sales_30d) - Number(b.no_sales_30d)
+    || (a.runway ?? Infinity) - (b.runway ?? Infinity)
+    || (Number(b.sales_30d) || 0) - (Number(a.sales_30d) || 0)
+    || a.name.localeCompare(b.name, "ko");
+}
+
+/** 위킵 SKU 하나의 옵션 경고 개수. 품절은 30일 판매가 있었던 옵션만(오래 안 판 죽은 등록은 빼고), 판매중지는 안 셈 */
+export function rgOptionAlerts(options: readonly Pick<RgOption, "status" | "no_sales_30d">[]): { soldout: number; soon: number } {
+  return {
+    soldout: options.filter((o) => o.status === "soldout" && !o.no_sales_30d).length,
+    soon: options.filter((o) => o.status === "soon").length,
+  };
+}
+
 /**
  * RG 원천 최신 날짜의 옵션을 짝짓기 표로 위킵 SKU 에 낱개 환산해 모은다(판매 가능 · 입고 중 · 7일 · 30일 순판매 × 묶음 수).
  * 원천이 없으면 null. 오래된 원천도 요약은 돌려준다(fresh=false, 계산에는 안 씀).
+ * options = 「쿠팡 옵션별」 표: 옵션 하나에 한 줄(짝 없는 옵션 포함, 1+1 은 한 번). skuName 으로 위킵 SKU 이름을 붙인다
  */
-export function summarizeCoupangRg(rows: readonly RgInventoryRow[], map: readonly RgMapRow[], today: string): { summary: CoupangRgSummary; bySku: Map<string, RgSku> } | null {
+export function summarizeCoupangRg(rows: readonly RgInventoryRow[], map: readonly RgMapRow[], today: string, skuName?: (sku: string) => string | null):
+  { summary: CoupangRgSummary; bySku: Map<string, RgSku>; options: CoupangOptionRow[] } | null {
   const date = rows.reduce<string | null>((m, r) => (!m || r.date > m ? r.date : m), null);
   if (!date) return null;
   const day = rows.filter((r) => r.date === date);
@@ -270,19 +396,28 @@ export function summarizeCoupangRg(rows: readonly RgInventoryRow[], map: readonl
   for (const m of map) pairs.set(String(m.vendor_item_id), [...(pairs.get(String(m.vendor_item_id)) ?? []), m]);
   const bySku = new Map<string, RgSku>();
   const unmapped: RgUnmapped[] = [];
+  const flat: CoupangOptionRow[] = [];
   let needsReview = 0;
   for (const r of day) {
     const id = String(r.vendor_item_id);
-    const orderable = Number(r.orderable) || 0;
-    const { shipped: inbound, requested } = splitRgInbound(r);
+    const base = rgOptionBase(r, today);
+    const { orderable, inbound, inbound_requested: requested } = base;
     const ps = (pairs.get(id) ?? []).filter((p) => Number(p.qty) > 0);
+    flat.push({
+      ...base,
+      products: ps.map((p) => ({ sku_no: p.sku_no, name: skuName?.(p.sku_no) || p.component || p.sku_no, qty: Number(p.qty) })),
+      unmapped: ps.length === 0,
+      needs_review: ps.some((p) => !!p.needs_review),
+      qty: ps.length === 1 ? Number(ps[0].qty) : null,
+    });
     if (!ps.length) { unmapped.push({ vendor_item_id: id, name: rgName(r), orderable, inbound: inbound + requested, sale_suspended: !!r.sale_suspended }); continue; }
     if (ps.some((p) => p.needs_review)) needsReview += 1;
     const s7 = r.sales_7d ?? null;
     const s30 = r.sales_30d ?? null;
     for (const p of ps) {
       const q = Number(p.qty);
-      const prev = bySku.get(p.sku_no) ?? { orderable: 0, orderable_active: 0, sales_missing: false, inbound: 0, inbound_requested: 0, sales_7d: 0, sales_30d: 0, active: false, needs_review: false, options: [] };
+      const prev = bySku.get(p.sku_no) ?? { orderable: 0, orderable_active: 0, sales_missing: false, inbound: 0, inbound_requested: 0, sales_7d: 0, sales_30d: 0, active: false, needs_review: false, options: [], option_alerts: { soldout: 0, soon: 0 } };
+      const options = [...prev.options, { ...base, qty: q, needs_review: !!p.needs_review }];
       bySku.set(p.sku_no, {
         orderable: prev.orderable + orderable * q,
         orderable_active: prev.orderable_active + (r.sale_suspended ? 0 : orderable * q),
@@ -293,8 +428,8 @@ export function summarizeCoupangRg(rows: readonly RgInventoryRow[], map: readonl
         sales_30d: prev.sales_30d + (Number(s30) || 0) * q,
         active: prev.active || !r.sale_suspended,
         needs_review: prev.needs_review || !!p.needs_review,
-        options: [...prev.options, { vendor_item_id: id, name: rgName(r), qty: q, sale_suspended: !!r.sale_suspended, needs_review: !!p.needs_review,
-          orderable, inbound, inbound_requested: requested, sales_7d: s7, sales_30d: s30 }],
+        options,
+        option_alerts: rgOptionAlerts(options),
       });
     }
   }
@@ -305,6 +440,7 @@ export function summarizeCoupangRg(rows: readonly RgInventoryRow[], map: readonl
       unmapped, unmapped_with_stock: unmapped.filter((u) => u.orderable > 0 || u.inbound > 0), needs_review: needsReview,
     },
     bySku,
+    options: flat.sort(compareRgOptions),
   };
 }
 
@@ -712,6 +848,11 @@ export interface InventoryResult {
   coupang_unmapped: { products: string[]; qty: number } | null;
   /** 쿠팡 로켓그로스 원천 요약. null = 원천 없음(표가 없거나 아직 안 보냄) */
   coupang_rg: CoupangRgSummary | null;
+  /**
+   * 「쿠팡 옵션별」 표: RG 원천 최신 날짜의 옵션 하나에 한 줄(짝 없는 옵션 포함, 1+1 은 한 번), compareRgOptions 순.
+   * 원천이 오래돼도(coupang_rg.fresh=false) 기준일 그대로 준다. null = 원천 없음
+   */
+  coupang_options: CoupangOptionRow[] | null;
   /** 판매 규모 등급 기준(화면 한 줄 설명). null = 판매 원장을 못 읽어 등급 없음 */
   scale: {
     window: { from: string; to: string; days: number };
@@ -801,7 +942,9 @@ export function computeInventory(input: ComputeInput): InventoryResult {
   }
   const coupangOwner = new Map([...owners].map(([k, v]) => [k, v.sku]));
   // 쿠팡 로켓그로스: 옵션 → SKU 짝짓기로 낱개 환산. 기준일이 새로울 때만 손 입력·판매 원장 대신 쓴다
-  const rg = input.coupangRg ? summarizeCoupangRg(input.coupangRg.rows, input.coupangRg.map, today) : null;
+  // 「쿠팡 옵션별」 표의 제품 이름 = 위킵 상품명에서 머리표 뺀 것(매칭표 기본 품목 → SKU 번호 순으로 대체)
+  const snapName = new Map(snap.map((r) => [r.sku_no, parseWekeepName(r.product_name).bare]));
+  const rg = input.coupangRg ? summarizeCoupangRg(input.coupangRg.rows, input.coupangRg.map, today, (sku) => snapName.get(sku) ?? mapBySku.get(sku)?.component ?? null) : null;
   const rgFresh = !!rg?.summary.fresh;
 
   const rows0: InventoryRow[] = snap.map((s) => {
@@ -993,6 +1136,7 @@ export function computeInventory(input: ComputeInput): InventoryResult {
     coupang_window: input.coupangWindow ?? null,
     coupang_unmapped: input.coupangUnmapped ?? null,
     coupang_rg: rg?.summary ?? null,
+    coupang_options: rg?.options ?? null,
     scale: scaled.info,
     rows,
     cards: buildCards(rows),

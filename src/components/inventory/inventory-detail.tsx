@@ -7,8 +7,9 @@
 // 공용 그래프 스타일(components/charts)은 다른 작업이 바꾸는 중이라 쓰지 않고 이 파일에서 그린다.
 import { useEffect, useMemo, useState } from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { COUPANG_RG_SALES_DAYS, forecastLine, RUNWAY_AXIS_DAYS, type DayPoint, type InventoryRow } from "@/lib/inventory";
+import { COUPANG_RG_SALES_DAYS, RG_OPTION_SOON_DAYS, compareRgOptions, forecastLine, RUNWAY_AXIS_DAYS, type DayPoint, type InventoryRow } from "@/lib/inventory";
 import { coupangSourceLabel, coupangText, fmt1, fmtInt, fmtWon, md, scaleTitle } from "./inventory-ui";
+import { RgHealthCell, RgInboundCell, RgStatusBadge } from "./coupang-option-table";
 
 const DAYS = [
   { key: "30", label: "30일" }, { key: "90", label: "90일" }, { key: "180", label: "180일" }, { key: "all", label: "1월부터" },
@@ -226,16 +227,20 @@ function CoupangOptions({ row }: { row: InventoryRow }) {
           수량은 옵션 묶음, 괄호 안은 이 상품 낱개. 합계: 판매 가능 {fmtInt(rg.orderable)} · 입고 중 {fmtInt(rg.inbound)}(위킵에서 나간 것만){rg.inbound_requested ? <> · 입고 요청만 {fmtInt(rg.inbound_requested)}(위킵 미출고라 위킵 가용에 들어 있어 쿠팡 쪽에 안 셈)</> : null} ·
           최근 30일 판매 {fmtInt(rg.sales_30d)}(하루 {fmt1(rg.sales_30d / COUPANG_RG_SALES_DAYS)}) · 최근 7일 {fmtInt(rg.sales_7d)}(하루 {fmt1(rg.sales_7d / 7)}).
           판정은 30일 속도. 30일 안에 새로 연 옵션이나 품절 구간이 있으면 7일 속도가 더 빠를 수 있습니다.
+          옵션 남은 날 = 판매 가능 ÷ (30일 판매 ÷ 30), 품절임박 = 쿠팡 판정 품절임박이거나 남은 날 ≤ {RG_OPTION_SOON_DAYS}일. 입고 예정은 남은 날에 안 넣습니다.
           {!rg.active && " 판매 중인 옵션이 없어 쿠팡 쪽은 판정에서 뺐습니다."}
         </p>
       </div>
       <div className="max-h-64 overflow-auto">
         <table className="w-full text-xs num">
           <thead className="sticky top-0 bg-muted text-muted-foreground">
-            <tr>{["옵션", "묶음", "판매 가능", "입고 중", "7일 판매", "30일 판매"].map((h) => <th key={h} className="px-2 py-1.5 text-right first:text-left font-medium">{h}</th>)}</tr>
+            <tr>{["옵션", "묶음", "판매 가능", "남은 날", "쿠팡 판정", "입고 중", "입고 예정", "7일 판매", "30일 판매"].map((h) => (
+              <th key={h} className={`px-2 py-1.5 font-medium whitespace-nowrap ${h === "옵션" || h === "쿠팡 판정" || h === "입고 예정" ? "text-left" : "text-right"}`}>{h}</th>
+            ))}</tr>
           </thead>
           <tbody>
-            {[...rg.options].sort((a, b) => b.orderable * b.qty - a.orderable * a.qty || (b.sales_30d ?? 0) - (a.sales_30d ?? 0)).map((o) => (
+            {/* 옛 캐시 응답(옵션 상태 없음)은 예전 순서(낱개 재고 큰 순), 새 응답은 쿠팡 옵션별 표와 같은 순서(품절 → 품절임박 → 남은 날) */}
+            {[...rg.options].sort((a, b) => (a.status && b.status ? compareRgOptions(a, b) : b.orderable * b.qty - a.orderable * a.qty || (b.sales_30d ?? 0) - (a.sales_30d ?? 0))).map((o) => (
               <tr key={o.vendor_item_id} className={`border-t ${o.sale_suspended ? "text-muted-foreground" : ""}`}>
                 <td className="px-2 py-1 text-left">
                   {o.name}
@@ -244,10 +249,16 @@ function CoupangOptions({ row }: { row: InventoryRow }) {
                 </td>
                 <td className="px-2 py-1 text-right">×{o.qty}</td>
                 <td className="px-2 py-1 text-right">{u(o.orderable, o.qty)}</td>
+                <td className="px-2 py-1 text-right whitespace-nowrap">
+                  {o.status === "soldout" ? "0일" : o.runway === null || o.runway === undefined ? <span className="text-muted-foreground">판매 없음</span> : `${fmt1(o.runway)}일`}
+                  {o.status && o.status !== "ok" && o.status !== "suspended" && <span className="block"><RgStatusBadge status={o.status} /></span>}
+                </td>
+                <td className="px-2 py-1 text-left"><RgHealthCell o={o} /></td>
                 <td className="px-2 py-1 text-right">
                   {o.inbound ? u(o.inbound, o.qty) : 0}
                   {o.inbound_requested ? <span className="block text-[10px] text-muted-foreground">요청만 {u(o.inbound_requested, o.qty)}</span> : null}
                 </td>
+                <td className="px-2 py-1 text-left"><RgInboundCell inbounds={o.inbounds} /></td>
                 <td className="px-2 py-1 text-right">{u(o.sales_7d, o.qty)}</td>
                 <td className="px-2 py-1 text-right">{u(o.sales_30d, o.qty)}</td>
               </tr>

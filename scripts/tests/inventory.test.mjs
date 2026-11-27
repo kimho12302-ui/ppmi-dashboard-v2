@@ -6,6 +6,7 @@ import {
   parseWekeepName, thresholdsFor, mergeDailyRows, shipoutSpeed, fillDailySeries, runwayDays, statusFromRunway,
   computeInventory, forecastLine, dailyThrough, DEFAULT_THRESHOLDS, coupangWindowFor, isRealDate, extractSheetCosts, matchSheetCosts,
   gradeByCumulative, buildBrandTabs, inBrandTab, ownSaipTabs, supplierFromName, summarizeCoupangRg,
+  rgOptionStatus, rgOptionRunway, pendingRgInbounds, rgOptionAlerts, RG_OPTION_SOON_DAYS,
 } from "../../src/lib/inventory.ts";
 
 const day = (ymd, sku, o = {}) => ({
@@ -620,4 +621,119 @@ test("쿠팡 RG 검수(11-10): 판매중지 옵션 재고는 남은 날에 안 �
   assert.match(m.coupang_note, /판매 통계가 비어/);
   const b = computeInventory({ ...rgBase(), coupangRg: { rows: [rgRow(1, { orderable: 5, inbound: 3, inbounds: [null, { status: "UNLOADING", inProgress: 3 }] })], map: rgMap } }).rows[0];
   assert.equal(b.coupang_inbound, 6);
+});
+
+// ── 쿠팡 옵션(세트 SKU)별 재고 (2026-11-27) ──
+test("쿠팡 옵션 상태: 판매중지 → 품절 → 쿠팡 품절임박·우리 남은 날 7일 이하 → 정상", () => {
+  assert.equal(RG_OPTION_SOON_DAYS, 7);
+  const st = (o) => rgOptionStatus({ sale_suspended: false, orderable: 10, health_group: null, runway: 20, ...o });
+  assert.equal(st({ sale_suspended: true, orderable: 0 }), "suspended");
+  assert.equal(st({ sale_suspended: true, health_group: "ALMOST_OUT_OF_STOCK" }), "suspended");
+  assert.equal(st({ orderable: 0, runway: 0 }), "soldout");
+  assert.equal(st({ health_group: "ALMOST_OUT_OF_STOCK", runway: 30 }), "soon"); // 쿠팡 판정이 이김
+  assert.equal(st({ runway: 7 }), "soon"); // 경계 7일 포함
+  assert.equal(st({ runway: 7.1 }), "ok");
+  assert.equal(st({ runway: null }), "ok"); // 판매 0 이라 남은 날 계산 불가
+  // 남은 날 = 판매 가능 ÷ (30일 판매 ÷ 30), 판매 0·null 이면 null
+  assert.equal(rgOptionRunway(12, 90), 4);
+  assert.equal(rgOptionRunway(12, 0), null);
+  assert.equal(rgOptionRunway(12, null), null);
+  assert.equal(rgOptionRunway(0, 30), 0);
+});
+
+test("쿠팡 입고 건: 진행 중만 예정일 순, 요청만(INIT_COMPLETED)·예정일 지남 표시", () => {
+  const list = pendingRgInbounds([
+    { shipmentId: "a", status: "STOWING", expected: "2026-11-25", inProgress: 0 }, // 입고 끝
+    { shipmentId: "b", status: "INIT_COMPLETED", expected: "2026-12-05", inProgress: 20 },
+    { shipmentId: "c", status: "UNLOADING", expected: "2026-11-20", inProgress: 5 },
+    null,
+    { shipmentId: "d", status: "INIT_COMPLETED", expected: "not-a-date", inProgress: 3 },
+  ], "2026-11-27");
+  assert.deepEqual(list.map((x) => x.shipment_id), ["c", "b", "d"]);
+  assert.deepEqual(list.map((x) => x.shipped), [true, false, false]);
+  assert.deepEqual(list.map((x) => x.late), [true, false, false]);
+  assert.equal(list[2].expected, null);
+  assert.deepEqual(pendingRgInbounds(null, "2026-11-27"), []);
+});
+
+// 2026-11-27 WING 원천 그대로(settings/collectors/raw/coupang-rg/coupang-rg-inventory-2026-11-27.json). 30일 = units + cancelled
+const rg1127 = (vid, o) => ({ date: "2026-11-27", vendor_item_id: vid, sale_suspended: false, hidden_by_vendor: false, ...o });
+const GUM3 = rg1127(96120876984, { product_name: "[3박스] 너티 하루루틴 스트레스제로껌", option_name: "3개 덴탈껌 225g", orderable: 12, inbound: 20,
+  inbounds: [
+    { shipmentId: "1128531534433767424", status: "INIT_COMPLETED", expected: "2026-12-05", requested: 20, received: 0, stowed: 0, inProgress: 20 },
+    { shipmentId: "1126717545848504320", status: "STOWING", expected: "2026-11-25", requested: 20, received: 20, stowed: 20, inProgress: 0 },
+  ], days_of_cover: 4, health_group: "ALMOST_OUT_OF_STOCK", sales_7d: 31, sales_30d: 90 });
+const BASAK4 = rg1127(96267839165, { product_name: "[4세트] 너티 사운드 바삭! 닭가슴살", option_name: "4개 닭가슴살 80g", orderable: 11, inbound: 15,
+  inbounds: [
+    { shipmentId: "1128254324422475776", status: "STOWING", expected: "2026-12-03", requested: 10, received: 10, stowed: 10, inProgress: 0 },
+    { shipmentId: "1126366853174657026", status: "INIT_COMPLETED", expected: "2026-11-24", requested: 15, received: 0, stowed: 0, inProgress: 15 },
+  ], days_of_cover: 7, health_group: "ALMOST_OUT_OF_STOCK", sales_7d: 4, sales_30d: 29 });
+
+test("쿠팡 옵션 11-27 실례: 껌 3박스·바삭 4세트 둘 다 품절임박, 바삭 입고 11-24 는 지남·요청만", () => {
+  const map = [{ vendor_item_id: 96120876984, sku_no: "GUM", qty: 3 }, { vendor_item_id: 96267839165, sku_no: "BASAK", qty: 4 }];
+  const s = summarizeCoupangRg([GUM3, BASAK4], map, "2026-11-27", (sku) => ({ GUM: "너티 하루루틴 스트레스제로껌", BASAK: "너티사운드_바삭" })[sku]);
+  const by = Object.fromEntries(s.options.map((o) => [o.vendor_item_id, o]));
+  const gum = by["96120876984"];
+  assert.equal(gum.runway, 4); // 12 ÷ (90 ÷ 30)
+  assert.equal(gum.status, "soon"); // 우리 4일 ≤ 7, 쿠팡도 품절임박
+  assert.equal(gum.days_of_cover, 4);
+  assert.equal(gum.qty, 3);
+  assert.deepEqual(gum.products, [{ sku_no: "GUM", name: "너티 하루루틴 스트레스제로껌", qty: 3 }]);
+  assert.deepEqual(gum.inbounds.map((x) => [x.qty, x.expected, x.shipped, x.late]), [[20, "2026-12-05", false, false]]);
+  assert.equal(gum.inbound, 0); // INIT_COMPLETED 는 쿠팡 입고 중에 안 셈(위킵 가용에 있음, 11-10 결정 유지)
+  assert.equal(gum.inbound_requested, 20);
+  const basak = by["96267839165"];
+  assert.ok(basak.runway > RG_OPTION_SOON_DAYS); // 우리 값 11 ÷ (29 ÷ 30) ≈ 11.4일
+  assert.equal(basak.status, "soon"); // 쿠팡 ALMOST_OUT_OF_STOCK 경로로 품절임박
+  assert.deepEqual(basak.inbounds.map((x) => [x.qty, x.expected, x.shipped, x.late]), [[15, "2026-11-24", false, true]]);
+  // 제품 행 배지 개수
+  assert.deepEqual(s.bySku.get("GUM").option_alerts, { soldout: 0, soon: 1 });
+  assert.equal(s.bySku.get("GUM").options[0].status, "soon");
+});
+
+test("쿠팡 옵션별 목록: 짝 없는 옵션 포함, 1+1 은 한 번, 품절 → 품절임박 → 남은 날 순, 판매중지는 맨 뒤", () => {
+  const map = [
+    { vendor_item_id: 1, sku_no: "A", qty: 2 },
+    { vendor_item_id: 2, sku_no: "A", qty: 1 }, { vendor_item_id: 2, sku_no: "B", qty: 1 }, // 1+1
+    { vendor_item_id: 3, sku_no: "B", qty: 1 },
+    { vendor_item_id: 4, sku_no: "B", qty: 1 },
+    { vendor_item_id: 6, sku_no: "B", qty: 1 },
+  ];
+  const rows = [
+    rgRow(1, { orderable: 30, sales_30d: 30 }), // 30일 → ok
+    rgRow(2, { orderable: 5, sales_30d: 30 }), // 5일 → soon
+    rgRow(3, { orderable: 0, sales_30d: 60 }), // 품절(판매 있음)
+    rgRow(4, { orderable: 0, sale_suspended: true, sales_30d: 0 }), // 판매중지
+    rgRow(5, { orderable: 7, sales_30d: 3 }), // 짝 없음, 70일 → ok
+    rgRow(6, { orderable: 0, sales_30d: null }), // 품절이나 30일 판매 없음(죽은 등록)
+  ];
+  const s = summarizeCoupangRg(rows, map, "2026-11-10", (sku) => `상품${sku}`);
+  assert.equal(s.options.length, 6); // 옵션마다 한 줄, 1+1 도 한 번
+  assert.deepEqual(s.options.map((o) => o.vendor_item_id), ["3", "6", "2", "1", "5", "4"]);
+  const pair = s.options.find((o) => o.vendor_item_id === "2");
+  assert.deepEqual(pair.products.map((p) => p.sku_no), ["A", "B"]);
+  assert.equal(pair.qty, null); // 두 SKU 라 낱개 환산 하나로 못 셈
+  const stray = s.options.find((o) => o.vendor_item_id === "5");
+  assert.equal(stray.unmapped, true);
+  assert.deepEqual(stray.products, []);
+  assert.equal(s.options.find((o) => o.vendor_item_id === "6").no_sales_30d, true);
+  // 배지: 품절은 30일 판매 있던 것만, 판매중지는 안 셈. 1+1 은 두 제품 모두에 셈
+  assert.deepEqual(s.bySku.get("A").option_alerts, { soldout: 0, soon: 1 });
+  assert.deepEqual(s.bySku.get("B").option_alerts, { soldout: 1, soon: 1 });
+  assert.deepEqual(rgOptionAlerts([]), { soldout: 0, soon: 0 });
+});
+
+test("쿠팡 옵션별 목록이 재고 응답에 실린다(제품 이름은 위킵 상품명), 원천이 없으면 null", () => {
+  const res = computeInventory({ ...rgBase(), coupangRg: { rows: [rgRow(1, { orderable: 3, sales_30d: 30 }), rgRow(9, { orderable: 1 })], map: rgMap } });
+  assert.equal(res.coupang_options.length, 2);
+  assert.equal(res.coupang_options[0].products[0].name, "너티사운드_냠");
+  assert.equal(res.coupang_options[0].status, "soon");
+  assert.equal(res.coupang_options[1].unmapped, true);
+  assert.deepEqual(res.rows[0].coupang_rg.option_alerts, { soldout: 0, soon: 1 });
+  assert.equal(computeInventory(rgBase()).coupang_options, null);
+  // WING 값이 오래돼도(제품 판정에는 안 씀) 옵션 목록은 기준일 그대로 준다
+  const stale = computeInventory({ ...rgBase(), today: "2026-11-13", coupangRg: { rows: [rgRow(1, { orderable: 3, sales_30d: 30 })], map: rgMap } });
+  assert.equal(stale.coupang_rg.fresh, false);
+  assert.equal(stale.rows[0].coupang_rg, null);
+  assert.equal(stale.coupang_options.length, 1);
 });

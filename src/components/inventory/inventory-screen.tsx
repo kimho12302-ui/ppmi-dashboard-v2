@@ -16,6 +16,7 @@ import {
 } from "@/lib/inventory";
 import { RunwayAxis, RunwayBar } from "./runway-bar";
 import { InventoryDetail } from "./inventory-detail";
+import { CoupangOptionTable, RG_OPTION_TONE } from "./coupang-option-table";
 import {
   GROUPS, SCALE_TONE, STATUS_TONE, coupangSourceLabel, coupangText, fmtInt, fmtManWon, fmtSpeed, fmtWon, md, scaleTitle, type InventoryResponse,
 } from "./inventory-ui";
@@ -37,7 +38,9 @@ export function InventoryScreen() {
   // 브랜드 탭·하루 출고 기간을 바꿔도 유지하고(카드 숫자도 그 범위로 다시 셈), 묶음은 필터 동안 펼친다(원래 접힘 상태는 건드리지 않음)
   const [cardFilter, setCardFilter] = useState<InvCardKey | null>(null);
   const [filterClosed, setFilterClosed] = useState<Partial<Record<InvGroup, boolean>>>({});
-  const pickCard = useCallback((k: InvCardKey) => { setCardFilter((f) => toggleCardFilter(f, k)); setFilterClosed({}); }, []);
+  // 「제품별 / 쿠팡 옵션별」 보기(2026-11-27). 쿠팡은 세트 옵션마다 재고·입고·품절이 따로라 옵션 하나에 한 줄로도 본다. 카드는 제품 판정이라 누르면 제품별로 돌아간다
+  const [view, setView] = useState<"product" | "options">("product");
+  const pickCard = useCallback((k: InvCardKey) => { setCardFilter((f) => toggleCardFilter(f, k)); setFilterClosed({}); setView("product"); }, []);
 
   // 7·14·28 을 빨리 바꾸면 늦게 온 앞 요청이 뒤 결과를 덮지 않게 앞 요청을 취소한다
   const inflight = useRef<AbortController | null>(null);
@@ -52,7 +55,7 @@ export function InventoryScreen() {
       let res = await (fresh ? freshFetch(url, { signal: ctrl.signal }) : fetch(url, { signal: ctrl.signal }));
       let json = await res.json();
       // 배포 직후 5분 캐시에 판매 규모(scale)가 없는 옛 응답이 남아 있으면 캐시를 건너뛰고 다시 읽는다
-      if (res.ok && !json.setupNeeded && !("scale" in json)) {
+      if (res.ok && !json.setupNeeded && (!("scale" in json) || !("coupang_options" in json))) {
         res = await freshFetch(url, { signal: ctrl.signal });
         json = await res.json();
       }
@@ -118,6 +121,7 @@ export function InventoryScreen() {
                 </button>
               ))}
             </div>
+            <ViewToggle view={view} onChange={setView} data={ready} />
             <div data-tour="inventory-window" className="flex items-center gap-1 text-xs">
               <span className="text-muted-foreground">하루 출고 기간</span>
               <div className="flex gap-0.5 rounded-md bg-muted p-0.5">
@@ -137,12 +141,14 @@ export function InventoryScreen() {
             <Link href="/settings?tab=inventory" data-tour="inventory-settings-link" className="ml-1 underline underline-offset-2 text-foreground">쿠팡 재고·발주·기준 일수 입력 →</Link>
           </p>
 
-          {cardFilter && (
+          {view === "options" && <CoupangOptionTable data={ready} tabKey={activeTab} />}
+
+          {view === "product" && cardFilter && (
             <CardFilterBar k={cardFilter} n={viewRows.length} late={viewRows.filter((r) => r.status === "late").length} cards={cards}
               tabLabel={activeTab === "all" ? null : tabs.find((t) => t.key === activeTab)?.label ?? null} onClear={() => setCardFilter(null)} />
           )}
 
-          <div className="space-y-3">
+          {view === "product" && <div className="space-y-3">
             {GROUPS.map((g) => {
               const list = viewRows.filter((r) => r.group === g.key);
               // 보류(inventory.ts isHeld)는 ① 안 맨 아래에 접어 둔다. 카드 필터 중에는 카드 숫자와 같게 보류가 빠져 있다
@@ -197,7 +203,7 @@ export function InventoryScreen() {
                 </section>
               );
             })}
-          </div>
+          </div>}
         </>
       )}
     </div>
@@ -418,6 +424,7 @@ function Row({ row, asOf, first, active, onClick }: { row: InventoryRow; asOf: s
           row.confidence !== "확실" && !row.confirmed ? `매칭 ${row.confidence}` : null,
           row.held ? (row.last_shipout ? `마지막 출고 ${md(row.last_shipout)}` : "읽은 기간 출고 없음") : null].filter(Boolean).join(" · ") || BRAND_LABEL[row.brand]}
       </span>
+      <OptionAlertBadge row={row} />
     </span>
   );
   return (
@@ -507,5 +514,42 @@ function CoupangRgNotice({ data }: { data: Exclude<InventoryResponse, { setupNee
         </div>
       )}
     </>
+  );
+}
+
+/** 「제품별 / 쿠팡 옵션별」 보기 전환. 옵션 쪽 버튼에 품절임박·품절 옵션 수를 같이 보인다 */
+function ViewToggle({ view, onChange, data }: { view: "product" | "options"; onChange: (v: "product" | "options") => void; data: Exclude<InventoryResponse, { setupNeeded: true }> }) {
+  const opts = data.coupang_options ?? [];
+  const soon = opts.filter((o) => o.status === "soon").length;
+  const soldout = opts.filter((o) => o.status === "soldout" && !o.no_sales_30d).length;
+  const btn = (v: "product" | "options") => `px-2 py-0.5 rounded ${view === v ? "bg-card shadow-sm text-foreground" : "text-muted-foreground"}`;
+  return (
+    <div data-tour="inventory-view" className="flex items-center gap-1 text-xs">
+      <span className="text-muted-foreground">보기</span>
+      <div className="flex gap-0.5 rounded-md bg-muted p-0.5" role="group" aria-label="표 보기">
+        <button type="button" onClick={() => onChange("product")} aria-pressed={view === "product"} className={btn("product")}>제품별</button>
+        <button type="button" onClick={() => onChange("options")} aria-pressed={view === "options"} className={btn("options")}
+          title="쿠팡 로켓그로스 옵션(세트) 하나에 한 줄. 세트마다 재고·입고·품절이 따로입니다">
+          쿠팡 옵션별
+          {soldout > 0 && <span className="num ml-1" style={{ color: RG_OPTION_TONE.soldout.color }}>품절 {soldout}</span>}
+          {soon > 0 && <span className="num ml-1" style={{ color: RG_OPTION_TONE.soon.color }}>임박 {soon}</span>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 제품별 표 너티 행: 쿠팡 옵션 중 품절(30일 판매 있던 것)·품절임박이 있으면 작게. 행을 누르면 상세에 옵션별 표가 있다 */
+function OptionAlertBadge({ row }: { row: InventoryRow }) {
+  const a = row.coupang_rg?.option_alerts;
+  if (!a || (a.soon === 0 && a.soldout === 0)) return null;
+  const parts = [a.soon ? `품절임박 ${a.soon}` : null, a.soldout ? `품절 ${a.soldout}` : null].filter(Boolean).join(" · ");
+  const tone = a.soldout ? RG_OPTION_TONE.soldout : RG_OPTION_TONE.soon;
+  return (
+    <span className="mt-0.5 inline-flex items-center px-1.5 py-px rounded text-[10px] font-medium whitespace-nowrap border"
+      style={{ color: tone.color, background: tone.surface, borderColor: tone.border }}
+      title="쿠팡 로켓그로스 세트 옵션 중 품절·품절임박인 것. 행을 누르면 상세에 옵션별 표, 위 「쿠팡 옵션별」 보기에서 전체 옵션">
+      쿠팡 옵션 {parts}
+    </span>
   );
 }
