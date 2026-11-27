@@ -17,6 +17,16 @@ const PNL_PRODUCT_KEYS = new Set<string>(PNL_PRODUCTS.map((p) => p.key));
  * 중간 run 을 취소해 첫날·마지막날만 반영되던 사고(2026-07)가 있어, 입력일 7일 전부터 오늘까지로 넓게 쏜다.
  * 살아남는 run 하나가 배치 전체를 덮는다(DB→시트는 GFA 0-가드가 있어 넓게 돌려도 수기값 안전).
  */
+// 통계시트 보호선: 이 날짜 앞 행은 고치지 않는다(김호 운영 규칙, sync_db_to_sheet_all_brands.py SHEET_FREEZE_DATE 기본값과 같게).
+//   그 앞 날짜를 저장하면 DB 만 바뀌고 시트에는 안 들어간다. 그때는 트리거하지 않는다(화면에 "자동반영 시작" 이 뜨지 않게)
+const SHEET_FREEZE_DATE = "2026-06-01";
+
+/** 보호선 앞 날짜면 null(시트 반영 안 함). 아니면 트리거 범위 */
+async function triggerSheetSyncFor(date: string): Promise<boolean | null> {
+  if (date < SHEET_FREEZE_DATE) return null;
+  return triggerSheetSync(...sheetSyncRange(date));
+}
+
 function sheetSyncRange(date: string): [string, string] {
   const dMs = new Date(date + "T00:00:00Z").getTime();
   const kstToday = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
@@ -24,6 +34,14 @@ function sheetSyncRange(date: string): [string, string] {
   return [start, kstToday > date ? kstToday : date];
 }
 
+// ─── GET ─────────────────────────────────────────────
+
+/**
+ * 판매 원장에 한 번이라도 나온 (상품, 브랜드). 원가 미등록 상품 목록의 재료.
+ * ★ 2026-11-09: 예전엔 product_sales 를 한 번에 읽어 1,000행에서 잘렸다(7,000행 넘음). 1,000행 뒤에만 있는
+ *   상품은 원가가 없어도 '미등록'에 안 떴다. DB 함수 product_sales_products(docs/sql/2026-11-09-perf-rpc.sql)로
+ *   서로 다른 쌍만 받고, 함수가 아직 없으면(PGRST202) 두 열만 끝까지 나눠 읽는다.
+ */
 async function soldProducts(): Promise<{ product: string; brand: string }[]> {
   const rpc = await supabase.rpc("product_sales_products");
   if (!rpc.error) return (rpc.data || []) as { product: string; brand: string }[];
@@ -149,7 +167,7 @@ async function postImpl(req: NextRequest) {
         );
         if (error) throw error;
         // 시트 반영은 sheet-sync 트리거(best-effort·비차단). 실패해도 DB 저장은 끝났으므로 200 유지. 다음 정기 회차도 덮는다
-        const sheetSyncTriggered = await triggerSheetSync(...sheetSyncRange(date));
+        const sheetSyncTriggered = await triggerSheetSyncFor(date);
         return NextResponse.json({ ok: true, message: `smartstore 퍼널 저장 완료 (${date})`, sheetSyncTriggered });
       }
 
@@ -171,7 +189,7 @@ async function postImpl(req: NextRequest) {
           { onConflict: "date,brand,channel" }
         );
         if (error) throw error;
-        const sheetSyncTriggered = await triggerSheetSync(...sheetSyncRange(date));
+        const sheetSyncTriggered = await triggerSheetSyncFor(date);
         return NextResponse.json({ ok: true, message: `카페24 퍼널 저장 완료 (${date})`, sheetSyncTriggered });
       }
 

@@ -17,6 +17,8 @@ export async function triggerSheetSync(startDate?: string, endDate?: string): Pr
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ ref: "master", inputs: { start_date: startDate, end_date: endDate || startDate } }),
+      // GitHub 이 응답하지 않아도 저장 응답이 함수 타임아웃까지 매달리지 않게(2026-11-27, 퍼널 저장 두 곳이 새로 이 경로를 탄다)
+      signal: AbortSignal.timeout(5000),
     });
     if (res.status !== 204) {
       let body = "";
