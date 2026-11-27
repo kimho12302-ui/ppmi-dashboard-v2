@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { google } from "googleapis";
 import { triggerSheetSync } from "@/lib/github-dispatch";
 import { cachedGET, revalidateAfter } from "@/lib/api-cache";
 import { fetchAll } from "@/lib/db";
@@ -8,110 +7,23 @@ import { PNL_PRODUCTS, MANUAL_COST_KIND_MAX, isMissingTable } from "@/lib/bl-pnl
 
 const PNL_PRODUCT_KEYS = new Set<string>(PNL_PRODUCTS.map((p) => p.key));
 
-const STATS_SHEET_ID = "1FzxDCyR9FyAIduf7Q0lfUIOzvSqVlod21eOFqaPrXio";
-
-function getAuth() {
-  const saKey = process.env.GOOGLE_SA_KEY;
-  if (!saKey) throw new Error("GOOGLE_SA_KEY not set");
-  const creds = JSON.parse(saKey);
-  return new google.auth.GoogleAuth({
-    credentials: creds,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-}
-
-const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
-function toSheetDateLabel(date: string) {
-  const dt = new Date(`${date}T00:00:00+09:00`);
-  return `${dt.getMonth() + 1}월 ${dt.getDate()}일 (${DAY_NAMES[dt.getDay()]})`;
-}
-
-async function findFunnelRowIndex(date: string) {
-  const auth = getAuth();
-  const sheets = google.sheets({ version: "v4", auth });
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: STATS_SHEET_ID,
-    range: "Funnel!A:A",
-  });
-  const values = res.data.values || [];
-  const target = toSheetDateLabel(date);
-  for (let i = 0; i < values.length; i++) {
-    if (String(values[i]?.[0] || "").includes(target)) return i + 1;
-  }
-  throw new Error(`Funnel row not found for ${date}`);
-}
-
-async function syncCafe24RowToSheet(date: string) {
-  const rowNum = await findFunnelRowIndex(date);
-  const { data } = await supabase.from("daily_funnel").select("*").eq("channel", "cafe24").eq("date", date);
-  const rows = data || [];
-  let sessions = 0, cartAdds = 0, newVisitors = 0, registrations = 0, repurchases = 0, avgDuration = 0, totalUsers = 0;
-  for (const r of rows) {
-    sessions = Math.max(sessions, Number(r.sessions || 0));
-    cartAdds = Math.max(cartAdds, Number(r.cart_adds || 0));
-    newVisitors = Math.max(newVisitors, Number(r.signups || 0));
-    registrations = Math.max(registrations, Number(r.purchases || 0));
-    repurchases = Math.max(repurchases, Number(r.repurchases || 0));
-    avgDuration = Math.max(avgDuration, Number(r.avg_duration || 0));
-    totalUsers = Math.max(totalUsers, Number(r.subscribers || 0));
-  }
-  const returning = Math.max(0, totalUsers - newVisitors);
-  const auth = getAuth();
-  const sheets = google.sheets({ version: "v4", auth });
-  await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId: STATS_SHEET_ID,
-    requestBody: {
-      valueInputOption: "USER_ENTERED",
-      data: [
-        { range: `Funnel!T${rowNum}`, values: [[sessions]] },
-        { range: `Funnel!U${rowNum}`, values: [[newVisitors]] },
-        { range: `Funnel!V${rowNum}`, values: [[returning]] },
-        { range: `Funnel!W${rowNum}`, values: [[totalUsers]] },
-        { range: `Funnel!X${rowNum}`, values: [[sessions]] },
-        { range: `Funnel!Y${rowNum}`, values: [[Math.round(avgDuration)]] },
-        { range: `Funnel!Z${rowNum}`, values: [[cartAdds]] },
-        { range: `Funnel!AA${rowNum}`, values: [[registrations]] },
-        { range: `Funnel!AC${rowNum}`, values: [[repurchases]] },
-      ],
-    },
-  });
-}
-
-async function syncSmartstoreRowToSheet(date: string) {
-  const rowNum = await findFunnelRowIndex(date);
-  const { data } = await supabase.from("daily_funnel").select("*").eq("channel", "smartstore").eq("date", date);
-  const rows = data || [];
-  let sessions = 0, subscribers = 0, repurchases = 0, avgDuration = 0;
-  for (const r of rows) {
-    sessions += Number(r.sessions || 0);
-    subscribers += Number(r.subscribers || 0);
-    repurchases += Number(r.repurchases || 0);
-    avgDuration = Math.max(avgDuration, Number(r.avg_duration || 0));
-  }
-  const auth = getAuth();
-  const sheets = google.sheets({ version: "v4", auth });
-  await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId: STATS_SHEET_ID,
-    requestBody: {
-      valueInputOption: "USER_ENTERED",
-      data: [
-        { range: `Funnel!AI${rowNum}`, values: [[sessions]] },
-        { range: `Funnel!AJ${rowNum}`, values: [[Math.round(avgDuration)]] },
-        { range: `Funnel!AK${rowNum}`, values: [[subscribers]] },
-        { range: `Funnel!AM${rowNum}`, values: [[repurchases]] },
-      ],
-    },
-  });
-}
-
-// ─── GET ─────────────────────────────────────────────
+// 2026-11-27: 퍼널 저장 때 통계시트 Funnel 탭에 직접 쓰던 코드(syncCafe24RowToSheet·syncSmartstoreRowToSheet)를 뺐다.
+//   같은 칸을 marketing-dashboard 의 sync_db_to_sheet_all_brands.py(update_cafe24_funnel·update_smartstore_funnel)도 썼다.
+//   쓰는 쪽을 하나로 두고, 저장 직후 반영은 GFA 저장과 같은 sheet-sync 워크플로 트리거로 한다(~1분).
+//   근거: 볼트 Work/PPMI/projects/마케팅-대시보드/수집경로-지도-2026-11-27.md 중복 5, 순서 4
 
 /**
- * 판매 원장에 한 번이라도 나온 (상품, 브랜드). 원가 미등록 상품 목록의 재료.
- * ★ 2026-11-09: 예전엔 product_sales 를 한 번에 읽어 1,000행에서 잘렸다(7,000행 넘음). 1,000행 뒤에만 있는
- *   상품은 원가가 없어도 '미등록'에 안 떴다. DB 함수 product_sales_products(docs/sql/2026-11-09-perf-rpc.sql)로
- *   서로 다른 쌍만 받고, 함수가 아직 없으면(PGRST202) 두 열만 끝까지 나눠 읽는다.
+ * 저장 직후 통계시트 반영용 sheet-sync 트리거 범위. 단일 날짜로 쏘면 여러 날을 연속 저장할 때 GitHub Actions 동시성이
+ * 중간 run 을 취소해 첫날·마지막날만 반영되던 사고(2026-07)가 있어, 입력일 7일 전부터 오늘까지로 넓게 쏜다.
+ * 살아남는 run 하나가 배치 전체를 덮는다(DB→시트는 GFA 0-가드가 있어 넓게 돌려도 수기값 안전).
  */
+function sheetSyncRange(date: string): [string, string] {
+  const dMs = new Date(date + "T00:00:00Z").getTime();
+  const kstToday = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  const start = new Date(dMs - 7 * 86400000).toISOString().slice(0, 10);
+  return [start, kstToday > date ? kstToday : date];
+}
+
 async function soldProducts(): Promise<{ product: string; brand: string }[]> {
   const rpc = await supabase.rpc("product_sales_products");
   if (!rpc.error) return (rpc.data || []) as { product: string; brand: string }[];
@@ -236,19 +148,9 @@ async function postImpl(req: NextRequest) {
           { onConflict: "date,brand,channel" }
         );
         if (error) throw error;
-        // 시트 역동기화는 best-effort: 실패해도 DB 저장은 완료된 상태이므로 200 유지
-        let sheetWarning: string | null = null;
-        try {
-          await syncSmartstoreRowToSheet(date);
-        } catch (e) {
-          sheetWarning = e instanceof Error ? e.message : String(e);
-          console.warn("smartstore sheet sync failed:", sheetWarning);
-        }
-        return NextResponse.json({
-          ok: true,
-          message: `smartstore 퍼널 저장 완료 (${date})`,
-          ...(sheetWarning ? { sheetWarning } : {}),
-        });
+        // 시트 반영은 sheet-sync 트리거(best-effort·비차단). 실패해도 DB 저장은 끝났으므로 200 유지. 다음 정기 회차도 덮는다
+        const sheetSyncTriggered = await triggerSheetSync(...sheetSyncRange(date));
+        return NextResponse.json({ ok: true, message: `smartstore 퍼널 저장 완료 (${date})`, sheetSyncTriggered });
       }
 
       // ── 카페24 퍼널 ──
@@ -269,18 +171,8 @@ async function postImpl(req: NextRequest) {
           { onConflict: "date,brand,channel" }
         );
         if (error) throw error;
-        let sheetWarning: string | null = null;
-        try {
-          await syncCafe24RowToSheet(date);
-        } catch (e) {
-          sheetWarning = e instanceof Error ? e.message : String(e);
-          console.warn("cafe24 sheet sync failed:", sheetWarning);
-        }
-        return NextResponse.json({
-          ok: true,
-          message: `카페24 퍼널 저장 완료 (${date})`,
-          ...(sheetWarning ? { sheetWarning } : {}),
-        });
+        const sheetSyncTriggered = await triggerSheetSync(...sheetSyncRange(date));
+        return NextResponse.json({ ok: true, message: `카페24 퍼널 저장 완료 (${date})`, sheetSyncTriggered });
       }
 
       // ── 쿠팡 퍼널 (수기입력) ──
@@ -349,11 +241,7 @@ async function postImpl(req: NextRequest) {
         // ★ 단일 날짜(date,date)로 쏘면, 여러 날짜를 연속 입력할 때 GitHub Actions 동시성이 중간 run들을 취소해
         //   첫날·마지막날만 시트에 반영되던 버그(2026-07 사고). → 입력일 기준 최근 범위로 넓게 트리거해서
         //   살아남는 run 하나가 배치 전체를 커버하게 함. (DB→시트는 GFA 0-가드가 있어 넓게 돌려도 수기값 안전)
-        const dMs = new Date(date + "T00:00:00Z").getTime();
-        const kstToday = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
-        const syncStart = new Date(dMs - 7 * 86400000).toISOString().slice(0, 10);
-        const syncEnd = kstToday > date ? kstToday : date;
-        const sheetSyncTriggered = await triggerSheetSync(syncStart, syncEnd);
+        const sheetSyncTriggered = await triggerSheetSync(...sheetSyncRange(date));
         return NextResponse.json({ ok: true, message: `${channel} ${date} 저장 완료`, sheetSyncTriggered });
       }
 
